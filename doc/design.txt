@@ -1,0 +1,5 @@
+LavaScript
+========================
+
+
+A simple script language that is a subset of Javascript

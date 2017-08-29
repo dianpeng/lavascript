@@ -1,9 +1,10 @@
-#ifndef AST_H_
-#define AST_H_
+#ifndef PARSER_AST_AST_H_
+#define PARSER_AST_AST_H_
 
 #include <src/zone/zone.h>
 #include <src/zone/string.h>
 #include <src/zone/vector.h>
+#include <src/parser/token.h>
 
 #include <iostream>
 
@@ -18,6 +19,7 @@
  */
 
 namespace lavascript {
+namespace parser {
 namespace ast {
 
 #define LAVA_AST_LIST(__) \
@@ -28,12 +30,12 @@ namespace ast {
   __( BINARY  , Binary  , "binary"  ) \
   __( UNARY   , Unary   , "unary"   ) \
   __( TERNARY , Ternary , "ternary" ) \
-  __( FUNCCALL, FuncCall, "funccall") \
   __( LIST    , List    , "list"    ) \
   __( OBJECT  , Object  , "object"  ) \
   /** statement **/ \
   __( VAR     , Var     , "var"     ) \
   __( ASSIGN  , Assign  , "assign"  ) \
+  __( CALL    , Call    , "call"    ) \
   __( IF      , If      , "if"      ) \
   __( FOR     , For     , "for"     ) \
   __( FOREACH , ForEach , "foreach" ) \
@@ -66,8 +68,8 @@ struct Node : zone::ZoneObject {
   AstType type;
 
   /** Daignostic information for this NODE */
-  size_t start_pos;                     // Starting position of this AST in source code
-  size_t end_pos;                       // End position of this AST in source code
+  size_t start_pos;   // Starting position of this AST in source code
+  size_t end_pos;     // End position of this AST in source code
 
   size_t code_length() const { return end_pos - start_pos; }
 
@@ -110,7 +112,7 @@ struct Literal : public Node {
 
   Literal( size_t sp , size_t ep , size_t tk_len ,
            bool bval ):
-    Node( LITEARL , sp , ep ) ,
+    Node( LITERAL , sp , ep ) ,
     literal_type( kLitBoolean )
   { bool_value = bval; }
 
@@ -122,13 +124,13 @@ struct Literal : public Node {
 
   Literal( size_t sp , size_t ep , size_t tk_len ,
            double rval ):
-    Node( LITEARL , sp , ep ) ,
+    Node( LITERAL , sp , ep ) ,
     literal_type( kLitReal )
   { real_value = rval; }
 
   Literal( size_t sp , size_t ep , size_t tk_len ,
            zone::String* str ):
-    Node( LITEARL , sp , ep ) ,
+    Node( LITERAL , sp , ep ) ,
     literal_type( kLitString )
   { str_value = str; }
 
@@ -146,6 +148,14 @@ struct Variable : public Node {
     Node( VARIABLE , sp , ep ),
     name(n),
     token_length(tk_len)
+  {}
+};
+
+struct FuncCall : zone::ZoneObject {
+  zone::Vector<Node*>* args;
+  FuncCall( size_t sp , size_t ep ):
+    zone::ZoneObject(),
+    args(NULL)
   {}
 };
 
@@ -172,10 +182,10 @@ struct Prefix : public Node {
 };
 
 struct Binary : public Node {
-  size_t op_pos;         // Operator's token position in source code
-  Token op;              // Operator of this binary
-  Node* lhs;             // Left hand side of this binary
-  Node* rhs;             // Right hand side of this binary
+  size_t op_pos;        // Operator's token position in source code
+  Token op;             // Operator of this binary
+  Node* lhs;            // Left hand side of this binary
+  Node* rhs;            // Right hand side of this binary
 
   Binary( size_t sp , size_t ep ):
     Node( BINARY , sp , ep ),
@@ -217,14 +227,6 @@ struct Ternary : public Node {
   {}
 };
 
-struct FuncCall : public Node {
-  zone::Vector<Node*>* args;
-  FuncCall( size_t sp , size_t ep ):
-    Node( FUNCCALL , sp , ep ),
-    args(NULL)
-  {}
-};
-
 struct List : public Node {
   zone::Vector<Node*>* entry;
   List( size_t sp , size_t ep ):
@@ -236,7 +238,9 @@ struct List : public Node {
 struct Object : public Node {
   struct Entry : zone::ZoneObject {
     Node* key;
-    Node* var;
+    Node* val;
+    Entry( Node* k , Node* v ) : key(k) , val(v) {}
+    Entry() : key(NULL), val(NULL) {}
   };
   zone::Vector<Entry>* entry;
   Object( size_t sp  ,size_t ep ):
@@ -274,11 +278,19 @@ struct Assign : public Node {
   {}
 };
 
+struct Call : public Node {
+  Prefix* call;
+  Call( size_t sp , size_t ep ):
+    Node( CALL , sp , ep ) ,
+    call(NULL)
+  {}
+};
+
 struct If : public Node {
-  struct Branch {
+  struct Branch : zone::ZoneObject {
     Node* cond;
     Chunk* body;
-    size_t kw_pos;           // Where if/elif/else keyword position is
+    size_t kw_pos; // Where if/elif/else keyword position is
     Branch() : cond(NULL) , body(NULL) , kw_pos(0) {}
   };
   zone::Vector<Branch>* br_list;
@@ -287,14 +299,21 @@ struct If : public Node {
 
 // Normal for with grammar like for ( expr ; expr ; expr )
 struct For : public Node {
-  Node* _1st;
-  Node* _2nd;
-  Node* _3rd;
+  Variable* var;  // Induction variable
+  Node* _1st;     // Initial assignment for induction variable
+  Node* _2nd;     // Condition expression
+  Node* _3rd;     // Incremental expression
+
+  bool has_1st() const { return var == NULL && _1st == NULL; }
+  bool has_2nd() const { return _2nd == NULL; }
+  bool has_3rd() const { return _3rd == NULL; }
+
   Chunk* body;
-  size_t for_pos;         // Where for keyword position is
+  size_t for_pos; // Where for keyword position is
 
   For( size_t sp  ,size_t ep ):
     Node( FOR , sp , ep ),
+    var (NULL),
     _1st(NULL),
     _2nd(NULL),
     _3rd(NULL),
@@ -306,12 +325,14 @@ struct For : public Node {
 struct ForEach : public Node {
   Variable* var;
   Node* iter;
+  Chunk* body;
   size_t for_pos;
 
   ForEach( size_t sp  ,size_t ep ):
     Node( FOREACH , sp , ep ),
     var(NULL),
     iter(NULL),
+    body(NULL),
     for_pos(0)
   {}
 };
@@ -331,7 +352,7 @@ struct Return : public Node {
   Return( size_t sp , size_t ep ) : Node(RETURN,sp,ep),ret_pos(0),expr(NULL){}
 };
 
-struct Requre : public Node {
+struct Require : public Node {
   size_t req_pos;       // Require position
   size_t as_pos;        // As position if we have as
   Node* req_expr;       // Require expression
@@ -348,7 +369,7 @@ struct Requre : public Node {
 };
 
 struct Chunk : public Node {
-  Vector<Node*>* body;
+  zone::Vector<Node*>* body;
   Chunk( size_t sp , size_t ep ):
     Node(CHUNK,sp,ep),
     body(NULL)
@@ -356,10 +377,10 @@ struct Chunk : public Node {
 };
 
 struct Function : public Node {
-  size_t func_pos;                        // Function keyword position
-  Variable* name;                         // If function has a name
-  Vector<Variable*>* proto;               // Prototype of the function argument list
-  Chunk* body;                            // Body of the function
+  size_t func_pos;                 // Function keyword position
+  Variable* name;                  // If function has a name
+  zone::Vector<Variable*>* proto;  // Prototype of the function argument list
+  Chunk* body;                     // Body of the function
 
   Function( size_t sp, size_t ep ):
     Node(FUNCTION,sp,ep),
@@ -380,7 +401,6 @@ struct Root : public Node {
 
 // Dump the ast into text representation for debugging purpose/ or other purpose
 void DumpAst( const Node& , std::ostream& );
-
 
 /** Inline definition of all Node::AsXXX functions */
 #define __(A,B,C)                                                                    \
@@ -408,45 +428,42 @@ LAVA_AST_LIST(__)
 template< typename T >
 class AstVisitor {
  protected:
-  template< typename R >
-  R Visit( const Node& );
+  void VisitNode( const Node& );
 
  private:
   T* impl() { return static_cast<T*>(this); }
 };
 
 template< typename T >
-template< typename R >
-R AstVisitor<T>::Visit( const Node& node ) {
+void AstVisitor<T>::VisitNode( const Node& node ) {
   switch(node.type) {
-    case LITEARL: return impl()->Visit(static_cast<const Literal&>(node));
-    case VARIABLE:return impl()->Visit(static_cast<const Variable&>(node));
-    case PREFIX: return impl()->Visit(static_cast<const Prefix&>(node));
-    case BINARY: return impl()->Visit(static_cast<const Binary&>(node));
-    case UNARY:  return impl()->Visit(static_cast<const Unary&>(node));
-    case TERNARY:return impl()->Visit(static_cast<const Ternary&>(node));
-    case FUNCCALL:return impl()->Visit(static_cast<const FuncCall&>(node));
-    case LIST:   return impl()->Visit(static_cast<const List&>(node));
-    case OBJECT: return impl()->Visit(static_cast<const Object&>(node));
-    case VAR:    return impl()->Visit(static_cast<const Var&>(node));
-    case ASSIGN: return impl()->Visit(static_cast<const Assign&>(node));
-    case IF:     return impl()->Visit(static_cast<const If&>(node));
-    case FOR:    return impl()->Visit(static_cast<const For&>(node));
-    case FOREACH:return impl()->Visit(static_cast<const Foreach&>(node));
-    case BREAK:  return impl()->Visit(static_cast<const Break&>(node));
-    case CONTINUE: return impl()->Visit(static_cast<const Continue&>(node));
-    case RETURN: return impl()->Visit(static_cast<const Return&>(node));
-    case REQUIRE:return impl()->Visit(static_cast<const Require&>(node));
-    case CHUNK: return impl()->Visit(static_cast<const Chunk&>(node));
-    case FUNCTION: return impl()->Visit(static_cast<const Function&>(node));
-    case ROOT : return impl()->Visit(static_cast<const Root&>(node));
-    default: lava_unreach("unknown node type");
+    case LITERAL: impl()->Visit(static_cast<const Literal&>(node)); break;
+    case VARIABLE:impl()->Visit(static_cast<const Variable&>(node)); break;
+    case PREFIX:  impl()->Visit(static_cast<const Prefix&>(node)); break;
+    case BINARY:  impl()->Visit(static_cast<const Binary&>(node)); break;
+    case UNARY:   impl()->Visit(static_cast<const Unary&>(node)); break;
+    case TERNARY: impl()->Visit(static_cast<const Ternary&>(node)); break;
+    case LIST:    impl()->Visit(static_cast<const List&>(node)); break;
+    case OBJECT:  impl()->Visit(static_cast<const Object&>(node)); break;
+    case VAR:     impl()->Visit(static_cast<const Var&>(node)); break;
+    case ASSIGN:  impl()->Visit(static_cast<const Assign&>(node)); break;
+    case IF:      impl()->Visit(static_cast<const If&>(node)); break;
+    case FOR:     impl()->Visit(static_cast<const For&>(node)); break;
+    case FOREACH: impl()->Visit(static_cast<const ForEach&>(node)); break;
+    case BREAK:   impl()->Visit(static_cast<const Break&>(node)); break;
+    case CONTINUE:impl()->Visit(static_cast<const Continue&>(node)); break;
+    case RETURN:  impl()->Visit(static_cast<const Return&>(node)); break;
+    case REQUIRE: impl()->Visit(static_cast<const Require&>(node)); break;
+    case CHUNK:   impl()->Visit(static_cast<const Chunk&>(node)); break;
+    case FUNCTION:impl()->Visit(static_cast<const Function&>(node)); break;
+    case ROOT :   impl()->Visit(static_cast<const Root&>(node)); break;
+    default:      lava_unreach("unknown node type"); break;
   }
-  return R();
 }
 
 
 } // namespace ast
+} // namespace parser
 } // namespaace lavascript
 
-#endif // AST_H_
+#endif // PARSER_AST_AST_H_

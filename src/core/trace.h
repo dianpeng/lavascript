@@ -38,6 +38,8 @@ inline bool Crash ( const char* expression , const char* file , int line ,
 
 #define lava_unreach(MESSAGE) core::Crash("unreachable!!",__FILE__,__LINE__,MESSAGE)
 
+#define lava_die() core::Crash("die!!",__FILE__,__LINE__,"")
+
 /**
  * Logging routines. These logging helper functions are thread safe and context safe.
  * It can be called at anytime of the code. Avoid using the log function directly

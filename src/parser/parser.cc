@@ -10,5 +10,6 @@ namespace parser {
 ast::Node* Parser::ParseAtomic() {
   ast::Node* ret;
   switch(lexer_.current().token) {
+    case Token::TK_INTEGER:
   }
 }

@@ -153,9 +153,9 @@ struct Variable : public Node {
 
 struct FuncCall : zone::ZoneObject {
   zone::Vector<Node*>* args;
-  FuncCall( size_t sp , size_t ep ):
+  FuncCall( size_t sp , size_t ep , zone::Vector<Node*>* a ):
     zone::ZoneObject(),
-    args(NULL)
+    args(a)
   {}
 };
 
@@ -174,10 +174,10 @@ struct Prefix : public Node {
   };
   zone::Vector<Component>* list; // List of prefix operations
   Variable* var;
-  Prefix( size_t sp , size_t ep ):
+  Prefix( size_t sp , size_t ep , zone::Vector<Component>* l , Variable* v ):
     Node(PREFIX , sp , ep ),
-    list(NULL),
-    var(NULL)
+    list(l),
+    var(v)
   {}
 };
 
@@ -187,12 +187,13 @@ struct Binary : public Node {
   Node* lhs;            // Left hand side of this binary
   Node* rhs;            // Right hand side of this binary
 
-  Binary( size_t sp , size_t ep ):
+  Binary( size_t sp , size_t ep , size_t opp ,
+      Token o , Node* l , Node* r ):
     Node( BINARY , sp , ep ),
-    op_pos(0),
-    op(),
-    lhs(NULL),
-    rhs(NULL)
+    op_pos(opp),
+    op(o),
+    lhs(l),
+    rhs(r)
   {}
 
 };
@@ -202,11 +203,12 @@ struct Unary : public Node {
   Token op;             // Operator for this unary
   Node* opr;            // Operand for this unary
 
-  Unary( size_t sp , size_t ep ):
+  Unary( size_t sp , size_t ep , size_t opp ,
+      Token o , Node* oprand ):
     Node( UNARY , sp , ep ),
-    op_pos(0),
-    op(),
-    opr(NULL)
+    op_pos(opp),
+    op(o),
+    opr(operand)
   {}
 };
 
@@ -217,21 +219,22 @@ struct Ternary : public Node {
   Node* _2nd;           // second operand
   Node* _3rd;           // third operand
 
-  Ternary( size_t sp , size_t ep ):
+  Ternary( size_t sp , size_t ep , size_t qp , size_t cp ,
+      Node* first , Node* second , Node* third ):
     Node( TERNARY , sp , ep ),
-    quest_pos(0),
-    colon_pos(0),
-    _1st(NULL),
-    _2nd(NULL),
-    _3rd(NULL)
+    quest_pos(qp),
+    colon_pos(cp),
+    _1st(first),
+    _2nd(second),
+    _3rd(third)
   {}
 };
 
 struct List : public Node {
   zone::Vector<Node*>* entry;
-  List( size_t sp , size_t ep ):
+  List( size_t sp , size_t ep , zone::Vector<Node*>* e ):
     Node( LIST , sp , ep ),
-    entry(NULL)
+    entry(e)
   {}
 };
 
@@ -243,9 +246,9 @@ struct Object : public Node {
     Entry() : key(NULL), val(NULL) {}
   };
   zone::Vector<Entry>* entry;
-  Object( size_t sp  ,size_t ep ):
+  Object( size_t sp  ,size_t ep , zone::Vector<Entry>* e ):
     Node( OBJECT , sp , ep ),
-    entry(NULL)
+    entry(e)
   {}
 };
 
@@ -254,10 +257,10 @@ struct Var : public Node {
   Variable* var;
   Node* expr;
 
-  Var( size_t sp , size_t ep ):
+  Var( size_t sp , size_t ep , Variable* v , Node* e ):
     Node( VAR , sp , ep ),
-    var(NULL),
-    expr(NULL)
+    var(v),
+    expr(e)
   {}
 };
 
@@ -268,21 +271,23 @@ struct Assign : public Node {
   Prefix* lhs_pref;
   Node* rhs;
   size_t assign_pos; // Assignment operator position
-  Assign( size_t sp , size_t ep ):
+  Assign( size_t sp , size_t ep , size_t lt ,
+      Variable* lv , Prefix* lp , Node* r ,
+      size_t apos ):
     Node( ASSIGN , sp , ep ),
-    lhs_t(),
-    lhs_var(NULL),
-    lhs_pref(NULL),
-    rhs(NULL),
-    assign_pos(0)
+    lhs_t(lt),
+    lhs_var(lv),
+    lhs_pref(pp),
+    rhs(r),
+    assign_pos(apos)
   {}
 };
 
 struct Call : public Node {
   Prefix* call;
-  Call( size_t sp , size_t ep ):
+  Call( size_t sp , size_t ep , Prefix* c):
     Node( CALL , sp , ep ) ,
-    call(NULL)
+    call(c)
   {}
 };
 
@@ -294,7 +299,9 @@ struct If : public Node {
     Branch() : cond(NULL) , body(NULL) , kw_pos(0) {}
   };
   zone::Vector<Branch>* br_list;
-  If( size_t sp , size_t ep ) : Node( IF , sp , ep ) , br_list(NULL) {}
+  If( size_t sp , size_t ep , zone::Vector<Branch>* bl ) :
+    Node( IF , sp , ep ) , br_list(bl)
+  {}
 };
 
 // Normal for with grammar like for ( expr ; expr ; expr )
@@ -311,14 +318,15 @@ struct For : public Node {
   Chunk* body;
   size_t for_pos; // Where for keyword position is
 
-  For( size_t sp  ,size_t ep ):
+  For( size_t sp  ,size_t ep , Variable* v , Node* first ,
+      Node* second , Node* third , Chunk* b , size_t fp ):
     Node( FOR , sp , ep ),
-    var (NULL),
-    _1st(NULL),
-    _2nd(NULL),
-    _3rd(NULL),
-    body(NULL),
-    for_pos(0)
+    var (v),
+    _1st(first),
+    _2nd(second),
+    _3rd(third),
+    body(b),
+    for_pos(fp)
   {}
 };
 
@@ -328,12 +336,13 @@ struct ForEach : public Node {
   Chunk* body;
   size_t for_pos;
 
-  ForEach( size_t sp  ,size_t ep ):
+  ForEach( size_t sp  ,size_t ep , Variable* v ,
+      Node* i , Chunk* b , size_t fp ):
     Node( FOREACH , sp , ep ),
-    var(NULL),
-    iter(NULL),
-    body(NULL),
-    for_pos(0)
+    var(v),
+    iter(i),
+    body(b),
+    for_pos(fp)
   {}
 };
 
@@ -349,7 +358,9 @@ struct Return : public Node {
   size_t ret_pos;        // return keyword position
   Node* expr;            // return expression if we have it
   bool has_return_value() const { return expr != NULL; }
-  Return( size_t sp , size_t ep ) : Node(RETURN,sp,ep),ret_pos(0),expr(NULL){}
+  Return( size_t sp , size_t ep , size_t rp , Node* e ) :
+    Node(RETURN,sp,ep),ret_pos(rp),expr(e)
+  {}
 };
 
 struct Require : public Node {
@@ -359,20 +370,21 @@ struct Require : public Node {
   Variable* as_var;     // If we have an as, then as_var will be pointed to the variable
   bool has_as() const { return as_var != NULL; }
 
-  Require( size_t sp , size_t ep ):
+  Require( size_t sp , size_t ep , size_t rp , size_t ap 
+      Node* re , Variable* av ):
     Node( REQUIRE , sp , ep ),
-    req_pos(0),
-    as_pos (0),
-    req_expr(NULL),
-    as_var(NULL)
+    req_pos(rp),
+    as_pos (ap),
+    req_expr(re),
+    as_var(av)
   {}
 };
 
 struct Chunk : public Node {
   zone::Vector<Node*>* body;
-  Chunk( size_t sp , size_t ep ):
+  Chunk( size_t sp , size_t ep , zone::Vector<Node*>* b ):
     Node(CHUNK,sp,ep),
-    body(NULL)
+    body(b)
   {}
 };
 
@@ -382,20 +394,21 @@ struct Function : public Node {
   zone::Vector<Variable*>* proto;  // Prototype of the function argument list
   Chunk* body;                     // Body of the function
 
-  Function( size_t sp, size_t ep ):
+  Function( size_t sp, size_t ep , size_t fp , Variable* n ,
+      zone::Vector<Variable*>* p , Chunk* b ):
     Node(FUNCTION,sp,ep),
     func_pos(0),
-    name(NULL),
-    proto(NULL),
-    body(NULL)
+    name(n),
+    proto(p),
+    body(b)
   {}
 };
 
 struct Root : public Node {
   Chunk* body;
-  Root( size_t sp , size_t ep ):
+  Root( size_t sp , size_t ep , Chunk* b ):
     Node(ROOT,sp,ep),
-    body(NULL)
+    body(b)
   {}
 };
 

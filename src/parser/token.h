@@ -4,6 +4,15 @@
 namespace lavascript {
 namespace parser {
 
+/**
+ * Do NOT modify the order of tokens and insert new tokens inside
+ * of the token table , append the token at very last of each section.
+ *
+ * Additionally, if new tokens added for 1) Arithmatic 2) Comparison and
+ * 3) Logic Operators . Please make sure that the parser's precedence
+ * table is updated accordingly
+ */
+
 #define LAVA_TOKEN_LIST(__) \
   /* Arithmatic Operators */ \
   __( TK_ADD , "+" , + , Add , ARITHMATIC ) \
@@ -20,9 +29,9 @@ namespace parser {
   __( TK_EQ  , "==", ==, EQ , COMPARISON ) \
   __( TK_NE  , "!=", !=, NE , COMPARISON ) \
   /* Logic Operators */ \
-  __( TK_AND , "&&", &&, And, COMPARISON ) \
-  __( TK_OR  , "||", ||, Or , COMPARISON ) \
-  __( TK_NOT , "!" , ! , Not, COMPARISON ) \
+  __( TK_AND , "&&", &&, And, LOGIC) \
+  __( TK_OR  , "||", ||, Or , LOGIC) \
+  __( TK_NOT , "!" , ! , Not, LOGIC) \
   /* Misc */ \
   __( TK_QUESTION,"?",_,Question, MISC ) \
   __( TK_COLON   ,":",_,Colon   , MISC ) \
@@ -84,6 +93,7 @@ class Token {
   enum {
     ARITHMATIC ,                 // Arithmatic tokens
     COMPARISON ,                 // Comparison tokens
+    LOGIC,                       // Logic tokens
     MISC,                        // Misc tokens ( punction characters )
     KEYWORD,                     // Keyword tokens
     LITERAL,                     // Literal tokens
@@ -106,9 +116,21 @@ class Token {
 
   bool IsArithmatic() const { return token_type() == ARITHMATIC; }
   bool IsComparision()const { return token_type() == COMPARISON; }
+  bool IsLogic() const { return token_type() == LOGIC
   bool IsMisc() const { return token_type() == MISC; }
   bool IsLiteral() const { return token_type() == LITERAL; }
   bool IsStatus() const  { return token_type() == STATUS; }
+
+  /** Detailed categoryized operator/token */
+  bool IsPrefixOperator() const {
+    return token_ == TK_DOT || token_ == TK_LSQR || token_ == TK_LPAR;
+  }
+  bool IsBinaryOperator() const {
+    return IsArithmatic() || IsComparision() || token_ == TK_AND || token_ == TK_OR;
+  }
+  bool IsUnaryOperator () const {
+    return token_ == TK_SUB || token_ == TK_NOT;
+  }
 
  public:
   bool operator == ( const Token& tk ) const {

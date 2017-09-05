@@ -64,7 +64,10 @@ inline void* Zone::Malloc( size_t size ) {
 // And user needs to use placement new to construct an zone object since Zone allocator
 // only gives you memory and it *wont* call object's constructor.
 class ZoneObject {
- private:
+ public:
+  static void* operator new( size_t size , Zone* zone ) {
+    return zone->Malloc(size);
+  }
   static void* operator new( size_t );
   static void* operator new[] ( size_t );
   static void  operator delete( void* );

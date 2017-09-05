@@ -17,7 +17,7 @@ class Vector : ZoneObject {
   Vector( Zone* , size_t size );
   Vector( Zone* , const Vector& );
 
-  static Vector* New( Zone* zone ) { return ::new (zone->Malloc<Zone>()) Zone(); }
+  static Vector* New( Zone* zone ) { return ::new (zone->Malloc<Zone>()) Vector(); }
   static Vector* New( Zone* zone , size_t length )
   { return ::new (zone->Malloc<Zone>()) Vector(zone,length); }
   static Vector* New( Zone* zone , const Vector& that )

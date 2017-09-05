@@ -140,14 +140,9 @@ struct Literal : public Node {
 struct Variable : public Node {
   zone::String* name;
 
-  size_t token_length; // Length of this variable tokens
-
-
-  Variable( size_t sp , size_t ep , size_t tk_len ,
-      zone::String* n ):
+  Variable( size_t sp , size_t ep , zone::String* n ):
     Node( VARIABLE , sp , ep ),
-    name(n),
-    token_length(tk_len)
+    name(n)
   {}
 };
 
@@ -204,11 +199,11 @@ struct Unary : public Node {
   Node* opr;            // Operand for this unary
 
   Unary( size_t sp , size_t ep , size_t opp ,
-      Token o , Node* oprand ):
+      Token o , Node* opr ):
     Node( UNARY , sp , ep ),
     op_pos(opp),
     op(o),
-    opr(operand)
+    opr(opr)
   {}
 };
 
@@ -277,7 +272,7 @@ struct Assign : public Node {
     Node( ASSIGN , sp , ep ),
     lhs_t(lt),
     lhs_var(lv),
-    lhs_pref(pp),
+    lhs_pref(lp),
     rhs(r),
     assign_pos(apos)
   {}
@@ -370,7 +365,7 @@ struct Require : public Node {
   Variable* as_var;     // If we have an as, then as_var will be pointed to the variable
   bool has_as() const { return as_var != NULL; }
 
-  Require( size_t sp , size_t ep , size_t rp , size_t ap 
+  Require( size_t sp , size_t ep , size_t rp , size_t ap ,
       Node* re , Variable* av ):
     Node( REQUIRE , sp , ep ),
     req_pos(rp),

@@ -166,6 +166,9 @@ struct Prefix : public Node {
     Component( Variable* v ): t(DOT) , var(v) {}
     Component( Node* e )    : t(INDEX) , expr(e) {}
     Component( FuncCall* f) : t(CALL)  , fc(f) {}
+    bool IsCall() const { return t == CALL; }
+    bool IsDot () const { return t == DOT ; }
+    bool IsIndex()const { return t == INDEX;}
   };
   zone::Vector<Component>* list; // List of prefix operations
   Variable* var;
@@ -261,20 +264,20 @@ struct Var : public Node {
 
 struct Assign : public Node {
   enum { LHS_VAR , LHS_PREFIX };
-  int lhs_t;
   Variable* lhs_var;
   Prefix* lhs_pref;
   Node* rhs;
-  size_t assign_pos; // Assignment operator position
-  Assign( size_t sp , size_t ep , size_t lt ,
-      Variable* lv , Prefix* lp , Node* r ,
-      size_t apos ):
+  Assign( size_t sp , size_t ep , Variable* lv , Node* r ):
     Node( ASSIGN , sp , ep ),
-    lhs_t(lt),
     lhs_var(lv),
-    lhs_pref(lp),
-    rhs(r),
-    assign_pos(apos)
+    lhs_pref(NULL),
+    rhs(r)
+  {}
+  Assign( size_t sp , size_t ep , Prefix* lv , Node* r ):
+    Node( ASSIGN , sp , ep ),
+    lhs_var(NULL),
+    lhs_pref(lv),
+    rhs(r)
   {}
 };
 

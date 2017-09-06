@@ -50,7 +50,11 @@ ast::Node* Parser::ParseAtomic() {
     case Token::kLBra:
       return ParseObject();
     case Token::kIdentifier:
-      return ParsePrefix();
+      ret = ast_factory_.NewVariable(lexer_.lexeme().start,
+                                     lexer_.lexeme().end,
+                                     lexer_.lexeme().str_value);
+      lexer_.Next();
+      return ParsePrefix(ret);
     case Token::kFunction:
       return ParseAnonymousFunction();
     default:
@@ -141,8 +145,42 @@ ast::Object* Parser::ParseObject() {
   }
 }
 
-ast::Node* Parser::ParsePrefix() {
-  lava_assert( lexer_.lexeme().token == Token::kIndentifier , "");
+ast::FuncCall* Parser::ParseFuncCall() {
+  lava_assert( lexer_.lexeme().token == Token::kLPar , "" );
+
+  size_t expr_start = lexer_.lexeme().start;
+  size_t expr_end;
+
+  if( lexer_.Next().token == Token::kRPar ) {
+    expr_end = lexer_.lexeme().end;
+    lexer_.Next();
+    return ast_factory_.NewFuncCall(expr_start,expr_end,Vector<Node*>::New(zone_));
+  } else {
+    Vector<Node*>* arg_list = Vector<Node*>::New(zone_);
+    do {
+      ast::Node* expr = ParseExpression();
+      if(!expr) return NULL;
+      if(lexer_.lexeme().token == Token::kComma) {
+        lexer_.Next();
+      } else if(lexer_.lexeme().token == Token::kRPar) {
+        expr_end = lexer_.lexeme().end;
+        lexer_.Next();
+        break;
+      } else {
+        Error("Expect a \",\" or \")\" in function call argument list");
+        return NULL;
+      }
+
+      arg_list->push_back(zone_,expr);
+    } while(true);
+
+    return ast_factory_.NewFuncCall(expr_start,expr_end,arg_list);
+  }
+}
+
+ast::Node* Parser::ParsePrefix( Variable* prefix ) {
+  lava_assert( lexer_.lexeme().token.IsPrefixOperator() , "");
+
   /**
    * Parse a prefix expression. A prefix expression starts with a variable/identifier
    * and it can optionally follows
@@ -151,48 +189,43 @@ ast::Node* Parser::ParsePrefix() {
    *  3) function call
    */
 
-  String* prefix = lexer_.lexeme().str_value;
-  size_t prefix_start = lexer_.lexeme().start;
-  size_t prefix_end   = lexer_.lexeme().end ;
-  size_t expr_start   = prefix_start;   // Prefix expression start position
+  size_t expr_start   = prefix->start;   // Start position of a expression
 
-  if(lexer_.Next().token.IsPrefixOperator()) {
-    Vector<Prefix::Component>* list = Vector<Prefix::Component>::New(zone_);
-    do {
-      switch(lexer_.lexeme().token) {
-        case Token::kDot:
-          if(!lexer_.Try(Token::kIdentifier)) {
-            Error("Expect an identifier after a \".\" operator");
-            return NULL;
-          }
-          list->Add(zone_,Prefix::Component(ast_factory_.NewVariable(lexer_,
-                                                                     lexer_.lexeme().str_value)));
-          lexer_.Next();
+  Vector<Prefix::Component>* list = Vector<Prefix::Component>::New(zone_);
+  do {
+    switch(lexer_.lexeme().token) {
+      case Token::kDot:
+        if(!lexer_.Try(Token::kIdentifier)) {
+          Error("Expect an identifier after a \".\" operator");
+          return NULL;
+        }
+        list->Add(zone_,Prefix::Component(ast_factory_.NewVariable(lexer_,
+                                                                   lexer_.lexeme().str_value)));
+        lexer_.Next();
+        break;
+      case Token::kLSqr:
+        {
+          ast::Node* expr = ParseExpression();
+          if(!expr) return NULL;
+          list->Add(zone_,Prefix::Component(expr));
           break;
-        case Token::kLSqr:
-          {
-            ast::Node* expr = ParseExpression();
-            if(!expr) return NULL;
-            list->Add(zone_,Prefix::Component(expr));
-            break;
-          }
-        case Token::kLPar:
-          {
-            ast::FuncCall* call = ParseFuncCall();
-            if(!call) return NULL;
-            list->Add(zone_,Prefix::Component(call));
-            break;
-          }
-        default:
-          return ast_factory_.NewPrefix(expr_start,lexer_.lexeme().end,
-                                        list,
-                                        ast_factory_.NewVariable(prefix_start,prefix_end,prefix));
-      }
-    } while(true);
+        }
+      case Token::kLPar:
+        {
+          ast::FuncCall* call = ParseFuncCall();
+          if(!call) return NULL;
+          list->Add(zone_,Prefix::Component(call));
+          break;
+        }
+      default:
+        return ast_factory_.NewPrefix(expr_start,lexer_.lexeme().start,
+                                      list,
+                                      prefix);
+    }
+  } while(true);
 
-    lava_unreach("");
-    return NULL;
-  }
+  lava_unreach("");
+  return NULL;
 }
 
 ast::Node* Parser::ParseUnary() {
@@ -206,7 +239,7 @@ ast::Node* Parser::ParseUnary() {
     ast::Node* expr = ParseUnary();
     if(!expr) return NULL;
 
-    return ast_factory_.NewUnary(expr_start,lexer_.lexeme().end,
+    return ast_factory_.NewUnary(expr_start,lexer_.lexeme().start,
                                  tk_start,
                                  tk,
                                  expr);
@@ -260,7 +293,7 @@ ast::Node* Parser::ParsePrimary( int precedence ) {
         Token op = lexer_.lexeme().token;
         lexer_.Next();
         if(!(rhs = ParsePrimary(precedence-1))) return NULL;
-        lhs = ast_factory_.NewBinary(expr_start,lexer_.lexeme().end,op,lhs,rhs);
+        lhs = ast_factory_.NewBinary(expr_start,lexer_.lexeme().start,op,lhs,rhs);
       } else {
         /**
          * Here the current precedence is larger than the input prcedence
@@ -281,7 +314,7 @@ ast::Node* Parser::ParseBinary() {
 }
 
 ast::Node* Parser::ParseTernary( ast::Node* input ) {
-  lava_assert( lexer_.lexeme().token == Token::kQuestion );
+  lava_assert( lexer_.lexeme().token == Token::kQuestion , "");
   size_t question_pos = lexer_.lexeme().start;
   lexer_.Next();
 
@@ -297,7 +330,7 @@ ast::Node* Parser::ParseTernary( ast::Node* input ) {
   ast::Node* _3rd = ParseExpression();
   if(!_3rd) return NULL;
 
-  return ast_factory_.NewTernary(input->start,lexer_.lexeme().end,
+  return ast_factory_.NewTernary(input->start,lexer_.lexeme().start,
                                  question_pos,
                                  colon_pos,
                                  input, _2nd, _3rd);
@@ -311,6 +344,59 @@ ast::Node* Parser::ParseExpression() {
     return ParseTernary(_1st);
   }
   return _1st;
+}
+
+ast::Var* Parser::ParseVar() {
+  lava_assert(lexer_.lexeme().token == Token::kVar , "");
+
+  size_t stmt_start = lexer_.lexeme().start;
+
+  if(!lexer_.Try(Token::kIdentifier)) {
+    Error("Expect an identifier after keyword \"var\" in var statement");
+    return NULL;
+  }
+
+  ast::Variable* name = ast_factory_.NewVariable(lexer_.lexeme().start,
+                                                 lexer_.lexeme().end,
+                                                 lexer_.lexeme().str_value);
+  ast::Node* val = NULL;
+  if( lexer_.Next().token == Token::kAssign ) {
+    lexer_.Next();
+    if(!(val = ParseExpression())) return NULL;
+  }
+
+  return ast_factory_.NewAssign(stmt_start, lexer_.lexeme().start, name, val);
+}
+
+ast::Prefix* Parser::ParseCall( ast::Variable* v ) {
+  lava_assert(lexer_.lexeme().token.IsPrefixOperator(),"");
+  ast::Prefix* ret = ParsePrefix(v);
+  /**
+   * For a prefix statement , it *MUST* end with a call otherwise
+   * it is been treated as meaningless statement. This is just
+   * simpler for the language designing
+   */
+
+  if(ret->list->Last().IsCall()) {
+    return ret;
+  } else {
+    Error("Expect a function call here not a prefix expression");
+    return NULL;
+  }
+}
+
+ast::Assign* Parser::ParseAssign( ast::Variable* v ) {
+  size_t expr_start = v->start;
+  lava_assert(lexer_.lexeme().token == Token::kAssign,"");
+  lexer_.Next();
+  ast::Node* val = ParseExpression();
+  if(!val) return NULL;
+  return ast_factory_.NewAssign(expr_start,
+                                lexer_.lexeme().start,
+                                v,
+                                val);
+                                
+                                
 }
 
 } // namespace parser

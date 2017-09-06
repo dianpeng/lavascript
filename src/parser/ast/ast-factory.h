@@ -37,7 +37,7 @@ class AstFactory {
   inline Literal* NewLiteral( const Lexer& l );
 
   inline Literal* NewLiteral( size_t start , size_t end , size_t len , ::lavascript::zone::String* );
-  inline Literal* NewLiteral( const Lexer& l , ::lavascript::zone::String* );
+  inline Literal* NewLiteral( const Lexer& l , ::lavascript::zone::String* )Node;
 
   inline Variable* NewVariable( size_t start , size_t end , ::lavascript::zone::String* );
   inline Variable* NewVariable( const Lexer& l , ::lavascript::zone::String* );
@@ -62,28 +62,18 @@ class AstFactory {
   inline Ternary* NewTernary( const Lexer& , size_t , size_t , Node* , Node* , Node* );
 
   inline List* NewList( size_t start , size_t end , ::lavascript::zone::Vector<Node*>* a = NULL );
-  inline List* NewList( const Lexer& , ::lavascript::zone::Vector<Node*>* a = NULL );
 
   inline Object* NewObject( size_t start , size_t end ,
       ::lavascript::zone::Vector<Object::Entry>* a = NULL );
-  inline Object* NewObject( const Lexer& l , ::lavascript::zone::Vector<Object::Entry>* a = NULL );
 
   inline Var* NewVar( size_t start , size_t end , Variable* v , Node* e );
-  inline Var* NewVar( const Lexer& l , Variable* , Node* );
 
-  inline Assign* NewAssign( size_t start , size_t end , size_t , Variable* ,
-                                                                 Prefix*   ,
-                                                                 Node*     ,
-                                                                 size_t );
-  inline Assign* NewAssign( const Lexer& l , size_t , Variable*, Prefix*   ,
-                                                                 Node*     ,
-                                                                 size_t );
+  inline Assign* NewAssign( size_t start , size_t end , Variable* , Node* );
+  inline Assign* NewAssign( size_t start , size_t end , Prefix* , Node* );
 
   inline Call* NewCall( size_t start , size_t end , Prefix* );
-  inline Call* NewCall( const Lexer& , Prefix* );
 
   inline If*   NewIf  ( size_t start , size_t end , ::lavascript::zone::Vector<If::Branch>* );
-  inline If*   NewIf  ( const Lexer& , ::lavascript::zone::Vector<If::Branch>* );
 
   inline For*  NewFor ( size_t start , size_t end , Variable* ,
                                                     Node* ,
@@ -92,50 +82,26 @@ class AstFactory {
                                                     Chunk*,
                                                     size_t );
 
-  inline For*  NewFor ( const Lexer& , Variable* , Node* ,
-                                                   Node* ,
-                                                   Node* ,
-                                                   Chunk*,
-                                                   size_t );
-                                                                          
 
   inline ForEach* NewForEach( size_t start , size_t end , Variable* ,
                                                           Node*,
                                                           Chunk*,
                                                           size_t );
 
-  inline ForEach* NewForEach( const Lexer& , Variable* , Node* ,
-                                                         Chunk*,
-                                                         size_t );
-
   inline Break* NewBreak( size_t start , size_t end );
-  inline Break* NewBreak( const Lexer& );
-
   inline Continue* NewContinue( size_t start , size_t end );
-  inline Continue* NewContinue( const Lexer& );
-
   inline Return* NewReturn( size_t start , size_t end , size_t , Node* );
-  inline Return* NewReturn( const Lexer& , size_t , Node* );
 
   inline Require* NewRequire( size_t start , size_t end , size_t , size_t ,
                                                                    Node* ,
                                                                    Variable* );
-  inline Require* NewRequire( const Lexer& , size_t , size_t , Node* , Variable* );
-
   inline Chunk* NewChunk( size_t , size_t , ::lavascript::zone::Vector<Node*>* );
-  inline Chunk* NewChunk( const Lexer& , ::lavascript::zone::Vector<Node*>* );
 
   inline Function* NewFunction( size_t , size_t , size_t , Variable* ,
                                                            ::lavascript::zone::Vector<Variable*>*,
                                                            Chunk* );
 
-  inline Function* NewFunction( const Lexer& , size_t, Variable* ,
-                                                       ::lavascript::zone::Vector<Variable*>*,
-                                                       Chunk* );
-
   inline Root* NewRoot( size_t , size_t , Chunk* );
-  inline Root* NewRoot( const Lexer& , Chunk* );
-
 
  private:
   ::lavascript::zone::Zone* zone_;
@@ -256,13 +222,6 @@ inline List* AstFactory::NewList( size_t start , size_t end , ::lavascript::zone
   return new (zone_) List(start,end,entry);
 }
 
-inline List* AstFactory::NewList( const Lexer& l , ::lavascript::zone::Vector<Node*>* entry ) {
-  if(!entry) {
-    entry = ::lavascript::zone::Vector<Node*>::New(zone_);
-  }
-  return NewList( l.lexeme().start , l.lexeme().end , entry );
-}
-
 inline Object* AstFactory::NewObject( size_t start, size_t end,
     ::lavascript::zone::Vector<Object::Entry>* entry ) {
   if(!entry) {
@@ -271,50 +230,24 @@ inline Object* AstFactory::NewObject( size_t start, size_t end,
   return new (zone_) Object(start,end,entry);
 }
 
-inline Object* AstFactory::NewObject( const Lexer& l , ::lavascript::zone::Vector<Object::Entry>* entry ) {
-  if(!entry) {
-    entry = ::lavascript::zone::Vector<Object::Entry>::New(zone_);
-  }
-  return NewObject(l.lexeme().start,l.lexeme().end,entry);
-}
-
 inline Var* AstFactory::NewVar( size_t start , size_t end , Variable* v , Node* e ) {
   return new (zone_) Var(start,end,v,e);
 }
 
-inline Var* AstFactory::NewVar( const Lexer& l , Variable* v , Node* e ) {
-  return NewVar(l.lexeme().start,l.lexeme().end,v,e);
+inline Assign* AstFactory::NewAssign( size_t start , size_t end , Variable* lv, Node* r ) {
+  return new (zone_) Assign(start,end,lv,r);
 }
 
-inline Assign* AstFactory::NewAssign( size_t start , size_t end , size_t lt ,
-                                                                  Variable* lv,
-                                                                  Prefix* lp,
-                                                                  Node* r,
-                                                                  size_t apos ) {
-  return new (zone_) Assign(start,end,lt,lv,lp,r,apos);
-}
-
-inline Assign* AstFactory::NewAssign( const Lexer& l , size_t lt , Variable* lv ,
-                                                                   Prefix* lp,
-                                                                   Node* r,
-                                                                   size_t apos ) {
-  return NewAssign(l.lexeme().start,l.lexeme().end,lt,lv,lp,r,apos);
+inline Assign* AstFactory::NewAssign( size_t start , size_t end , Prefix* lp , Node* r ) {
+  return new (zone_) Assign(start,end,lp,r);
 }
 
 inline Call* AstFactory::NewCall( size_t start , size_t end , Prefix* c ) {
   return new (zone_) Call(start,end,c);
 }
 
-inline Call* AstFactory::NewCall( const Lexer& l , Prefix* c ) {
-  return NewCall(l.lexeme().start,l.lexeme().end,c);
-}
-
 inline If* AstFactory::NewIf( size_t start , size_t end , ::lavascript::zone::Vector<If::Branch>* bl ) {
   return new (zone_) If(start,end,bl);
-}
-
-inline If* AstFactory::NewIf( const Lexer& l , ::lavascript::zone::Vector<If::Branch>* bl ) {
-  return NewIf(l.lexeme().start,l.lexeme().end,bl);
 }
 
 inline For* AstFactory::NewFor( size_t start , size_t end , Variable* v , Node* first ,
@@ -325,13 +258,6 @@ inline For* AstFactory::NewFor( size_t start , size_t end , Variable* v , Node* 
   return new (zone_) For(start,end,v,first,second,third,b,fp);
 }
 
-inline For* AstFactory::NewFor( const Lexer& l , Variable* v , Node* first , Node* second ,
-                                                                             Node* third ,
-                                                                             Chunk* b,
-                                                                             size_t fp ) {
-  return NewFor(l.lexeme().start,l.lexeme().end,v,first,second,third,b,fp);
-}
-
 inline ForEach* AstFactory::NewForEach( size_t start , size_t end , Variable* v ,
                                                                     Node* i,
                                                                     Chunk* b,
@@ -339,35 +265,17 @@ inline ForEach* AstFactory::NewForEach( size_t start , size_t end , Variable* v 
   return new (zone_) ForEach(start,end,v,i,b,fp);
 }
 
-inline ForEach* AstFactory::NewForEach( const Lexer& l , Variable* v , Node* i ,
-                                                                       Chunk* b,
-                                                                       size_t fp ) {
-  return NewForEach(l.lexeme().start,l.lexeme().end,v,i,b,fp);
-}
-
 inline Break* AstFactory::NewBreak( size_t start , size_t end ) {
   return new (zone_) Break(start,end);
-}
-
-inline Break* AstFactory::NewBreak( const Lexer& l ) {
-  return NewBreak( l.lexeme().start , l.lexeme().end );
 }
 
 inline Continue* AstFactory::NewContinue( size_t start , size_t end ) {
   return new (zone_) Continue(start,end);
 }
 
-inline Continue* AstFactory::NewContinue( const Lexer& l ) {
-  return NewContinue(l.lexeme().start,l.lexeme().end);
-}
-
 inline Return* AstFactory::NewReturn( size_t start , size_t end , size_t rp ,
                                                                   Node* e ) {
   return new (zone_) Return(start,end,rp,e);
-}
-
-inline Return* AstFactory::NewReturn( const Lexer& l , size_t rp , Node* e ) {
-  return NewReturn(l.lexeme().start,l.lexeme().end,rp,e);
 }
 
 inline Require* AstFactory::NewRequire( size_t start , size_t end , size_t rp , size_t ap ,
@@ -376,18 +284,8 @@ inline Require* AstFactory::NewRequire( size_t start , size_t end , size_t rp , 
   return new (zone_) Require(start,end,rp,ap,re,av);
 }
 
-inline Require* AstFactory::NewRequire( const Lexer& l , size_t rp , size_t ap ,
-                                                                     Node* re,
-                                                                     Variable* av ) {
-  return NewRequire(l.lexeme().start,l.lexeme().end,rp,ap,re,av);
-}
-
 inline Chunk* AstFactory::NewChunk( size_t start , size_t end , ::lavascript::zone::Vector<Node*>* b ) {
   return new (zone_) Chunk(start,end,b);
-}
-
-inline Chunk* AstFactory::NewChunk( const Lexer& l , ::lavascript::zone::Vector<Node*>* b ) {
-  return NewChunk(l.lexeme().start,l.lexeme().end,b);
 }
 
 inline Function* AstFactory::NewFunction( size_t start , size_t end , size_t fp , Variable* n ,
@@ -395,17 +293,8 @@ inline Function* AstFactory::NewFunction( size_t start , size_t end , size_t fp 
   return new (zone_) Function(start,end,fp,n,p,b);
 }
 
-inline Function* AstFactory::NewFunction( const Lexer& l , size_t fp , Variable* n ,
-    ::lavascript::zone::Vector<Variable*>* p , Chunk* b ) {
-  return NewFunction( l.lexeme().start , l.lexeme().end , fp , n , p , b );
-}
-
 inline Root* AstFactory::NewRoot( size_t start , size_t end , Chunk* chunk ) {
   return new (zone_) Root(start,end,chunk);
-}
-
-inline Root* AstFactory::NewRoot( const Lexer& l , Chunk* chunk ) {
-  return NewRoot(l.lexeme().start,l.lexeme().end,chunk);
 }
 
 } // namespace ast

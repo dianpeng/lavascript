@@ -28,21 +28,25 @@ class Parser {
  private:
   /** Expression */
   ast::Node* ParseAtomic();
-  ast::Node* ParsePrefix();
+  ast::Node* ParsePrefix( ast::Variable* );
   ast::Node* ParseUnary ();
   ast::Node* ParsePrimary( int );
   ast::Node* ParseBinary();
   ast::Node* ParseTernary( ast::Node* );
   ast::Node* ParseExpression();
-  ast::Node* ParseFuncCall();
+  ast::FuncCall* ParseFuncCall();
   ast::List* ParseList();
   ast::Object* ParseObject();
 
   /** Statement */
+  ast::Var* ParseVar();
+  ast::Prefix* ParseCall();
+  ast::Assign* ParseAssign();
 
   /** Function definition */
   ast::Function* ParseFunction();
   ast::Function* ParseAnonymousFunction();
+  bool ParseFunctionPrototype( Function* );
 
  private:
   void Error(const char* , ...);

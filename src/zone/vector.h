@@ -2,6 +2,7 @@
 #define ZONE_VECTOR_H_
 #include "zone.h"
 
+#include <algorithm>
 #include <cstring>
 #include <type_traits>
 
@@ -43,6 +44,7 @@ class Vector : ZoneObject {
   { return const_cast<Vector*>(this)->Index(index); }
   T& operator [] ( int index ) { return Index(index); }
   const T& operator [] ( int index ) const { return Index(index); }
+  void Swap( Vector* );
 
  private:
   T* ptr_;                    // Pointer to the start of the memory
@@ -86,6 +88,12 @@ template< typename T > void Vector<T>::Reserve( Zone* zone , size_t length ) {
     ptr_ = static_cast<T*>(new_buffer);
     capacity_ = length;
   }
+}
+
+template< typename T > void Vector<T>::Swap( Vector* that ) {
+  std::swap(ptr_,that->ptr_);
+  std::swap(size_,that->size_);
+  std::swap(capacity_,that->capacity_);
 }
 
 } // namespace zone

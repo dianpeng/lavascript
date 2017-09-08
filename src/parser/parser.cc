@@ -1,69 +1,94 @@
 #include "parser.h"
 #include "ast/ast.h"
 
+#include <src/core/util.h>
 #include <src/zone/zone.h>
+#include <src/error-report.h>
+
+#include <vector>
 
 
 namespace lavascript {
 namespace parser {
 
 using namespace lavascript::zone;
+using namespace lavascript::core;
+
+void Parser::ErrorAtV( size_t start , size_t end , const char* format , va_list vl ) {
+  if(lexer_.lexeme().token == Token::kError) {
+    *error_ = lexer_.lexeme().error_description;
+  } else {
+    ReportError(error_,"parser",lexer_.source(),start,end,format,vl);
+  }
+}
+
+void Parser::Error( const char* format , ... ) {
+  va_list vl;
+  va_start(vl,format);
+  ErrorAtV(lexer_.lexeme().start,lexer_.lexeme().end,format,vl);
+}
+
+void Parser::ErrorAt( size_t start , size_t end , const char* format , ... ) {
+  va_list vl;
+  va_start(vl,format);
+  ErrorAtV(start,end,format,vl);
+}
 
 ast::Node* Parser::ParseAtomic() {
   ast::Node* ret;
   switch(lexer_.lexeme().token) {
-    case Token::kInteger:
+    case Token::TK_INTEGER:
       ret = ast_factory_.NewLiteral( lexer_ , lexer_.lexeme().int_value );
       lexer_.Next();
       return ret;
-    case Token::kReal:
+    case Token::TK_REAL:
       ret = ast_factory_.NewLiteral( lexer_ , lexer_.lexeme().real_value );
       lexer_.Next();
       return ret;
-    case Token::kTrue:
+    case Token::TK_TRUE:
       ret = ast_factory_.NewLiteral( lexer_ , true );
       lexer_.Next();
       return ret;
-    case Token::kFalse:
+    case Token::TK_FALSE:
       ret = ast_factory_.NewLiteral( lexer_ , false );
       lexer_.Next();
       return ret;
-    case Token::kNull:
+    case Token::TK_NULL:
       ret = ast_factory_.NewLiteral( lexer_ );
       lexer_.Next();
       return ret;
-    case Token::kString:
+    case Token::TK_STRING:
       ret = ast_factory_.NewLiteral( lexer_ , lexer_.lexeme().str_value );
       lexer_.Next();
       return ret;
-    case Token::kLPar:
+    case Token::TK_LPAR:
       lexer_.Next();
       if(!(ret = ParseExpression())) return NULL;
       if(lexer_.Expect(Token::kRPar))
         break;
       else {
-        Error("Expect an \")\" to close subexpression!");
+        Error("Expect a \")\" to close sub expression");
         return NULL;
       }
-    case Token::kLSqr:
+    case Token::TK_LSQR:
       if(!(ret=ParseList())) return NULL;
       break;
-    case Token::kLBra:
+    case Token::TK_LBRA:
       if(!(ret=ParseObject())) return NULL;
       break;
-    case Token::kIdentifier:
+    case Token::TK_IDENTIFIER:
       ret = ast_factory_.NewVariable(lexer_.lexeme().start,
                                      lexer_.lexeme().end,
                                      lexer_.lexeme().str_value);
       lexer_.Next();
       break;
-    case Token::kFunction:
+    case Token::TK_FUNCTION:
       if(!(ret=ParseAnonymousFunction()))
         return NULL;
       break;
     default:
-      Error("Unexpected token %s,expect an primary expression",
-          lexer_.lexeme().token.token_name());
+      Error("Expect an primary expression here,but got token %s",
+            lexer_.lexeme().token.token_name());
       return NULL;
   }
 
@@ -75,9 +100,11 @@ ast::Node* Parser::ParseAtomic() {
 
 ast::List* Parser::ParseList() {
   lava_assert( lexer_.lexeme().token == Token::kLSqr , "" );
+  size_t start = lexer_.lexeme().start;
   if( lexer_.Next().token == Token::kRSqr ) {
+    size_t end = lexer_.lexeme().end;
     lexer_.Next();
-    return ast_factory_.NewList(lexer_);
+    return ast_factory_.NewList(start,end,Vector<ast::Node*>::New(zone_));
   } else {
     Vector<ast::Node*>* entry = Vector<ast::Node*>::New(zone_);
     do {
@@ -94,21 +121,23 @@ ast::List* Parser::ParseList() {
         return NULL;
       }
     } while(true);
-    return ast_factory_.NewList(lexer_,entry);
+    return ast_factory_.NewList(start,lexer_.lexeme().start-1,entry);
   }
 }
 
 ast::Object* Parser::ParseObject() {
   lava_assert( lexer_.lexeme().token == Token::kLBra , "" );
+  size_t start = lexer_.lexeme().start;
   if( lexer_.Next().token == Token::kRBra ) {
+    size_t end = lexer_.lexeme().end;
     lexer_.Next();
-    return ast_factory_.NextObject(lexer_);
+    return ast_factory_.NewObject(start,end,Vector<ast::Object::Entry>::New(zone_));
   } else {
     Vector<ast::Object::Entry>* entry = Vector<ast::Object::Entry>::New(zone_);
     do {
       ast::Node* key;
       switch(lexer_.lexeme().token) {
-        case Token::kLSqr: // Subexpression
+        case Token::TK_LSQR:
           lexer_.Next();
           if(!(key = ParseExpression())) return NULL;
           if(!lexer_.Expect(Token::kRSqr)) {
@@ -116,12 +145,12 @@ ast::Object* Parser::ParseObject() {
             return NULL;
           }
           break;
-        case Token::kString:
+        case Token::TK_STRING:
           key = ast_factory_.NewLiteral(lexer_,lexer_.lexeme().str_value);
           lexer_.Next();
           break;
-        case Token::kIdentifier:
-          key = ast_factory_.NewVariable(l,lexer_.lexeme().str_value);
+        case Token::TK_IDENTIFIER:
+          key = ast_factory_.NewVariable(lexer_,lexer_.lexeme().str_value);
           lexer_.Next();
           break;
         default:
@@ -137,7 +166,7 @@ ast::Object* Parser::ParseObject() {
       ast::Node* val;
 
       if(!(val = ParseExpression())) return NULL;
-      entry->Add(zone_,ast::Object:Entry(key,val));
+      entry->Add(zone_,ast::Object::Entry(key,val));
 
       if(lexer_.lexeme().token == Token::kComma) {
         lexer_.Next();
@@ -151,7 +180,7 @@ ast::Object* Parser::ParseObject() {
 
     } while(true);
 
-    return ast_factory_.NewObject(l,entry);
+    return ast_factory_.NewObject(start,lexer_.lexeme().start-1,entry);
   }
 }
 
@@ -164,9 +193,9 @@ ast::FuncCall* Parser::ParseFuncCall() {
   if( lexer_.Next().token == Token::kRPar ) {
     expr_end = lexer_.lexeme().end;
     lexer_.Next();
-    return ast_factory_.NewFuncCall(expr_start,expr_end,Vector<Node*>::New(zone_));
+    return ast_factory_.NewFuncCall(expr_start,expr_end,Vector<ast::Node*>::New(zone_));
   } else {
-    Vector<Node*>* arg_list = Vector<Node*>::New(zone_);
+    Vector<ast::Node*>* arg_list = Vector<ast::Node*>::New(zone_);
     do {
       ast::Node* expr = ParseExpression();
       if(!expr) return NULL;
@@ -181,7 +210,7 @@ ast::FuncCall* Parser::ParseFuncCall() {
         return NULL;
       }
 
-      arg_list->push_back(zone_,expr);
+      arg_list->Add(zone_,expr);
     } while(true);
 
     return ast_factory_.NewFuncCall(expr_start,expr_end,arg_list);
@@ -201,34 +230,35 @@ ast::Node* Parser::ParsePrefix( ast::Node* prefix ) {
 
   size_t expr_start   = prefix->start;   // Start position of a expression
 
-  Vector<Prefix::Component>* list = Vector<Prefix::Component>::New(zone_);
+  Vector<ast::Prefix::Component>* list = Vector<ast::Prefix::Component>::New(zone_);
+
   do {
     switch(lexer_.lexeme().token) {
-      case Token::kDot:
+      case Token::TK_DOT:
         if(!lexer_.Try(Token::kIdentifier)) {
           Error("Expect an identifier after a \".\" operator");
           return NULL;
         }
-        list->Add(zone_,Prefix::Component(ast_factory_.NewVariable(lexer_,
-                                                                   lexer_.lexeme().str_value)));
+        list->Add(zone_,ast::Prefix::Component(ast_factory_.NewVariable(lexer_,
+                                               lexer_.lexeme().str_value)));
         lexer_.Next();
         break;
-      case Token::kLSqr:
+      case Token::TK_LSQR:
         {
           ast::Node* expr = ParseExpression();
           if(!expr) return NULL;
-          list->Add(zone_,Prefix::Component(expr));
+          list->Add(zone_,ast::Prefix::Component(expr));
           break;
         }
-      case Token::kLPar:
+      case Token::TK_LPAR:
         {
           ast::FuncCall* call = ParseFuncCall();
           if(!call) return NULL;
-          list->Add(zone_,Prefix::Component(call));
+          list->Add(zone_,ast::Prefix::Component(call));
           break;
         }
       default:
-        return ast_factory_.NewPrefix(expr_start,lexer_.lexeme().start,
+        return ast_factory_.NewPrefix(expr_start,lexer_.lexeme().start-1,
                                       list,
                                       prefix);
     }
@@ -239,18 +269,17 @@ ast::Node* Parser::ParsePrefix( ast::Node* prefix ) {
 }
 
 ast::Node* Parser::ParseUnary() {
-  if( lexer_.lexeme().IsUnaryOperator() ) {
+  if( lexer_.lexeme().token.IsUnaryOperator() ) {
     /** Yeah, it is an unary */
     Token tk = lexer_.lexeme().token;
-    size_t tk_start   = lexer_.lexeme().start;
-    size_t tk_end     = lexer_.lexeme().end;
-    size_t expr_start = tk_start;
+    size_t expr_start = lexer_.lexeme().start;
+    lexer_.Next();
 
     ast::Node* expr = ParseUnary();
     if(!expr) return NULL;
 
-    return ast_factory_.NewUnary(expr_start,lexer_.lexeme().start,
-                                 tk_start,
+    return ast_factory_.NewUnary(expr_start,
+                                 lexer_.lexeme().start-1,
                                  tk,
                                  expr);
   } else {
@@ -303,7 +332,7 @@ ast::Node* Parser::ParsePrimary( int precedence ) {
         Token op = lexer_.lexeme().token;
         lexer_.Next();
         if(!(rhs = ParsePrimary(precedence-1))) return NULL;
-        lhs = ast_factory_.NewBinary(expr_start,lexer_.lexeme().start,op,lhs,rhs);
+        lhs = ast_factory_.NewBinary(expr_start,lexer_.lexeme().start-1,op,lhs,rhs);
       } else {
         /**
          * Here the current precedence is larger than the input prcedence
@@ -325,13 +354,11 @@ ast::Node* Parser::ParseBinary() {
 
 ast::Node* Parser::ParseTernary( ast::Node* input ) {
   lava_assert( lexer_.lexeme().token == Token::kQuestion , "");
-  size_t question_pos = lexer_.lexeme().start;
   lexer_.Next();
 
   ast::Node* _2nd = ParseExpression();
   if(!_2nd) return NULL;
 
-  size_t colon_pos = lexer_.lexeme().start;
   if(!lexer_.Expect(Token::kColon)) {
     Error("Expect a \":\" in ternary expression");
     return NULL;
@@ -340,9 +367,7 @@ ast::Node* Parser::ParseTernary( ast::Node* input ) {
   ast::Node* _3rd = ParseExpression();
   if(!_3rd) return NULL;
 
-  return ast_factory_.NewTernary(input->start,lexer_.lexeme().start,
-                                 question_pos,
-                                 colon_pos,
+  return ast_factory_.NewTernary(input->start,lexer_.lexeme().start-1,
                                  input, _2nd, _3rd);
 }
 
@@ -375,7 +400,7 @@ ast::Var* Parser::ParseVar() {
     if(!(val = ParseExpression())) return NULL;
   }
 
-  return ast_factory_.NewVar(stmt_start, lexer_.lexeme().start, name, val);
+  return ast_factory_.NewVar(stmt_start, lexer_.lexeme().start-1, name, val);
 }
 
 ast::Assign* Parser::ParseAssign( ast::Node* v ) {
@@ -386,37 +411,39 @@ ast::Assign* Parser::ParseAssign( ast::Node* v ) {
   if(!val) return NULL;
   if( v->IsVariable() )
     return ast_factory_.NewAssign(expr_start,
-                                  lexer_.lexer().start,
+                                  lexer_.lexeme().start,
                                   v->AsVariable(),
                                   val);
   else {
     // Check whether v is a valid left hand side value
     if(v->IsPrefix() && !(v->AsPrefix()->list->Last().IsCall()))
       return ast_factory_.NewAssign(expr_start,
-                                    lexer_.lexer().start,
-                                    v,
+                                    lexer_.lexeme().start,
+                                    v->AsPrefix(),
                                     val);
-    ErrorAt(v->start,"Invalid left hand side for assignment");
+    ErrorAt(v->start,v->end,"Invalid left hand side for assignment");
     return NULL;
   }
 }
 
 ast::Node* Parser::ParsePrefixStatement() {
   ast::Node* expr = ParseExpression();
+  if(!expr) return NULL;
+
   if( lexer_.lexeme().token == Token::kAssign ) {
     return ParseAssign(expr);
   } else {
     if(expr->IsPrefix() && expr->AsPrefix()->list->Last().IsCall())
       return expr;
-    ErrorAt(expr->start,"Meaningless statement");
+    ErrorAt(expr->start,expr->end,"Meaningless statement");
     return NULL;
   }
 }
 
 ast::If* Parser::ParseIf() {
   lava_assert(lexer_.lexeme().token == Token::kIf,"");
-  zone::Vector<Branch>* branch_list = zone::Vector<Branch>::New(zone_);
-  If::Branch br;
+  Vector<ast::If::Branch>* branch_list = Vector<ast::If::Branch>::New(zone_);
+  ast::If::Branch br;
   size_t expr_start = lexer_.lexeme().start;
   size_t expr_end;
 
@@ -425,20 +452,20 @@ ast::If* Parser::ParseIf() {
 
   do {
     switch(lexer_.lexeme().token) {
-      case Token::kElif:
+      case Token::TK_ELIF:
         if(!ParseCondBranch(&br))
           return NULL;
-        branch_list.Add(zone_,br);
+        branch_list->Add(zone_,br);
         break;
-      case Token::kElse:
-        lexer.Next();
+      case Token::TK_ELSE:
+        lexer_.Next();
         br.cond = NULL;
         if(!(br.body = ParseSingleStatementOrChunk()))
           return NULL;
-        branch_list.Add(zone_,br);
+        branch_list->Add(zone_,br);
         // Fallthru
       default:
-        expr_end = lexer_lexeme().start;
+        expr_end = lexer_.lexeme().start;
         goto done; // We cannot have any other branches here
     }
   } while(true);
@@ -447,7 +474,7 @@ done:
   return ast_factory_.NewIf(expr_start,expr_end,branch_list);
 }
 
-bool Parser::ParseCondBranch( If::Branch* br ) {
+bool Parser::ParseCondBranch( ast::If::Branch* br ) {
   if(!lexer_.Try(Token::kLPar)) {
     Error("Expect a \"(\" to start a if/elif condition");
     return false;
@@ -475,21 +502,39 @@ ast::Node* Parser::ParseFor() {
   }
   ast::Node* var = NULL;
 
-  switch(lexer_.Next().token) {
-    case Token::kColon:
-      Error("Expect a variable before \":\" in foreach' statement");
-      return NULL;
-    case Token::kSemicolon:
-      return ParseStepFor(expr_start,var);
-    default:
+  if(lexer_.Next().token == Token::kVar) {
+    ast::Var* short_assign = ParseVar();
+    if(!short_assign) return NULL;
+
+    switch(lexer_.lexeme().token) {
+      case Token::TK_IN:
+        if(short_assign->expr) {
+          ErrorAt(expr_start,short_assign->end, "foreach statement's variable "
+                                                "declaration cannot have assignment");
+          return NULL;
+        }
+        return ParseForEach(expr_start,short_assign);
+      case Token::TK_SEMICOLON:
+        return ParseStepFor(expr_start,short_assign);
+      default:
+        Error("Expect a \"in\" or \";\" in for statement");
+        return NULL;
+    }
+  } else {
+    if(lexer_.lexeme().token == Token::kSemicolon) {
+      // Can be null for for( _ ; _ ; _ ) style for statement
+      return ParseStepFor(expr_start,NULL);
+    } else {
       if(!(var = ParseExpression())) return NULL;
+    }
   }
 
-  if(lexer_.lexeme().token == Token::kColon) {
-    if(var_or_init->IsVariable())
-      return ParseForEach(expr_start,var_or_init);
+  if(lexer_.lexeme().token == Token::kIn) {
+    if(var->IsVariable())
+      return ParseForEach(expr_start,var);
     else {
-      Error("Expect a variable before \":\" in foreach's statement");
+      Error("Expect a variable or variable declaration "
+            "before \"in\" in foreach's statement");
       return NULL;
     }
   } else if(lexer_.lexeme().token == Token::kSemicolon) {
@@ -504,7 +549,7 @@ ast::For* Parser::ParseStepFor( size_t expr_start , ast::Node* expr ) {
   lava_assert( lexer_.lexeme().token == Token::kSemicolon , "");
   ast::Node* cond = NULL;
   ast::Node* step = NULL;
-  ast::Node* body = NULL;
+  ast::Chunk* body = NULL;
 
   if( lexer_.Next().token != Token::kSemicolon ) {
     if(!(cond = ParseExpression())) return NULL;
@@ -518,12 +563,12 @@ ast::For* Parser::ParseStepFor( size_t expr_start , ast::Node* expr ) {
 
   if( lexer_.lexeme().token != Token::kRPar ) {
     if(!(step = ParseExpression())) return NULL;
-    if(!lexer.Expect(Token::kRPar)) {
+    if(!lexer_.Expect(Token::kRPar)) {
       Error("Expect a \")\" here");
       return NULL;
     }
   } else {
-    Lexer_.Next();
+    lexer_.Next();
   }
 
   ++nested_loop_;
@@ -531,7 +576,7 @@ ast::For* Parser::ParseStepFor( size_t expr_start , ast::Node* expr ) {
   --nested_loop_;
 
   return ast_factory_.NewFor( expr_start ,
-                              lexer_.lexeme().start,
+                              lexer_.lexeme().start - 1,
                               expr,
                               cond,
                               step,
@@ -539,11 +584,11 @@ ast::For* Parser::ParseStepFor( size_t expr_start , ast::Node* expr ) {
 }
 
 ast::ForEach* Parser::ParseForEach( size_t expr_start , ast::Node* expr ) {
-  lava_assert( lexer_.lexeme().token == Token::kColon , "" );
+  lava_assert( lexer_.lexeme().token == Token::kIn, "" );
   ast::Node* itr = NULL;
-  ast::Node* body = NULL;
+  ast::Chunk* body = NULL;
 
-  lexer.Next();
+  lexer_.Next();
 
   if(!(itr = ParseExpression())) return NULL;
   if(!lexer_.Expect(Token::kRPar)) {
@@ -556,7 +601,7 @@ ast::ForEach* Parser::ParseForEach( size_t expr_start , ast::Node* expr ) {
   --nested_loop_;
 
   return ast_factory_.NewForEach( expr_start ,
-                                  lexer_.lexeme().start,
+                                  lexer_.lexeme().start - 1,
                                   expr,
                                   itr,
                                   body );
@@ -594,40 +639,50 @@ ast::Return* Parser::ParseReturn() {
   lava_assert( lexer_.lexeme().token == Token::kReturn , "");
   size_t expr_start = lexer_.lexeme().start;
   size_t expr_end   = lexer_.lexeme().end;
-  if(lexer.Next().token == Token::kSemicolon) {
+  if(lexer_.Next().token == Token::kSemicolon) {
     return ast_factory_.NewReturn(expr_start,expr_end,NULL);
   } else {
     ast::Node* expr = ParseExpression();
-    if(!expr) NULL;
-    return ast_factory_.NewReturn(expr_start,lexer_.lexeme().start,expr);
+    if(!expr) return NULL;
+    return ast_factory_.NewReturn(expr_start,lexer_.lexeme().start-1,expr);
   }
 }
 
 ast::Node* Parser::ParseStatement() {
   ast::Node* ret;
   switch(lexer_.lexeme().token) {
-    case Token::kVar: if(!(ret=ParseVar())) return NULL; break;
-    case Token::kIf:  if(!(ret=ParseIf())) return NULL; break;
-    case Token::kFor: if(!(ret=ParseFor())) return NULL; break;
-    case Token::kReturn: if(!(ret=ParseReturn())) return NULL; break;
-    case Token::kBreak: if(!(ret=ParseBreak())) return NULL; break;
-    case Token::kContinue: if(!(ret=ParseContinue())) return NULL; break;
+    case Token::TK_VAR: if(!(ret=ParseVar())) return NULL; break;
+    case Token::TK_IF:  return ParseIf();
+    case Token::TK_FOR: return ParseFor();
+    case Token::TK_RETURN: if(!(ret=ParseReturn())) return NULL; break;
+    case Token::TK_BREAK: if(!(ret=ParseBreak())) return NULL; break;
+    case Token::TK_CONTINUE: if(!(ret=ParseContinue())) return NULL; break;
+    case Token::TK_FUNCTION: return ParseFunction();
     default: if(!(ret=ParsePrefixStatement())) return NULL; break;
   }
 
   if(lexer_.lexeme().token != Token::kSemicolon) {
-    Error("Expect a \";\" here");
+    ErrorAt(ret->start,ret->end,"Expect a \";\" after this statement");
     return NULL;
   }
 
+  lexer_.Next();
   return ret;
 }
 
-ast::Node* Parser::ParseChunk() {
+ast::Chunk* Parser::ParseChunk() {
   lava_assert( lexer_.lexeme().token == Token::kLBra , "");
   size_t expr_start = lexer_.lexeme().start;
   size_t expr_end   = lexer_.lexeme().end;
-  zone::Vector<ast::Node*>* ck = zone::Vector<ast::Node*>::New(zone_);
+
+  // For declaration statment
+  std::vector<ast::Node*> dec_stmt;
+
+  // For other normal statment
+  std::vector<ast::Node*> other_stmt;
+
+  // For final re-arranged chunk of statement
+  Vector<ast::Node*>* ck = Vector<ast::Node*>::New(zone_);
 
   if(lexer_.Next().token == Token::kRBra) {
     return ast_factory_.NewChunk( expr_start , expr_end , ck );
@@ -635,7 +690,13 @@ ast::Node* Parser::ParseChunk() {
     do {
       ast::Node* stmt = ParseStatement();
       if(!stmt) return NULL;
-      ck->Add(zone_,stmt);
+
+      if(stmt->IsVar()) {
+        dec_stmt.push_back(stmt);
+      } else {
+        other_stmt.push_back(stmt);
+      }
+
     } while( lexer_.lexeme().token != Token::kEof &&
              lexer_.lexeme().token != Token::kRBra );
 
@@ -646,15 +707,22 @@ ast::Node* Parser::ParseChunk() {
 
     expr_end = lexer_.lexeme().end;
     lexer_.Next(); // Skip the last }
+
+    // Generate the final chunk , basically we promote all
+    // declaration statement at the head of the current
+    // lexical scope
+    for( auto e : dec_stmt ) { ck->Add(zone_,e); }
+    for( auto e : other_stmt ) { ck->Add(zone_,e); }
+
     return ast_factory_.NewChunk(expr_start,expr_end,ck);
   }
 }
 
-ast::Node* Parser::ParseSingleStatementOrChunk() {
+ast::Chunk* Parser::ParseSingleStatementOrChunk() {
   if(lexer_.lexeme().token == Token::kLBra)
     return ParseChunk();
   else {
-    zone::Vector<ast::Node*>* ck = zone::Vector<ast::Node*>::New(zone_);
+    Vector<ast::Node*>* ck = Vector<ast::Node*>::New(zone_);
     ast::Node* stmt = ParseStatement();
     if(!stmt) return NULL;
     ck->Add(zone_,stmt);
@@ -662,6 +730,122 @@ ast::Node* Parser::ParseSingleStatementOrChunk() {
   }
 }
 
+bool Parser::CheckArgumentExisted( const Vector<ast::Variable*>& arg_list,
+                                   const String& arg ) const {
+
+  for( size_t i = 0 ; i < arg_list.size() ; ++i ) {
+    const ast::Variable* v = arg_list.Index(i);
+    if(*(v->name) == arg) return true;
+  }
+  return false;
+}
+
+Vector<ast::Variable*>* Parser::ParseFunctionPrototype() {
+  lava_assert( lexer_.lexeme().token == Token::kLPar , "");
+  if( lexer_.Next().token == Token::kRPar ) {
+    lexer_.Next();
+    return Vector<ast::Variable*>::New(zone_);
+  } else {
+    Vector<ast::Variable*>* arg_list = Vector<ast::Variable*>::New(zone_);
+
+    do {
+      if( lexer_.lexeme().token == Token::kIdentifier ) {
+        if(CheckArgumentExisted(*arg_list,*lexer_.lexeme().str_value)) {
+          Error("Argument existed");
+          return NULL;
+        }
+        arg_list->Add(zone_,ast_factory_.NewVariable(lexer_.lexeme().start,
+                                                     lexer_.lexeme().end,
+                                                     lexer_.lexeme().str_value));
+        lexer_.Next();
+      } else {
+        Error("Expect a identifier to represent function argument");
+        return NULL;
+      }
+
+      if(lexer_.lexeme().token == Token::kComma) {
+        lexer_.Next();
+      } else if(lexer_.lexeme().token == Token::kRPar) {
+        lexer_.Next();
+        break;
+      } else {
+        Error("Expect a \",\" or \")\" here in function's argument list");
+        return NULL;
+      }
+    } while(true);
+
+    return arg_list;
+  }
+}
+
+ast::Function* Parser::ParseFunction() {
+  lava_assert( lexer_.lexeme().token == Token::kFunction , "" );
+  size_t expr_start = lexer_.lexeme().start;
+  if(!lexer_.Try(Token::kIdentifier)) {
+    Error("Expect a identifier followed by \"function\" in function definition");
+    return NULL;
+  }
+  ast::Variable* fname = ast_factory_.NewVariable(lexer_.lexeme().start,
+                                                  lexer_.lexeme().end,
+                                                  lexer_.lexeme().str_value);
+
+  Vector<ast::Variable*>* arg_list;
+
+  if(!lexer_.Try(Token::kLPar)) {
+    Error("Expect a \"(\" to start the function prototype");
+    return NULL;
+  }
+  if(!(arg_list = ParseFunctionPrototype())) return NULL;
+  if(lexer_.lexeme().token != Token::kLBra) {
+    Error("Expect a \"{\" to start the function body");
+    return NULL;
+  }
+
+  ast::Chunk* body = ParseChunk();
+  if(!body) return NULL;
+
+  return ast_factory_.NewFunction(expr_start,
+                                  lexer_.lexeme().start - 1,
+                                  fname,
+                                  arg_list,
+                                  body);
+}
+
+ast::Function* Parser::ParseAnonymousFunction() {
+  lava_assert( lexer_.lexeme().token == Token::kFunction, "");
+  size_t expr_start = lexer_.lexeme().start;
+  if(!lexer_.Try(Token::kLPar)) {
+    Error("Expect a \"(\" to start the function prototype");
+    return NULL;
+  }
+  Vector<ast::Variable*>* arg_list = ParseFunctionPrototype();
+  if(!arg_list) return NULL;
+  if(lexer_.lexeme().token != Token::kLBra) {
+    Error("Exepct a \"{\" to start the function body");
+    return NULL;
+  }
+  ast::Chunk* body = ParseChunk();
+  if(!body) return NULL;
+
+  return ast_factory_.NewFunction(expr_start,
+                                  lexer_.lexeme().start,
+                                  NULL,
+                                  arg_list,
+                                  body);
+}
+
+ast::Root* Parser::Parse() {
+  size_t expr_start = lexer_.lexeme().start;
+  Vector<ast::Node*>* main_body = Vector<ast::Node*>::New(zone_);
+  while( lexer_.lexeme().token != Token::kEof ) {
+    ast::Node* stmt = ParseStatement();
+    if(!stmt) return NULL;
+    main_body->Add(zone_,stmt);
+  }
+
+  return ast_factory_.NewRoot(expr_start, lexer_.lexeme().start-1,
+      ast_factory_.NewChunk(expr_start, lexer_.lexeme().start-1,main_body));
+}
 
 } // namespace parser
 } // namespace lavascript

@@ -47,8 +47,7 @@ TEST(Lexer,Operator) {
 
 TEST(Lexer,Keyword) {
   Zone zone;
-  Lexer lexer(&zone,stringify(if elif else for break continue return var 
-                              function as require true false null));
+  Lexer lexer(&zone,stringify(if elif else for break continue return var function true false null));
   ASSERT_EQ(Token::kIf,lexer.Next().token);
   ASSERT_EQ(Token::kElif,lexer.Next().token);
   ASSERT_EQ(Token::kElse,lexer.Next().token);
@@ -58,8 +57,6 @@ TEST(Lexer,Keyword) {
   ASSERT_EQ(Token::kReturn,lexer.Next().token);
   ASSERT_EQ(Token::kVar,lexer.Next().token);
   ASSERT_EQ(Token::kFunction,lexer.Next().token);
-  ASSERT_EQ(Token::kAs,lexer.Next().token);
-  ASSERT_EQ(Token::kRequire,lexer.Next().token);
   ASSERT_EQ(Token::kTrue,lexer.Next().token);
   ASSERT_EQ(Token::kFalse,lexer.Next().token);
   ASSERT_EQ(Token::kNull,lexer.Next().token);

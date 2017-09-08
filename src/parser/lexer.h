@@ -5,6 +5,7 @@
 #include <string>
 #include <src/core/util.h>
 #include <src/zone/zone.h>
+#include <src/error-report.h>
 
 namespace lavascript {
 
@@ -63,6 +64,9 @@ class Lexer {
   static bool IsIdRestChar( char c ) {
     return IsIdInitChar(c) || std::isdigit(c);
   }
+
+  static std::string EscapeStringLiteral( const zone::String& );
+
  public:
   inline Lexer( zone::Zone* zone , const char* source );
 
@@ -123,7 +127,11 @@ inline const Lexeme& Lexer::Error( const char* format , ... ) {
   va_list vl; va_start(vl,format);
   lexeme_.token = Token::kError;
   lexeme_.token_length = 0;
-  lexeme_.error_description = ::lavascript::core::Format(format,vl);
+  ReportError(&(lexeme_.error_description),"lexer",source_,
+                                                   position_,
+                                                   position_,
+                                                   format,
+                                                   vl);
   return lexeme_;
 }
 

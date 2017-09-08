@@ -42,7 +42,6 @@ namespace ast {
   __( BREAK   , Break   , "break"   ) \
   __( CONTINUE, Continue, "continue") \
   __( RETURN  , Return  , "return"  ) \
-  __( REQUIRE , Require , "require" ) \
   /** Chunk **/ \
   __( CHUNK   , Chunk   , "chunk"   ) \
   /** Functions **/ \
@@ -68,23 +67,38 @@ struct Node : zone::ZoneObject {
   AstType type;
 
   /** Daignostic information for this NODE */
-  size_t start_pos;   // Starting position of this AST in source code
-  size_t end_pos;     // End position of this AST in source code
+  size_t start;   // Starting position of this AST in source code
+  size_t end;     // End position of this AST in source code
 
-  size_t code_length() const { return end_pos - start_pos; }
+  size_t code_length() const { return end - start; }
+  const char* name() const { return GetAstTypeName(type); }
+
+ public:
 
 #define __(A,B,C) inline B* As##B(); inline const B* As##B() const;
   LAVA_AST_LIST(__)
 #undef __ // __
 
-#define __(A,B,C) inline bool Is##B() const { return type == A; }
+#define __(A,B,C) bool Is##B() const { return type == A; }
   LAVA_AST_LIST(__)
 #undef __ // __
 
+  bool IsExpression() const {
+    return IsLiteral() ||
+           IsVariable() ||
+           IsPrefix() ||
+           IsUnary() ||
+           IsTernary() ||
+           IsBinary() ||
+           IsList() ||
+           IsObject();
+  }
+
+ public:
   Node( AstType t , size_t sp , size_t ep ):
     type(t),
-    start_pos(sp),
-    end_pos(ep)
+    start(sp),
+    end(ep)
   {}
 };
 
@@ -184,15 +198,12 @@ struct Prefix : public Node {
 };
 
 struct Binary : public Node {
-  size_t op_pos;        // Operator's token position in source code
   Token op;             // Operator of this binary
   Node* lhs;            // Left hand side of this binary
   Node* rhs;            // Right hand side of this binary
 
-  Binary( size_t sp , size_t ep , size_t opp ,
-      Token o , Node* l , Node* r ):
+  Binary( size_t sp , size_t ep , Token o , Node* l , Node* r ):
     Node( BINARY , sp , ep ),
-    op_pos(opp),
     op(o),
     lhs(l),
     rhs(r)
@@ -201,31 +212,23 @@ struct Binary : public Node {
 };
 
 struct Unary : public Node {
-  size_t op_pos;        // Operator's token position in source code
   Token op;             // Operator for this unary
   Node* opr;            // Operand for this unary
 
-  Unary( size_t sp , size_t ep , size_t opp ,
-      Token o , Node* opr ):
+  Unary( size_t sp , size_t ep , Token o , Node* opr ):
     Node( UNARY , sp , ep ),
-    op_pos(opp),
     op(o),
     opr(opr)
   {}
 };
 
 struct Ternary : public Node {
-  size_t quest_pos;     // Question mark position
-  size_t colon_pos;     // Colon mark position
   Node* _1st;           // first operand
   Node* _2nd;           // second operand
   Node* _3rd;           // third operand
 
-  Ternary( size_t sp , size_t ep , size_t qp , size_t cp ,
-      Node* first , Node* second , Node* third ):
+  Ternary( size_t sp , size_t ep , Node* first , Node* second , Node* third ):
     Node( TERNARY , sp , ep ),
-    quest_pos(qp),
-    colon_pos(cp),
     _1st(first),
     _2nd(second),
     _3rd(third)
@@ -259,6 +262,8 @@ struct Var : public Node {
   Variable* var;
   Node* expr;
 
+  bool has_initialization() const { return expr != NULL; }
+
   Var( size_t sp , size_t ep , Variable* v , Node* e ):
     Node( VAR , sp , ep ),
     var(v),
@@ -268,6 +273,13 @@ struct Var : public Node {
 
 struct Assign : public Node {
   enum { LHS_VAR , LHS_PREFIX };
+  int lhs_type() const {
+    if(lhs_var && !lhs_pref) return LHS_VAR;
+    if(!lhs_var&&  lhs_pref) return LHS_PREFIX;
+    lava_unreach("Incorrect parsing result for Assign node");
+    return 0;
+  }
+
   Variable* lhs_var;
   Prefix* lhs_pref;
   Node* rhs;
@@ -308,20 +320,19 @@ struct If : public Node {
 
 // Normal for with grammar like for ( expr ; expr ; expr )
 struct For : public Node {
-  Node* _1st;     // Initial assignment for induction variable
+  Node* _1st;     // Initial declaration or assignment for induction variable
   Node* _2nd;     // Condition expression
   Node* _3rd;     // Incremental expression
 
-  bool has_1st() const { return var == NULL && _1st == NULL; }
-  bool has_2nd() const { return _2nd == NULL; }
-  bool has_3rd() const { return _3rd == NULL; }
+  bool has_1st() const { return _1st != NULL; }
+  bool has_2nd() const { return _2nd != NULL; }
+  bool has_3rd() const { return _3rd != NULL; }
 
   Chunk* body;
 
-  For( size_t sp  ,size_t ep , Variable* v , Node* first ,
-      Node* second , Node* third , Chunk* b ):
+  For( size_t sp  ,size_t ep , Node* first , Node* second ,
+                               Node* third , Chunk* b ):
     Node( FOR , sp , ep ),
-    var (v),
     _1st(first),
     _2nd(second),
     _3rd(third),
@@ -330,12 +341,11 @@ struct For : public Node {
 };
 
 struct ForEach : public Node {
-  Variable* var;
+  Node* var;
   Node* iter;
   Chunk* body;
 
-  ForEach( size_t sp  ,size_t ep , Variable* v ,
-      Node* i , Chunk* b ):
+  ForEach( size_t sp  ,size_t ep , Node* v , Node* i , Chunk* b ):
     Node( FOREACH , sp , ep ),
     var(v),
     iter(i),
@@ -359,23 +369,6 @@ struct Return : public Node {
   {}
 };
 
-struct Require : public Node {
-  size_t req_pos;       // Require position
-  size_t as_pos;        // As position if we have as
-  Node* req_expr;       // Require expression
-  Variable* as_var;     // If we have an as, then as_var will be pointed to the variable
-  bool has_as() const { return as_var != NULL; }
-
-  Require( size_t sp , size_t ep , size_t rp , size_t ap ,
-      Node* re , Variable* av ):
-    Node( REQUIRE , sp , ep ),
-    req_pos(rp),
-    as_pos (ap),
-    req_expr(re),
-    as_var(av)
-  {}
-};
-
 struct Chunk : public Node {
   zone::Vector<Node*>* body;
   Chunk( size_t sp , size_t ep , zone::Vector<Node*>* b ):
@@ -385,15 +378,13 @@ struct Chunk : public Node {
 };
 
 struct Function : public Node {
-  size_t func_pos;                 // Function keyword position
   Variable* name;                  // If function has a name
   zone::Vector<Variable*>* proto;  // Prototype of the function argument list
   Chunk* body;                     // Body of the function
 
-  Function( size_t sp, size_t ep , size_t fp , Variable* n ,
+  Function( size_t sp, size_t ep , Variable* n ,
       zone::Vector<Variable*>* p , Chunk* b ):
     Node(FUNCTION,sp,ep),
-    func_pos(0),
     name(n),
     proto(p),
     body(b)
@@ -462,14 +453,12 @@ void AstVisitor<T>::VisitNode( const Node& node ) {
     case BREAK:   impl()->Visit(static_cast<const Break&>(node)); break;
     case CONTINUE:impl()->Visit(static_cast<const Continue&>(node)); break;
     case RETURN:  impl()->Visit(static_cast<const Return&>(node)); break;
-    case REQUIRE: impl()->Visit(static_cast<const Require&>(node)); break;
     case CHUNK:   impl()->Visit(static_cast<const Chunk&>(node)); break;
     case FUNCTION:impl()->Visit(static_cast<const Function&>(node)); break;
     case ROOT :   impl()->Visit(static_cast<const Root&>(node)); break;
     default:      lava_unreach("unknown node type"); break;
   }
 }
-
 
 } // namespace ast
 } // namespace parser

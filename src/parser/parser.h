@@ -1,6 +1,7 @@
 #ifndef PARSER_PARSER_H_
 #define PARSER_PARSER_H_
 #include <string>
+
 #include "lexer.h"
 #include "ast/ast.h"
 #include "ast/ast-factory.h"
@@ -17,10 +18,9 @@ class Parser {
    lexer_(zone,source),
    zone_(zone),
    error_(error),
-   current_chunk_(NULL),
    nested_loop_(0),
    ast_factory_(zone)
-  {}
+  { lexer_.Next(); /* initialize the lexer */ }
 
   /* Parse the source code into AST */
   ast::Root* Parse();
@@ -28,7 +28,7 @@ class Parser {
  private:
   /** Expression */
   ast::Node* ParseAtomic();
-  ast::Node* ParsePrefix( ast::Variable* );
+  ast::Node* ParsePrefix( ast::Node* );
   ast::Node* ParseUnary ();
   ast::Node* ParsePrimary( int );
   ast::Node* ParseBinary();
@@ -53,17 +53,20 @@ class Parser {
   ast::Node* ParseStatement();
 
   /** Chunk and Statement **/
-  ast::Node* ParseSingleStatementOrChunk();
-  ast::Node* ParseChunk();
+  ast::Chunk* ParseSingleStatementOrChunk();
+  ast::Chunk* ParseChunk();
 
   /** Function definition */
   ast::Function* ParseFunction();
   ast::Function* ParseAnonymousFunction();
-  bool ParseFunctionPrototype( Function* );
+  ::lavascript::zone::Vector<ast::Variable*>* ParseFunctionPrototype();
+  bool CheckArgumentExisted( const ::lavascript::zone::Vector<ast::Variable*>& ,
+                             const ::lavascript::zone::String& ) const;
 
  private:
   void Error(const char* , ...);
-  void ErrorAt( size_t start , const char* , ... );
+  void ErrorAt( size_t start , size_t end , const char* , ... );
+  void ErrorAtV( size_t start , size_t end , const char* , va_list );
 
  private:
   Lexer lexer_;
@@ -71,8 +74,6 @@ class Parser {
   std::string* error_;                  // Error buffer if we failed
 
   /** Tracking status for certain lexical scope */
-  ast::Chunk* current_chunk_;           // Current Chunk pointer. Any parsing will always happened
-                                        // to belong to a certain chunk
   int nested_loop_;                     // Nested loop number
 
   ast::AstFactory ast_factory_;         // AST nodes factory for creating different AST nodes

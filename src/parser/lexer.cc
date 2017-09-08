@@ -280,9 +280,6 @@ const Lexeme& Lexer::LexKeywordOrId() {
    */
 
   switch(lookahead) {
-    case 'a':
-      if(CP("s")) return Set(Token::kAs,2);
-      break;
     case 'b':
       if(CP("reak")) return Set(Token::kBreak,5);
       break;
@@ -300,13 +297,13 @@ const Lexeme& Lexer::LexKeywordOrId() {
       break;
     case 'i':
       if(CP("f")) return Set(Token::kIf,2);
+      if(CP("n")) return Set(Token::kIn,2);
       break;
     case 'n':
       if(CP("ull")) return Set(Token::kNull,4);
       break;
     case 'r':
       if(CP("eturn")) return Set(Token::kReturn,6);
-      if(CP("equire")) return Set(Token::kRequire,7);
       break;
     case 't':
       if(CP("rue")) return Set(Token::kTrue,4);
@@ -349,6 +346,26 @@ const Lexeme& Lexer::LexId() {
   lexeme_.token = Token::kIdentifier;
   lexeme_.str_value = ::lavascript::zone::String::New(zone_,buffer);
   return lexeme_;
+}
+
+std::string Lexer::EscapeStringLiteral( const zone::String& str ) {
+  std::string buffer;
+  buffer.reserve(str.size());
+
+  for( size_t i = 0 ; i < str.size() ; ++i ) {
+    char c = str[i];
+    switch(c) {
+      case 'n': buffer.append("\\n"); break;
+      case 't': buffer.append("\\t"); break;
+      case 'r': buffer.append("\\r"); break;
+      case 'f': buffer.append("\\f"); break;
+      case 'b': buffer.append("\\b"); break;
+      case '"': buffer.append("\\\"");break;
+      case '\\':buffer.append("\\\\");break;
+      default: buffer.push_back(c);
+    }
+  }
+  return buffer;
 }
 
 

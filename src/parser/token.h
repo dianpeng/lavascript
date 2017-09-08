@@ -8,19 +8,19 @@ namespace parser {
  * Do NOT modify the order of tokens and insert new tokens inside
  * of the token table , append the token at very last of each section.
  *
- * Additionally, if new tokens added for 1) Arithmatic 2) Comparison and
+ * Additionally, if new tokens added for 1) Arithmetic 2) Comparison and
  * 3) Logic Operators . Please make sure that the parser's precedence
  * table is updated accordingly
  */
 
 #define LAVA_TOKEN_LIST(__) \
-  /* Arithmatic Operators */ \
-  __( TK_ADD , "+" , + , Add , ARITHMATIC ) \
-  __( TK_SUB , "-" , - , Sub , ARITHMATIC ) \
-  __( TK_MUL , "*" , * , Mul , ARITHMATIC ) \
-  __( TK_DIV , "/" , / , Div , ARITHMATIC ) \
-  __( TK_MOD , "%" , % , Mod , ARITHMATIC ) \
-  __( TK_POW , "^" , ^ , Pow , ARITHMATIC ) \
+  /* Arithmetic Operators */ \
+  __( TK_ADD , "+" , + , Add , ARITHMETIC ) \
+  __( TK_SUB , "-" , - , Sub , ARITHMETIC ) \
+  __( TK_MUL , "*" , * , Mul , ARITHMETIC ) \
+  __( TK_DIV , "/" , / , Div , ARITHMETIC ) \
+  __( TK_MOD , "%" , % , Mod , ARITHMETIC ) \
+  __( TK_POW , "^" , ^ , Pow , ARITHMETIC ) \
   /* Comparison Operators */ \
   __( TK_LT  , "<" , < , LT , COMPARISON ) \
   __( TK_LE  , "<=", <=, LE , COMPARISON ) \
@@ -56,8 +56,7 @@ namespace parser {
   __( TK_RETURN,"return",_,Return,KEYWORD) \
   __( TK_VAR , "var", _,Var,KEYWORD) \
   __( TK_FUNCTION,"function",_,Function,KEYWORD) \
-  __( TK_REQUIRE ,"require" ,_,Require ,KEYWORD) \
-  __( TK_AS , "as", _, As, KEYWORD) \
+  __( TK_IN , "in", _, In, KEYWORD) \
   /* Literal */ \
   __( TK_TRUE , "true" , _ , True, LITERAL ) \
   __( TK_FALSE, "false", _ , False,LITERAL ) \
@@ -91,7 +90,7 @@ class Token {
 
   // Token Type
   enum {
-    ARITHMATIC ,                 // Arithmatic tokens
+    ARITHMETIC ,                 // Arithmetic tokens
     COMPARISON ,                 // Comparison tokens
     LOGIC,                       // Logic tokens
     MISC,                        // Misc tokens ( punction characters )
@@ -114,9 +113,9 @@ class Token {
   int token_type() const { return GetTokenType(token_); }
   const char* token_name() const { return GetTokenName(token_); }
 
-  bool IsArithmatic() const { return token_type() == ARITHMATIC; }
+  bool IsArithmetic() const { return token_type() == ARITHMETIC; }
   bool IsComparision()const { return token_type() == COMPARISON; }
-  bool IsLogic() const { return token_type() == LOGIC
+  bool IsLogic() const { return token_type() == LOGIC; }
   bool IsMisc() const { return token_type() == MISC; }
   bool IsLiteral() const { return token_type() == LITERAL; }
   bool IsStatus() const  { return token_type() == STATUS; }
@@ -126,7 +125,7 @@ class Token {
     return token_ == TK_DOT || token_ == TK_LSQR || token_ == TK_LPAR;
   }
   bool IsBinaryOperator() const {
-    return IsArithmatic() || IsComparision() || token_ == TK_AND || token_ == TK_OR;
+    return IsArithmetic() || IsComparision() || token_ == TK_AND || token_ == TK_OR;
   }
   bool IsUnaryOperator () const {
     return token_ == TK_SUB || token_ == TK_NOT;

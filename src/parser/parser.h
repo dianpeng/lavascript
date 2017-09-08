@@ -40,8 +40,21 @@ class Parser {
 
   /** Statement */
   ast::Var* ParseVar();
-  ast::Prefix* ParseCall();
-  ast::Assign* ParseAssign();
+  ast::Node* ParsePrefixStatement();
+  ast::Assign* ParseAssign( ast::Node* );
+  ast::If* ParseIf();
+  bool ParseCondBranch( ast::If::Branch* );
+  ast::Node* ParseFor();
+  ast::For* ParseStepFor( size_t , ast::Node* );
+  ast::ForEach* ParseForEach( size_t , ast::Node* );
+  ast::Break* ParseBreak();
+  ast::Continue* ParseContinue();
+  ast::Return* ParseReturn();
+  ast::Node* ParseStatement();
+
+  /** Chunk and Statement **/
+  ast::Node* ParseSingleStatementOrChunk();
+  ast::Node* ParseChunk();
 
   /** Function definition */
   ast::Function* ParseFunction();
@@ -50,6 +63,7 @@ class Parser {
 
  private:
   void Error(const char* , ...);
+  void ErrorAt( size_t start , const char* , ... );
 
  private:
   Lexer lexer_;

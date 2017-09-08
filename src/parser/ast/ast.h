@@ -77,6 +77,10 @@ struct Node : zone::ZoneObject {
   LAVA_AST_LIST(__)
 #undef __ // __
 
+#define __(A,B,C) inline bool Is##B() const { return type == A; }
+  LAVA_AST_LIST(__)
+#undef __ // __
+
   Node( AstType t , size_t sp , size_t ep ):
     type(t),
     start_pos(sp),
@@ -171,8 +175,8 @@ struct Prefix : public Node {
     bool IsIndex()const { return t == INDEX;}
   };
   zone::Vector<Component>* list; // List of prefix operations
-  Variable* var;
-  Prefix( size_t sp , size_t ep , zone::Vector<Component>* l , Variable* v ):
+  Node* var;
+  Prefix( size_t sp , size_t ep , zone::Vector<Component>* l , Node* v ):
     Node(PREFIX , sp , ep ),
     list(l),
     var(v)
@@ -304,7 +308,6 @@ struct If : public Node {
 
 // Normal for with grammar like for ( expr ; expr ; expr )
 struct For : public Node {
-  Variable* var;  // Induction variable
   Node* _1st;     // Initial assignment for induction variable
   Node* _2nd;     // Condition expression
   Node* _3rd;     // Incremental expression
@@ -314,17 +317,15 @@ struct For : public Node {
   bool has_3rd() const { return _3rd == NULL; }
 
   Chunk* body;
-  size_t for_pos; // Where for keyword position is
 
   For( size_t sp  ,size_t ep , Variable* v , Node* first ,
-      Node* second , Node* third , Chunk* b , size_t fp ):
+      Node* second , Node* third , Chunk* b ):
     Node( FOR , sp , ep ),
     var (v),
     _1st(first),
     _2nd(second),
     _3rd(third),
-    body(b),
-    for_pos(fp)
+    body(b)
   {}
 };
 
@@ -332,15 +333,13 @@ struct ForEach : public Node {
   Variable* var;
   Node* iter;
   Chunk* body;
-  size_t for_pos;
 
   ForEach( size_t sp  ,size_t ep , Variable* v ,
-      Node* i , Chunk* b , size_t fp ):
+      Node* i , Chunk* b ):
     Node( FOREACH , sp , ep ),
     var(v),
     iter(i),
-    body(b),
-    for_pos(fp)
+    body(b)
   {}
 };
 
@@ -353,11 +352,10 @@ struct Continue : public Node {
 };
 
 struct Return : public Node {
-  size_t ret_pos;        // return keyword position
   Node* expr;            // return expression if we have it
   bool has_return_value() const { return expr != NULL; }
-  Return( size_t sp , size_t ep , size_t rp , Node* e ) :
-    Node(RETURN,sp,ep),ret_pos(rp),expr(e)
+  Return( size_t sp , size_t ep , Node* e ) :
+    Node(RETURN,sp,ep),expr(e)
   {}
 };
 

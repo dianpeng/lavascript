@@ -46,10 +46,10 @@ class AstFactory {
   inline FuncCall* NewFuncCall( const Lexer& l , ::lavascript::zone::Vector<Node*>* );
 
   inline Prefix* NewPrefix( size_t start , size_t end ,
-                            ::lavascript::zone::Vector<Prefix::Component>* , Variable* );
+                            ::lavascript::zone::Vector<Prefix::Component>* , Node* );
 
   inline Prefix* NewPrefix( const Lexer& l ,
-                            ::lavascript::zone::Vector<Prefix::Component>* , Variable* );
+                            ::lavascript::zone::Vector<Prefix::Component>* , Node* );
 
   inline Binary* NewBinary( size_t start , size_t end ,size_t ,Token ,Node* , Node* );
   inline Binary* NewBinary( const Lexer& l , size_t , Token ,Node* , Node* );
@@ -79,18 +79,16 @@ class AstFactory {
                                                     Node* ,
                                                     Node* ,
                                                     Node* ,
-                                                    Chunk*,
-                                                    size_t );
+                                                    Chunk* );
 
 
   inline ForEach* NewForEach( size_t start , size_t end , Variable* ,
                                                           Node*,
-                                                          Chunk*,
-                                                          size_t );
+                                                          Chunk* );
 
   inline Break* NewBreak( size_t start , size_t end );
   inline Continue* NewContinue( size_t start , size_t end );
-  inline Return* NewReturn( size_t start , size_t end , size_t , Node* );
+  inline Return* NewReturn( size_t start , size_t end , Node* );
 
   inline Require* NewRequire( size_t start , size_t end , size_t , size_t ,
                                                                    Node* ,
@@ -169,12 +167,12 @@ inline FuncCall* AstFactory::NewFuncCall( const Lexer& l , ::lavascript::zone::V
 }
 
 inline Prefix* AstFactory::NewPrefix( size_t start , size_t end ,
-    ::lavascript::zone::Vector<Prefix::Component>* l , Variable* v ) {
+    ::lavascript::zone::Vector<Prefix::Component>* l , Node* v ) {
   return new (zone_) Prefix(start,end,l,v);
 }
 
 inline Prefix* AstFactory::NewPrefix( const Lexer& l ,
-    ::lavascript::zone::Vector<Prefix::Component>* list , Variable* v ) {
+    ::lavascript::zone::Vector<Prefix::Component>* list , Node* v ) {
   return NewPrefix(l.lexeme().start,l.lexeme().end,list,v);
 }
 
@@ -253,16 +251,14 @@ inline If* AstFactory::NewIf( size_t start , size_t end , ::lavascript::zone::Ve
 inline For* AstFactory::NewFor( size_t start , size_t end , Variable* v , Node* first ,
                                                                           Node* second,
                                                                           Node* third,
-                                                                          Chunk* b,
-                                                                          size_t fp ) {
-  return new (zone_) For(start,end,v,first,second,third,b,fp);
+                                                                          Chunk* b) {
+  return new (zone_) For(start,end,v,first,second,third,b);
 }
 
 inline ForEach* AstFactory::NewForEach( size_t start , size_t end , Variable* v ,
                                                                     Node* i,
-                                                                    Chunk* b,
-                                                                    size_t fp ) {
-  return new (zone_) ForEach(start,end,v,i,b,fp);
+                                                                    Chunk* b ) {
+  return new (zone_) ForEach(start,end,v,i,b);
 }
 
 inline Break* AstFactory::NewBreak( size_t start , size_t end ) {
@@ -273,9 +269,8 @@ inline Continue* AstFactory::NewContinue( size_t start , size_t end ) {
   return new (zone_) Continue(start,end);
 }
 
-inline Return* AstFactory::NewReturn( size_t start , size_t end , size_t rp ,
-                                                                  Node* e ) {
-  return new (zone_) Return(start,end,rp,e);
+inline Return* AstFactory::NewReturn( size_t start , size_t end , Node* e ) {
+  return new (zone_) Return(start,end,e);
 }
 
 inline Require* AstFactory::NewRequire( size_t start , size_t end , size_t rp , size_t ap ,

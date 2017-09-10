@@ -24,19 +24,19 @@ class AstFactory {
  public:
   AstFactory( ::lavascript::zone::Zone* zone ): zone_(zone) {}
 
-  inline Literal* NewLiteral( size_t start , size_t end , size_t len , int ival );
+  inline Literal* NewLiteral( size_t start , size_t end , int ival );
   inline Literal* NewLiteral( const Lexer& l , int ival );
 
-  inline Literal* NewLiteral( size_t start , size_t end , size_t len , double rval );
+  inline Literal* NewLiteral( size_t start , size_t end , double rval );
   inline Literal* NewLiteral( const Lexer& l , double rval );
 
-  inline Literal* NewLiteral( size_t start , size_t end , size_t len , bool bval );
+  inline Literal* NewLiteral( size_t start , size_t end , bool bval );
   inline Literal* NewLiteral( const Lexer& l , bool bval );
 
-  inline Literal* NewLiteral( size_t start , size_t end , size_t len );
+  inline Literal* NewLiteral( size_t start , size_t end  );
   inline Literal* NewLiteral( const Lexer& l );
 
-  inline Literal* NewLiteral( size_t start , size_t end , size_t len , ::lavascript::zone::String* );
+  inline Literal* NewLiteral( size_t start , size_t end , ::lavascript::zone::String* );
   inline Literal* NewLiteral( const Lexer& l , ::lavascript::zone::String* );
 
   inline Variable* NewVariable( size_t start , size_t end , ::lavascript::zone::String* );
@@ -103,45 +103,45 @@ class AstFactory {
   LAVA_DISALLOW_COPY_AND_ASSIGN(AstFactory);
 };
 
-inline Literal* AstFactory::NewLiteral( size_t start , size_t end , size_t len , int ival ) {
-  return new (zone_) Literal(start,end,len,ival);
+inline Literal* AstFactory::NewLiteral( size_t start , size_t end , int ival ) {
+  return new (zone_) Literal(start,end,ival);
 }
 
 inline Literal* AstFactory::NewLiteral( const Lexer& l , int ival ) {
-  return NewLiteral( l.lexeme().start , l.lexeme().end , l.lexeme().token_length , ival );
+  return NewLiteral( l.lexeme().start , l.lexeme().end , ival );
 }
 
-inline Literal* AstFactory::NewLiteral( size_t start , size_t end , size_t len , double rval ) {
-  return new (zone_) Literal(start,end,len,rval);
+inline Literal* AstFactory::NewLiteral( size_t start , size_t end , double rval ) {
+  return new (zone_) Literal(start,end,rval);
 }
 
 inline Literal* AstFactory::NewLiteral( const Lexer& l , double rval ) {
-  return NewLiteral( l.lexeme().start , l.lexeme().end , l.lexeme().token_length , rval );
+  return NewLiteral( l.lexeme().start , l.lexeme().end , rval );
 }
 
-inline Literal* AstFactory::NewLiteral( size_t start , size_t end , size_t len , bool bval ) {
-  return new (zone_) Literal(start,end,len,bval);
+inline Literal* AstFactory::NewLiteral( size_t start , size_t end , bool bval ) {
+  return new (zone_) Literal(start,end,bval);
 }
 
 inline Literal* AstFactory::NewLiteral( const Lexer& l , bool bval ) {
-  return NewLiteral( l.lexeme().start, l.lexeme().end, l.lexeme().token_length, bval);
+  return NewLiteral( l.lexeme().start, l.lexeme().end,bval);
 }
 
-inline Literal* AstFactory::NewLiteral( size_t start , size_t end , size_t len ) {
-  return new (zone_) Literal(start,end,len);
+inline Literal* AstFactory::NewLiteral( size_t start , size_t end ) {
+  return new (zone_) Literal(start,end);
 }
 
 inline Literal* AstFactory::NewLiteral( const Lexer& l ) {
-  return NewLiteral( l.lexeme().start , l.lexeme().end , l.lexeme().token_length );
+  return NewLiteral( l.lexeme().start , l.lexeme().end );
 }
 
-inline Literal* AstFactory::NewLiteral( size_t start , size_t end , size_t len ,
+inline Literal* AstFactory::NewLiteral( size_t start , size_t end ,
     ::lavascript::zone::String* str ) {
-  return new (zone_) Literal(start,end,len,str);
+  return new (zone_) Literal(start,end,str);
 }
 
 inline Literal* AstFactory::NewLiteral( const Lexer& l , ::lavascript::zone::String* str ) {
-  return NewLiteral( l.lexeme().start , l.lexeme().end , l.lexeme().token_length , str );
+  return NewLiteral( l.lexeme().start , l.lexeme().end , str );
 }
 
 inline Variable* AstFactory::NewVariable( size_t start , size_t end ,

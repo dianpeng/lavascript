@@ -101,6 +101,7 @@ bool CrashV( const char* expression , const char* file , int line ,
                                                          va_list vl ) {
   fprintf(kContext.crash,"[CRASH:(%s)@(%s:%d)]:",expression,file,line);
   vfprintf(kContext.crash,format,vl);
+  fwrite("\n",1,1,kContext.crash);
   fflush(kContext.crash);
   std::abort();
   CloseContext();

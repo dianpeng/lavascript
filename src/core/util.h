@@ -36,6 +36,9 @@ inline void Format( std::string* buffer , const char* format , ... ) {
 inline char* AsBuffer( std::string* output , size_t off )
 { return &(*output->begin()) + off; }
 
+bool StringToInt    ( const char* , int* );
+bool StringToReal   ( const char* , double* );
+bool StringToBoolean( const char* , bool* );
 
 } // namespace core
 } // namespace lavascript

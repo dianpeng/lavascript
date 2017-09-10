@@ -30,6 +30,10 @@ class Vector : ZoneObject {
   bool empty() const { return size_ == 0; }
   void Reserve( Zone* zone , size_t size );
   void Add( Zone* zone , const T& );
+  void Set( int index , const T& value ) {
+    lava_assert( index >= 0 && index < static_cast<int>(size_) , "Index out of boundary" );
+    ptr_[index] = value;
+  }
   void Del() { lava_assert(!empty(),"Del() on empty vector!"); --size_; }
   void Clear() { size_ = 0; }
   T& First() { lava_assert(!empty(),"First() on empty vector!"); return ptr_[0]; }
@@ -37,7 +41,7 @@ class Vector : ZoneObject {
   T& Last() { lava_assert(!empty(),"Last() on empty vector!"); return ptr_[size_-1]; }
   const T& Last() const { return const_cast<Vector*>(this)->Last(); }
   T& Index( int index ) {
-    lava_assert( index < static_cast<int>(size_) ,"Index out of boundary!");
+    lava_assert( index >= 0 && index < static_cast<int>(size_) ,"Index out of boundary!");
     return ptr_[index];
   }
   const T& Index( int index ) const

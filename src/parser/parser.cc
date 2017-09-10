@@ -1,4 +1,5 @@
 #include "parser.h"
+#include "optimizer.h"
 #include "ast/ast.h"
 
 #include <src/core/util.h>
@@ -297,17 +298,18 @@ static int kPrecendence[] = {
   1, // TK_DIV
   1, // TK_MOD
   1, // TK_DIV
-  3, // TK_LT,
-  3, // TK_LE,
-  3, // TK_GT,
-  3, // TK_GE,
-  4, // TK_EQ
-  4, // TK_NE
-  5, // TK_AND,
-  6  // TK_OR
+  3, // TK_CONCAT,
+  4, // TK_LT,
+  4, // TK_LE,
+  4, // TK_GT,
+  4, // TK_GE,
+  5, // TK_EQ
+  5, // TK_NE
+  6, // TK_AND,
+  7  // TK_OR
 };
 
-static const int kMaxPrecedence = 6;
+static const int kMaxPrecedence = 7;
 
 } // namespace
 
@@ -376,9 +378,10 @@ ast::Node* Parser::ParseExpression() {
   if(!_1st) return NULL;
 
   if( lexer_.lexeme().token == Token::kQuestion ) {
-    return ParseTernary(_1st);
+    ast::Node* node = ParseTernary(_1st);
+    return node ? Optimize(zone_,lexer_.source(),node,error_) : node;
   }
-  return _1st;
+  return _1st ? Optimize(zone_,lexer_.source(),_1st,error_) : NULL;
 }
 
 ast::Var* Parser::ParseVar() {
@@ -434,7 +437,7 @@ ast::Node* Parser::ParsePrefixStatement() {
     return ParseAssign(expr);
   } else {
     if(expr->IsPrefix() && expr->AsPrefix()->list->Last().IsCall())
-      return expr;
+      return ast_factory_.NewCall(expr->start,expr->end,expr->AsPrefix());
     ErrorAt(expr->start,expr->end,"Meaningless statement");
     return NULL;
   }

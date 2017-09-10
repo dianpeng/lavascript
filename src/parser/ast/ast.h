@@ -71,7 +71,7 @@ struct Node : zone::ZoneObject {
   size_t end;     // End position of this AST in source code
 
   size_t code_length() const { return end - start; }
-  const char* name() const { return GetAstTypeName(type); }
+  const char* node_name() const { return GetAstTypeName(type); }
 
  public:
 
@@ -105,13 +105,14 @@ struct Node : zone::ZoneObject {
 struct Literal : public Node {
   /** Literal related information **/
   enum {
-    kLitInteger,
-    kLitReal,
-    kLitBoolean,
-    kLitString,
-    kLitNull
+    LIT_INTEGER,
+    LIT_REAL,
+    LIT_BOOLEAN,
+    LIT_STRING,
+    LIT_NULL
   };
   int literal_type;
+
   union {
     int int_value;
     double real_value;
@@ -120,40 +121,40 @@ struct Literal : public Node {
   };
 
   /** diagnostic information for this Literal Node **/
-  size_t token_length;  // Length of this token assocciated with the *literal*
+
+  bool IsInteger() const { return literal_type == LIT_INTEGER; }
+  bool IsReal   () const { return literal_type == LIT_REAL; }
+  bool IsBoolean() const { return literal_type == LIT_BOOLEAN; }
+  bool IsString () const { return literal_type == LIT_STRING; }
+  bool IsNull   () const { return literal_type == LIT_NULL;   }
 
 
-  Literal( size_t sp , size_t ep , size_t tk_len ):
+  Literal( size_t sp , size_t ep ):
     Node( LITERAL , sp , ep ) ,
-    literal_type( kLitNull  )
+    literal_type( LIT_NULL  )
   {}
 
-  Literal( size_t sp , size_t ep , size_t tk_len ,
-           bool bval ):
+  Literal( size_t sp , size_t ep , bool bval ):
     Node( LITERAL , sp , ep ) ,
-    literal_type( kLitBoolean )
+    literal_type( LIT_BOOLEAN )
   { bool_value = bval; }
 
-  Literal( size_t sp , size_t ep , size_t tk_len ,
-           int ival ) :
+  Literal( size_t sp , size_t ep , int ival ) :
     Node( LITERAL , sp , ep ) ,
-    literal_type( kLitInteger )
+    literal_type( LIT_INTEGER )
   { int_value = ival; }
 
-  Literal( size_t sp , size_t ep , size_t tk_len ,
-           double rval ):
+  Literal( size_t sp , size_t ep , double rval ):
     Node( LITERAL , sp , ep ) ,
-    literal_type( kLitReal )
+    literal_type( LIT_REAL )
   { real_value = rval; }
 
-  Literal( size_t sp , size_t ep , size_t tk_len ,
-           zone::String* str ):
+  Literal( size_t sp , size_t ep , zone::String* str ):
     Node( LITERAL , sp , ep ) ,
-    literal_type( kLitString )
+    literal_type( LIT_STRING )
   { str_value = str; }
 
 };
-
 
 struct Variable : public Node {
   zone::String* name;
@@ -190,6 +191,14 @@ struct Prefix : public Node {
   };
   zone::Vector<Component>* list; // List of prefix operations
   Node* var;
+
+ public:
+  // Whether this prefix is a simple function call , which means something
+  // like : foo(...)
+  bool IsSimpleFuncCall() const {
+    return var->IsVariable() && list->size() == 1 && list->First().IsCall();
+  }
+
   Prefix( size_t sp , size_t ep , zone::Vector<Component>* l , Node* v ):
     Node(PREFIX , sp , ep ),
     list(l),
@@ -456,6 +465,7 @@ void AstVisitor<T>::VisitNode( const Node& node ) {
     case CHUNK:   impl()->Visit(static_cast<const Chunk&>(node)); break;
     case FUNCTION:impl()->Visit(static_cast<const Function&>(node)); break;
     case ROOT :   impl()->Visit(static_cast<const Root&>(node)); break;
+    case CALL:    impl()->Visit(static_cast<const Call&>(node)); break;
     default:      lava_unreach("unknown node type"); break;
   }
 }

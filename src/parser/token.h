@@ -46,6 +46,7 @@ namespace parser {
   __( TK_DOT  , "." , _ , Dot , MISC ) \
   __( TK_IDENTIFIER , "identifier" , _ , Identifier , MISC ) \
   __( TK_ASSIGN,"=", _ , Assign, MISC) \
+  __( TK_CONCAT,"..",_ , Concat, MISC) \
   /* Keyword */ \
   __( TK_IF , "if" , _ , If , KEYWORD ) \
   __( TK_ELIF,"elif",_ ,Elif, KEYWORD ) \
@@ -114,18 +115,20 @@ class Token {
   const char* token_name() const { return GetTokenName(token_); }
 
   bool IsArithmetic() const { return token_type() == ARITHMETIC; }
-  bool IsComparision()const { return token_type() == COMPARISON; }
+  bool IsComparison()const { return token_type() == COMPARISON; }
   bool IsLogic() const { return token_type() == LOGIC; }
   bool IsMisc() const { return token_type() == MISC; }
   bool IsLiteral() const { return token_type() == LITERAL; }
   bool IsStatus() const  { return token_type() == STATUS; }
-
-  /** Detailed categoryized operator/token */
   bool IsPrefixOperator() const {
     return token_ == TK_DOT || token_ == TK_LSQR || token_ == TK_LPAR;
   }
   bool IsBinaryOperator() const {
-    return IsArithmetic() || IsComparision() || token_ == TK_AND || token_ == TK_OR;
+    return IsArithmetic() ||
+           IsComparison() ||
+           IsConcat() ||
+           token_ == TK_AND ||
+           token_ == TK_OR;
   }
   bool IsUnaryOperator () const {
     return token_ == TK_SUB || token_ == TK_NOT;

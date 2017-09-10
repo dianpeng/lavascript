@@ -36,7 +36,7 @@ const Lexeme& Lexer::Next() {
       case ':': return Set( Token::kColon , 1 );
       case ';': return Set( Token::kSemicolon , 1 );
       case ',': return Set( Token::kComma , 1 );
-      case '.': return Set( Token::kDot , 1 );
+      case '.': return Predicate( '.' , Token::kDot , Token::kConcat );
       case '[': return Set( Token::kLSqr, 1 );
       case ']': return Set( Token::kRSqr, 1 );
       case '(': return Set( Token::kLPar, 1 );

@@ -100,7 +100,7 @@ ast::Node* Parser::ParseAtomic() {
 }
 
 ast::List* Parser::ParseList() {
-  lava_assert( lexer_.lexeme().token == Token::kLSqr , "" );
+  lava_verify( lexer_.lexeme().token == Token::kLSqr );
   size_t start = lexer_.lexeme().start;
   if( lexer_.Next().token == Token::kRSqr ) {
     size_t end = lexer_.lexeme().end;
@@ -127,7 +127,7 @@ ast::List* Parser::ParseList() {
 }
 
 ast::Object* Parser::ParseObject() {
-  lava_assert( lexer_.lexeme().token == Token::kLBra , "" );
+  lava_verify( lexer_.lexeme().token == Token::kLBra );
   size_t start = lexer_.lexeme().start;
   if( lexer_.Next().token == Token::kRBra ) {
     size_t end = lexer_.lexeme().end;
@@ -186,7 +186,7 @@ ast::Object* Parser::ParseObject() {
 }
 
 ast::FuncCall* Parser::ParseFuncCall() {
-  lava_assert( lexer_.lexeme().token == Token::kLPar , "" );
+  lava_verify( lexer_.lexeme().token == Token::kLPar );
 
   size_t expr_start = lexer_.lexeme().start;
   size_t expr_end;
@@ -220,7 +220,7 @@ ast::FuncCall* Parser::ParseFuncCall() {
 }
 
 ast::Node* Parser::ParsePrefix( ast::Node* prefix ) {
-  lava_assert( lexer_.lexeme().token.IsPrefixOperator() , "");
+  lava_verify( lexer_.lexeme().token.IsPrefixOperator() );
 
   /**
    * Parse a prefix expression. A prefix expression starts with a variable/identifier
@@ -356,7 +356,7 @@ ast::Node* Parser::ParseBinary() {
 }
 
 ast::Node* Parser::ParseTernary( ast::Node* input ) {
-  lava_assert( lexer_.lexeme().token == Token::kQuestion , "");
+  lava_verify( lexer_.lexeme().token == Token::kQuestion );
   lexer_.Next();
 
   ast::Node* _2nd = ParseExpression();
@@ -386,7 +386,7 @@ ast::Node* Parser::ParseExpression() {
 }
 
 ast::Var* Parser::ParseVar() {
-  lava_assert(lexer_.lexeme().token == Token::kVar , "");
+  lava_verify(lexer_.lexeme().token == Token::kVar);
 
   size_t stmt_start = lexer_.lexeme().start;
 
@@ -409,7 +409,7 @@ ast::Var* Parser::ParseVar() {
 
 ast::Assign* Parser::ParseAssign( ast::Node* v ) {
   size_t expr_start = v->start;
-  lava_assert(lexer_.lexeme().token == Token::kAssign,"");
+  lava_verify(lexer_.lexeme().token == Token::kAssign);
   lexer_.Next();
   ast::Node* val = ParseExpression();
   if(!val) return NULL;
@@ -445,7 +445,7 @@ ast::Node* Parser::ParsePrefixStatement() {
 }
 
 ast::If* Parser::ParseIf() {
-  lava_assert(lexer_.lexeme().token == Token::kIf,"");
+  lava_verify(lexer_.lexeme().token == Token::kIf);
   Vector<ast::If::Branch>* branch_list = Vector<ast::If::Branch>::New(zone_);
   ast::If::Branch br;
   size_t expr_start = lexer_.lexeme().start;
@@ -497,7 +497,7 @@ bool Parser::ParseCondBranch( ast::If::Branch* br ) {
 }
 
 ast::Node* Parser::ParseFor() {
-  lava_assert( lexer_.lexeme().token == Token::kFor , "");
+  lava_verify( lexer_.lexeme().token == Token::kFor );
   size_t expr_start = lexer_.lexeme().start;
 
   if(!lexer_.Try(Token::kLPar)) {
@@ -550,7 +550,7 @@ ast::Node* Parser::ParseFor() {
 }
 
 ast::For* Parser::ParseStepFor( size_t expr_start , ast::Node* expr ) {
-  lava_assert( lexer_.lexeme().token == Token::kSemicolon , "");
+  lava_verify( lexer_.lexeme().token == Token::kSemicolon );
   ast::Node* cond = NULL;
   ast::Node* step = NULL;
   ast::Chunk* body = NULL;
@@ -588,7 +588,7 @@ ast::For* Parser::ParseStepFor( size_t expr_start , ast::Node* expr ) {
 }
 
 ast::ForEach* Parser::ParseForEach( size_t expr_start , ast::Node* expr ) {
-  lava_assert( lexer_.lexeme().token == Token::kIn, "" );
+  lava_verify( lexer_.lexeme().token == Token::kIn );
   ast::Node* itr = NULL;
   ast::Chunk* body = NULL;
 
@@ -612,7 +612,7 @@ ast::ForEach* Parser::ParseForEach( size_t expr_start , ast::Node* expr ) {
 }
 
 ast::Break* Parser::ParseBreak() {
-  lava_assert( lexer_.lexeme().token == Token::kBreak , "");
+  lava_verify( lexer_.lexeme().token == Token::kBreak );
   if(nested_loop_ == 0) {
     Error("break/continue must be in a loop body");
     return NULL;
@@ -626,7 +626,7 @@ ast::Break* Parser::ParseBreak() {
 }
 
 ast::Continue* Parser::ParseContinue() {
-  lava_assert( lexer_.lexeme().token == Token::kContinue, "");
+  lava_verify( lexer_.lexeme().token == Token::kContinue );
   if(nested_loop_ == 0) {
     Error("break/continue must be in a loop body");
     return NULL;
@@ -640,7 +640,7 @@ ast::Continue* Parser::ParseContinue() {
 }
 
 ast::Return* Parser::ParseReturn() {
-  lava_assert( lexer_.lexeme().token == Token::kReturn , "");
+  lava_verify( lexer_.lexeme().token == Token::kReturn );
   size_t expr_start = lexer_.lexeme().start;
   size_t expr_end   = lexer_.lexeme().end;
   if(lexer_.Next().token == Token::kSemicolon) {
@@ -685,7 +685,7 @@ ast::Node* Parser::ParseStatement() {
 }
 
 ast::Chunk* Parser::ParseChunk() {
-  lava_assert( lexer_.lexeme().token == Token::kLBra , "");
+  lava_verify( lexer_.lexeme().token == Token::kLBra );
   size_t expr_start = lexer_.lexeme().start;
   size_t expr_end   = lexer_.lexeme().end;
 
@@ -755,7 +755,7 @@ bool Parser::CheckArgumentExisted( const Vector<ast::Variable*>& arg_list,
 }
 
 Vector<ast::Variable*>* Parser::ParseFunctionPrototype() {
-  lava_assert( lexer_.lexeme().token == Token::kLPar , "");
+  lava_verify( lexer_.lexeme().token == Token::kLPar );
   if( lexer_.Next().token == Token::kRPar ) {
     lexer_.Next();
     return Vector<ast::Variable*>::New(zone_);
@@ -793,7 +793,7 @@ Vector<ast::Variable*>* Parser::ParseFunctionPrototype() {
 }
 
 ast::Function* Parser::ParseFunction() {
-  lava_assert( lexer_.lexeme().token == Token::kFunction , "" );
+  lava_verify( lexer_.lexeme().token == Token::kFunction );
   size_t expr_start = lexer_.lexeme().start;
   if(!lexer_.Try(Token::kIdentifier)) {
     Error("Expect a identifier followed by \"function\" in function definition");
@@ -826,7 +826,7 @@ ast::Function* Parser::ParseFunction() {
 }
 
 ast::Function* Parser::ParseAnonymousFunction() {
-  lava_assert( lexer_.lexeme().token == Token::kFunction, "");
+  lava_verify( lexer_.lexeme().token == Token::kFunction );
   size_t expr_start = lexer_.lexeme().start;
   if(!lexer_.Try(Token::kLPar)) {
     Error("Expect a \"(\" to start the function prototype");

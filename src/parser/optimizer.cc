@@ -92,7 +92,7 @@ inline bool Expression::ToBoolean( bool* output ) const {
 }
 
 inline bool Expression::AsBoolean( bool* output ) const {
-  lava_assert( IsLiteral() , "" );
+  lava_verify( IsLiteral() );
   switch(ekind) {
     case EREAL:    *output = (real_value ? true : false); return true;
     case EINTEGER: *output = (int_value ? true : false); return true;
@@ -104,7 +104,7 @@ inline bool Expression::AsBoolean( bool* output ) const {
 }
 
 inline bool Expression::AsInteger( int* output ) const {
-  lava_assert( IsLiteral() , "" );
+  lava_verify( IsLiteral() );
   switch(ekind) {
     case EREAL: *output = static_cast<int>(real_value); return true;
     case EINTEGER: *output = int_value; return true;
@@ -116,7 +116,7 @@ inline bool Expression::AsInteger( int* output ) const {
 }
 
 inline bool Expression::AsReal( double* output ) const {
-  lava_assert( IsLiteral() , "" );
+  lava_verify( IsLiteral() );
   switch(ekind) {
     case EREAL: *output = real_value; return true;
     case EINTEGER: *output = static_cast<double>(int_value); return true;
@@ -128,7 +128,7 @@ inline bool Expression::AsReal( double* output ) const {
 }
 
 inline void Expression::AsString( Zone* zone , String** output ) const {
-  lava_assert( IsLiteral() , "" );
+  lava_verify( IsLiteral() );
   switch(ekind) {
     case EREAL:
       *output = String::New(zone,core::PrettyPrintReal(real_value)); break;
@@ -144,7 +144,7 @@ inline void Expression::AsString( Zone* zone , String** output ) const {
 }
 
 inline void Expression::AsString( std::string* output ) const {
-  lava_assert( IsLiteral() , "" );
+  lava_verify( IsLiteral() );
   switch(ekind) {
     case EREAL: *output = core::PrettyPrintReal(real_value); break;
     case EINTEGER: *output = std::to_string(int_value); break;
@@ -238,7 +238,7 @@ ast::Literal* ExpressionOptimizer::NewLiteralNode( const Expression& node ) {
 
 String* ExpressionOptimizer::Concat( Zone* zone , const Expression& lhs ,
                                                   const Expression& rhs ) {
-  lava_assert( lhs.IsLiteral() && rhs.IsLiteral() , "");
+  lava_verify( lhs.IsLiteral() && rhs.IsLiteral() );
   std::string lhs_str , rhs_str;
   lhs.AsString(&lhs_str);
   rhs.AsString(&rhs_str);
@@ -426,7 +426,7 @@ bool ExpressionOptimizer::Optimize( ast::List* node , Expression* expr ) {
   expr->node = node;
   return true;
 }
-  
+
 bool ExpressionOptimizer::Optimize( ast::Object* node , Expression* expr ) {
   const size_t len = node->entry->size();
   for( size_t i = 0 ; i < len ; ++i ) {
@@ -676,10 +676,10 @@ bool ExpressionOptimizer::Optimize( ast::Binary* node , Expression* expr ) {
         case Token::TK_ADD:
         case Token::TK_SUB:
           if(lhs.IsInteger() && lhs.int_value == 0) {
-            lava_assert( rhs.IsComplex() , "" );
+            lava_verify( rhs.IsComplex() );
             expr->node = rhs.node;
           } else if(rhs.IsInteger() && rhs.int_value == 0) {
-            lava_assert( lhs.IsComplex() , "" );
+            lava_verify( lhs.IsComplex() );
             if(node->op == Token::kAdd) {
               expr->node = lhs.node;
             } else {
@@ -692,10 +692,10 @@ bool ExpressionOptimizer::Optimize( ast::Binary* node , Expression* expr ) {
           break;
         case Token::TK_MUL:
           if(lhs.IsInteger() && lhs.int_value == 1) {
-            lava_assert(rhs.IsComplex(),"");
+            lava_verify(rhs.IsComplex());
             expr->node = rhs.node;
           } else if(rhs.IsInteger() && rhs.int_value == 1) {
-            lava_assert(lhs.IsComplex(),"");
+            lava_verify(lhs.IsComplex());
             expr->node = lhs.node;
           } else if(lhs.IsInteger() && lhs.int_value == 0) {
             expr->ekind = EINTEGER;
@@ -707,7 +707,7 @@ bool ExpressionOptimizer::Optimize( ast::Binary* node , Expression* expr ) {
           break;
         case Token::TK_DIV:
           if(rhs.IsInteger() && rhs.int_value == 1) {
-            lava_assert(lhs.IsComplex(),"");
+            lava_verify(lhs.IsComplex());
             expr->node = lhs.node;
           } else if((lhs.IsInteger() && lhs.int_value ==0)) {
             expr->ekind = EINTEGER;

@@ -1,5 +1,5 @@
-#ifndef OPTIMIZER_H_
-#define OPTIMIZER_H_
+#ifndef PARSER_OPTIMIZER_H_
+#define PARSER_OPTIMIZER_H_
 
 #include <string>
 
@@ -26,4 +26,4 @@ ast::Node* Optimize( ::lavascript::zone::Zone* , const char* source , ast::Node*
 } // namespace parser
 } // namespace lavascript
 
-#endif // OPTIMIZER_H_
+#endif // PARSER_OPTIMIZER_H_

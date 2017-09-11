@@ -1,5 +1,5 @@
-#ifndef AST_FACTORY_H_
-#define AST_FACTORY_H_
+#ifndef PARSER_AST_AST_FACTORY_H_
+#define PARSER_AST_AST_FACTORY_H_
 #include <src/core/util.h>
 #include <src/zone/zone.h>
 #include <src/zone/string.h>
@@ -278,4 +278,4 @@ inline Root* AstFactory::NewRoot( size_t start , size_t end , Chunk* chunk ) {
 } // namespace ast
 } // namespace parser
 } // namespace lavascript
-#endif // AST_FACTORY_H_
+#endif // PARSER_AST_AST_FACTORY_H_

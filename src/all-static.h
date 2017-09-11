@@ -14,6 +14,8 @@ class AllStatic {
   static void operator delete[]( void* ptr );
 };
 
+class DoNotAllocateOnNormalHeap : AllStatic {};
+
 } // namespace lavascript
 
 #endif // ALL_STATIC_H_

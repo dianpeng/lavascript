@@ -131,7 +131,7 @@ inline void Expression::AsString( Zone* zone , String** output ) const {
   lava_assert( IsLiteral() , "" );
   switch(ekind) {
     case EREAL:
-      *output = String::New(zone,std::to_string(real_value)); break;
+      *output = String::New(zone,core::PrettyPrintReal(real_value)); break;
     case EINTEGER:
       *output = String::New(zone,std::to_string(int_value)); break;
     case EBOOLEAN:
@@ -146,7 +146,7 @@ inline void Expression::AsString( Zone* zone , String** output ) const {
 inline void Expression::AsString( std::string* output ) const {
   lava_assert( IsLiteral() , "" );
   switch(ekind) {
-    case EREAL: *output = std::to_string(real_value); break;
+    case EREAL: *output = core::PrettyPrintReal(real_value); break;
     case EINTEGER: *output = std::to_string(int_value); break;
     case EBOOLEAN: output->assign( bool_value ? "true" : "false" ); break;
     case ESTRING: output->assign( str_value->data() ); break;
@@ -342,7 +342,7 @@ bool ExpressionOptimizer::Optimize( ast::Prefix* node, Expression* expr ) {
         expr->start = node->start; expr->end = node->end;
         expr->ekind = EINTEGER;
         if(!a.AsInteger(&(expr->int_value))) {
-          Error(*node,"Cannot convert argument to integer");
+          Error(*node,"int(): cannot convert argument to integer");
           return false;
         }
         return true;
@@ -354,7 +354,7 @@ bool ExpressionOptimizer::Optimize( ast::Prefix* node, Expression* expr ) {
         expr->start = node->start; expr->end = node->end;
         expr->ekind = EREAL;
         if(!a.AsReal(&(expr->real_value))) {
-          Error(*node,"Cannot convert argument to real");
+          Error(*node,"real(): cannot convert argument to real");
           return false;
         }
         return true;
@@ -366,7 +366,7 @@ bool ExpressionOptimizer::Optimize( ast::Prefix* node, Expression* expr ) {
         expr->start = node->start; expr->end = node->end;
         expr->ekind = EBOOLEAN;
         if(!a.AsBoolean(&(expr->bool_value))) {
-          Error(*node,"Cannot convert argument to boolean");
+          Error(*node,"boolean(): cannot convert argument to boolean");
           return false;
         }
         return true;
@@ -398,6 +398,11 @@ bool ExpressionOptimizer::Optimize( ast::Prefix* node, Expression* expr ) {
                                    a.node->AsObject()->entry->size());
           }
           break;
+        case EINTEGER:
+        case EREAL:
+        case EBOOLEAN:
+          Error(*node,"len(): argument cannot be integer/real/boolean");
+          return false;
         default: break;
       }
     }
@@ -454,6 +459,7 @@ bool ExpressionOptimizer::Optimize( ast::Unary* node , Expression* expr ) {
   expr->node = node;
 
   if(!Optimize(node->opr,&a)) return false;
+
   if(a.IsLiteral()) {
     expr->start = node->start; expr->end = node->end;
     switch(a.ekind) {
@@ -516,6 +522,10 @@ bool ExpressionOptimizer::Optimize( ast::Binary* node , Expression* expr ) {
   if(node->op.IsArithmetic() || node->op.IsComparison()) {
     Expression lhs , rhs;
     if(!Optimize(node->lhs,&lhs) || !Optimize(node->rhs,&rhs)) return false;
+
+    node->lhs = lhs.IsComplex() ? lhs.node : NewLiteralNode(lhs);
+    node->rhs = rhs.IsComplex() ? rhs.node : NewLiteralNode(rhs);
+
     if(lhs.IsLiteral() && rhs.IsLiteral()) {
       // numeric operations , arithmetic operation only appy on numeric
       // operations and we don't do implicit conversion here. So no
@@ -621,7 +631,7 @@ bool ExpressionOptimizer::Optimize( ast::Binary* node , Expression* expr ) {
           case Token::TK_GT: expr->bool_value = (*lhs.str_value > *rhs.str_value); break;
           case Token::TK_GE: expr->bool_value = (*lhs.str_value >=*rhs.str_value); break;
           case Token::TK_EQ: expr->bool_value = (*lhs.str_value ==*rhs.str_value); break;
-          case Token::TK_NE: expr->bool_value = (*lhs.str_value != *rhs.str_value); break;
+          case Token::TK_NE: expr->bool_value = (*lhs.str_value !=*rhs.str_value); break;
           default: lava_die(); break;
         }
       } else if(lhs.IsNull() || rhs.IsNull()) {
@@ -643,6 +653,7 @@ bool ExpressionOptimizer::Optimize( ast::Binary* node , Expression* expr ) {
         }
       }
     } else if(lhs.IsInteger() || rhs.IsInteger()) {
+
       /*
        * When we reach here it means one of rhs and lhs must be literal
        *
@@ -658,6 +669,7 @@ bool ExpressionOptimizer::Optimize( ast::Binary* node , Expression* expr ) {
        * 0^x = 0 ;
        *
        */
+
       expr->start = node->start; expr->end = node->end;
       expr->ekind = ECOMPLEX;
       switch(node->op) {
@@ -716,9 +728,6 @@ bool ExpressionOptimizer::Optimize( ast::Binary* node , Expression* expr ) {
           break;
         default: break;
       }
-    } else {
-      node->lhs = lhs.IsComplex() ? lhs.node : NewLiteralNode(lhs);
-      node->rhs = rhs.IsComplex() ? rhs.node : NewLiteralNode(rhs);
     }
   } else if( node->op.IsConcat() ) {
     Expression lhs,rhs;

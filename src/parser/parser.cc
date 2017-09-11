@@ -200,6 +200,9 @@ ast::FuncCall* Parser::ParseFuncCall() {
     do {
       ast::Node* expr = ParseExpression();
       if(!expr) return NULL;
+
+      arg_list->Add(zone_,expr);
+
       if(lexer_.lexeme().token == Token::kComma) {
         lexer_.Next();
       } else if(lexer_.lexeme().token == Token::kRPar) {
@@ -210,8 +213,6 @@ ast::FuncCall* Parser::ParseFuncCall() {
         Error("Expect a \",\" or \")\" in function call argument list");
         return NULL;
       }
-
-      arg_list->Add(zone_,expr);
     } while(true);
 
     return ast_factory_.NewFuncCall(expr_start,expr_end,arg_list);
@@ -654,14 +655,24 @@ ast::Return* Parser::ParseReturn() {
 ast::Node* Parser::ParseStatement() {
   ast::Node* ret;
   switch(lexer_.lexeme().token) {
-    case Token::TK_VAR: if(!(ret=ParseVar())) return NULL; break;
+    case Token::TK_VAR:
+      if(!(ret=ParseVar())) return NULL;
+      break;
     case Token::TK_IF:  return ParseIf();
     case Token::TK_FOR: return ParseFor();
-    case Token::TK_RETURN: if(!(ret=ParseReturn())) return NULL; break;
-    case Token::TK_BREAK: if(!(ret=ParseBreak())) return NULL; break;
-    case Token::TK_CONTINUE: if(!(ret=ParseContinue())) return NULL; break;
+    case Token::TK_RETURN:
+      if(!(ret=ParseReturn())) return NULL;
+      break;
+    case Token::TK_BREAK:
+      if(!(ret=ParseBreak())) return NULL;
+      break;
+    case Token::TK_CONTINUE:
+      if(!(ret=ParseContinue())) return NULL;
+      break;
     case Token::TK_FUNCTION: return ParseFunction();
-    default: if(!(ret=ParsePrefixStatement())) return NULL; break;
+    default:
+      if(!(ret=ParsePrefixStatement())) return NULL;
+      break;
   }
 
   if(lexer_.lexeme().token != Token::kSemicolon) {

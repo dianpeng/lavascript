@@ -40,6 +40,14 @@ bool StringToInt    ( const char* , int* );
 bool StringToReal   ( const char* , double* );
 bool StringToBoolean( const char* , bool* );
 
+/**
+ * pretty print the real number. The issue with std::to_string is that
+ * the tailing zeros are gonna show up. Example: 1.234 --> "1.234000".
+ * We need to remove the tailing zeros to make the return value more
+ * predictable
+ */
+std::string PrettyPrintReal( double );
+
 } // namespace core
 } // namespace lavascript
 

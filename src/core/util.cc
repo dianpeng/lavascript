@@ -53,6 +53,24 @@ bool StringToBoolean( const char* source , bool* output ) {
   return true;
 }
 
+std::string PrettyPrintReal( double real ) {
+  std::string result = std::to_string(real);
+  /**
+   * Now we try to remove all the tailing zeros in the returned
+   * std::string result value.
+   */
+  size_t npos = result.find_last_of('.');
+  if(npos == std::string::npos) {
+    return result;
+  } else {
+    npos = result.find_last_not_of('0');
+    if(npos != std::string::npos) {
+      result.erase(npos+1,std::string::npos);
+    }
+    return result;
+  }
+}
+
 
 } // namespace core
 } // namespace lavascript

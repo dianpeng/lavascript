@@ -8,7 +8,6 @@
 #include "vm/constant-table.h"
 #include "core/trace.h"
 #include "all-static.h"
-#include "heap-object-header.h"
 
 /**
  * Objects are representation of all runtime objects in C++ side and
@@ -34,6 +33,41 @@ class Prototype;
 class Closure;
 class Extension;
 
+#define LAVASCRIPT_HEAP_OBJECT_LIST(__)                               \
+  __( TYPE_ITERATOR,  Iterator, "iterator")                           \
+  __( TYPE_LIST    ,  List    , "list"    )                           \
+  __( TYPE_SLICE   ,  Slice   , "slice"   )                           \
+  __( TYPE_OBJECT  ,  Object  , "object"  )                           \
+  __( TYPE_MAP     ,  Map     , "map"     )                           \
+  __( TYPE_STRING  ,  String  , "string"  )                           \
+  __( TYPE_PROTOTYPE, Prototype, "prototype")                         \
+  __( TYPE_CLOSURE ,  Closure , "closure" )                           \
+  __( TYPE_EXTENSION, Extension , "extension")
+
+#define LAVASCRIPT_PRIMITIVE_TYPE_LIST(__)                            \
+  __( TYPE_INTEGER , Integer , "integer" )                            \
+  __( TYPE_REAL    , Real    , "real"    )                            \
+  __( TYPE_BOOLEAN , Boolean , "boolean" )                            \
+  __( TYPE_NULL    , Null    , "null"    )                            \
+  __( TYPE_SSO     , SSO     , "string"  )                            \
+
+
+#define LAVASCRIPT_VALUE_TYPE_LIST(__)                                \
+  LAVASCRIPT_PRIMITIVE_TYPE_LIST(__)                                  \
+  LAVASCRIPT_HEAP_OBJECT_LIST(__)
+
+
+enum ValueType {
+#define __(A,B,C) A,
+  LAVASCRIPT_VALUE_TYPE_LIST(__)
+  SIZE_OF_VALUE_TYPES
+#undef __ // __
+};
+
+/**
+ * Get the name of certain value type via its enum index
+ */
+const char* GetValueTypeName( ValueType );
 
 /**
  *
@@ -82,10 +116,10 @@ class GCRef {
  * This is sololy to get rid of the verbose syntax and checking around the
  * pointer to pointer GCRef object
  */
-template< typename T > class Handler {};
+template< typename T > class GCHandler {};
 
 #define DECLARE_GCHANDLER(T) \
-  template<> class Handler<T> {                                          \
+  template<> class GCHandler<T> {                                          \
    public:                                                                 \
     GCRef ref() const { return ref_; }                                     \
     bool IsEmpty() const { return ref_.IsEmpty(); }                        \
@@ -96,10 +130,10 @@ template< typename T > class Handler {};
     inline T* operator -> ();                                              \
     inline const T* operator -> () const;                                  \
    public:                                                                 \
-    Handler( GCRef ref ):ref_(ref){}                                     \
-    Handler():ref_(){}                                                   \
-    Handler( const Handler& handler ):ref_(handler.ref){}              \
-    Handler& operator = ( const Handler& that ) {                      \
+    GCHandler( GCRef ref ):ref_(ref){}                                     \
+    GCHanlder():ref_(){}                                                   \
+    GCHandler( const GCHandler& handler ):ref_(handler.ref){}              \
+    GCHandler& operator = ( const GCHandler& that ) {                      \
       if(this != &that) {                                                  \
         ref_ = that.ref_;                                                  \
       }                                                                    \
@@ -118,15 +152,19 @@ LAVASCRIPT_HEAP_OBJECT_LIST(__)
 #undef // DECLARE_GCHANDLER
 
 /**
+ *
  * The value type in lavascript are categorized into 2 parts :
  *  1. primitive type --> value semantic
  *  2. heap type      --> reference semantic
  *
- * Value is a *BOX* type for everything , including GCRef inside
- * of lavascript. It can hold things like:
- *    1) primitive type or value type holding, and it is value copy
- *    2) directly hold HeapObject pointer , and it is reference copy
- *    3) GCRef hold, implicitly hold HeapObject , and it is reference copy
+ *
+ * A Value object is a core object used internally to BOX a value at runtime.
+ * The handle object will only be used in the script side not C++ side. User at
+ * C++ side needs to use class Local which is designed to live inside LocalScope
+ *
+ * Value will *DIRECTLY* hold the pointer points to an object lives in managed
+ * heap ,the reason is where we use Value is *known* by the interpreter/vm, no
+ * need to store an extra layer.
  */
 
 class Value {
@@ -149,7 +187,7 @@ class Value {
     TAG_FALSE  = 0xfff930000000000 ,                        // False
     TAG_NULL   = 0xfff940000000000 ,                        // Null
     TAG_HEAP   = 0xfffa00000000000 ,                        // Heap Object
-    TAG_GCREF  = 0xfffc00000000000                          // GCRef pointer
+    TAG_SSO    = 0xfffb00000000000                          // Short String Object
   };
 
   // Masks
@@ -161,7 +199,7 @@ class Value {
   // So not break our assumption. This assumption can be held always,I guess
   static const std::uint64_t kPtrCheckMask = ~kPtrMask;
 
-  std::uint64_t tag() const { return (raw_&kTagMask); }
+  int tag() const { return (raw_&kTagMask); }
 
   bool IsTagReal()    const { return tag() <  TAG_REAL; }
   bool IsTagInteger() const { return tag() == TAG_INTEGER; }
@@ -169,10 +207,9 @@ class Value {
   bool IsTagFalse()   const { return tag() == TAG_FALSE; }
   bool IsTagNull()    const { return tag() == TAG_NULL; }
   bool IsTagHeap()    const { return tag() == TAG_HEAP; }
-  bool IsTagGCRef()   const { return tag() == TAG_GCREF; }
+  bool IsTagSSO ()    const { return tag() == TAG_SSO; }
 
   inline HeapObject* heap_object() const;
-  inline GCRef::RefType gcref_ptr  () const;
   inline void set_pointer( void* ptr , int tag );
 
  public:
@@ -192,10 +229,10 @@ class Value {
   bool IsTrue() const       { return IsTagTrue(); }
   bool IsFalse()const       { return IsTagFalse();}
   bool IsBoolean() const    { return IsTagTrue() || IsTagFalse(); }
-  bool IsGCRef() const      { return IsTagGCRef(); }
-  bool IsHeapObject() const { return IsTagHeap(); }
+  bool IsSSO () const       { return IsTagSSO(); }
 
   // Heap types
+  bool IsHeapObject() const { return IsTagHeap(); }
   inline bool IsString() const;
   inline bool IsList() const;
   inline bool IsSlice() const;
@@ -208,6 +245,7 @@ class Value {
   // Getters --------------------------------------------
   inline std::uint32_t GetInteger() const;
   inline bool GetBoolean() const;
+  inline const SSO& GetSSO() const;
   inline double GetReal() const;
 
   inline HeapObject* GetHeapObject() const;
@@ -220,10 +258,6 @@ class Value {
   inline Closure* GetClosure() const;
   inline Extension* GetExtension() const;
 
-  inline GCRef GetGCRef() const;
-
-  template< typename T >
-  inline Handler<T> GetHandler() const { return Handler<T>(GetGCRef()); }
 
   // Setters ---------------------------------------------
   inline void SetInteger( std::uint32_t );
@@ -232,6 +266,13 @@ class Value {
   void SetNull   () { raw_ = TAG_NULL; }
   void SetTrue   () { raw_ = TAG_TRUE; }
   void SetFalse  () { raw_ = TAG_FALSE;}
+
+  // SSO should always use its const reference or pointer since it
+  // is immutable and will not GC collected
+  inline void SetSSO    ( const SSO* );
+  inline void SetSSO    ( const SSO& );
+  inline void SetSSO    ( SSO* );
+
 
   inline void SetHeapObject( HeapObject* );
   inline void SetString( String* );
@@ -242,20 +283,16 @@ class Value {
   inline void SetPrototype( Prototype* );
   inline void SetClosure  ( Closure* );
   inline void SetExtension( Extension* );
-
   inline void SetGCRef ( GCRef );
-  template< typename T >
-  void SetHandler( const Handler<T>& h ) { SetGCRef(h.ref()); }
 
  public:
   Value() { SetNull(); }
   inline explicit Value( double v ) { SetReal(v); }
   inline explicit Value( std::int32_t v ) { SetInteger(v); }
   inline explicit Value( bool v ) { SetBoolean(v); }
+  inline explicit Value( SSO* v ) { SetSSO(v); }
   inline explicit Value( HeapObject* v ) { SetHeapObject(v); }
   inline explicit Value( GCRef v ) { SetGCRef(v); }
-  template< typename T >
-  explicit Value( const Handler<T>& h ) { SetGCRef(h.ref()); }
 };
 
 // The handle must be as long as a machine word , here for simplicitly we assume
@@ -278,9 +315,6 @@ static_assert( sizeof(Value) == sizeof(std::uintptr_t) );
 //
 //  The user can get its header word by directly call function object_header() to
 //  retrieve the heap header. This is done by (this - 8).
-//
-//  The HeapObject is an empty object at all and all the states it needs are stored
-//  inside of the HeapObjectHeader object which can be referend via (this-8)
 class HeapObject {
  public:
   bool IsString() const { return type_ == TYPE_STRING; }
@@ -327,6 +361,8 @@ class HeapObject {
   HeapObject( ValueType type ) : type_(type) {}
 
  private:
+  ValueType type_;
+
   LAVA_DISALLOW_COPY_AND_ASSIGN(HeapObject);
 };
 
@@ -346,7 +382,7 @@ class SSO {
  public:
   std::uint32_t hash() const { return hash_; }
   void* data() const { return data_; }
-  size_t size() const { return size_; }
+  size_t size() const { return sizez_; }
 
  public:
   inline bool operator == ( const char* ) const;
@@ -396,14 +432,6 @@ class SSO {
   friend class SSOPool;
 
   LAVA_DISALLOW_COPY_AND_ASSIGN(SSO);
-};
-
-/**
- * Long string representation inside of VM
- */
-struct LongString {
-  size_t size;
-  LongString() : size(0) {}
 };
 
 /**
@@ -460,7 +488,9 @@ class String : public HeapObject {
   inline bool operator <= ( const String& ) const;
   inline bool operator <= ( const SSO& ) const;
 
+
  private:
+  size_t size_;
 
   friend class GC;
   LAVA_DISALLOW_COPY_AND_ASSIGN(String);
@@ -478,7 +508,7 @@ class String : public HeapObject {
 class List : public HeapObject {
  public:
   // Where the list's underlying Slice object are located
-  Handler<Slice> slice() const { return Handler<Slice>(slice_); }
+  GCHandler<Slice> slice() const { return GCHandler<Slice>(slice_); }
   GCRef slice_ref() const { return slice_; }
 
   inline bool empty() const;
@@ -549,32 +579,37 @@ class Slice : public HeapObject {
 class Object : public HeapObject {
  public:
    GCRef map_ref() const { return map_; }
-   Handler<Map> map() const { return Handler<Map>(map_); }
+   GCHandler<Map> map() const { return GCHandler<Map>(map_); }
  public:
   inline size_t capacity() const;
   inline size_t size() const;
   inline bool empty() const;
 
  public:
-  inline bool Get ( const Handler<String>& , Value* ) const;
-  inline bool Get ( const char* , Value* ) const;
+  inline bool Get ( const String& , Value* ) const;
+  inline bool Get ( const char*   , Value* ) const;
   inline bool Get ( const std::string& , Value* ) const;
+  inline bool Get ( const SSO& , Value* ) const;
 
-  inline bool Set ( GC* , const Handler<String>& , const Value& );
+  inline bool Set ( GC* , const String& , const Value& );
   inline bool Set ( GC* , const char*   , const Value& );
   inline bool Set ( GC* , const std::string& , const Value& );
+  inline bool Set ( GC* , const SSO& , const Value& );
 
-  inline bool Update ( GC* , const Handler<String>& , const Value& );
+  inline bool Update ( GC* , const String& , const Value& );
   inline bool Update ( GC* , const char*   , const Value& );
   inline bool Update ( GC* , const std::string& , const Value& );
+  inline bool Update ( GC* , const SSO& , const Value& );
 
-  inline void Put ( GC* , const Handler<String>& , const Value& );
+  inline void Put ( GC* , const String& , const Value& );
   inline void Put ( GC* , const char*   , const Value& );
   inline void Put ( GC* , const std::string& , const Value& );
+  inline void Put ( GC* , const SSO& , const Value& );
 
-  inline bool Delete ( const Handler<String>& );
+  inline bool Delete ( const String& );
   inline bool Delete ( const char*   );
   inline bool Delete ( const std::string& );
+  inline bool Delete ( const SSO& );
 
  private:
   virtual void Mark(GC*);
@@ -594,7 +629,6 @@ class Object : public HeapObject {
  */
 
 class Map : public HeapObject {
-  inline void* entry() const;
  public:
 
   /**
@@ -607,77 +641,52 @@ class Map : public HeapObject {
    */
 
   struct Entry {
-    Value key;
+    GCRef key;
     Value value;
     std::uint32_t hash;
-    std::uint32_t next : 29;
-    std::uint32_t more :  1;
+    std::uint32_t next : 30;
     std::uint32_t del  :  1;
     std::uint32_t use  :  1;
   };
 
-  static const size_t kMaximumMapSize = 1<<29;
+  static const size_t kMaximumMapSize = 1<<30;
 
   size_t capacity() const { return capacity_; }
   size_t size() const { return size_; }
-  size_t slot_size() const { return slot_size_; }
-  bool empty() const { return size() == 0; }
-
   inline Entry* data();
   inline const Entry* data() const;
 
  public: // Mutators
-  inline bool Get ( const Handler<String>& , Value* ) const;
-  inline bool Get ( const char*, Value* ) const;
+  inline bool Get ( const String& , Value* ) const;
+  inline bool Get ( const char*   , Value* ) const;
   inline bool Get ( const std::string& , Value* ) const;
+  inline bool Get ( const SSO& , Value* ) const;
 
-  inline bool Set ( const Handler<String>& , const Value& );
+  inline bool Set ( const String& , const Value& );
   inline bool Set ( const char*   , const Value& );
   inline bool Set ( const std::string& , const Value& );
+  inline bool Set ( const SSO& , const Value& );
 
-  inline bool Update ( const Handler<String>& , const Value& );
+  inline bool Update ( const String& , const Value& );
   inline bool Update ( const char*   , const Value& );
   inline bool Update ( const std::string& , const Value& );
+  inline bool Update ( const SSO& , const Value& );
 
-  inline void Put ( const Handler<String>& , const Value& );
+  inline void Put ( const String& , const Value& );
   inline void Put ( const char*   , const Value& );
   inline void Put ( const std::string& , const Value& );
+  inline void Put ( const SSO& , const Value& );
 
-  inline bool Delete ( const Handler<String>& );
+  inline bool Delete ( const String& );
   inline bool Delete ( const char*   );
   inline bool Delete ( const std::string& );
-
- public:
-  static std::uint32_t Hash( const char* );
-  static std::uint32_t Hash( const std::string& );
-  static std::uint32_t Hash( const Handler<String>& );
-
-  static bool KeyEqual( const char* , const Value& );
-  static bool KeyEqual( const std::string& , const Value& );
-  static bool KeyEqual( const Handler<String>& , const Value& );
-
- private:
-  /**
-   * Helper function for fetching the slot inside of Entry
-   * array with certain option.
-   */
-
-  enum Option {
-    FIND = 0 ,               // Find , do not do linear probing
-    INSERT=1 ,               // If not found, do linear probing
-    UPDATE=2                 // Find , return it otherwise return a probing position
-
-  };
-
-  template< typename T >
-  Entry* FindEntry( const T& , std::uint32_t , Option );
+  inline bool Delete ( const SSO& );
 
  private:
   virtual void Mark(GC*);
 
   size_t capacity_;
   size_t size_;
-  size_t slot_size_;
 
   friend class GC;
   LAVA_DISALLOW_COPY_AND_ASSIGN(Map);
@@ -806,13 +815,13 @@ class Extension : public HeapObject {
  * ================================================================================*/
 
 #define DEFINE_GCHANDLER(T) \
-  template<> inline T& Handler<T>::operator* ()                                         \
+  template<> inline T& GCHandler<T>::operator* ()                                         \
   { return *ref_.heap_object()->Get##T(); }                                               \
-  template<> inline const T& Handler<T>::operator* () const                             \
+  template<> inline const T& GCHandler<T>::operator* () const                             \
   { return *ref_.heap_object()->Get##T(); }                                               \
-  template<> inline T* Handler<T>::operator -> ()                                       \
+  template<> inline T* GCHandler<T>::operator -> ()                                       \
   { return ref_.heap_object()->Get##T(); }                                                \
-  template<> inline const T* Handler<T>::operator -> () const                           \
+  template<> inline const T* GCHandler<T>::operator -> () const                           \
   { return ref_.heap_object()->Get##T(); }
 
 #define __(A,B,C) DEFINE_GCHANDLER(B) \
@@ -825,10 +834,6 @@ LAVASCRIPT_HEAP_OBJECT_LIST(__)
 
 inline HeapObject* Value::heap_object() const {
   return reinterpret_cast<HeapObject*>(raw_ & kPtrMask);
-}
-
-inline GCRef::RefType Value::gcref_ptr() const {
-  return reinterpret_cast<GCRef::RefType>(raw_ & kPtrMask);
 }
 
 inline void Value::set_pointer( void* ptr , int tag ) {
@@ -856,8 +861,10 @@ inline ValueType Value::type() const {
     return VALUE_NULL;
   } else if(IsTagInteger()) {
     return VALUE_INTEGER;
-  } else (IsTagReal()) {
+  } else if(IsTagReal()) {
     return VALUE_REAL;
+  } else {
+    return VALUE_SSO;
   }
 }
 
@@ -927,6 +934,12 @@ inline bool Value::GetBoolean() const {
   return IsTagTrue();
 }
 
+inline const SSO& Value::GetSSO() const {
+#ifdef LAVASCRIPT_CHECK_OBJECTS
+  lava_verify(IsSSO());
+#endif // LAVASCRIPT_CHECK_OBJECTS
+  return *reinterpret_cast<SSO*>(ptr_ & kPtrMask);
+}
 
 inline double Value::GetReal() const {
 #ifdef LAVASCRIPT_CHECK_OBJECTS
@@ -998,13 +1011,6 @@ inline Extension* Value::GetExtension() const {
   return static_cast<Extension*>(heap_object());
 }
 
-inline GCRef Value::GetGCRef() const {
-#define LAVASCRIPT_CHECK_OBJECTS
-  lava_verify(IsGCRef());
-#endif // LAVASCRIPT_CHECK_OBJECTS
-  return GCRef( gcref_ptr() );
-}
-
 inline void Value::SetInteger( std::uint32_t value ) {
   raw_ = value | TAG_INTEGER;
 }
@@ -1018,6 +1024,18 @@ inline void Value::SetBoolean( bool value ) {
     raw_ = TAG_TRUE;
   else
     raw_ = TAG_FALSE;
+}
+
+inline void Value::SetSSO( const SSO* sso ) {
+  set_pointer( const_cast<SSO*>(sso) , TAG_SSO );
+}
+
+inline void Value::SetSSO( SSO* sso ) {
+  set_pointer(sso,TAG_SSO);
+}
+
+inline void Value::SetSSO( const SSO& sso ) {
+  set_pointer(&sso,TAG_SSO);
 }
 
 inline void Value::SetHeapObject( HeapObject* ptr ) {
@@ -1060,7 +1078,7 @@ inline void Value::SetGCRef( GCRef ref ) {
 #ifdef LAVASCRIPT_CHECK_OBJECTS
   lava_verify(*ref != NULL);
 #endif
-  set_pointer(static_cast<GCRef::RefType>(ref.ref()),TAG_GCREF);
+  set_pointer(static_cast<HeapObject*>(ptr),*ref);
 }
 
 inline bool SSO::operator == ( const char* str ) const {
@@ -1498,183 +1516,6 @@ inline size_t Object::empty() const {
   return map()->empty();
 }
 
-inline bool Object::Get( const String& key , Value* output ) const {
-  return map()->Get(key,output);
-}
-
-inline bool Object::Get( const char* key , Value* output ) const {
-  return map()->Get(key,output);
-}
-
-inline bool Object::Get( const std::string& key , Value* output ) const {
-  return map()->Get(key,output);
-}
-
-inline bool Object::Set( GC* gc , const String& key ,
-    const Value& val ) {
-  return map()->Set(gc,key,val);
-}
-
-inline bool Object::Set( GC* gc , const char* key ,
-    const Value& val ) {
-  return map()->Set(gc,key,val);
-}
-
-inline bool Object::Set( GC* gc , const std::string& key ,
-    const Value& val ) {
-  return map()->Set(gc,key,val);
-}
-
-inline bool Object::Update( GC* gc , const String& key ,
-    const Value& val ) {
-  return map()->Update(gc,key,val);
-}
-
-inline bool Object::Update( GC* gc , const char* key ,
-    const Value& val ) {
-  return map()->Update(gc,key,val);
-}
-
-inline bool Object::Update( GC* gc , const std::string& key ,
-    const Value& val ) {
-  return map()->Update(gc,key,val);
-}
-
-inline bool Object::Put( GC* gc , const String& key ,
-    const Value& val ) {
-  return map()->Put(gc,key,val);
-}
-
-inline bool Object::Put( GC* gc , const char* key ,
-    const Value& val ) {
-  return map()->Put(gc,key,val);
-}
-
-inline bool Object::Put( GC* gc , const std::string& key,
-    const Value& val ) {
-  return map()->Put(gc,key,val);
-}
-
-inline bool Object::Delete( const String& key ) {
-  return map()->Delete(key);
-}
-
-inline bool Object::Delete( const char* key ) {
-  return map()->Delete(key);
-}
-
-inline bool Object::Delete( const std::string& key ) {
-  return map()->Delete(key);
-}
-
-std::uint32_t Map::Hash( const String& key ) {}
-std::uint32_t Map::Hash( const char* key ) {}
-std::uint32_t Map::Hash( const std::string& key ) {}
-
-std::uint32_t Map::Hash( const SSO& key ) {
-  return key.hash();
-}
-
-template< typename T >
-Entry* Map::FindEntry<T>( const T& key , std::uint32_t fullhash , Option opt ) {
-  int main_position = fullhash & (capacity()-1);
-  Entry* main = entry()[main_position];
-  if(!main->use) return opt == FIND ? NULL : main;
-
-  // Okay the main entry is been used or at least it is a on chain of the
-  // collision list. So we need to chase down the link to see whats happening
-  Entry* cur = main;
-  do {
-    if(!cur->del) {
-      // The current entry is not deleted, so we can try check wether it is a
-      // matched key or not
-      if(cur->hash == fullhash && KeyEqual(key,cur->key)) {
-        return opt == INSERT ? NULL : cur;
-      }
-    }
-    if(cur->more)
-      cur = entry()[cur->next];
-    else
-      break;
-  } while(true);
-
-  if(opt == FIND) return NULL;
-  // Linear probing
-  Entry* new_slot = NULL;
-  std::uint32_t h = fullhash;
-  while( (new_slot = entry()[ ++h &(capacity()-1)])->use )
-    ;
-
-  return new_slot;
-}
-
-inline void* Map::array() const {
-  return reinterpret_cast<void*>(
-      static_cast<char*>(this) + sizeof(Map));
-}
-
-inline Entry* Map::data() { return static_cast<Entry*>(array()); }
-
-inline const Entry* Map::data() const {
-  return static_cast<const Entry*>(array());
-}
-
-inline bool Map::Get( const Handler<String>& key , Value* output ) const {
-  Entry* entry = FindEntry(key,Hash(key),FIND);
-  if(entry) {
-    *output = entry->value;
-    return true;
-  }
-  return false;
-}
-
-inline bool Map::Get( const char* key , Value* output ) const {
-  Entry* entry = FindEntry(key,Hash(key),FIND);
-  if(entry) {
-    *output = entry->value;
-    return true;
-  }
-  return false;
-}
-
-inline bool Map::Get( const std::string& key , Value* output ) const {
-  Entry* entry = FindEntry(key,Hash(key),FIND);
-  if(entry) {
-    *output = entry->Value;
-    return true;
-  }
-  return false;
-}
-
-inline bool Map::Set( GC* gc , const Handler<String>& key , const Value& value ) {
-  (void)gc;
-
-  std::uint32_t f = Hash(key);
-  Entry* entry = FindEntry(key,f,INSERT);
-  if(entry) {
-#ifdef LAVASCRIPT_CHECK_OBJECTS
-    lava_verify(!entry->use);
-#endif // LAVASCRIPT_CHECK_OBJECTS
-    entry->use = 1;
-    entry->value = value;
-    entry->key.SetHandler(key);
-    entry->hash = h;
-    return true;
-  }
-  return false;
-}
-
-inline bool Map::Set( GC* gc , const char* key , const Value& value ) {
-  std::uint32_t f = Hash(key);
-  Entry* entry = FindEntry(key,f,INSERT);
-  if(entry) {
-#ifdef LAVASCRIPT_CHECK_OBJECTS
-    lava_verify(!entry->use);
-#endif // LAVASCRIPT_CHECK_OBJECTS
-    entry->use = 1;
-    entry->value = value;
-  }
-}
 
 
 

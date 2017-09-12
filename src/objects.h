@@ -32,24 +32,30 @@ class String;
 class Prototype;
 class Closure;
 class Extension;
+template< typename T > class Value;
 
-#define LAVASCRIPT_VALUE_TYPE_LIST(__) \
-  /* primitive types */ \
-  __( TYPE_INTEGER , Integer , "integer" )                           \
-  __( TYPE_REAL    , Real    , "real"    )                           \
-  __( TYPE_BOOLEAN , Boolean , "boolean" )                           \
-  __( TYPE_NULL    , Null    , "null"    )                           \
-  __( TYPE_SSO     , SSO     , "string"  )                           \
-  /* heap types */ \
-  __( TYPE_ITERATOR, Iterator, "iterator")                           \
-  __( TYPE_LIST    , List    , "list"    )                           \
-  __( TYPE_SLICE   , Slice   , "slice"   )                           \
-  __( TYPE_OBJECT  , Object  , "object"  )                           \
-  __( TYPE_MAP     , Map     , "map"     )                           \
-  __( TYPE_STRING  , String  , "string"  )                           \
-  __( TYPE_PROTOTYPE,Prototype, "prototype")                         \
-  __( TYPE_CLOSURE , Closure , "closure" )                           \
+#define LAVASCRIPT_HEAP_OBJECT_LIST(__)                               \
+  __( TYPE_ITERATOR,  Iterator, "iterator")                           \
+  __( TYPE_LIST    ,  List    , "list"    )                           \
+  __( TYPE_SLICE   ,  Slice   , "slice"   )                           \
+  __( TYPE_OBJECT  ,  Object  , "object"  )                           \
+  __( TYPE_MAP     ,  Map     , "map"     )                           \
+  __( TYPE_STRING  ,  String  , "string"  )                           \
+  __( TYPE_PROTOTYPE, Prototype, "prototype")                         \
+  __( TYPE_CLOSURE ,  Closure , "closure" )                           \
   __( TYPE_EXTENSION, Extension , "extension")
+
+#define LAVASCRIPT_PRIMITIVE_TYPE_LIST(__)                            \
+  __( TYPE_INTEGER , Integer , "integer" )                            \
+  __( TYPE_REAL    , Real    , "real"    )                            \
+  __( TYPE_BOOLEAN , Boolean , "boolean" )                            \
+  __( TYPE_NULL    , Null    , "null"    )                            \
+  __( TYPE_SSO     , SSO     , "string"  )                            \
+
+
+#define LAVASCRIPT_VALUE_TYPE_LIST(__)                                \
+  LAVASCRIPT_PRIMITIVE_TYPE_LIST(__)                                  \
+  LAVASCRIPT_HEAP_OBJECT_LIST(__)
 
 
 enum ValueType {
@@ -63,6 +69,48 @@ enum ValueType {
  * Get the name of certain value type via its enum index
  */
 const char* GetValueTypeName( ValueType );
+
+/**
+ * A value is a wrapper classes for GCRef to allow us to easily operate
+ * on different kinds of objects. User can directly use GCRef to use
+ * different heap object , but with Value it is much more safer
+ */
+template< typename T > class Value {};
+
+#define DECLARE_SPECIALIZE_VALUE(T)                                       \
+  template<> class Value<T> {                                             \
+   public:                                                                \
+    Value( const Value& that ):ref_(that.ref_){}                          \
+    Value& operator == ( const Value& that )                              \
+    { if(&that != this) ref_ = that.ref_; return *this; }                 \
+    explicit Value(GCRef* ref):ref_(ref){}                                \
+    Value():ref_(NULL){}                                                  \
+    bool IsEmpty() const { return ref_ == NULL; }                         \
+    GCRef* ref  () const { return ref_; }                                 \
+    inline T* operator -> ();                                             \
+    inline const T* operator -> () const                                  \
+    inline T& operator* ();                                               \
+    inline const T& operator* () const                                    \
+    void Clear() { ref_ = NULL; }                                         \
+   public:                                                                \
+    bool operator == ( const Value& that ) const                          \
+    { return ref_ == that.ref_; }                                         \
+    bool operator != ( const Value& that ) const                          \
+    { return ref_ != that.ref_; }                                         \
+    bool operator == ( GCRef* that ) const { return ref_ == that; }       \
+    bool operator != ( GCRef* that ) const { return ref_ != that; }       \
+                                                                          \
+   private:                                                               \
+    GCRef* ref_;                                                          \
+  };
+
+
+/** Declare specialized Value object for all HeapObject */
+#define __(A,B,C) DECLARE_SPECIALIZE_VALUE(B)
+LAVASCRIPT_HEAP_OBJECT_LIST(__)
+#undef __ // __
+
+#undef DECLARE_SPECIALIZE_VALUE // DECLARE_SPECIALIZE_VALUE
 
 /**
  *
@@ -114,9 +162,7 @@ class Handle {
   // So not break our assumption. This assumption can be held always,I guess
   static const std::uintptr_t kPtrCheckMask = ~kPtrMask;
 
-  int tag() const {
-    return (raw_&kTagMask);
-  }
+  int tag() const { return (raw_&kTagMask); }
 
   bool IsTagReal()    const { return tag() <  TAG_REAL; }
   bool IsTagInteger() const { return tag() == TAG_INTEGER; }
@@ -150,13 +196,6 @@ class Handle {
   inline bool GetBoolean() const;
   inline const SSO& GetSSO() const;
 
-
-  inline String*  GetString() const;
-  inline List*    GetList() const;
-  inline Object*  GetObject() const;
-  inline Closure* GetClosure() const;
-  inline Extension* GetExtension() const;
-
   /** Setters for all boxed value */
   void SetReal( double real ) { real_ = real; }
   inline void SetInteger( std::int32_t );
@@ -168,6 +207,8 @@ class Handle {
 
   /** Setters for pointer type */
   inline void SetGCRef( GCRef* );
+  inline GCRef* GetGCRef() const;
+  inline template< typename T > Value<T> GetGCRef() const;
 
   /**
    * Returns a type enumeration for this Handle.
@@ -472,13 +513,15 @@ class Object : public HeapObject {
 class Map : public HeapObject {
  public:
 
-  /** Entry for the open addressing hash object.
+  /**
+   * Entry for the open addressing hash object.
    *
    * As you can see we have largest size for allocating an array
    * internally used for Map object due to the fact that we use
    * 30 bits to rerepsent *next* pointer , so the map's entry cannot
    * be bigger than 2^30 which I think is enough for most of the cases
    */
+
   struct Entry {
     GCRef* key;
     Handle value;
@@ -577,6 +620,7 @@ class Iterator : public HeapObject {
  * it is referenced by Closure which will be created during runtime of script
  * execution
  */
+
 class Prototype : public HeapObject {
  public:
   const vm::Bytecode& bytecode() const { return bytecode_; }
@@ -683,7 +727,7 @@ enum GCState {
  * is not an extension.
  *
  * Our allocator will *ALWAYS* allign any memory allocation to be 8 , so we have
- * last 3 bits left out for our personal use and we use these 3 bits to store flags
+ * last 3 bits left out for our personal use.
  *
  */
 
@@ -693,7 +737,12 @@ class GCRef : DoNotAllocateOnNormalHeap {
     std::uintptr_t ptr_;
   };
 
-  static const std::uintptr_t kFlagMask      = 7;   // 0b111
+  // A pointer points to the next *available* GCRef object in the GCRefPool.
+  // This field is used for scanning during the GC cycle.
+  GCRef* next_;
+
+ private:
+  static const std::uintptr_t kFlagMask      =  7;  // 0b111
   static const std::uintptr_t kPtrMask       = ~7;  // 0b11....100
 
   void* raw_pointer() const { return reinterpret_cast<void*>(ptr_ & kPtrMask); }
@@ -702,38 +751,79 @@ class GCRef : DoNotAllocateOnNormalHeap {
   inline void set_pointer( HeapObject* );
 
  public:
-  explicit GCRef( String* ptr )    { set_pointer(ptr); }
-  explicit GCRef( List* ptr   )    { set_pointer(ptr); }
-  explicit GCRef( Object* ptr )    { set_pointer(ptr); }
-  explicit GCRef( Closure* ptr)    { set_pointer(ptr); }
-  explicit GCRef( Extension* ptr ) { set_pointer(ptr); }
+  GCRef( String* ptr, GCRef* n ):next_(n) { set_pointer(ptr); }
+  GCRef( List* ptr  , GCRef* n ):next_(n) { set_pointer(ptr); }
+  GCRef( Slice* ptr , GCRef* n ):next_(n) { set_pointer(ptr); }
+  GCRef( Object* ptr  , GCRef* n ):next_(n) { set_pointer(ptr); }
+  GCRef( Map* ptr , GCRef* n ):next_(n)   { set_pointer(ptr); }
+  GCRef( Prototype* ptr , GCRef* n ):next_(n) { set_pointer(ptr); }
+  GCRef( Closure* ptr , GCRef* n ):next_(n) { set_pointer(ptr); }
+  GCRef( Extension* ptr ):next_(n) { set_pointer(ptr); }
 
  public:
   GCState gc_state() const { return static_cast<GCState>(ptr_ & kFlagMask); }
   void set_gc_state( GCState state ) { ptr_ = ptr_ | state; }
-  HeapObject* heap_object() const { return pointer<HeapObject>(); }
   ValueType type() const { return heap_object()->type(); }
+  GCRef*  next() const { return next_; }
+  HeapObject* heap_object() const { return pointer<HeapObject>(); }
 
  public:
   bool IsString() const { return heap_object()->IsString(); }
   bool IsList  () const { return heap_object()->IsList()  ; }
+  bool IsSlice () const { return heap_object()->IsSlice() ; }
   bool IsObject() const { return heap_object()->IsObject(); }
+  bool IsMap   () const { return heap_object()->IsMap();    }
+  bool IsPrototype() const { return heap_object()->IsPrototype(); }
   bool IsClosure()const { return heap_object()->IsClosure();}
   bool IsExtension() const { return heap_object()->IsExtension(); }
 
   void SetString( String* ptr ) { set_pointer(ptr); }
   void SetList  ( List* ptr   ) { set_pointer(ptr); }
+  void SetSlice ( Slice* ptr  ) { set_pointer(ptr); }
   void SetObject( Object* ptr ) { set_pointer(ptr); }
+  void SetMap   ( Map* ptr )    { set_pointer(ptr); }
+  void SetPrototype( Prototype* ptr ) { set_pointer(ptr); }
   void SetClosure( Closure* ptr ) { set_pointer(ptr); }
   void SetExtension( Extension* ptr ) { set_pointer(ptr); }
+
   inline void SetHeapObject( HeapObject* );
 
   inline String*    GetString() const;
   inline List*      GetList  () const;
+  inline Slice*     GetSlice () const;
   inline Object*    GetObject() const;
+  inline Map*       GetMap()    const;
+  inline Prototype* GetPrototype() const;
   inline Closure*   GetClosure() const;
   inline Extension* GetExtension() const;
 };
+
+
+
+/* -------------------------------------------------------------
+ *
+ * Inline functions definition
+ *
+ * ------------------------------------------------------------*/
+
+
+#define DEFINE_SPECIALIZE_VALUE(T) \
+  inline template<> T& Value<T>::operator* ()                             \
+  { lava_verify( !IsEmpty() ); return *ref_->Get##T(); }                  \
+  inline template<> const T& Value<T>::operator* () const                 \
+  { lava_verify( !IsEmpty() ); return *ref_->Get##T(); }                  \
+  inline template<> T* Value<T>::operator -> ()                           \
+  { lava_verify( !IsEmpty() ); return ref_->Get##T();  }                  \
+  inline template<> const T* Value<T>::operator -> () const               \
+  { lava_verify( !IsEmpty() ); return ref_->Get##T();  }
+
+#define __(A,B,C) DEFINE_SPECIALIZE_VALUE(B)
+
+LAVASCRIPT_HEAP_OBJECT_LIST(__)
+
+#undef __ // __
+
+#undef DEFINE_SPECIALIZE_VALUE // DEFINE_SPECIALIZE_VALUE
 
 
 } // namespace lavascript

@@ -85,7 +85,7 @@ class GCRef {
 template< typename T > class Handler {};
 
 #define DECLARE_GCHANDLER(T) \
-  template<> class Handler<T> {                                          \
+  template<> class Handler<T> {                                            \
    public:                                                                 \
     GCRef ref() const { return ref_; }                                     \
     bool IsEmpty() const { return ref_.IsEmpty(); }                        \
@@ -96,10 +96,10 @@ template< typename T > class Handler {};
     inline T* operator -> ();                                              \
     inline const T* operator -> () const;                                  \
    public:                                                                 \
-    Handler( GCRef ref ):ref_(ref){}                                     \
-    Handler():ref_(){}                                                   \
-    Handler( const Handler& handler ):ref_(handler.ref){}              \
-    Handler& operator = ( const Handler& that ) {                      \
+    Handler( GCRef ref ):ref_(ref){}                                       \
+    Handler():ref_(){}                                                     \
+    Handler( const Handler& handler ):ref_(handler.ref){}                  \
+    Handler& operator = ( const Handler& that ) {                          \
       if(this != &that) {                                                  \
         ref_ = that.ref_;                                                  \
       }                                                                    \
@@ -153,6 +153,7 @@ class Value {
   };
 
   // Masks
+  static const std::uint64_t kPtrCheckMask = 0xffff000000000000;
   static const std::uint64_t kTagMask = 0xffff000000000000;
   static const std::uint64_t kIntMask = 0x00000000ffffffff;
   static const std::uint64_t kPtrMask = 0x0000ffffffffffff;
@@ -495,7 +496,7 @@ class List : public HeapObject {
   inline const Value& First() const;
 
  public: // Mutator for the list object itself
-  void Clear( GC* );
+  void Clear() { size_ = 0; }
   bool Push( GC* , const Value& );
   void Pop ();
 
@@ -807,11 +808,11 @@ class Extension : public HeapObject {
 
 #define DEFINE_GCHANDLER(T) \
   template<> inline T& Handler<T>::operator* ()                                         \
-  { return *ref_.heap_object()->Get##T(); }                                               \
+  { return *ref_.heap_object()->Get##T(); }                                             \
   template<> inline const T& Handler<T>::operator* () const                             \
-  { return *ref_.heap_object()->Get##T(); }                                               \
+  { return *ref_.heap_object()->Get##T(); }                                             \
   template<> inline T* Handler<T>::operator -> ()                                       \
-  { return ref_.heap_object()->Get##T(); }                                                \
+  { return ref_.heap_object()->Get##T(); }                                              \
   template<> inline const T* Handler<T>::operator -> () const                           \
   { return ref_.heap_object()->Get##T(); }
 
@@ -838,7 +839,7 @@ inline void Value::set_pointer( void* ptr , int tag ) {
    * with our assumptions
    */
 #ifdef LAVASCRIPT_ARCH_X64
-  lava_assert( (static_cast<std::uintptr_t>(ptr)&0xffff000000000000) == 0 ,
+  lava_assert( (static_cast<std::uintptr_t>(ptr)&kPtrCheckMask) == 0 ,
                "the pointer %x specified here is not a valid pointer,"
                " upper 16 bits is not 0s", ptr );
 #endif // LAVASCRIPT_ARCH_X64
@@ -856,7 +857,7 @@ inline ValueType Value::type() const {
     return VALUE_NULL;
   } else if(IsTagInteger()) {
     return VALUE_INTEGER;
-  } else (IsTagReal()) {
+  } else {
     return VALUE_REAL;
   }
 }

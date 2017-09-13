@@ -70,7 +70,7 @@ const char* GetValueTypeName( ValueType );
  *
  * High: Used for storing bit flags and other stuffs .
  *
- * [ 3 bytes reserved |8:short/long string|7-3:heap object type |2-1:gc mark state]
+ * [ 3 bytes reserved |8:short/long string| 7:reserved | 6-3:heap object type |2-1:gc mark state]
  *
  * The last 2 bits are used for storing flag for GC cycle
  */
@@ -78,10 +78,14 @@ const char* GetValueTypeName( ValueType );
 class HeapObjectHeader : DoNotAllocateOnNormalHeap {
  public:
   typedef std::uint64_t Type;
+
   static const size_t kHeapObjectHeaderSize = 8;
 
-  static const std::uint32_t kGCStateMask = 3;              // 0b11
-  static const std::uint32_t kShortLongStringMask = (1<<7); // 0b10000000
+  static const std::uint32_t kGCStateMask = 3;         // 0b11
+  static const std::uint32_t kLongStringMask = (1<<7); // 0b10000000
+
+  // Mask for getting the heap object type , should be 0b0011100
+  static const std::uint32_t kHeapObjectTypeMask  = core::OnBit<std::uint32_t,2,5>::value;
 
   GCState gc_state() const { return static_cast<GCState>(low_ & kGCStateMask); }
   void set_gc_state( GCState state ) { low_ |= static_cast<std::uint32_t>(state); }
@@ -95,19 +99,27 @@ class HeapObjectHeader : DoNotAllocateOnNormalHeap {
 
   // Check whether this object is a short string or long string if this
   // object is a heap object there
-  inline void set_short_string();
-  inline void set_long_string();
-  inline bool IsShortString() const;
-  inline bool IsLongString() const;
+  void set_short_string() { high_ &= ~kLongStringMask;  }
+  void set_long_string()  { high_ |= kLongStringMask;   }
+
+  // These two functions doesn't test whether the HeapObjectType is a TYPE_STRING but
+  // assume it is a string
+  bool IsSSO() const { return !IsLongString(); }
+  bool IsLongString() const  { return (high_ & kLongStringMask); }
 
   // HeapObject's type are stored inside of this HeapObjectHeader
-  inline ValueType type() const;
-  inline void set_type( ValueType );
+  ValueType type() const {
+    return static_cast<ValueType>( (high_ & kHeapObjectTypeMask) >> 2 );
+  }
+  void set_type( ValueType type ) {
+    high_ |= (static_cast<std::uint32_t>(type) << 2);
+  }
 
   // This represents the *size in bytes* so not the actual size stored
   // there since the number store there needs to * 8 or << 3
   size_t SizeInBytes() const { return low_ * 8; }
 
+  // Return the heap object header in raw format basically a 64 bits number
   std::uint64_t raw () const { return (static_cast<uint64_t>(low_) |
                                       (static_cast<uint64_t>(high_)<<32)); }
 

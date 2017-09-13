@@ -284,17 +284,17 @@ static_assert( sizeof(Value) == sizeof(std::uintptr_t) );
 //  inside of the HeapObjectHeader object which can be referend via (this-8)
 class HeapObject {
  public:
-  bool IsString() const { return type_ == TYPE_STRING; }
-  bool IsList  () const { return type_ == TYPE_LIST;   }
-  bool IsSlice () const { return type_ == TYPE_SLICE; }
-  bool IsObject() const { return type_ == TYPE_OBJECT; }
-  bool IsMap   () const { return type_ == TYPE_MAP; }
-  bool IsPrototype() const { return type_ == TYPE_PROTOTYPE; }
-  bool IsClosure()const { return type_ == TYPE_CLOSURE;}
-  bool IsExtension() const { return type_ == TYPE_EXNTESION; }
+  bool IsString() const { return heap_object_header().type() == VALUE_STRING; }
+  bool IsList  () const { return heap_object_header().type() == VALUE_LIST; }
+  bool IsSlice () const { return heap_object_header().type() == VALUE_SLICE; }
+  bool IsObject() const { return heap_object_header().type() == VALUE_OBJECT; }
+  bool IsMap   () const { return heap_object_header().type() == VALUE_MAP; }
+  bool IsPrototype() const { return heap_object_header().type() == VALUE_PROTOTYPE; }
+  bool IsClosure()const { return heap_object_header().type() == VALUE_CLOSURE; }
+  bool IsExtension() const { return heap_object_header().type() == VALUE_EXTENSION; }
 
  public:
-  ValueType type() const { return type_; }
+  ValueType type() const { return heap_object_header().type(); }
 
   HeapObjectHeader::Type* heap_object_header_address() const {
     return reinterpret_cast<HeapObjectHeader::Type*>(
@@ -324,8 +324,6 @@ class HeapObject {
 
   virtual void Mark(GC*) {}
   virtual ~HeapObject() = 0;
- protected:
-  HeapObject( ValueType type ) : type_(type) {}
 
  private:
   LAVA_DISALLOW_COPY_AND_ASSIGN(HeapObject);
@@ -346,8 +344,8 @@ class HeapObject {
 class SSO {
  public:
   std::uint32_t hash() const { return hash_; }
-  void* data() const { return data_; }
   size_t size() const { return size_; }
+  inline void* data() const;
 
  public:
   inline bool operator == ( const char* ) const;
@@ -381,9 +379,6 @@ class SSO {
   inline bool operator <= ( const SSO& ) const;
 
  private:
-  // data that held by SSO
-  void* data_;
-
   // size of the data
   size_t size_;
 
@@ -401,10 +396,18 @@ class SSO {
 
 /**
  * Long string representation inside of VM
+ *
+ * We never use this LongString representation directly since it is embedded
+ * by the String object internally. LongString is not a collectable object
+ * but String is and it is held by String in place.
  */
 struct LongString {
+  // Size of the LongString
   size_t size;
+
   LongString() : size(0) {}
+  // Return the stored the data inside of the LongString
+  inline void* data() const;
 };
 
 /**
@@ -414,16 +417,25 @@ struct LongString {
  * The String object directly uses memory that is after the *this*
  * pointer. Its memory layout is like this:
  *
- * ------------------------------------------
- * |sizeof(String)|  size      | data ..... |
- * ------------------------------------------
+ * ---------------------------------------------
+ * |sizeof(String)|  union { LongString ; SSO } |
+ * ---------------------------------------------
+ *
+ * Use HeapObjectHeader to tell whether we store a SSO or just a LongString
+ * internally
  *
  */
 
 class String : public HeapObject {
  public:
-  inline void*  data() const;
-  inline size_t size() const;
+  void*  data() const { return sso.data(); }
+  size_t size() const { return long_string().data(); }
+
+  const SSO& sso() const;
+  const LongString& long_string() const;
+
+  bool IsSSO() const { return heap_object_header().IsSSO(); }
+  bool IsLongString() const { return heap_object_header().IsLongString(); }
 
   // Obviously , we are not null terminated string , but with ToStdString,
   // we are able to gap the String object to real world string with a little
@@ -1064,22 +1076,28 @@ inline void Value::SetGCRef( GCRef ref ) {
   set_pointer(static_cast<GCRef::RefType>(ref.ref()),TAG_GCREF);
 }
 
+inline void* SSO::data() const {
+  SSO* self = const_cast<SSO*>(this);
+  return reinterpret_cast<void*>(
+      static_cast<char*>(self) + sizeof(SSO));
+}
+
 inline bool SSO::operator == ( const char* str ) const {
   const size_t l = strlen(str);
   const size_t len = std::min(l,size_);
-  int r = std::memcmp(data_,str,len);
+  int r = std::memcmp(data(),str,len);
   return r == 0 ? (len == l) : false;
 }
 
 inline bool SSO::operator == ( const std::string& str ) const {
   const size_t len = std::min(size_,str.size());
-  int r = std::memcmp(data_,str.c_str(),len);
+  int r = std::memcmp(data(),str.c_str(),len);
   return r == 0 ? (size_ == len) : false;
 }
 
 inline bool SSO::operator == ( const String& str ) const {
   const size_t len = std::min(size_,str.size());
-  int r = std::memcmp(data_,str.data(),len);
+  int r = std::memcmp(data(),str.data(),len);
   return r == 0 ? (size_ == len) : false;
 }
 
@@ -1090,32 +1108,32 @@ inline bool SSO::operator == ( const SSO& str ) const {
 inline bool SSO::operator != ( const char* str ) const {
   const size_t l = strlen(str);
   const size_t len = std::min(size_,l);
-  int r = std::memcmp(data_,str,len);
+  int r = std::memcmp(data(),str,len);
   return r == 0 ? (size_ != len) : true;
 }
 
 inline bool SSO::operator != ( const std::string& str ) const {
   const size_t len = std::min(size_,str.size());
-  int r = std::memcmp(data_,str.c_str(),len);
+  int r = std::memcmp(data(),str.c_str(),len);
   return r == 0 ? (size_ != len) : true;
 }
 
 inline bool SSO::operator != ( const String& str ) const {
   const size_t len = std::min(size_,str.size());
-  int r = std::memcmp(data_,str.data(),len);
+  int r = std::memcmp(data(),str.data(),len);
   return r == 0 ? (size_ != len ) : true;
 }
 
 inline bool SSO::operator != ( const SSO& str ) const {
   const size_t len = std::min(size_,str.size());
-  int r = std::memcmp(data_,str.data(),len);
+  int r = std::memcmp(data(),str.data(),len);
   return r == 0 ? (size_ != len) : true;
 }
 
 inline bool SSO::operator >  ( const char* str ) const {
   const size_t l = strlen(str);
   const size_t len = std::min(size_,l);
-  int r = std::memcmp(data_,str.data(),len);
+  int r = std::memcmp(data(),str.data(),len);
   if(r > 0 || (r == 0 && size_ > len))
     return true;
   else
@@ -1124,7 +1142,7 @@ inline bool SSO::operator >  ( const char* str ) const {
 
 inline bool SSO::operator > ( const std::string& str ) const {
   const size_t len = std::min(size_,str.size());
-  int r = std::memcmp(data_,str.c_str(),len);
+  int r = std::memcmp(data(),str.c_str(),len);
   if(r > 0 || (r == 0 && size_ > len))
     return true;
   else
@@ -1133,7 +1151,7 @@ inline bool SSO::operator > ( const std::string& str ) const {
 
 inline bool SSO::operator > ( const String& str ) const {
   const size_t len = std::min(size_,str.size());
-  int r = std::memcmp(data_,str.c_str(),len);
+  int r = std::memcmp(data(),str.c_str(),len);
   if(r > 0 || (r == 0 && size_ > len))
     return true;
   else
@@ -1142,7 +1160,7 @@ inline bool SSO::operator > ( const String& str ) const {
 
 inline bool SSO::operator > ( const SSO& str ) const {
   const size_t len = std::min(size_,str.size());
-  int r = std::memcmp(data_,str.data(),len);
+  int r = std::memcmp(data(),str.data(),len);
   if(r > 0 || (r == 0 && size_ > len))
     return true;
   else
@@ -1152,7 +1170,7 @@ inline bool SSO::operator > ( const SSO& str ) const {
 inline bool SSO::operator >= ( const char* str ) const {
   const size_t l = strlen(str);
   const size_t len = std::min(size_,l);
-  int r = std::memcmp(data_,str,len);
+  int r = std::memcmp(data(),str,len);
   if(r > 0 || (r == 0 && size_ >= len))
     return true;
   else
@@ -1161,7 +1179,7 @@ inline bool SSO::operator >= ( const char* str ) const {
 
 inline bool SSO::operator >= ( const std::string& str ) const {
   const size_t len = std::min(size_,str.size());
-  int r = std::memcmp(data_,str.c_str(),len);
+  int r = std::memcmp(data(),str.c_str(),len);
   if(r > 0 || (r == 0 && size_ >= len))
     return true;
   else
@@ -1170,7 +1188,7 @@ inline bool SSO::operator >= ( const std::string& str ) const {
 
 inline bool SSO::operator >= ( const String& str ) const {
   const size_t len = std::min(size_,str.size());
-  int r = std::memcmp(data_,str.data(),len);
+  int r = std::memcmp(data(),str.data(),len);
   if(r > 0 || (r == 0 && size_ >= len))
     return true;
   else
@@ -1179,7 +1197,7 @@ inline bool SSO::operator >= ( const String& str ) const {
 
 inline bool SSO::operator >= ( const SSO& str ) const {
   const size_t len = std::min(size_,str.size());
-  int r = std::memcmp(data_,str.data(),len);
+  int r = std::memcmp(data(),str.data(),len);
   if(r > 0 || (r == 0 && size_ >= len ))
     return true;
   else
@@ -1189,7 +1207,7 @@ inline bool SSO::operator >= ( const SSO& str ) const {
 inline bool SSO::operator < ( const char* str ) const {
   const size_t l = strlen(str);
   const size_t len = std::min(size_,l);
-  int r = std::memcmp(data_,str,len);
+  int r = std::memcmp(data(),str,len);
   if(r < 0 || (r == 0 && size_ < l))
     return true;
   else
@@ -1198,7 +1216,7 @@ inline bool SSO::operator < ( const char* str ) const {
 
 inline bool SSO::operator < ( const std::string& str ) const {
   const size_t len = std::min(size_,str.size());
-  int r = std::memcmp(data_,str.c_str(),len);
+  int r = std::memcmp(data(),str.c_str(),len);
   if(r < 0 || (r == 0 && size_ < str.size()))
     return true;
   else
@@ -1207,7 +1225,7 @@ inline bool SSO::operator < ( const std::string& str ) const {
 
 inline bool SSO::operator < ( const String& str ) const {
   const size_t len = std::min(size_,str.size());
-  int r = std::memcmp(data_,str.c_str(),len);
+  int r = std::memcmp(data(),str.c_str(),len);
   if(r < 0 || (r == 0 && size_ < str.size()))
     return true;
   else
@@ -1216,7 +1234,7 @@ inline bool SSO::operator < ( const String& str ) const {
 
 inline bool SSO::operator < ( const SSO& str ) const {
   const size_t len = std::min(size_,str.size());
-  int r = std::memcmp(data_,str.data(),len);
+  int r = std::memcmp(data(),str.data(),len);
   if(r < 0 || (r == 0 && size_ < str.size()))
     return true;
   else
@@ -1226,7 +1244,7 @@ inline bool SSO::operator < ( const SSO& str ) const {
 inline bool SSO::operator <= ( const char* str ) const {
   const size_t l = strlen(str);
   const size_t len = std::min(size_,l);
-  int r = std::memcmp(data_,str,len);
+  int r = std::memcmp(data(),str,len);
   if(r < 0 || (r == 0 && size_ <= l))
     return true;
   else
@@ -1235,7 +1253,7 @@ inline bool SSO::operator <= ( const char* str ) const {
 
 inline bool SSO::operator <= ( const std::string& str ) const {
   const size_t len = std::min(size_,str.size());
-  int r = std::memcmp(data_,str.c_str(),len);
+  int r = std::memcmp(data(),str.c_str(),len);
   if(r < 0 || (r == 0 && size_ <= str.size()))
     return true;
   else
@@ -1244,7 +1262,7 @@ inline bool SSO::operator <= ( const std::string& str ) const {
 
 inline bool SSO::operator <= ( const String& str ) const {
   const size_t len = std::min(size_,str.size());
-  int r = std:memcmp(data_,str.c_str(),len);
+  int r = std:memcmp(data(),str.c_str(),len);
   if(r < 0 || (r == 0 && size_ <= str.size()))
     return true;
   else
@@ -1253,16 +1271,29 @@ inline bool SSO::operator <= ( const String& str ) const {
 
 inline bool SSO::operator <= ( const SSO& str ) const {
   const size_t len = std::min(size_,str.size());
-  int r = std::memcmp(data_,str.size(),len);
+  int r = std::memcmp(data(),str.size(),len);
   if(r < 0 || (r == 0 && size_ <= str.size()))
     return true;
   else
     return false;
 }
 
-inline void* String::data() const {
-  return reinterpret_cast<void*>(
-      reinterpret_cast<char*>(this) + sizeof(String));
+inline const SSO& String::sso() const {
+#ifdef LAVASCRIPT_CHECK_OBJECTS
+  lava_verify(IsSSO());
+#endif // LAVASCRIPT_CHECK_OBJECTS
+
+  // The SSO are actually stored inside of SSOPool.
+  // For a String object, it only stores a pointer
+  // to the actual SSO object
+  return **reinterpret_cast<const SSO**>(this);
+}
+
+inline const LongString& String::long_string() const {
+#ifdef LAVASCRIPT_CHECK_OBJECTS
+  lava_verify(IsLongString());
+#endif // LAVASCRIPT_CHECK_OBJECTS
+  return *reinterpret_cast<const LongString*>(this);
 }
 
 inline bool String::operator == ( const char* str ) const {
@@ -1285,9 +1316,14 @@ inline bool String::operator == ( const String& str ) const {
 }
 
 inline bool String::operator == ( const SSO& str ) const {
-  const std::size_t len = std::min(size(),str.size());
-  int r = std::memcmp(data(),str.data(),len);
-  return r == 0 ? size() == len : false;
+  if(IsSSO()) {
+    return str == sso();
+  } else {
+    const LongString& lstr = long_string();
+    const std::size_t len = std::min(lstr.size,str.size());
+    int r = std::memcmp(lstr.data(),str.data(),len);
+    return r == 0 ? lstr.size == len : false;
+  }
 }
 
 inline bool String::operator != ( const char* str ) const {
@@ -1310,9 +1346,14 @@ inline bool String::operator != ( const String& str ) const {
 }
 
 inline bool String::operator != ( const SSO& str ) const {
-  const std::size_t len = std::min(size(),str.size());
-  int r = std::memcmp(data(),str.data(),len);
-  return r == 0 ? size() != len : true;
+  if(IsSSO()) {
+    return str != sso();
+  } else {
+    const LongString& lstr = long_string();
+    const std::size_t len = std::min(lstr.size,str.size());
+    int r = std::memcmp(lstr.data(),str.data(),len);
+    return r == 0 ? lstr.size != len : true;
+  }
 }
 
 inline bool String::operator > ( const char* str ) const {
@@ -1577,7 +1618,8 @@ std::uint32_t Map::Hash( const SSO& key ) {
 }
 
 template< typename T >
-Entry* Map::FindEntry<T>( const T& key , std::uint32_t fullhash , Option opt ) {
+Entry* Map::FindEntry<T>( const T& key , std::uint32_t fullhash ,
+                                         Option opt ) {
   int main_position = fullhash & (capacity()-1);
   Entry* main = entry()[main_position];
   if(!main->use) return opt == FIND ? NULL : main;
@@ -1600,11 +1642,15 @@ Entry* Map::FindEntry<T>( const T& key , std::uint32_t fullhash , Option opt ) {
   } while(true);
 
   if(opt == FIND) return NULL;
-  // Linear probing
+
+  // linear probing to find the next available new_slot
   Entry* new_slot = NULL;
   std::uint32_t h = fullhash;
   while( (new_slot = entry()[ ++h &(capacity()-1)])->use )
     ;
+
+  // linked the previous Entry to the current found one
+  cur->next = (new_slot - entry());
 
   return new_slot;
 }

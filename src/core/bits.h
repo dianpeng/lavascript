@@ -92,6 +92,45 @@ inline std::uint8_t Unset( std::uint8_t value ) {
   return value & detail::OffMask<std::uint8_t,N>::value;
 }
 
+namespace detail {
+
+template< typename T , std::size_t Start , std::size_t End >
+struct BitOnImpl {
+  static const std::size_t value = BitOnImp<T,Start+1,End>::value |
+                                   static_cast<T>(1 << Start);
+};
+
+template< typename T , std::size_t End >
+struct BitOnImpl<T,End,End> {
+  static const std::size_t value = 0;
+};
+
+} // namespace detail
+
+/**
+ * The BitOn and BitOff struct takes a Start and End index to
+ * indicate where to start our Bit flag and where to End flag.
+ *
+ * Example:
+ *
+ * std::uint32_t mask = BitOn<std::uint32_t,1,3>::value;
+ *
+ * will generate mask with value 0b0....011
+ */
+
+template< typename T , std::size_t Start , std::size_t End >
+struct BitOn {
+  static const std::size_t value =
+    detail::BitOnImpl<T,Start,End>::value;
+};
+
+template< typename T , std::size_t Start , std::size_t End >
+struct BitOff {
+  static const std::size_t value =
+    ~detail::BitOnImpl<T,Start,End>::value;
+};
+
+
 } // namespace core
 } // namespace lavascript
 

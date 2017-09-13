@@ -5,10 +5,6 @@
 #include <cstddef>
 #include <string>
 
-#define LAVA_DISALLOW_COPY_AND_ASSIGN(X) \
-  void operator = (const X&); \
-  X(const X&)
-
 namespace lavascript {
 namespace core {
 

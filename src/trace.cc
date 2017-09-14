@@ -10,7 +10,6 @@
 #include "src/os.h"
 
 namespace lavascript {
-namespace core {
 
 namespace {
 
@@ -125,5 +124,4 @@ void LogV( LogSeverity severity , const char* file , int line , const char* form
   }
 }
 
-} // namespace core
 } // namespace lavascript

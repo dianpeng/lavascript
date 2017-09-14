@@ -6,8 +6,6 @@
 #include <cstdlib>
 
 namespace lavascript {
-namespace core {
-
 
 void FormatV(std::string* buffer, const char* format, va_list vl) {
   va_list backup;
@@ -71,6 +69,4 @@ std::string PrettyPrintReal( double real ) {
   }
 }
 
-
-} // namespace core
 } // namespace lavascript

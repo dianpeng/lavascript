@@ -1,7 +1,7 @@
 #ifndef ALL_STATIC_H_
 #define ALL_STATIC_H_
 
-#include "core/trace.h"
+#include "trace.h"
 #include <cstddef>
 
 namespace lavascript {

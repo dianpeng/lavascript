@@ -3,9 +3,9 @@
 #include "token.h"
 #include <cctype>
 #include <string>
-#include <src/core/util.h>
 #include <src/zone/zone.h>
 #include <src/error-report.h>
+#include <src/util.h>
 
 namespace lavascript {
 

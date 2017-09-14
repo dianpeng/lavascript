@@ -5,9 +5,9 @@
 #include <src/zone/zone.h>
 #include <src/zone/string.h>
 #include <src/zone/vector.h>
-#include <src/core/trace.h>
-#include <src/core/util.h>
 #include <src/error-report.h>
+#include <src/trace.h>
+#include <src/util.h>
 
 #include <cmath>
 #include <cstdlib>
@@ -97,7 +97,7 @@ inline bool Expression::AsBoolean( bool* output ) const {
     case EREAL:    *output = (real_value ? true : false); return true;
     case EINTEGER: *output = (int_value ? true : false); return true;
     case EBOOLEAN: *output = bool_value; return true;
-    case ESTRING: return ::lavascript::core::StringToBoolean( str_value->data(),
+    case ESTRING: return ::lavascript::StringToBoolean( str_value->data(),
                                                               output );
     default: *output = false; return true;
   }
@@ -109,7 +109,7 @@ inline bool Expression::AsInteger( int* output ) const {
     case EREAL: *output = static_cast<int>(real_value); return true;
     case EINTEGER: *output = int_value; return true;
     case EBOOLEAN: *output = bool_value ? 1 : 0; return true;
-    case ESTRING: return ::lavascript::core::StringToInt( str_value->data() ,
+    case ESTRING: return ::lavascript::StringToInt( str_value->data() ,
                                                           output );
     default: return false;
   }
@@ -121,7 +121,7 @@ inline bool Expression::AsReal( double* output ) const {
     case EREAL: *output = real_value; return true;
     case EINTEGER: *output = static_cast<double>(int_value); return true;
     case EBOOLEAN: *output = bool_value ? 1.0 : 0.0; return true;
-    case ESTRING: return ::lavascript::core::StringToReal( str_value->data() ,
+    case ESTRING: return ::lavascript::StringToReal( str_value->data() ,
                                                            output );
     default: return false;
   }
@@ -131,7 +131,7 @@ inline void Expression::AsString( Zone* zone , String** output ) const {
   lava_verify( IsLiteral() );
   switch(ekind) {
     case EREAL:
-      *output = String::New(zone,core::PrettyPrintReal(real_value)); break;
+      *output = String::New(zone,PrettyPrintReal(real_value)); break;
     case EINTEGER:
       *output = String::New(zone,std::to_string(int_value)); break;
     case EBOOLEAN:
@@ -146,7 +146,7 @@ inline void Expression::AsString( Zone* zone , String** output ) const {
 inline void Expression::AsString( std::string* output ) const {
   lava_verify( IsLiteral() );
   switch(ekind) {
-    case EREAL: *output = core::PrettyPrintReal(real_value); break;
+    case EREAL: *output = PrettyPrintReal(real_value); break;
     case EINTEGER: *output = std::to_string(int_value); break;
     case EBOOLEAN: output->assign( bool_value ? "true" : "false" ); break;
     case ESTRING: output->assign( str_value->data() ); break;

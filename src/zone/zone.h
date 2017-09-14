@@ -1,7 +1,7 @@
 #ifndef ZONE_ZONE_H_
 #define ZONE_ZONE_H_
-#include <src/core/util.h>
-#include <src/core/trace.h>
+#include <src/util.h>
+#include <src/trace.h>
 
 #include <cstddef>
 

@@ -4,7 +4,6 @@
 #include <cstdlib>
 
 namespace lavascript {
-namespace core {
 
 bool GetEnvVar( const char* name , const char** output ) {
   const char* val = getenv(name);
@@ -51,5 +50,4 @@ bool GetEnvVar( const char* name , bool* value ) {
   return true;
 }
 
-} // namespace core
 } // namespace lavascript

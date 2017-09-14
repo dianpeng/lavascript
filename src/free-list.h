@@ -1,10 +1,9 @@
-#ifndef CORE_FREE_LIST_H_
-#define CORE_FREE_LIST_H_
-
+#ifndef FREE_LIST_H_
+#define FREE_LIST_H_
 #include <cstdint>
-#include "trace.h"
 
-#include <src/common.h>
+#include "common.h"
+#include "trace.h"
 
 namespace lavascript {
 namespace core {
@@ -118,4 +117,4 @@ template< typename T > void FreeList::Drop( T* ptr ) {
 } // namespace core
 } // namespace lavascript
 
-#endif // CORE_FREE_LIST_H_
+#endif // FREE_LIST_H_

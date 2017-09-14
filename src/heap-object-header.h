@@ -4,7 +4,7 @@
 #include <cstdint>
 #include "all-static.h"
 
-#include "core/bits.h"
+#include "bits.h"
 
 namespace lavascript {
 
@@ -52,6 +52,18 @@ enum ValueType {
 
 const char* GetValueTypeName( ValueType );
 
+template< typename T > struct GetObjectTypeName {};
+
+#define __(A,B,C) \
+  class B; template<> struct GetObjectTypeName<B> {        \
+    static const ValueType value = A;                      \
+  };
+
+LAVASCRIPT_HEAP_OBJECT_LIST(__)
+
+#undef // __
+
+
 /**
  *
  * HeapObjectHeader is an object represents many states for a certain object.
@@ -93,7 +105,7 @@ class HeapObjectHeader : DoNotAllocateOnNormalHeap {
   static const std::uint32_t kEndOfChunkMask = (1<<6); // 0b01000000
 
   // Mask for getting the heap object type , should be 0b0011100
-  static const std::uint32_t kHeapObjectTypeMask  = core::BitOn<std::uint32_t,2,5>::value;
+  static const std::uint32_t kHeapObjectTypeMask  = bits::BitOn<std::uint32_t,2,5>::value;
 
   GCState gc_state() const { return static_cast<GCState>(low_ & kGCStateMask); }
   void set_gc_state( GCState state ) { low_ |= static_cast<std::uint32_t>(state); }
@@ -107,7 +119,7 @@ class HeapObjectHeader : DoNotAllocateOnNormalHeap {
 
   // Check whether this object is a short string or long string if this
   // object is a heap object there
-  void set_short_string() { high_ &= ~kLongStringMask;  }
+  void set_sso() { high_ &= ~kLongStringMask;  }
   void set_long_string()  { high_ |= kLongStringMask;   }
 
   // These two functions doesn't test whether the HeapObjectType is a TYPE_STRING but
@@ -144,16 +156,14 @@ class HeapObjectHeader : DoNotAllocateOnNormalHeap {
   operator std::uint64_t const () { return raw(); }
 
   explicit HeapObjectHeader( std::uint64_t raw ) :
-    high_( core::High64(raw) ),
-    low_ ( core::Low64 (raw) )
+    high_( bits::High64(raw) ),
+    low_ ( bits::Low64 (raw) )
   {}
 
   explicit HeapObjectHeader( void* raw ):
-    high_( core::High64(*reinterpret_cast<std::uint64_t*>(raw)) ),
-    low_ ( core::Low64 (*reinterpret_cast<std::uint64_t*>(raw)) )
+    high_( bits::High64(*reinterpret_cast<std::uint64_t*>(raw)) ),
+    low_ ( bits::Low64 (*reinterpret_cast<std::uint64_t*>(raw)) )
   {}
-
-  HeapObjectHeader(): high_(0), low_(0) {}
 
  private:
   std::uint32_t high_;

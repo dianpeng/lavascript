@@ -1,5 +1,5 @@
 #include "error-report.h"
-#include "core/util.h"
+#include "util.h"
 
 #include <cctype>
 
@@ -40,7 +40,7 @@ void GetCodeSnippets( std::string* buffer , size_t start , size_t end ,
   // get the coordinate position for a specific token or string
   GetCoordinate(source,start,&line,&ccount);
   std::string snippet( source + start , (end-start) );
-  core::Format(buffer,"around line:%d andd position:%d ,source code ...  %s  ...",
+  Format(buffer,"around line:%d andd position:%d ,source code ...  %s  ...",
                       static_cast<int>(line),
                       static_cast<int>(ccount),
                       snippet.c_str());
@@ -56,8 +56,8 @@ void ReportErrorV( std::string* buffer , const char* where , const char* source 
   std::string snippet;
   std::string message;
   GetCodeSnippets(&snippet,start,end,source);
-  core::FormatV(&message,format,vl);
-  core::Format(buffer,"Error in %s happened at %s:\n%s\n",where,snippet.c_str(),
+  FormatV(&message,format,vl);
+  Format(buffer,"Error in %s happened at %s:\n%s\n",where,snippet.c_str(),
                                                                 message.c_str());
 }
 

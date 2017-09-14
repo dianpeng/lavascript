@@ -1,5 +1,5 @@
-#ifndef CORE_UTIL_H_
-#define CORE_UTIL_H_
+#ifndef UTIL_H_
+#define UTIL_H_
 
 #include <cstdarg>
 #include <cstddef>
@@ -7,7 +7,6 @@
 #include <new>
 
 namespace lavascript {
-namespace core {
 
 template< size_t N , typename T >
 size_t ArraySize( const T (&arr)[N] ) { (void)arr; return N; }
@@ -58,8 +57,6 @@ template< typename T > void Destruct( T* object ) {
   object->~T();
 }
 
-
-} // namespace core
 } // namespace lavascript
 
-#endif // CORE_UTIL_H_
+#endif // UTIL_H_

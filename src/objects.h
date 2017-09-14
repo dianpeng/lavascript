@@ -5,10 +5,8 @@
 #include <cstring>
 #include <type_traits>
 
-#include "vm/bytecode.h"
-#include "vm/constant-table.h"
 #include "hash.h"
-#include "core/trace.h"
+#include "trace.h"
 #include "all-static.h"
 #include "heap-object-header.h"
 
@@ -233,52 +231,40 @@ static_assert( sizeof(Value) == sizeof(std::uintptr_t) );
 //  inside of the HeapObjectHeader object which can be referend via (this-8)
 class HeapObject : DoNotAllocateOnNormalHeap {
  public:
-  bool IsString() const { return heap_object_header().type() == VALUE_STRING; }
-  bool IsList  () const { return heap_object_header().type() == VALUE_LIST; }
-  bool IsSlice () const { return heap_object_header().type() == VALUE_SLICE; }
-  bool IsObject() const { return heap_object_header().type() == VALUE_OBJECT; }
-  bool IsMap   () const { return heap_object_header().type() == VALUE_MAP; }
-  bool IsPrototype() const { return heap_object_header().type() == VALUE_PROTOTYPE; }
-  bool IsClosure() const { return heap_object_header().type() == VALUE_CLOSURE; }
-  bool IsExtension() const { return heap_object_header().type() == VALUE_EXTENSION; }
+  bool IsString() const { return hoh().type() == VALUE_STRING; }
+  bool IsList  () const { return hoh().type() == VALUE_LIST; }
+  bool IsSlice () const { return hoh().type() == VALUE_SLICE; }
+  bool IsObject() const { return hoh().type() == VALUE_OBJECT; }
+  bool IsMap   () const { return hoh().type() == VALUE_MAP; }
+  bool IsPrototype() const { return hoh().type() == VALUE_PROTOTYPE; }
+  bool IsClosure() const { return hoh().type() == VALUE_CLOSURE; }
+  bool IsExtension() const { return hoh().type() == VALUE_EXTENSION; }
 
   // Generic way to check whether this HeapObject is certain type
   template< typename T > bool IsType() const;
 
  public:
-  ValueType type() const { return heap_object_header().type(); }
-
-  HeapObjectHeader::Type* heap_object_header_address() const {
+  HeapObjectHeader::Type* hoh_address() const {
     return reinterpret_cast<HeapObjectHeader::Type*>(
         static_cast<std::uint8_t*>(this) - HeapObjectHeader::kHeapObjectHeaderSize);
   }
 
-  HeapObjectHeader::Type heap_object_header_word() const {
-    return *heap_object_header_address();
+  HeapObjectHeader::Type hoh_raw() const {
+    return *hoh_address();
   }
 
-  HeapObjectHeader heap_object_header() const {
-    return HeapObjectHeader( heap_object_header_word() );
+  HeapObjectHeader hoh() const {
+    return HeapObjectHeader( hoh_raw() );
   }
 
-  void set_heap_object_header( const HeapObjectHeader& word ) {
+  void set_hoh( const HeapObjectHeader& word ) {
     *heap_word_address() = word.raw();
   }
- public: // State checking
-  bool IsGCBlack  () const { return heap_object_header().IsGCBlack(); }
-  bool IsGCWhite  () const { return heap_object_header().IsGCWhite(); }
-  bool IsGCGray   () const { return heap_object_header().IsGCGray (); }
-  GCState gc_state() const { return heap_object_header().gc_state(); }
-  void set_gc_state( GCState state ) {
-    HeapObjectHeader h = heap_object_header();
-    h.set_gc_state( state );
-    set_heap_object_header(h);
-  }
 
- public:
-  virtual void Mark(GC*) {}
+  // Helper function for setting the GC state for this HeapObject
+  inline void set_gc_state( GCState state );
+
   virtual ~HeapObject() = 0;
-
  private:
   LAVA_DISALLOW_COPY_AND_ASSIGN(HeapObject);
 };
@@ -385,8 +371,8 @@ class String final : public HeapObject {
   const SSO& sso() const;
   const LongString& long_string() const;
 
-  bool IsSSO() const { return heap_object_header().IsSSO(); }
-  bool IsLongString() const { return heap_object_header().IsLongString(); }
+  bool IsSSO() const { return hoh().IsSSO(); }
+  bool IsLongString() const { return hoh().IsLongString(); }
 
   // Obviously , we are not null terminated string , but with ToStdString,
   // we are able to gap the String object to real world string with a little
@@ -429,6 +415,9 @@ class String final : public HeapObject {
   static Handler<String> New( GC* , const char* );
   static Handler<String> New( GC* , const char* , size_t );
   static Handler<String> New( GC* , const std::string& );
+
+  template< typename T , typename DATA >
+  bool Visit( const T& , const Data& d );
 
  private:
 
@@ -473,8 +462,10 @@ class List final : public HeapObject {
   static Handler<List> New( GC* , size_t capacity );
   static Handler<List> New( GC* , const Handler<Slice>& slice );
 
+  template< typename T , typename DATA >
+  bool Visit( const T& , const Data& d );
+
  private:
-  virtual void Mark( GC* );
 
   size_t size_;
   Handler<Slice> slice_;
@@ -509,8 +500,10 @@ class Slice final : public HeapObject {
   static Handler<Slice> New( GC* , size_t capacity );
   static Handler<Slice> Extend( GC* , const Handler<Slice>& old , size_t new_cap );
 
+  template< typename T , typename DATA >
+  bool Visit( const T& , const Data& d );
+
  private:
-  virtual void Mark( GC* );
 
   size_t capacity_;
 
@@ -560,8 +553,10 @@ class Object final : public HeapObject {
   static Handler<Object> New( GC* , size_t capacity );
   static Handler<Object> New( GC* , const Handler<Map>& );
 
+  template< typename T , typename DATA >
+  bool Visit( const T& , const Data& d );
+
  private:
-  virtual void Mark(GC*);
   Handler<Map> map_;
 
   friend class GC;
@@ -652,6 +647,9 @@ class Map final : public HeapObject {
   static Handler<Map> New( GC* , size_t capacity );
   static Handler<Map> Rehash( GC* , const Handler<Map>& , size_t );
 
+  template< typename T , typename DATA >
+  bool Visit( const T& , const Data& d );
+
  private:
   /**
    * Helper function for fetching the slot inside of Entry
@@ -669,7 +667,6 @@ class Map final : public HeapObject {
   Entry* FindEntry( const T& , std::uint32_t , Option );
 
  private:
-  virtual void Mark(GC*);
 
   size_t capacity_;
   size_t size_;
@@ -727,27 +724,27 @@ class Iterator : public HeapObject {
 
 class Prototype final : public HeapObject {
  public:
-  const vm::Bytecode& bytecode() const { return bytecode_; }
-  const vm::ConstantTable& constant_table() const { return constant_table_; }
-  const vm::UpValueIndexArray& upvalue_array() const { return upvalue_array_; }
-  GCRef  proto_string_gcref() const { return proto_string_; }
-  inline proto_string() const;
+  // const vm::Bytecode& bytecode() const { return bytecode_; }
+  // const vm::ConstantTable& constant_table() const { return constant_table_; }
+  // const vm::UpValueIndexArray& upvalue_array() const { return upvalue_array_; }
+  Handle<String> proto_string() const { return proto_string_; }
   size_t argument_size() const { return argument_size_; }
 
  public: // Mutator
-  vm::Bytecode& bytecode() { return bytecode_; }
-  vm::ConstantTable& constant_table() { return constant_table_; }
-  vm::UpValueIndexArray& upvalue_array() { return upvalue_array_; }
-  void set_proto_string( GCRef* str ) { proto_string_ = str; }
+  // vm::Bytecode& bytecode() { return bytecode_; }
+  // vm::ConstantTable& constant_table() { return constant_table_; }
+  // vm::UpValueIndexArray& upvalue_array() { return upvalue_array_; }
+  void set_proto_string( const Handle<String>& str ) { proto_string_ = str; }
   void set_argument_size( size_t arg) { argument_size_ = arg;}
 
- private:
-  virtual void Mark(GC*);
+  template< typename T , typename DATA >
+  bool Visit( const T& , const Data& d );
 
-  vm::BytecodeArray code_;
-  vm::ConstantTable const_table_;
-  vm::UpValueIndexArray upvalue_array_;
-  GCRef  proto_string_;
+ private:
+  // vm::BytecodeArray code_;
+  // vm::ConstantTable const_table_;
+  // vm::UpValueIndexArray upvalue_array_;
+  Handle<String> proto_string_;
   size_t argument_size_;
 
   friend class GC;
@@ -774,8 +771,10 @@ class Closure final : public HeapObject {
   inline Value* upvalue();
   inline const Value* upvalue() const;
 
+  template< typename T , typename DATA >
+  bool Visit( const T& , const Data& d );
+
  private:
-  virtual void Mark(GC*);
 
   GCRef prototype_;
 
@@ -1110,6 +1109,12 @@ bool HeapObject::IsType<T>() const {
   else
     lava_die();
   return false;
+}
+
+inline void HeapObject::set_gc_state( GCState state ) {
+  HeapObjectHeader hdr( hoh() );
+  hdr.set_gc_state(state);
+  set_hoh(hdr);
 }
 
 

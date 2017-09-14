@@ -5,28 +5,15 @@
 
 #include "common.h"
 #include "heap-object-header.h"
+#include "heap-allocator.h"
 
-#include "core/util.h"
-#include "core/trace.h"
-#include "core/free-list.h"
+#include "util.h"
+#include "trace.h"
+#include "free-list.h"
 
 namespace lavascript {
 
 class Context;
-
-/**
- * Heap allocator
- *
- * Used to allocate chunk memory by Heap
- */
-
-class HeapAllocator {
- public:
-  virtual void* Malloc( size_t size ) = 0;
-  virtual void  Free  ( void* ) = 0;
-  virtual ~HeapAllocator() {}
-};
-
 
 /**
  * GC implemention for lavascript. This GC implementation is a stop-the-world
@@ -95,7 +82,7 @@ class GCRefPool final {
   Ref* front_;
 
   // Free list pool for manipulating the GCRefPool object
-  core::FreeList<Ref> free_list_;
+  FreeList<Ref> free_list_;
 
   friend class Iterator;
 
@@ -140,7 +127,7 @@ class Heap final {
 
  public:
   // Initialize the Heap object via Context object
-  inline Heap( std::size_t , double , std::size_t , std::size_t , HeapAllocator* );
+  Heap( std::size_t , double , std::size_t , std::size_t , HeapAllocator* );
   ~Heap();
 
   std::size_t threshold() const { return threshold_; }
@@ -167,8 +154,6 @@ class Heap final {
    * NULL.
    *
    */
-
-  inline
   void* Grab( std::size_t object_size ,             // Size of object , not include header
               ValueType type ,                      // Type of the object
               GCState gc_state = GC_WHITE,          // State of the GC
@@ -186,12 +171,10 @@ class Heap final {
   //
   // It will return address where points to the HeapObjectHeader basically the start of a certain
   // allocation
-  inline
   void* RawCopyObject( const void* ptr , std::size_t raw_size );
 
   // This API is same as RawCopyObject expect it checks for whether we have enough spaces for
   // copy operation.
-  inline
   void* CopyObject   ( const void* ptr , std::size_t raw_size );
 
   // Swap another heap with *this* heap
@@ -210,16 +193,16 @@ class Heap final {
     inline bool HasNext() const;
 
     // Move the iterator to next
-    inline bool Move() const;
+    bool Move() const;
 
     // Dereference an object from current position
     inline HeapObject* heap_object() const;
 
     // Get the HeapObjectHeader from the current position
-    inline HeapObjectHeader heap_object_header() const;
+    inline HeapObjectHeader hoh() const;
 
     // Set the HeapObjectHeader to the current position
-    inline void set_heap_object_header( const HeapObjectHeader& header ) const;
+    inline void set_hoh( const HeapObjectHeader& header ) const;
 
    private:
     Chunk* current_chunk_;                   // Current chunk
@@ -242,7 +225,7 @@ class Heap final {
   void HeapDump( int verbose , const char* filename = NULL ); // Debug
 
  private:
-  inline bool RefillChunk( size_t size );
+  bool RefillChunk( size_t size );
 
   // Find the raw_bytes_length chunk from Walking the whole list of chunk
   // this is a slow path and it will only triggers when we 1) bypass threshold
@@ -329,25 +312,6 @@ GCRefPool::Iterator::Iterator( const GCRefPool::Iterator& that ) {
   return *this;
 }
 
-inline Heap::Heap( size_t threshold ,
-                   double factor ,
-                   size_t chunk_capacity ,
-                   size_t init_size ,
-                   HeapAllocator* allocator ):
-  threshold_(threshold),
-  factor_(factor),
-  alive_size_(0),
-  chunk_size_(0),
-  allocated_bytes_(0),
-  total_bytes_(0),
-  chunk_capacity_(chunk_capacity),
-  chunk_current_(NULL),
-  fall_back_(NULL),
-  allocator_(allocator)
-{
-  RefillChunk(init_size);
-}
-
 inline void Heap::Chunk::SetEndOfBlock( void* header , bool flag ) {
   HeapObjectHeader hdr(*reinterpret_cast<std::uint64_t*>(header));
   if(flag) hdr.set_end_of_block();
@@ -407,25 +371,6 @@ inline bool Heap::Iterator::HasNext() const {
   return current_chunk_ != NULL;
 }
 
-inline bool Heap::Iterator::Move() {
-#ifdef LAVASCRIPT_CHECK_OBJECTS
-  lava_verify(HasNext());
-#endif // LAVASCRIPT_CHECK_OBJECTS
-  do {
-    HeapObjectHeader hdr(
-        static_cast<char*>(current_chunk_->start()) + current_cursor_ );
-    if(hdr.IsEndOfChunk()) {
-      current_chunk_ = current_chunk_->next();
-      current_cursor_ = 0;
-      continue;
-    } else {
-      current_cursor_ += hdr.total_size();
-      return true;
-    }
-  } while(current_chunk_);
-  return false;
-}
-
 inline HeapObject* Heap::Iterator::heap_object() const {
 #ifdef LAVASCRIPT_CHECK_OBJECTS
   lava_verify(HasNext());
@@ -435,57 +380,20 @@ inline HeapObject* Heap::Iterator::heap_object() const {
                                                     HeapObjectHeader::kHeapObjectHeaderSize);
 }
 
-inline HeapObjectHeader Heap::Iterator::heap_object_header() const {
+inline HeapObjectHeader Heap::Iterator::hoh() const {
 #ifdef LAVASCRIPT_CHECK_OBJECTS
   lava_verify(HasNext());
 #endif // LAVASCRIPT_CHECK_OBJECTS
   return HeapObjectHeader(static_cast<char*>(current_chunk_->start()) + current_cursor_);
 }
 
-inline void Heap::Iterator::set_heap_object_header(
+inline void Heap::Iterator::set_hoh(
     const HeapObjectHeader& hdr ) const {
 #ifdef LAVASCRIPT_CHECK_OBJECTS
   lava_verify(HasNext());
 #endif // LAVASCRIPT_CHECK_OBJECTS
   *reinterpret_cast<std::uint64_t*>(
       static_cast<char*>(current_chunk_->start()) + current_cursor) = hdr.raw();
-}
-
-inline void Heap::Swap( Heap* that ) {
-  std::swap( threshold_ , that->threshold_ );
-  std::swap( factor_    , that->factor_    );
-  std::swap( alive_size_, that->alive_size_);
-  std::swap( chunk_size_, that->chunk_size_);
-  std::swap( allocated_bytes_ , that->allocated_bytes_ );
-  std::swap( total_bytes_ , that->total_bytes_ );
-  std::swap( chunk_capacity_ , that->chunk_capacity_ );
-  std::swap( chunk_current_ , that->chunk_current_ );
-  std::swap( fail_back_ , that->fail_back_ );
-  std::swap( allocator_ , that->allocator_ );
-}
-
-inline bool Heap::RefillChunk( size_t size ) {
-  size_t raw_size;
-  if( chunk_capacity_ < size ) {
-    raw_size = size;
-  } else {
-    raw_size = chunk_capacity_;
-  }
-
-  void* new_buf = allocator ? allocator->Malloc( raw_size + sizeof(Chunk) ) :
-                              ::malloc( raw_size + sizeof(Chunk) );
-  if(!new_buf) return false;
-
-  Chunk* ck = reinterpret_cast<Chunk*>(new_buf);
-  ck->size_in_bytes = raw_size;
-  ck->size_in_objects= 0;
-  ck->bytes_used = 0;
-  ck->previous = NULL;
-  ck->next = chunk_current_;
-  chunk_current_ = ck;
-  chunk_size_++;
-  total_bytes_+= raw_size;
-  return true;
 }
 
 inline void* Heap::SetHeapObjectHeader( void* ptr , size_t size , ValueType type,
@@ -499,63 +407,11 @@ inline void* Heap::SetHeapObjectHeader( void* ptr , size_t size , ValueType type
   return static_cast<char*>(ptr) + HeapObjectHeader::kHeapObjectHeaderSize;
 }
 
-inline void* Heap::Grab( size_t object_size , ValueType type, GCState gc_state ,
-                                                              bool is_long_str ) {
-  object_size = core::Align(object_size,kAlignment);
-  std::size_t size = object_size + kHeapObjectHeaderSize;
-
-  // Try to use slow FindInChunk when we trigger it because of we use too much
-  // memory now
-  size_t find_in_chunk_trigger = threshold_ * factor_;
-  if( find_in_chunk_trigger < allocated_bytes_ ) {
-    void* ret = FindInChunk(size);
-    if(ret) return ret;
-  }
-
-  if(chunk_current_->bytes_left() < size) {
-    if(!RefillChunk(size)) return NULL;
-  }
-
-  // Now try to allocate it from the newly created chunk
-#ifdef LAVASCRIPT_CHECK_OBJECTS
-  lava_verify(chunk_current_->bytes_left() >= size);
-  lava_verify( is_long_str ? type == VALUE_STRING : true );
-#endif // LAVASCRIPT_CHECK_OBJECTS
-
-  allocated_bytes_ += size;
-  alive_size_++;
-
-  return SetHeapObjectHeader(chunk_current->Bump(size),object_size,type,gc_state,
-                                                                        is_long_str);
-}
-
 inline void* Heap::RawCopyObject( const void* ptr , std::size_t length ) {
   void* ret = chunk_current_->Bump(length);
   memcpy(ret,ptr,length);
 
   ++allocated_bytes_ += length;
-  alive_size_++;
-  return ret;
-}
-
-inline void* Heap::CopyObject( const void* ptr , std::size_t length ) {
-#ifdef LAVASCRIPT_CHECK_OBJECTS
-  lava_verify( core::Align(length,kAlignment) == length );
-#endif // LAVASCRIPT_CHECK_OBJECTS
-
-  size_t find_in_chunk_trigger = threshold_ * factor_;
-  void* buf = NULL;
-  if(find_in_chunk_trigger < allocated_bytes_) {
-    buf = FindInChunk(length);
-  }
-  if(!buf) {
-    if(chunk_current_->bytes_left() < length) {
-      if(!RefillChunk(size)) return NULL;
-    }
-    ret = chunk_current_->Bump(length);
-  }
-  memcpy(ret,ptr,length);
-  allocated_bytes_ += length;
   alive_size_++;
   return ret;
 }
@@ -621,7 +477,7 @@ class GC : AllStatic {
    * directly return the GCRef pointer
    */
   template< typename T , typename ... ARGS >
-  T** New( const HeapObjectHeader& hdr , ARGS ...args );
+  T** New( ARGS ...args );
 
   /*
    * This API call allow user to provide a holder and reuse that holder
@@ -629,7 +485,7 @@ class GC : AllStatic {
    * Extend/Rehash for Slice and Map object
    */
   template< typename T , typename ... ARGS >
-  T** New( T** holder , const HeapObjectHeader& hdr , ARGS ...args );
+  T** New( T** holder , ARGS ...args );
 
   /**
    * Specialized New for String creation since String is handled specially
@@ -694,17 +550,17 @@ class GC : AllStatic {
 };
 
 template< typename T , typename ...ARGS >
-T** GC::New( const HeapObjectHeader& hdr , ARGS ...args ) {
+T** GC::New( ARGS ...args ) {
   return New( reinterpret_cast<T**>(ref_pool_.Grab()) , hdr , args... );
 }
 
 template< typename T , typename ...ARGS >
-T** GC::New( T** holder , const HeapObjectHeader& hdr , ARGS ...args ) {
+T** GC::New( T** holder , ARGS ...args ) {
   TryGC(); // Try to perform GC if we need to
-  *holder = core::Construct( heap_.Grab( sizeof(T),
-                                         hdr.type(),
-                                         hdr.gc_state(),
-                                         hdr.IsLongString() ) , args... );
+  *holder = Construct( heap_.Grab( sizeof(T),
+                                         GetObjectValueType<T>::value,
+                                         GC_WHITE,
+                                         false ) , args... );
   return holder;
 }
 

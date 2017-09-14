@@ -1,9 +1,10 @@
 #ifndef PARSER_AST_AST_FACTORY_H_
 #define PARSER_AST_AST_FACTORY_H_
-#include <src/core/util.h>
 #include <src/zone/zone.h>
 #include <src/zone/string.h>
 #include <src/parser/lexer.h>
+#include <src/util.h>
+
 #include <map>
 
 #include "ast.h"

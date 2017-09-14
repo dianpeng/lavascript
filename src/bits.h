@@ -1,15 +1,13 @@
-#ifndef CORE_BITS_H_
-#define CORE_BITS_H_
-
+#ifndef BITS_H_
+#define BITS_H_
 #include <cstdint>
 
 namespace lavascript {
-namespace core {
+namespace bits {
 
 /**
  * Some helper stuff for bits manipulation
  */
-
 inline std::uint32_t High64( std::uint64_t value ) {
   static const std::uint64_t kMask = 0xffffffff00000000;
   return static_cast<std::uint32_t>( (value & kMask) >> 32 );
@@ -130,8 +128,7 @@ struct BitOff {
     ~detail::BitOnImpl<T,Start,End>::value;
 };
 
-
-} // namespace core
+} // namespace bits
 } // namespace lavascript
 
-#endif // CORE_BITS_H_
+#endif // BITS_H_

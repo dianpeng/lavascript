@@ -6,6 +6,133 @@
 namespace lavascript {
 namespace gc {
 
+Heap::Heap( size_t threshold , double factor ,
+                               size_t chunk_capacity ,
+                               size_t init_size ,
+                               HeapAllocator* allocator ):
+  threshold_(threshold),
+  factor_(factor),
+  alive_size_(0),
+  chunk_size_(0),
+  allocated_bytes_(0),
+  total_bytes_(0),
+  chunk_capacity_(chunk_capacity),
+  chunk_current_(NULL),
+  fall_back_(NULL),
+  allocator_(allocator)
+{
+  RefillChunk(init_size);
+}
+
+bool Heap::Iterator::Move() {
+#ifdef LAVASCRIPT_CHECK_OBJECTS
+  lava_verify(HasNext());
+#endif // LAVASCRIPT_CHECK_OBJECTS
+  do {
+    HeapObjectHeader hdr(
+        static_cast<char*>(current_chunk_->start()) + current_cursor_ );
+    if(hdr.IsEndOfChunk()) {
+      current_chunk_ = current_chunk_->next();
+      current_cursor_ = 0;
+      continue;
+    } else {
+      current_cursor_ += hdr.total_size();
+      return true;
+    }
+  } while(current_chunk_);
+  return false;
+}
+
+void Heap::Swap( Heap* that ) {
+  std::swap( threshold_ , that->threshold_ );
+  std::swap( factor_    , that->factor_    );
+  std::swap( alive_size_, that->alive_size_);
+  std::swap( chunk_size_, that->chunk_size_);
+  std::swap( allocated_bytes_ , that->allocated_bytes_ );
+  std::swap( total_bytes_ , that->total_bytes_ );
+  std::swap( chunk_capacity_ , that->chunk_capacity_ );
+  std::swap( chunk_current_ , that->chunk_current_ );
+  std::swap( fail_back_ , that->fail_back_ );
+  std::swap( allocator_ , that->allocator_ );
+}
+
+bool Heap::RefillChunk( size_t size ) {
+  size_t raw_size;
+  if( chunk_capacity_ < size ) {
+    raw_size = size;
+  } else {
+    raw_size = chunk_capacity_;
+  }
+
+  void* new_buf = allocator ? allocator->Malloc( raw_size + sizeof(Chunk) ) :
+                              ::malloc( raw_size + sizeof(Chunk) );
+  if(!new_buf) return false;
+
+  Chunk* ck = reinterpret_cast<Chunk*>(new_buf);
+  ck->size_in_bytes = raw_size;
+  ck->size_in_objects= 0;
+  ck->bytes_used = 0;
+  ck->previous = NULL;
+  ck->next = chunk_current_;
+  chunk_current_ = ck;
+  chunk_size_++;
+  total_bytes_+= raw_size;
+  return true;
+}
+
+void* Heap::Grab( size_t object_size , ValueType type, GCState gc_state ,
+                                                       bool is_long_str ) {
+  object_size = Align(object_size,kAlignment);
+  std::size_t size = object_size + kHeapObjectHeaderSize;
+
+  // Try to use slow FindInChunk when we trigger it because of we use too much
+  // memory now
+  size_t find_in_chunk_trigger = threshold_ * factor_;
+  if( find_in_chunk_trigger < allocated_bytes_ ) {
+    void* ret = FindInChunk(size);
+    if(ret) return ret;
+  }
+
+  if(chunk_current_->bytes_left() < size) {
+    if(!RefillChunk(size)) return NULL;
+  }
+
+  // Now try to allocate it from the newly created chunk
+#ifdef LAVASCRIPT_CHECK_OBJECTS
+  lava_verify(chunk_current_->bytes_left() >= size);
+  lava_verify( is_long_str ? type == VALUE_STRING : true );
+#endif // LAVASCRIPT_CHECK_OBJECTS
+
+  allocated_bytes_ += size;
+  alive_size_++;
+
+  return SetHeapObjectHeader(chunk_current->Bump(size),object_size,type,
+                                                                   gc_state,
+                                                                   is_long_str);
+}
+
+void* Heap::CopyObject( const void* ptr , std::size_t length ) {
+#ifdef LAVASCRIPT_CHECK_OBJECTS
+  lava_verify( Align(length,kAlignment) == length );
+#endif // LAVASCRIPT_CHECK_OBJECTS
+
+  size_t find_in_chunk_trigger = threshold_ * factor_;
+  void* buf = NULL;
+  if(find_in_chunk_trigger < allocated_bytes_) {
+    buf = FindInChunk(length);
+  }
+  if(!buf) {
+    if(chunk_current_->bytes_left() < length) {
+      if(!RefillChunk(size)) return NULL;
+    }
+    ret = chunk_current_->Bump(length);
+  }
+  memcpy(ret,ptr,length);
+  allocated_bytes_ += length;
+  alive_size_++;
+  return ret;
+}
+
 void* Heap::FindInChunk( std::size_t raw_bytes_length ) {
   lava_bench("Heap::FindInChunk()");
 
@@ -53,11 +180,11 @@ class DumpWriter {
     va_start(vl,fmt);
 
     if(use_file_) {
-      std::string buf(core::FormatV(fmt,vl));
+      std::string buf(FormatV(fmt,vl));
       buf.push_back('\n');
       file_.write(buf.c_str(),buf.size());
     } else {
-      lava_info("%s",core::FormatV(fmt,vl).c_str());
+      lava_info("%s",FormatV(fmt,vl).c_str());
     }
   }
 
@@ -119,6 +246,7 @@ void Heap::HeapDump( int verbose , const char* filename ) {
   }
   writer.Write("**********************************************************");
 }
+
 } // namespace gc
 
 /**
@@ -158,10 +286,10 @@ void GC::Swap( std::size_t new_heap_size ) {
     if((*ref)->IsGCWhite()) {
       // This object is alive , move to the new_heap
       void* raw_address = reinterpret_cast<void*>(
-          (*ref)->heap_object_header_address());
+          (*ref)->hoh_address());
 
       // Copy the alive object into the new_heap
-      new_heap.RawCopyObject( raw_address , (*ref)->heap_object_header().total_size() );
+      new_heap.RawCopyObject( raw_address , (*ref)->hoh().total_size() );
 
       // Patch the reference pointer address
       *ref = reinterpret_cast<HeapObject*>(

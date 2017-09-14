@@ -1,10 +1,10 @@
 #ifndef BUMP_ALLOCATOR_H_
 #define BUMP_ALLOCATOR_H_
 
+#include <cstddef>
 #include <cstdint>
 
 namespace lavascript {
-namespace core {
 
 /**
  * Simple BumpAllocator , bumps the pointer when do allocation.
@@ -25,6 +25,8 @@ class BumpAllocator {
     RefillPool(init_capacity);
   }
 
+  ~BumpAllocator();
+
   // Grab memory from BumpAllocator
   void* Grab( std::size_t );
 
@@ -43,8 +45,6 @@ class BumpAllocator {
   std::size_t maximum_size_;               // Maximum size of BumpAllocator
 };
 
-
-} // namespace core
 } // namespace lavascript
 
 #endif // BUMP_ALLOCATOR_H_

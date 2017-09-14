@@ -2,9 +2,9 @@
 #include "optimizer.h"
 #include "ast/ast.h"
 
-#include <src/core/util.h>
 #include <src/zone/zone.h>
 #include <src/error-report.h>
+#include <src/util.h>
 
 #include <vector>
 

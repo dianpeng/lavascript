@@ -4,6 +4,7 @@
 #include <cstdarg>
 #include <cstddef>
 #include <string>
+#include <new>
 
 namespace lavascript {
 namespace core {
@@ -47,6 +48,16 @@ std::string PrettyPrintReal( double );
 template< typename T > T Align( T value , T alignment ) {
   return (value + (alignment-1)) & ~alignment;
 }
+
+template< typename T , typename ... ARGS >
+T* Construct( T* buffer , ARGS ...args ) {
+  return ::new (buffer) T(args...);
+}
+
+template< typename T > void Destruct( T* object ) {
+  object->~T();
+}
+
 
 } // namespace core
 } // namespace lavascript

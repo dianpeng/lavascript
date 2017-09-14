@@ -109,7 +109,7 @@ void Heap::HeapDump( int verbose , const char* filename ) {
           // go to next object
           if(hdr.IsEndOfChunk()) break;
 
-          start = (start + hdr.size() + HeapObjectHeader::kHeapObjectHeaderSize);
+          start = (start + hdr.total_size());
         } while(true);
       }
 
@@ -119,6 +119,81 @@ void Heap::HeapDump( int verbose , const char* filename ) {
   }
   writer.Write("**********************************************************");
 }
-
 } // namespace gc
+
+/**
+ * Marking phase for our GC
+ *
+ *
+ * Marking phase will start the marking from the following root :
+ *  1. Stack
+ *  2. Global State
+ *  3. C++ Local (LocalScope/GlobalScope)
+ */
+
+void GC::Mark( MarkResult* result ) {
+  /*
+   * TODO:: Add implementation when we finish our stuff
+   */
+}
+
+void GC::Swap( std::size_t new_heap_size ) {
+  gc::Heap new_heap(heap_.threshold(),
+                    heap_.factor(),
+                    heap_.chunk_capacity(),
+                    new_heap_size,
+                    allocator_);
+
+  // Get the iterator for all reference slot
+  gc::GCRefPool::Iterator itr( ref_pool_.GetIterator() );
+
+  while(itr.HasNext()) {
+    HeapObject** ref = itr.heap_object();
+
+#ifdef LAVASCRIPT_CHECK_OBJECTS
+    lava_verify(*ref);
+    lava_verify(!(*ref)->IsGCGray());
+#endif // LAVASCRIPT_CHECK_OBJECTS
+
+    if((*ref)->IsGCWhite()) {
+      // This object is alive , move to the new_heap
+      void* raw_address = reinterpret_cast<void*>(
+          (*ref)->heap_object_header_address());
+
+      // Copy the alive object into the new_heap
+      new_heap.RawCopyObject( raw_address , (*ref)->heap_object_header().total_size() );
+
+      // Patch the reference pointer address
+      *ref = reinterpret_cast<HeapObject*>(
+          static_cast<char*>(raw_address) + HeapObjectHeader::kHeapObjectHeaderSize );
+
+      // Move to the next slot
+      itr.Move();
+    } else {
+      // Release the reference object since the pointed object are dead
+      itr.Remove(&ref_pool_);
+    }
+  }
+
+  // Swap the heap and free the old heap
+  heap_.Swap(&new_heap);
+}
+
+void GC::ForceGC() {
+  MarkResult reuslt;
+  Mark(&result);
+  if(result.dead_size >0) {
+    Swap(result.new_heap_size);
+  }
+  ++cycle_;
+}
+
+bool GC::TryGC() {
+  /**
+   * TODO:: Implement GC trigger
+   */
+  ForceGC();
+  return true;
+}
+
 } // namespace lavascript

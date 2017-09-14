@@ -21,10 +21,13 @@
 
 namespace lavascript {
 
+namespace gc {
+class SSOPool;
+} // namespace gc
+
 class GC;
 class Value;
 class SSO;
-class SSOPool;
 class HeapObject;
 class Iterator;
 class List;
@@ -261,16 +264,18 @@ class HeapObject : DoNotAllocateOnNormalHeap {
   void set_heap_object_header( const HeapObjectHeader& word ) {
     *heap_word_address() = word.raw();
   }
-
-  // helper function for retrieving some GC states
+ public: // State checking
+  bool IsGCBlack  () const { return heap_object_header().IsGCBlack(); }
+  bool IsGCWhite  () const { return heap_object_header().IsGCWhite(); }
+  bool IsGCGray   () const { return heap_object_header().IsGCGray (); }
   GCState gc_state() const { return heap_object_header().gc_state(); }
-
   void set_gc_state( GCState state ) {
     HeapObjectHeader h = heap_object_header();
     h.set_gc_state( state );
     set_heap_object_header(h);
   }
 
+ public:
   virtual void Mark(GC*) {}
   virtual ~HeapObject() = 0;
 
@@ -334,11 +339,8 @@ class SSO final {
   // hash value of this SSO
   std::uint32_t hash_;
 
-  // next SSO entry if collision happened
-  SSO* next_;
-
   // memory pool for SSOs
-  friend class SSOPool;
+  friend class gc::SSOPool;
 
   LAVA_DISALLOW_COPY_AND_ASSIGN(SSO);
 };
@@ -1978,34 +1980,6 @@ inline bool Map::Delete( const std::string& key ) {
   }
   return false;
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 } // namespace lavascript
 #endif // OBJECTS_H_

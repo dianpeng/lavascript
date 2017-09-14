@@ -11,10 +11,10 @@ namespace lavascript {
 class HeapObject;
 
 enum GCState {
-  GC_RESERVED = 0,
+  GC_WHITE    = 0,
   GC_BLACK    = 1,
-  GC_WHITE    = 2,
-  GC_GRAY     = 3
+  GC_GRAY     = 2,
+  GC_RESERVED = 3
 };
 
 const char* GetGCStateName( GCState );
@@ -128,8 +128,13 @@ class HeapObjectHeader : DoNotAllocateOnNormalHeap {
     high_ |= (static_cast<std::uint32_t>(type) << 2);
   }
 
-  // The size field of this object here
+  // Size of the object + the header size
+  std::size_t total_size() const { return size() + kHeapObjectHeaderSize; }
+
+  // Size of the object in byte
   std::size_t size() const { return low_ ; }
+
+  // Set the object's size in byte
   void set_size( std::uint32_t size ) { low_ = size; }
 
   // Return the heap object header in raw format basically a 64 bits number

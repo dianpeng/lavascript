@@ -1,15 +1,32 @@
 #ifndef GC_H_
 #define GC_H_
 
+#include <algorithm>
+
 #include "common.h"
 #include "heap-object-header.h"
 
+#include "core/util.h"
 #include "core/trace.h"
 #include "core/free-list.h"
 
 namespace lavascript {
 
-class Instance;
+class Context;
+
+/**
+ * Heap allocator
+ *
+ * Used to allocate chunk memory by Heap
+ */
+
+class HeapAllocator {
+ public:
+  virtual void* Malloc( size_t size ) = 0;
+  virtual void  Free  ( void* ) = 0;
+  virtual ~HeapAllocator() {}
+};
+
 
 /**
  * GC implemention for lavascript. This GC implementation is a stop-the-world
@@ -17,7 +34,6 @@ class Instance;
  * for simplicity , we just do everything in one cycle. In the future , we will
  * optimize it to be generation based
  */
-
 
 namespace gc {
 /**
@@ -86,19 +102,6 @@ class GCRefPool final {
   LAVA_DISALLOW_COPY_AND_ASSIGN(GCRefPool);
 };
 
-/**
- * Heap allocator
- *
- * Used to allocate chunk memory used by Heap
- */
-
-class HeapAllocator {
- public:
-  virtual void* Malloc( size_t size ) = 0;
-  virtual void  Free  ( void* ) = 0;
-  virtual ~HeapAllocator() {}
-};
-
 
 /**
  * A heap is the main managed places that stores all the heap based
@@ -136,8 +139,8 @@ class Heap final {
   };
 
  public:
-  // Initialize the Heap object via Instance object
-  inline Heap( std::size_t , double , std::size_t , HeapAllocator* );
+  // Initialize the Heap object via Context object
+  inline Heap( std::size_t , double , std::size_t , std::size_t , HeapAllocator* );
   ~Heap();
 
   std::size_t threshold() const { return threshold_; }
@@ -147,7 +150,7 @@ class Heap final {
   void set_factor( std::size_t factor ) { factor_ = factor; }
 
   std::size_t alive_size() const { return alive_size_; }
-  std::size_t allocated_size() const { return allocated_size_; }
+  std::size_t allocated_bytes() const { return allocated_bytes_; }
   std::size_t chunk_size() const { return chunk_size_; }
   std::size_t total_bytes() const { return total_bytes_; }
 
@@ -159,12 +162,10 @@ class Heap final {
    * bump allocator. It tries to allocate memory from the current Chunk list and if
    * it fails then it just create a new Chunk and then create the object from it.
    *
-   * If the current Heap bypass the threshold set, then the Heap will return NULL
-   * in this cases. The upper wrapper code in GC will launch the GC cycle and then
-   * retry the API again
+   * It will return an *OBJECT*'s starting address , not the address point to its
+   * heap object header. If it cannot perform the allocation due to OOM , it returns
+   * NULL.
    *
-   * Also there's another possibilities that it returns NULL when it cannot allocate
-   * any memory from malloc/free or underlying memory allocator
    */
 
   inline
@@ -173,6 +174,28 @@ class Heap final {
               GCState gc_state = GC_WHITE,          // State of the GC
               bool is_long_str = false);            // Whether it is a long string
 
+  // This API is used to during compaction phase. It allow user to copy an raw memory
+  // buffer pointer at ptr with size of (raw_size) to this Heap object. This API will
+  // not check whether the ptr has a valid header and caller should ensure that the ptr
+  // points at the header not the object
+  //
+  // Also the CopyObject will assume that we have enough spaces for such operations. Since it
+  // is used in compaction phase , at that point we should already know how much memory
+  // we need at least for the new heap so no need to verify that whether we have enough
+  // spaces or not.
+  //
+  // It will return address where points to the HeapObjectHeader basically the start of a certain
+  // allocation
+  inline
+  void* RawCopyObject( const void* ptr , std::size_t raw_size );
+
+  // This API is same as RawCopyObject expect it checks for whether we have enough spaces for
+  // copy operation.
+  inline
+  void* CopyObject   ( const void* ptr , std::size_t raw_size );
+
+  // Swap another heap with *this* heap
+  void Swap( Heap* );
  public:
 
   // Iterator for walking through the whole Heap object's internal Chunk
@@ -309,6 +332,7 @@ GCRefPool::Iterator::Iterator( const GCRefPool::Iterator& that ) {
 inline Heap::Heap( size_t threshold ,
                    double factor ,
                    size_t chunk_capacity ,
+                   size_t init_size ,
                    HeapAllocator* allocator ):
   threshold_(threshold),
   factor_(factor),
@@ -321,7 +345,7 @@ inline Heap::Heap( size_t threshold ,
   fall_back_(NULL),
   allocator_(allocator)
 {
-  RefillChunk(0);
+  RefillChunk(init_size);
 }
 
 inline void Heap::Chunk::SetEndOfBlock( void* header , bool flag ) {
@@ -395,7 +419,7 @@ inline bool Heap::Iterator::Move() {
       current_cursor_ = 0;
       continue;
     } else {
-      current_cursor_ += HeapObjectHeader::kHeapObjectHeaderSize + hdr.size();
+      current_cursor_ += hdr.total_size();
       return true;
     }
   } while(current_chunk_);
@@ -425,6 +449,19 @@ inline void Heap::Iterator::set_heap_object_header(
 #endif // LAVASCRIPT_CHECK_OBJECTS
   *reinterpret_cast<std::uint64_t*>(
       static_cast<char*>(current_chunk_->start()) + current_cursor) = hdr.raw();
+}
+
+inline void Heap::Swap( Heap* that ) {
+  std::swap( threshold_ , that->threshold_ );
+  std::swap( factor_    , that->factor_    );
+  std::swap( alive_size_, that->alive_size_);
+  std::swap( chunk_size_, that->chunk_size_);
+  std::swap( allocated_bytes_ , that->allocated_bytes_ );
+  std::swap( total_bytes_ , that->total_bytes_ );
+  std::swap( chunk_capacity_ , that->chunk_capacity_ );
+  std::swap( chunk_current_ , that->chunk_current_ );
+  std::swap( fail_back_ , that->fail_back_ );
+  std::swap( allocator_ , that->allocator_ );
 }
 
 inline bool Heap::RefillChunk( size_t size ) {
@@ -462,7 +499,7 @@ inline void* Heap::SetHeapObjectHeader( void* ptr , size_t size , ValueType type
   return static_cast<char*>(ptr) + HeapObjectHeader::kHeapObjectHeaderSize;
 }
 
-inline void* Heap::Grow( size_t object_size , ValueType type, GCState gc_state ,
+inline void* Heap::Grab( size_t object_size , ValueType type, GCState gc_state ,
                                                               bool is_long_str ) {
   object_size = core::Align(object_size,kAlignment);
   std::size_t size = object_size + kHeapObjectHeaderSize;
@@ -492,6 +529,37 @@ inline void* Heap::Grow( size_t object_size , ValueType type, GCState gc_state ,
                                                                         is_long_str);
 }
 
+inline void* Heap::RawCopyObject( const void* ptr , std::size_t length ) {
+  void* ret = chunk_current_->Bump(length);
+  memcpy(ret,ptr,length);
+
+  ++allocated_bytes_ += length;
+  alive_size_++;
+  return ret;
+}
+
+inline void* Heap::CopyObject( const void* ptr , std::size_t length ) {
+#ifdef LAVASCRIPT_CHECK_OBJECTS
+  lava_verify( core::Align(length,kAlignment) == length );
+#endif // LAVASCRIPT_CHECK_OBJECTS
+
+  size_t find_in_chunk_trigger = threshold_ * factor_;
+  void* buf = NULL;
+  if(find_in_chunk_trigger < allocated_bytes_) {
+    buf = FindInChunk(length);
+  }
+  if(!buf) {
+    if(chunk_current_->bytes_left() < length) {
+      if(!RefillChunk(size)) return NULL;
+    }
+    ret = chunk_current_->Bump(length);
+  }
+  memcpy(ret,ptr,length);
+  allocated_bytes_ += length;
+  alive_size_++;
+  return ret;
+}
+
 } // namespace gc
 
 
@@ -513,36 +581,132 @@ inline void* Heap::Grow( size_t object_size , ValueType type, GCState gc_state ,
 
 class GC : AllStatic {
  public:
-   /**
-    * GC tunable argument
-    * 1. Minimum Gap    , what is the minimum gap for triggering the GC
-    * 2. Factor         , dynamic adjust the next gc trigger number
-    */
+  /**
+   * GC tunable argument
+   * 1. Minimum Gap    , what is the minimum gap for triggering the GC
+   * 2. Factor         , dynamic adjust the next gc trigger number
+   */
 
-   struct GCConfig {
-     size_t minimum_gap;
-     double factor;
-     size_t heap_threshold;
-     double heap_factor;
-     size_t heap_capacity;
-   };
+  struct GCConfig {
+    size_t minimum_gap;
+    double factor;
+    size_t heap_threshold;
+    double heap_factor;
+    size_t heap_capacity;
+    HeapAllocator* allocator;
+  };
 
-   GC( const GCConfig& , Instance* );
+  GC( const GCConfig& , Context* , HeapAllocator* allocator = NULL );
 
  public:
-   /**
-    * Function to create a new object with type T , the input arguments are
-    * ARGS ...args.
-    *
-    * The return value is a T** which represented the HeapObject reference.
-    * Each factory function inside of each Type could easily wrape this into
-    * a static factory function that returns a Handle<T> wrapper instead of
-    * directly return the GCRef pointer
-    */
-   template< typename T , typename ... ARGS >
-   T** New( const HeapObjectHeader& hdr , ARGS ...args );
+  std::size_t cycle() const { return cycle_; }
+  std::size_t alive_size() const { return heap_.alive_size(); }
+  std::size_t allocated_bytes() const { return heap_.allocated_bytes(); }
+  std::size_t total_bytes() const { return heap_.total_bytes(); }
+  std::size_t ref_size() const { return ref_pool.size(); }
+  std::size_t minimum_gap() const { return minimum_gap_; }
+  std::size_t previous_alive_size() const { return previous_alive_size_; }
+  std::size_t previous_dead_size()  const { return previous_dead_size_; }
+  double factor() const { return factor_; }
+  Context* context() const { return context_; }
+
+ public:
+  /**
+   * Function to create a new object with type T , the input arguments are
+   * ARGS ...args.
+   *
+   * The return value is a T** which represented the HeapObject reference.
+   * Each factory function inside of each Type could easily wrape this into
+   * a static factory function that returns a Handle<T> wrapper instead of
+   * directly return the GCRef pointer
+   */
+  template< typename T , typename ... ARGS >
+  T** New( const HeapObjectHeader& hdr , ARGS ...args );
+
+  /*
+   * This API call allow user to provide a holder and reuse that holder
+   * to store the newly created object. Mostly we use this API to implement
+   * Extend/Rehash for Slice and Map object
+   */
+  template< typename T , typename ... ARGS >
+  T** New( T** holder , const HeapObjectHeader& hdr , ARGS ...args );
+
+  /**
+   * Specialized New for String creation since String is handled specially
+   * internally.
+   *
+   * A String object is an empty object ( though C++ doens't allow ), it is
+   * basically a union of SSO or LongString.
+   *
+   * Then we just reinterpret_cast this memory to String object. String object
+   * is implemented with such assumption
+   */
+  String** NewString( const void* str , size_t len );
+
+  /**
+   * Create an empty string , though the above API can take care of this case
+   * as well.
+   */
+  String** NewString();
+
+ public:
+  // Force a GC cycle to happen
+  void ForceGC();
+
+  // Try a GC cycle to happen
+  bool TryGC();
+
+ private: // GC related code
+
+  /**
+   * API to start the marking phase. This function will start mark from all
+   * possible root nodes which is listed as following :
+   *
+   *   1) Stack
+   *   2) Global Varible Table
+   *   3) C++ LocalScope
+   */
+  struct MarkResult {
+    std::size_t alive_size;
+    std::size_t dead_size ;
+    std::size_t new_heap_size;         // Total , include heap object header
+    MarkResult() : alive_size(0),dead_size(0),new_heap_size(0) {}
+  };
+
+  void Mark( MarkResult* );
+
+  /**
+   * API to do the Swap phase which basically move all alive object from old
+   * heap to new heap and patch all the reference to the new heap
+   */
+  void Swap( std::size_t new_heap_size );
+
+ private:
+  std::size_t cycle_;                                 // How many GC cycles are performed
+  std::size_t minimum_gap_;                           // Minimum gap
+  std::size_t previous_alive_size_;                   // Previous marks active size
+  std::size_t previous_dead_size_ ;                   // Previous dead size
+  double factor_;                                     // Tunable factor
+  gc::Heap heap_;                                     // Current active heap
+  gc::GCRefPool ref_pool_;                            // Ref pool
+  Context* context_;                                  // Context object
+  HeapAllocator* allocator_;                          // Allocator
 };
 
+template< typename T , typename ...ARGS >
+T** GC::New( const HeapObjectHeader& hdr , ARGS ...args ) {
+  return New( reinterpret_cast<T**>(ref_pool_.Grab()) , hdr , args... );
+}
+
+template< typename T , typename ...ARGS >
+T** GC::New( T** holder , const HeapObjectHeader& hdr , ARGS ...args ) {
+  TryGC(); // Try to perform GC if we need to
+  *holder = core::Construct( heap_.Grab( sizeof(T),
+                                         hdr.type(),
+                                         hdr.gc_state(),
+                                         hdr.IsLongString() ) , args... );
+  return holder;
+}
 
 } // namespace lavascript
 #endif // GC_H_

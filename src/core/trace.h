@@ -1,6 +1,9 @@
 #ifndef CORE_TRACE_H_
 #define CORE_TRACE_H_
 #include <cstdarg>
+#include <cstdint>
+
+#include <src/os.h>
 
 namespace lavascript {
 namespace core {
@@ -31,14 +34,14 @@ inline bool Crash ( const char* expression , const char* file , int line ,
 
 
 #define lava_assert( EXPRESSION , MESSAGE ) \
-  (void)((EXPRESSION) || core::Crash(#EXPRESSION,__FILE__,__LINE__,MESSAGE))
+  (void)((EXPRESSION) || ::lavascript::core::Crash(#EXPRESSION,__FILE__,__LINE__,MESSAGE))
 
 #define lava_assertF( EXPRESSION , FORMAT , ... ) \
-  (void)((EXPRESSION) || core::Crash(#EXPRESSION,__FILE__,__LINE__,FORMAT,__VA_ARGS__))
+  (void)((EXPRESSION) || ::lavascriot::core::Crash(#EXPRESSION,__FILE__,__LINE__,FORMAT,__VA_ARGS__))
 
-#define lava_unreach(MESSAGE) core::Crash("unreachable!!",__FILE__,__LINE__,MESSAGE)
+#define lava_unreach(MESSAGE) ::lavascript::core::Crash("unreachable!!",__FILE__,__LINE__,MESSAGE)
 
-#define lava_die() core::Crash("die!!",__FILE__,__LINE__,"")
+#define lava_die() ::lavascript::core::Crash("die!!",__FILE__,__LINE__,"")
 
 #define lava_verify( EXPRESSION ) lava_assert( EXPRESSION , "" )
 
@@ -55,6 +58,8 @@ enum LogSeverity {
 };
 
 void LogV( LogSeverity severity , const char* file , int line , const char* format , va_list );
+
+namespace detail {
 
 inline void Log ( LogSeverity severity , const char* file , int line ,
     const char* format , ... ) {
@@ -77,23 +82,71 @@ inline void LogD( LogSeverity severity , const char* file ,
 #endif
 }
 
+} // namespace detail
+
 #define lava_info( FMT , ... ) \
-  core::Log(kLogInfo,__FILE__,__LINE__,FMT,__VA_ARGS__)
+  ::lavascript::core::detail::Log(kLogInfo,__FILE__,__LINE__,FMT,__VA_ARGS__)
 
 #define lava_warn( FMT , ... ) \
-  core::Log(kLogWarn,__FILE__,__LINE__,FMT,__VA_ARGS__)
+  ::lavascript::core::detail::Log(kLogWarn,__FILE__,__LINE__,FMT,__VA_ARGS__)
 
 #define lava_error(FMT, ... ) \
-  core::Log(kLogError,__FILE__,__LINE__,FMT,__VA_ARGS__)
+  ::lavascript::core::detail::Log(kLogError,__FILE__,__LINE__,FMT,__VA_ARGS__)
 
 #define lava_infoD( FMT , ... ) \
-  core::LogD( kLogInfo , __FILE__ , __LINE__ , FMT , __VA_ARGS__ )
+  ::lavascript::core::detail::LogD( kLogInfo , __FILE__ , __LINE__ , FMT , __VA_ARGS__ )
 
 #define lava_warnD( FMT , ... ) \
-  core::LogD( kLogWarn , __FILE__ , __LINE__ , FMT , __VA_ARGS__ )
+  ::lavascript::core::detail::LogD( kLogWarn , __FILE__ , __LINE__ , FMT , __VA_ARGS__ )
 
 #define lava_errorD( FMT , ... ) \
-  core::LogD( kLogError , __FILE__ , __LINE__ , FMT , __VA_ARGS__ )
+  ::lavascript::core::detail::LogD( kLogError , __FILE__ , __LINE__ , FMT , __VA_ARGS__ )
+
+
+/**
+ * Helper function for tracking the time spent in certain lexical scope
+ */
+
+namespace detail {
+
+class LexicalScopeBenchmark {
+ public:
+  LexicalScopeBenchmark( const char* message , const char* file , int line ) :
+    timestamp_ ( ::lavascript::OS::NowInMicroSeconds() ),
+    message_   ( message ) ,
+    file_      ( file )    ,
+    line_      ( line )
+  {}
+
+  ~LexicalScopeBenchmark() {
+    core::detail::Log(kLogInfo,file_,line_,"Benchmark(%lld):%s",
+        static_cast<std::uint64_t>(::lavascript::OS::NowInMicroSeconds() - timestamp_),
+        message_);
+  }
+
+ private:
+  std::uint64_t timestamp_;
+  const char* message_;
+  const char* file_;
+  int line_;
+};
+
+} // namespace detail
+
+
+/**
+ * Put the lava_bench on top of the lexical scope you want to profile or benchmark
+ *
+ * { lava_bench("Bench my shit");
+ *
+ *   Your code goes here
+ * }
+ */
+#ifdef LAVASCRIPT_BENCH
+#define lava_bench(MESSAGE) ::lavascript::core::detail::LexicalScopeBenchmark(MESSAGE,__FILE__,__LINE__)
+#else
+#define lava_bench(MESSAGE) (void)(MESSAGE)
+#endif // LAVASCRIPT_BENCH
 
 } // namespace core
 } // namespace lavascript

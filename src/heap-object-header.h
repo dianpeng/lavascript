@@ -17,9 +17,10 @@ enum GCState {
   GC_GRAY     = 3
 };
 
+const char* GetGCStateName( GCState );
+
 
 #define LAVASCRIPT_HEAP_OBJECT_LIST(__)                               \
-
   __( TYPE_ITERATOR,  Iterator, "iterator")                           \
   __( TYPE_LIST    ,  List    , "list"    )                           \
   __( TYPE_SLICE   ,  Slice   , "slice"   )                           \
@@ -70,7 +71,13 @@ const char* GetValueTypeName( ValueType );
  *
  * High: Used for storing bit flags and other stuffs .
  *
- * [ 3 bytes reserved |8:short/long string| 7:reserved | 6-3:heap object type |2-1:gc mark state]
+ * [
+ *   3 bytes reserved ;
+ *   bit 8:short/long string ;
+ *   bit 7:end of chunk;
+ *   bit 6-3:heap object type ;
+ *   bit 2-1:gc mark state
+ * ]
  *
  * The last 2 bits are used for storing flag for GC cycle
  */
@@ -83,9 +90,10 @@ class HeapObjectHeader : DoNotAllocateOnNormalHeap {
 
   static const std::uint32_t kGCStateMask = 3;         // 0b11
   static const std::uint32_t kLongStringMask = (1<<7); // 0b10000000
+  static const std::uint32_t kEndOfChunkMask = (1<<6); // 0b01000000
 
   // Mask for getting the heap object type , should be 0b0011100
-  static const std::uint32_t kHeapObjectTypeMask  = core::OnBit<std::uint32_t,2,5>::value;
+  static const std::uint32_t kHeapObjectTypeMask  = core::BitOn<std::uint32_t,2,5>::value;
 
   GCState gc_state() const { return static_cast<GCState>(low_ & kGCStateMask); }
   void set_gc_state( GCState state ) { low_ |= static_cast<std::uint32_t>(state); }
@@ -107,6 +115,11 @@ class HeapObjectHeader : DoNotAllocateOnNormalHeap {
   bool IsSSO() const { return !IsLongString(); }
   bool IsLongString() const  { return (high_ & kLongStringMask); }
 
+  // Check if it is end of the chunk. Used when iterating through object on heap
+  bool IsEndOfChunk() const { return (high_ & kEndOfChunkMask); }
+  void set_end_of_chunk() { high_ |= kEndOfChunkMask; }
+  void set_not_end_of_chunk() { high_ &= ~kEndOfChunkMask; }
+
   // HeapObject's type are stored inside of this HeapObjectHeader
   ValueType type() const {
     return static_cast<ValueType>( (high_ & kHeapObjectTypeMask) >> 2 );
@@ -115,9 +128,9 @@ class HeapObjectHeader : DoNotAllocateOnNormalHeap {
     high_ |= (static_cast<std::uint32_t>(type) << 2);
   }
 
-  // This represents the *size in bytes* so not the actual size stored
-  // there since the number store there needs to * 8 or << 3
-  size_t SizeInBytes() const { return low_ * 8; }
+  // The size field of this object here
+  std::size_t size() const { return low_ ; }
+  void set_size( std::uint32_t size ) { low_ = size; }
 
   // Return the heap object header in raw format basically a 64 bits number
   std::uint64_t raw () const { return (static_cast<uint64_t>(low_) |
@@ -125,16 +138,22 @@ class HeapObjectHeader : DoNotAllocateOnNormalHeap {
 
   operator std::uint64_t const () { return raw(); }
 
- private:
-  HeapObjectHeader( std::uint64_t raw ) :
+  explicit HeapObjectHeader( std::uint64_t raw ) :
     high_( core::High64(raw) ),
     low_ ( core::Low64 (raw) )
   {}
 
+  explicit HeapObjectHeader( void* raw ):
+    high_( core::High64(*reinterpret_cast<std::uint64_t*>(raw)) ),
+    low_ ( core::Low64 (*reinterpret_cast<std::uint64_t*>(raw)) )
+  {}
+
+  HeapObjectHeader(): high_(0), low_(0) {}
+
+ private:
   std::uint32_t high_;
   std::uint32_t low_;
 
-  friend class HeapObject;
 };
 
 } // namespace lavascript

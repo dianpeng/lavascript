@@ -44,6 +44,10 @@ bool StringToBoolean( const char* , bool* );
  */
 std::string PrettyPrintReal( double );
 
+template< typename T > T Align( T value , T alignment ) {
+  return (value + (alignment-1)) & ~alignment;
+}
+
 } // namespace core
 } // namespace lavascript
 

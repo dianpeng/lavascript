@@ -3,9 +3,11 @@
 
 #include <cstdint>
 #include <cstring>
+#include <type_traits>
 
 #include "vm/bytecode.h"
 #include "vm/constant-table.h"
+#include "hash.h"
 #include "core/trace.h"
 #include "all-static.h"
 #include "heap-object-header.h"
@@ -35,87 +37,40 @@ class Closure;
 class Extension;
 
 
-/**
- *
- * A GCRef is just a pointer to an HeapObject pointer. A GCRef is a level
- * of indirection which allow us to do compaction. A GCRef will be traced
- * on all C++ side object traced by LocalScope object.
- *
- * An object will be reclaimed if 1) No script side object points to it, and
- * 2) no GCRef points to it. Since GCRef is traced by our runtime, so we know
- * where C++ code are still using certain HeapObject
+/*
+ * A handler is a holder that holds a typped GCRef object. This save
+ * us from cosntantly typping whether a certain GCRef is certain type
+ * and also gurantee the type safe since it checks the type during
+ * Handler creation
  */
-class GCRef {
+template< typename T > class Handler {
  public:
-  typedef HeapObject** RefType;
+  static_assert( std::is_base_of<HeapObject,T>::value );
 
-  GCRef():ref_(NULL) {}
-  GCRef( RefType value ):ref_(value) {}
-  GCRef( const GCRef& ref ):ref_(ref.ref_) {}
-  GCRef& operator = ( const GCRef& ref ) {
-    if(this != &ref) {
-      ref_ = ref.ref_;
-    }
-    return *this;
-  }
+  Handler():ref_(NULL) {}
+  inline Handler( HeapObject** );
+  inline Handler( T** );
+  inline Handler( const Handler& );
+  inline Handler& operator = ( const Handler& );
+
+  bool IsEmpty() const { return *ref_ != NULL; }
+  bool IsRefEmpty() const { return ref_ != NULL; }
+  bool IsNull() const { return !IsRefEmpty() && !IsEmpty(); }
+  operator bool () const { return !IsNull(); }
 
  public:
-  bool IsEmpty() const { lava_verify(!IsRefEmpty()); return *ref_ == NULL; }
-  bool IsRefEmpty() const { return ref_ == NULL; }
-  bool IsNull() const { return ref_ == NULL || *ref_ == NULL; }
-  HeapObject* heap_object() { lava_verify(!IsRefEmpty()); return *ref_; }
-  RefType ref() const { return ref_; }
+  inline HeapObject** heap_object() const;
+  inline T** ref() const;
 
-  HeapObject* operator * () { return heap_object(); }
-  const HeapObject* operator * () const { return heap_object(); }
-
-  RefType operator -> () { return ref_; }
-  const RefType operator -> () const { return ref_; }
+  inline T* operator -> ();
+  inline T* operator -> () const;
+  inline T& operator -> () ;
+  inline const T& operator -> () const;
 
  private:
-  RefType ref_;
+  T** ref_;
 };
 
-/**
- * A helper template class to help us work with GCRef.
- *
- * This is sololy to get rid of the verbose syntax and checking around the
- * pointer to pointer GCRef object
- */
-template< typename T > class Handler {};
-
-#define DECLARE_GCHANDLER(T) \
-  template<> class Handler<T> {                                            \
-   public:                                                                 \
-    GCRef ref() const { return ref_; }                                     \
-    bool IsEmpty() const { return ref_.IsEmpty(); }                        \
-    bool IsRefEmpty() const { return ref_.IsRefEmpty(); }                  \
-    bool IsNull() const { return ref_.IsNull(); }                          \
-    inline T& operator* ();                                                \
-    inline const T& operator* () const;                                    \
-    inline T* operator -> ();                                              \
-    inline const T* operator -> () const;                                  \
-   public:                                                                 \
-    Handler( GCRef ref ):ref_(ref){}                                       \
-    Handler():ref_(){}                                                     \
-    Handler( const Handler& handler ):ref_(handler.ref){}                  \
-    Handler& operator = ( const Handler& that ) {                          \
-      if(this != &that) {                                                  \
-        ref_ = that.ref_;                                                  \
-      }                                                                    \
-      return *this;                                                        \
-    }                                                                      \
-   private:                                                                \
-    GCRef ref_;                                                            \
-  };
-
-#define __(A,B,C) DECLARE_GCHANDLER(B)
-
-LAVASCRIPT_HEAP_OBJECT_LIST(__)
-
-#undef __ // __
-
-#undef // DECLARE_GCHANDLER
 
 /**
  * The value type in lavascript are categorized into 2 parts :
@@ -125,11 +80,10 @@ LAVASCRIPT_HEAP_OBJECT_LIST(__)
  * Value is a *BOX* type for everything , including GCRef inside
  * of lavascript. It can hold things like:
  *    1) primitive type or value type holding, and it is value copy
- *    2) directly hold HeapObject pointer , and it is reference copy
  *    3) GCRef hold, implicitly hold HeapObject , and it is reference copy
  */
 
-class Value {
+class Value final {
   union {
     std::uint64_t raw_;
     void* vptr_;
@@ -148,8 +102,7 @@ class Value {
     TAG_TRUE   = 0xfff920000000000 ,                        // True
     TAG_FALSE  = 0xfff930000000000 ,                        // False
     TAG_NULL   = 0xfff940000000000 ,                        // Null
-    TAG_HEAP   = 0xfffa00000000000 ,                        // Heap Object
-    TAG_GCREF  = 0xfffc00000000000                          // GCRef pointer
+    TAG_HEAP   = 0xfffa00000000000                          // Heap
   };
 
   // Masks
@@ -170,11 +123,9 @@ class Value {
   bool IsTagFalse()   const { return tag() == TAG_FALSE; }
   bool IsTagNull()    const { return tag() == TAG_NULL; }
   bool IsTagHeap()    const { return tag() == TAG_HEAP; }
-  bool IsTagGCRef()   const { return tag() == TAG_GCREF; }
 
-  inline HeapObject* heap_object() const;
-  inline GCRef::RefType gcref_ptr  () const;
-  inline void set_pointer( void* ptr , int tag );
+  inline HeapObject** heap_object() const;
+  inline void set_heap_object( HeapObject** );
 
  public:
   /**
@@ -193,7 +144,6 @@ class Value {
   bool IsTrue() const       { return IsTagTrue(); }
   bool IsFalse()const       { return IsTagFalse();}
   bool IsBoolean() const    { return IsTagTrue() || IsTagFalse(); }
-  bool IsGCRef() const      { return IsTagGCRef(); }
   bool IsHeapObject() const { return IsTagHeap(); }
 
   // Heap types
@@ -211,20 +161,18 @@ class Value {
   inline bool GetBoolean() const;
   inline double GetReal() const;
 
-  inline HeapObject* GetHeapObject() const;
-  inline String* GetString() const;
-  inline List* GetList() const;
-  inline Slice* GetSlice() const;
-  inline Object* GetObject() const;
-  inline Map* GetMap() const;
-  inline Prototype* GetPrototype() const;
-  inline Closure* GetClosure() const;
-  inline Extension* GetExtension() const;
-
-  inline GCRef GetGCRef() const;
+  inline HeapObject** GetHeapObject() const;
+  inline Handler<String> GetString() const;
+  inline Handler<List> GetList() const;
+  inline Handler<Slice> GetSlice() const;
+  inline Handler<Object> GetObject() const;
+  inline Handler<Map> GetMap() const;
+  inline Handler<Prototype> GetPrototype() const;
+  inline Handler<Closure> GetClosure() const;
+  inline Handler<Extension> GetExtension() const;
 
   template< typename T >
-  inline Handler<T> GetHandler() const { return Handler<T>(GetGCRef()); }
+  inline Handler<T> GetHandler() const { return Handler<T>(GetHeapObject()); }
 
   // Setters ---------------------------------------------
   inline void SetInteger( std::uint32_t );
@@ -234,27 +182,25 @@ class Value {
   void SetTrue   () { raw_ = TAG_TRUE; }
   void SetFalse  () { raw_ = TAG_FALSE;}
 
-  inline void SetHeapObject( HeapObject* );
-  inline void SetString( String* );
-  inline void SetList  ( List* );
-  inline void SetSlice ( Slice* );
-  inline void SetObject( Object*);
-  inline void SetMap   ( Map* );
-  inline void SetPrototype( Prototype* );
-  inline void SetClosure  ( Closure* );
-  inline void SetExtension( Extension* );
+  inline void SetHeapObject( HeapObject** );
+  inline void SetString( const Handler<String>& );
+  inline void SetList  ( const Handler<List>& );
+  inline void SetSlice ( const Handler<Slice>& );
+  inline void SetObject( const Handler<Object>& );
+  inline void SetMap   ( const Handler<Map>& );
+  inline void SetPrototype( const Handler<Prototype>& );
+  inline void SetClosure  ( const Handler<Closure>& );
+  inline void SetExtension( const Handler<Extension>& );
 
-  inline void SetGCRef ( GCRef );
   template< typename T >
-  void SetHandler( const Handler<T>& h ) { SetGCRef(h.ref()); }
+  void SetHandler( const Handler<T>& h ) { set_heap_object(h.heap_object()); }
 
  public:
   Value() { SetNull(); }
   inline explicit Value( double v ) { SetReal(v); }
   inline explicit Value( std::int32_t v ) { SetInteger(v); }
   inline explicit Value( bool v ) { SetBoolean(v); }
-  inline explicit Value( HeapObject* v ) { SetHeapObject(v); }
-  inline explicit Value( GCRef v ) { SetGCRef(v); }
+  inline explicit Value( HeapObject** v ) { SetHeapObject(v); }
   template< typename T >
   explicit Value( const Handler<T>& h ) { SetGCRef(h.ref()); }
 };
@@ -282,7 +228,7 @@ static_assert( sizeof(Value) == sizeof(std::uintptr_t) );
 //
 //  The HeapObject is an empty object at all and all the states it needs are stored
 //  inside of the HeapObjectHeader object which can be referend via (this-8)
-class HeapObject {
+class HeapObject : DoNotAllocateOnNormalHeap {
  public:
   bool IsString() const { return heap_object_header().type() == VALUE_STRING; }
   bool IsList  () const { return heap_object_header().type() == VALUE_LIST; }
@@ -290,8 +236,11 @@ class HeapObject {
   bool IsObject() const { return heap_object_header().type() == VALUE_OBJECT; }
   bool IsMap   () const { return heap_object_header().type() == VALUE_MAP; }
   bool IsPrototype() const { return heap_object_header().type() == VALUE_PROTOTYPE; }
-  bool IsClosure()const { return heap_object_header().type() == VALUE_CLOSURE; }
+  bool IsClosure() const { return heap_object_header().type() == VALUE_CLOSURE; }
   bool IsExtension() const { return heap_object_header().type() == VALUE_EXTENSION; }
+
+  // Generic way to check whether this HeapObject is certain type
+  template< typename T > bool IsType() const;
 
  public:
   ValueType type() const { return heap_object_header().type(); }
@@ -341,7 +290,7 @@ class HeapObject {
  * can do so
  */
 
-class SSO {
+class SSO final {
  public:
   std::uint32_t hash() const { return hash_; }
   size_t size() const { return size_; }
@@ -401,7 +350,7 @@ class SSO {
  * by the String object internally. LongString is not a collectable object
  * but String is and it is held by String in place.
  */
-struct LongString {
+struct LongString final {
   // Size of the LongString
   size_t size;
 
@@ -426,7 +375,7 @@ struct LongString {
  *
  */
 
-class String : public HeapObject {
+class String final : public HeapObject {
  public:
   void*  data() const { return sso.data(); }
   size_t size() const { return long_string().data(); }
@@ -473,6 +422,12 @@ class String : public HeapObject {
   inline bool operator <= ( const String& ) const;
   inline bool operator <= ( const SSO& ) const;
 
+ public: // Factory functions
+  static Handler<String> New( GC* );
+  static Handler<String> New( GC* , const char* );
+  static Handler<String> New( GC* , const char* , size_t );
+  static Handler<String> New( GC* , const std::string& );
+
  private:
 
   friend class GC;
@@ -488,13 +443,12 @@ class String : public HeapObject {
  * then switch its internal pointer to the newly created slice object.
  */
 
-class List : public HeapObject {
+class List final : public HeapObject {
  public:
   // Where the list's underlying Slice object are located
-  Handler<Slice> slice() const { return Handler<Slice>(slice_); }
-  GCRef slice_ref() const { return slice_; }
+  Handler<Slice> slice() const { return slice_ };
 
-  inline bool empty() const;
+  inline bool IsEmpty() const;
   inline size_t size() const;
   inline size_t capacity() const;
   inline const Value& Index( size_t ) const;
@@ -512,11 +466,16 @@ class List : public HeapObject {
   bool Push( GC* , const Value& );
   void Pop ();
 
+ public: // Factory functions
+  static Handler<List> New( GC* );
+  static Handler<List> New( GC* , size_t capacity );
+  static Handler<List> New( GC* , const Handler<Slice>& slice );
+
  private:
   virtual void Mark( GC* );
 
   size_t size_;
-  GCRef  slice_;
+  Handler<Slice> slice_;
 
   friend class GC;
   LAVA_DISALLOW_COPY_AND_ASSIGN(List);
@@ -531,10 +490,10 @@ class List : public HeapObject {
  *
  * It is a tuple of (capacity,array of object[])
  */
-class Slice : public HeapObject {
+class Slice final : public HeapObject {
   inline void* array() const;
  public:
-  bool empty() const { return capacity() != 0; }
+  bool IsEmpty() const { return capacity() != 0; }
   size_t capacity() const { return capacity_; }
   const Value* data() const;
   Value* data();
@@ -542,6 +501,12 @@ class Slice : public HeapObject {
   inline const Value& Index( size_t ) const;
   Value& operator [] ( size_t index ) { return Index(index); }
   const Value& operator [] ( size_t index ) const { return Index(index); }
+
+ public: // Factory functions
+  static Handler<Slice> New( GC* );
+  static Handler<Slice> New( GC* , size_t capacity );
+  static Handler<Slice> Extend( GC* , const Handler<Slice>& old , size_t new_cap );
+
  private:
   virtual void Mark( GC* );
 
@@ -559,14 +524,13 @@ class Slice : public HeapObject {
  * but use open addressing hash.
  */
 
-class Object : public HeapObject {
+class Object final : public HeapObject {
  public:
-   GCRef map_ref() const { return map_; }
-   Handler<Map> map() const { return Handler<Map>(map_); }
+   Handler<Map> map() const { return map_; }
  public:
   inline size_t capacity() const;
   inline size_t size() const;
-  inline bool empty() const;
+  inline bool IsEmpty() const;
 
  public:
   inline bool Get ( const Handler<String>& , Value* ) const;
@@ -589,9 +553,14 @@ class Object : public HeapObject {
   inline bool Delete ( const char*   );
   inline bool Delete ( const std::string& );
 
+ public: // Factory functions
+  static Handler<Object> New( GC* );
+  static Handler<Object> New( GC* , size_t capacity );
+  static Handler<Object> New( GC* , const Handler<Map>& );
+
  private:
   virtual void Mark(GC*);
-  GCRef map_;
+  Handler<Map> map_;
 
   friend class GC;
   LAVA_DISALLOW_COPY_AND_ASSIGN(Object);
@@ -606,7 +575,7 @@ class Object : public HeapObject {
  * take care of the Grow internally.
  */
 
-class Map : public HeapObject {
+class Map final : public HeapObject {
   inline void* entry() const;
  public:
 
@@ -631,10 +600,21 @@ class Map : public HeapObject {
 
   static const size_t kMaximumMapSize = 1<<29;
 
+  // How many slots has been reserved for this Map object
   size_t capacity() const { return capacity_; }
+
+  // How many live objects are inside of the Map
   size_t size() const { return size_; }
+
+  // How many slots has been occupied , since deletion is marked with
+  // tombstone
   size_t slot_size() const { return slot_size_; }
-  bool empty() const { return size() == 0; }
+
+  // Do we need to do rehashing now
+  bool NeedRehash() const { return slot_size() == capacity(); }
+
+  // Is the map empty
+  bool IsEmpty() const { return size() == 0; }
 
   inline Entry* data();
   inline const Entry* data() const;
@@ -644,30 +624,31 @@ class Map : public HeapObject {
   inline bool Get ( const char*, Value* ) const;
   inline bool Get ( const std::string& , Value* ) const;
 
-  inline bool Set ( const Handler<String>& , const Value& );
-  inline bool Set ( const char*   , const Value& );
-  inline bool Set ( const std::string& , const Value& );
+  inline bool Set ( GC* , const Handler<String>& , const Value& );
+  inline bool Set ( GC* , const char*   , const Value& );
+  inline bool Set ( GC* , const std::string& , const Value& );
 
-  inline bool Update ( const Handler<String>& , const Value& );
-  inline bool Update ( const char*   , const Value& );
-  inline bool Update ( const std::string& , const Value& );
+  inline bool Update ( GC* , const Handler<String>& , const Value& );
+  inline bool Update ( GC* , const char*   , const Value& );
+  inline bool Update ( GC* , const std::string& , const Value& );
 
-  inline void Put ( const Handler<String>& , const Value& );
-  inline void Put ( const char*   , const Value& );
-  inline void Put ( const std::string& , const Value& );
+  inline void Put ( GC* , const Handler<String>& , const Value& );
+  inline void Put ( GC* , const char*   , const Value& );
+  inline void Put ( GC* , const std::string& , const Value& );
 
   inline bool Delete ( const Handler<String>& );
   inline bool Delete ( const char*   );
   inline bool Delete ( const std::string& );
 
  public:
-  static std::uint32_t Hash( const char* );
-  static std::uint32_t Hash( const std::string& );
-  static std::uint32_t Hash( const Handler<String>& );
+  inline static std::uint32_t Hash( const char* );
+  inline static std::uint32_t Hash( const std::string& );
+  inline static std::uint32_t Hash( const Handler<String>& );
 
-  static bool KeyEqual( const char* , const Value& );
-  static bool KeyEqual( const std::string& , const Value& );
-  static bool KeyEqual( const Handler<String>& , const Value& );
+ public: // Factory functions
+  static Handler<Map> New( GC* );
+  static Handler<Map> New( GC* , size_t capacity );
+  static Handler<Map> Rehash( GC* , const Handler<Map>& , size_t );
 
  private:
   /**
@@ -716,7 +697,6 @@ class Iterator : public HeapObject {
   /**
    * Deref the iterator to get the 1) key and 2) value
    */
-
   virtual bool Deref( Value* , Value* ) const = 0;
 
   /**
@@ -743,7 +723,7 @@ class Iterator : public HeapObject {
  * execution
  */
 
-class Prototype : public HeapObject {
+class Prototype final : public HeapObject {
  public:
   const vm::Bytecode& bytecode() const { return bytecode_; }
   const vm::ConstantTable& constant_table() const { return constant_table_; }
@@ -786,7 +766,7 @@ class Prototype : public HeapObject {
  * meta information for this function/closure
  */
 
-class Closure : public HeapObject {
+class Closure final : public HeapObject {
  public:
   GCRef  prototype() const { return prototype_; }
   inline Value* upvalue();
@@ -811,53 +791,92 @@ class Extension : public HeapObject {
 
 
 
-
 /* =================================================================================
  *
  * Inline functions definitions
  *
  * ================================================================================*/
 
-#define DEFINE_GCHANDLER(T) \
-  template<> inline T& Handler<T>::operator* ()                                         \
-  { return *ref_.heap_object()->Get##T(); }                                             \
-  template<> inline const T& Handler<T>::operator* () const                             \
-  { return *ref_.heap_object()->Get##T(); }                                             \
-  template<> inline T* Handler<T>::operator -> ()                                       \
-  { return ref_.heap_object()->Get##T(); }                                              \
-  template<> inline const T* Handler<T>::operator -> () const                           \
-  { return ref_.heap_object()->Get##T(); }
+/* --------------------------------------------------------------------
+ * Handler
+ * ------------------------------------------------------------------*/
 
-#define __(A,B,C) DEFINE_GCHANDLER(B) \
-
-LAVASCRIPT_HEAP_OBJECT_LIST(__)
-
-#undef __ // __
-
-#undef DEFINE_GCHANDLER // DEFINE_GCHANDLER
-
-inline HeapObject* Value::heap_object() const {
-  return reinterpret_cast<HeapObject*>(raw_ & kPtrMask);
+template< typename T > inline Handler<T>::Handler( HeapObject** ref ) {
+#ifdef LAVASCRIPT_CHECK_OBJECTS
+  lava_verify(ref && *ref);
+  lava_verify(*ref->Is<T>());
+#endif // LAVASCRIPT_CHECK_OBJECTS
+  ref_ = reinterpret_cast<T**>(ref);
 }
 
-inline GCRef::RefType Value::gcref_ptr() const {
-  return reinterpret_cast<GCRef::RefType>(raw_ & kPtrMask);
+template< typename T > inline Handler<T>::Handler( T** ref ):
+  ref_(ref)
+{}
+
+template< typename T > inline Handler<T>::Handler( const Handler& that ):
+  ref_(that.ref_)
+{}
+
+template< typename T >
+inline Handler<T>& Handler<T>::operator = ( const Handler<T>& that ) {
+  ref_ = that.ref_;
+  return *this;
 }
 
-inline void Value::set_pointer( void* ptr , int tag ) {
+template< typename T >
+inline T* Handler<T>::operator -> () {
+#ifdef LAVASCRIPT_CHECK_OBJECTS
+  lava_verify(!IsNull());
+#endif // LAVASCRIPT_CHECK_OBJECTS
+  return *ref_;
+}
+
+template< typename T >
+inline const T* Handler<T>::operator -> () const {
+#ifdef LAVASCRIPT_CHECK_OBJECTS
+  lava_verify(!IsNull());
+#endif // LAVASCRIPT_CHECK_OBJECTS
+  return *ref_;
+}
+
+template< typename T >
+inline T& Handler<T>::operator * () {
+#ifdef LAVASCRIPT_CHECK_OBJECTS
+  lava_verify(!IsNull());
+#endif // LAVASCRIPT_CHECK_OBJECTS
+  return **ref_;
+}
+
+template< typename T >
+inline const T& Handler<T>::operator * () const {
+#ifdef LAVASCRIPT_CHECK_OBJECTS
+  lava_verify(!IsNull());
+#endif // LAVASCRIPT_CHECK_OBJECTS
+  return **ref_;
+}
+
+/* --------------------------------------------------------------------
+ * Value
+ * ------------------------------------------------------------------*/
+
+inline HeapObject** Value::heap_object() const {
+  return reinterpret_cast<HeapObject**>(raw_ & kPtrMask);
+}
+
+inline void Value::set_heap_object( HeapObject** ptr ) {
+
 #ifdef LAVASCRIPT_CHECK_OBJECTS
   /**
    * Checking whether the input pointer is valid pointer
    * with our assumptions
    */
-#ifdef LAVASCRIPT_ARCH_X64
   lava_assert( (static_cast<std::uintptr_t>(ptr)&kPtrCheckMask) == 0 ,
                "the pointer %x specified here is not a valid pointer,"
                " upper 16 bits is not 0s", ptr );
-#endif // LAVASCRIPT_ARCH_X64
 #endif // LAVASCRIPT_CHECK_OBJECTS
 
-  raw_ = static_cast<std::uintptr_t>(ptr) | tag;
+  raw_ = static_cast<std::uint64_t>(
+      static_cast<std::uintptr_t>(ptr) | tag);
 }
 
 inline ValueType Value::type() const {
@@ -879,35 +898,35 @@ inline const char* Value::type_name() const {
 }
 
 inline bool Value::IsString() const {
-  return IsHeapObject() && heap_object()->IsString();
+  return IsHeapObject() && (*heap_object())->IsString();
 }
 
 inline bool Value::IsList() const {
-  return IsHeapObject() && heap_object()->IsList();
+  return IsHeapObject() && (*heap_object())->IsList();
 }
 
 inline bool Value::IsSlice() const {
-  return IsHeapObject() && heap_object()->IsSlice();
+  return IsHeapObject() && (*heap_object())->IsSlice();
 }
 
 inline bool Value::IsObject() const {
-  return IsHeapObject() && heap_object()->IsObject();
+  return IsHeapObject() && (*heap_object())->IsObject();
 }
 
 inline bool Value::IsMap() const {
-  return IsHeapObject() && heap_object()->IsMap();
+  return IsHeapObject() && (*heap_object())->IsMap();
 }
 
 inline bool Value::IsPrototype() const {
-  return IsHeapObject() && heap_object()->IsPrototype();
+  return IsHeapObject() && (*heap_object())->IsPrototype();
 }
 
 inline bool Value::IsClosure() const {
-  return IsHeapObject() && heap_object()->IsClosure();
+  return IsHeapObject() && (*heap_object())->IsClosure();
 }
 
 inline bool Value::IsExtension() const {
-  return IsHeapObject() && heap_object()->IsExtension();
+  return IsHeapObject() && (*heap_object())->IsExtension();
 }
 
 inline std::uint32_t Value::GetInteger() const {
@@ -948,74 +967,67 @@ inline double Value::GetReal() const {
   return real_;
 }
 
-inline HeapObject* Value::GetHeapObject() const {
+inline HeapObject** Value::GetHeapObject() const {
 #define LAVASCRIPT_CHECK_OBJECTS
   lava_verify(IsHeapObject());
 #endif // LAVASCRIPT_CHECK_OBJECTS
   return heap_object();
 }
 
-inline String* Value::GetString() const {
+inline Handler<String> Value::GetString() const {
 #define LAVASCRIPT_CHECK_OBJECTS
-  lava_verify(IsString());
+  lava_verify(IsHeapObject());
 #endif // LAVASCRIPT_CHECK_OBJECTS
-  return static_cast<String*>(heap_object());
+  return Handler<String>(heap_object());
 }
 
-inline List* Value::GetList() const {
+inline Handler<List> Value::GetList() const {
 #define LAVASCRIPT_CHECK_OBJECTS
-  lava_verify(IsList());
+  lava_verify(IsHeapObject());
 #endif // LAVASCRIPT_CHECK_OBJECTS
-  return static_cast<List*>(heap_object());
+  return Handler<List>(heap_object());
 }
 
-inline Slice* Value::GetSlice() const {
+inline Handler<Slice> Value::GetSlice() const {
 #define LAVASCRIPT_CHECK_OBJECTS
-  lava_verify(IsSlice());
+  lava_verify(IsHeapObject());
 #endif // LAVASCRIPT_CHECK_OBJECTS
-  return static_cast<Slice*>(heap_object());
+  return Handler<Slice>(heap_object());
 }
 
-inline Object* Value::GetObject() const {
+inline Handler<Object> Value::GetObject() const {
 #define LAVASCRIPT_CHECK_OBJECTS
-  lava_verify(IsObject());
+  lava_verify(IsHeapObject());
 #endif // LAVASCRIPT_CHECK_OBJECTS
-  return static_cast<Object*>(heap_object());
+  return Handler<Object>(heap_object());
 }
 
-inline Map* Value::GetMap() const {
+inline Handler<Map> Value::GetMap() const {
 #define LAVASCRIPT_CHECK_OBJECTS
-  lava_verify(IsMap());
+  lava_verify(IsHeapObject());
 #endif // LAVASCRIPT_CHECK_OBJECTS
-  return static_cast<Map*>(heap_object());
+  return Handler<Map>(heap_object());
 }
 
-inline Prototype* Value::GetPrototype() const {
+inline Handler<Prototype> Value::GetPrototype() const {
 #define LAVASCRIPT_CHECK_OBJECTS
-  lava_verify(IsPrototype());
+  lava_verify(IsHeapObject());
 #endif // LAVASCRIPT_CHECK_OBJECTS
-  return static_cast<Prototype*>(heap_object());
+  return Handler<Prototype>(heap_object());
 }
 
-inline Closure* Value::GetClosure() const {
+inline Handler<Closure> Value::GetClosure() const {
 #define LAVASCRIPT_CHECK_OBJECTS
-  lava_verify(IsClosure());
+  lava_verify(IsHeapObject());
 #endif // LAVASCRIPT_CHECK_OBJECTS
-  return static_cast<Closure*>(heap_object());
+  return Handler<Closure>(heap_object());
 }
 
-inline Extension* Value::GetExtension() const {
+inline Handler<Extension> Value::GetExtension() const {
 #define LAVASCRIPT_CHECK_OBJECTS
-  lava_verify(IsExtension());
+  lava_verify(IsHeapObject());
 #endif // LAVASCRIPT_CHECK_OBJECTS
-  return static_cast<Extension*>(heap_object());
-}
-
-inline GCRef Value::GetGCRef() const {
-#define LAVASCRIPT_CHECK_OBJECTS
-  lava_verify(IsGCRef());
-#endif // LAVASCRIPT_CHECK_OBJECTS
-  return GCRef( gcref_ptr() );
+  return Handler<Extension>(heap_object());
 }
 
 inline void Value::SetInteger( std::uint32_t value ) {
@@ -1033,48 +1045,75 @@ inline void Value::SetBoolean( bool value ) {
     raw_ = TAG_FALSE;
 }
 
-inline void Value::SetHeapObject( HeapObject* ptr ) {
-  set_pointer(ptr,TAG_HEAP);
+inline void Value::SetHeapObject( HeapObject** ptr ) {
+  set_pointer(reinterpret_cast<void*>(ptr),TAG_HEAP);
 }
 
-inline void Value::SetString( String* ptr ) {
-  set_pointer(static_cast<HeapObject*>(ptr),TAG_HEAP);
+inline void Value::SetString( const Handler<String>& str ) {
+  SetHeapObject(str.heap_object());
 }
 
-inline void Value::SetList( List* ptr ) {
-  set_pointer(static_cast<HeapObject*>(ptr),TAG_HEAP);
+inline void Value::SetList( const Handler<List>& list ) {
+  SetHeapObject(list.heap_object());
 }
 
-inline void Value::SetSlice( Slice* ptr ) {
-  set_pointer(static_cast<HeapObject*>(ptr),TAG_HEAP);
+inline void Value::SetSlice( const Handler<Slice>& slice ) {
+  SetHeapObject(slice.heap_object());
 }
 
-inline void Value::SetObject( Object* ptr ) {
-  set_pointer(static_cast<HeapObject*>(ptr),TAG_HEAP);
+inline void Value::SetObject( const Handler<Object>& object ) {
+  SetHeapObject(object.heap_object());
 }
 
-inline void Value::SetMap( Map* ptr ) {
-  set_pointer(static_cast<HeapObject*>(ptr),TAG_HEAP);
+inline void Value::SetMap( const Handler<Map>& map ) {
+  SetHeapObject(map.heap_object());
 }
 
-inline void Value::SetPrototype( Prototype* ptr ) {
-  set_pointer(static_cast<HeapObject*>(ptr),TAG_HEAP);
+inline void Value::SetPrototype( const Handler<Prototype>& proto ) {
+  SetHeapObject(proto.heap_object());
 }
 
-inline void Value::SetClosure( Closure* ptr ) {
-  set_pointer(static_cast<HeapObject*>(ptr),TAG_HEAP);
+inline void Value::SetClosure( const Handler<Closure>& closure ) {
+  SetHeapObject(closure.heap_object());
 }
 
-inline void Value::SetExtension( Extension* ptr ) {
-  set_pointer(static_cast<HeapObject*>(ptr),TAG_HEAP);
+inline void Value::SetExtension( const Handler<Extension>& ext ) {
+  SetHeapObject(set.heap_object());
 }
 
-inline void Value::SetGCRef( GCRef ref ) {
-#ifdef LAVASCRIPT_CHECK_OBJECTS
-  lava_verify(*ref != NULL);
-#endif
-  set_pointer(static_cast<GCRef::RefType>(ref.ref()),TAG_GCREF);
+/* --------------------------------------------------------------------
+ * HeapObject
+ * ------------------------------------------------------------------*/
+
+template< typename T >
+bool HeapObject::IsType<T>() const {
+  if(std::is_same<T,String>::value)
+    return IsString();
+  else if(std::is_same<T,List>::value)
+    return IsList();
+  else if(std::is_same<T,Slice>::value)
+    return IsSlice();
+  else if(std::is_same<T,Object>::value)
+    return IsObject();
+  else if(std::is_same<T,Map>::value)
+    return IsMap();
+  else if(std::is_same<T,Iterator>::value)
+    return IsIterator();
+  else if(std;:is_same<T,Prototype>::value)
+    return IsPrototype();
+  else if(std::is_same<T,Closure>::value)
+    return IsClosure();
+  else if(std::is_same<T,Extension>::value)
+    return IsExtension();
+  else
+    lava_die();
+  return false;
 }
+
+
+/* --------------------------------------------------------------------
+ * SSO
+ * ------------------------------------------------------------------*/
 
 inline void* SSO::data() const {
   SSO* self = const_cast<SSO*>(this);
@@ -1278,6 +1317,10 @@ inline bool SSO::operator <= ( const SSO& str ) const {
     return false;
 }
 
+/* --------------------------------------------------------------------
+ * String
+ * ------------------------------------------------------------------*/
+
 inline const SSO& String::sso() const {
 #ifdef LAVASCRIPT_CHECK_OBJECTS
   lava_verify(IsSSO());
@@ -1459,8 +1502,12 @@ inline bool String::operator <= ( const SSO& str ) const {
   return (r < 0 || (r == 0 && size() < str.size()));
 }
 
-inline bool List::empty() const {
-  return slice()->empty();
+/* --------------------------------------------------------------------
+ * List
+ * ------------------------------------------------------------------*/
+
+inline bool List::IsEmpty() const {
+  return slice()->IsEmpty();
 }
 
 inline bool List::size() const {
@@ -1507,6 +1554,32 @@ inline Value& List::First() const {
   return slice()->Index(0);
 }
 
+inline bool List::Push( GC* gc , const Value& value ) {
+  if(size_ == slice_->capacity()) {
+    // We run out of memory for this slice , just dump it
+    slice_ = Slice::Extend(gc,slice_,2*size_);
+
+    // We cannot allocate a larger Slice , return false directly
+    if(!slice_) return false;
+  }
+
+  slice_->Index(size_) = value;
+  ++size_;
+  return true;
+}
+
+inline void List::Pop() {
+#ifdef LAVASCRIPT_CHECK_OBJECTS
+  lava_verify(size_ > 0);
+#endif // LAVASCRIPT_CHECK_OBJECTS
+  --size_;
+}
+
+
+/* --------------------------------------------------------------------
+ * Slice
+ * ------------------------------------------------------------------*/
+
 inline void* Slice::array() const {
   return reinterpret_cast<void*>(
       static_cast<char*>(this) + sizeof(Slice));
@@ -1528,6 +1601,11 @@ inline Value& Slice::Index( size_t index ) {
   return data()[index];
 }
 
+
+/* --------------------------------------------------------------------
+ * Slice
+ * ------------------------------------------------------------------*/
+
 inline size_t Object::capacity() const {
   return map()->capacity();
 }
@@ -1536,8 +1614,8 @@ inline size_t Object::size() const {
   return map()->size();
 }
 
-inline size_t Object::empty() const {
-  return map()->empty();
+inline size_t Object::IsEmpty() const {
+  return map()->IsEmpty();
 }
 
 inline bool Object::Get( const String& key , Value* output ) const {
@@ -1554,67 +1632,116 @@ inline bool Object::Get( const std::string& key , Value* output ) const {
 
 inline bool Object::Set( GC* gc , const String& key ,
     const Value& val ) {
-  return map()->Set(gc,key,val);
+  if(map_->NeedRehash()) {
+    map_ = Map::Rehash(gc,map_);
+    if(!map_) return false;
+  }
+
+  return map_->Set(gc,key,val);
 }
 
 inline bool Object::Set( GC* gc , const char* key ,
     const Value& val ) {
-  return map()->Set(gc,key,val);
+  if(map_->NeedRehash()) {
+    map_ = Map::Rehash(gc,map_);
+    if(!map_) return false;
+  }
+  return map_->Set(gc,key,val);
 }
 
 inline bool Object::Set( GC* gc , const std::string& key ,
     const Value& val ) {
-  return map()->Set(gc,key,val);
+  if(map_->NeedRehash()) {
+    map_ = Map::Rehash(gc,map_);
+    if(!map_) return false;
+  }
+  return map_->Set(gc,key,val);
 }
 
 inline bool Object::Update( GC* gc , const String& key ,
     const Value& val ) {
-  return map()->Update(gc,key,val);
+  if(map_->NeedRehash()) {
+    map_ = Map::Rehash(gc,map_);
+    if(!map_) return false;
+  }
+  return map_->Update(gc,key,val);
 }
 
 inline bool Object::Update( GC* gc , const char* key ,
     const Value& val ) {
-  return map()->Update(gc,key,val);
+  if(map_->NeedRehash()) {
+    map_ = Map::Rehash(gc,map_);
+    if(!map_) return false;
+  }
+  return map_->Update(gc,key,val);
 }
 
 inline bool Object::Update( GC* gc , const std::string& key ,
     const Value& val ) {
-  return map()->Update(gc,key,val);
+  if(map_->NeedRehash()) {
+    map_ = Map::Rehash(gc,map_);
+    if(!map_) return false;
+  }
+  return map_->Update(gc,key,val);
 }
 
 inline bool Object::Put( GC* gc , const String& key ,
     const Value& val ) {
-  return map()->Put(gc,key,val);
+  if(map_->NeedRehash()) {
+    map_ = Map::Rehash(gc,map_);
+    if(!map_) return false;
+  }
+  return map_->Put(gc,key,val);
 }
 
 inline bool Object::Put( GC* gc , const char* key ,
     const Value& val ) {
-  return map()->Put(gc,key,val);
+  if(map_->NeedRehash()) {
+    map_ = Map::Rehash(gc,map_);
+    if(!map_) return false;
+  }
+  return map_->Put(gc,key,val);
 }
 
 inline bool Object::Put( GC* gc , const std::string& key,
     const Value& val ) {
-  return map()->Put(gc,key,val);
+  if(map_->NeedRehash()) {
+    map_ = Map::Rehash(gc,map_);
+    if(!map_) return false;
+  }
+  return map_->Put(gc,key,val);
 }
 
 inline bool Object::Delete( const String& key ) {
-  return map()->Delete(key);
+  return map_->Delete(key);
 }
 
 inline bool Object::Delete( const char* key ) {
-  return map()->Delete(key);
+  return map_->Delete(key);
 }
 
 inline bool Object::Delete( const std::string& key ) {
-  return map()->Delete(key);
+  return map_->Delete(key);
 }
 
-std::uint32_t Map::Hash( const String& key ) {}
-std::uint32_t Map::Hash( const char* key ) {}
-std::uint32_t Map::Hash( const std::string& key ) {}
+/* --------------------------------------------------------------------
+ * Map
+ * ------------------------------------------------------------------*/
 
-std::uint32_t Map::Hash( const SSO& key ) {
-  return key.hash();
+inline std::uint32_t Map::Hash( const Handle<String>& key ) {
+  if(key.IsSSO()) {
+    return key.sso().hash();
+  } else {
+    return Hasher::Hash(key.long_string().data(),key.long_string().size());
+  }
+}
+
+inline std::uint32_t Map::Hash( const char* key ) {
+  return Hasher::Hash(key);
+}
+
+inline std::uint32_t Map::Hash( const std::string& key ) {
+  return Hasher::Hash(key.c_str(),key.size());
 }
 
 template< typename T >
@@ -1631,7 +1758,11 @@ Entry* Map::FindEntry<T>( const T& key , std::uint32_t fullhash ,
     if(!cur->del) {
       // The current entry is not deleted, so we can try check wether it is a
       // matched key or not
-      if(cur->hash == fullhash && KeyEqual(key,cur->key)) {
+#ifdef LAVASCRIPT_CHECK_OBJECTS
+      lava_verify( cur->key.IsString() );
+#endif // LAVASCRIPT_CHECK_OBJECTS
+
+      if(cur->hash == fullhash && *cur->key.GetString() == key) {
         return opt == INSERT ? NULL : cur;
       }
     }
@@ -1696,6 +1827,10 @@ inline bool Map::Get( const std::string& key , Value* output ) const {
 inline bool Map::Set( GC* gc , const Handler<String>& key , const Value& value ) {
   (void)gc;
 
+#ifdef LAVASCRIPT_CHECK_OBJECTS
+  lava_verify(!NeedRehash());
+#endif // LAVASCRIPT_CHECK_OBJECTS
+
   std::uint32_t f = Hash(key);
   Entry* entry = FindEntry(key,f,INSERT);
   if(entry) {
@@ -1706,12 +1841,19 @@ inline bool Map::Set( GC* gc , const Handler<String>& key , const Value& value )
     entry->value = value;
     entry->key.SetHandler(key);
     entry->hash = h;
+    ++size_;
+    ++slot_size_;
     return true;
   }
   return false;
 }
 
 inline bool Map::Set( GC* gc , const char* key , const Value& value ) {
+
+#ifdef LAVASCRIPT_CHECK_OBJECTS
+  lava_verify(!NeedRehash());
+#endif // LAVASCRIPT_CHECK_OBJECTS
+
   std::uint32_t f = Hash(key);
   Entry* entry = FindEntry(key,f,INSERT);
   if(entry) {
@@ -1720,8 +1862,124 @@ inline bool Map::Set( GC* gc , const char* key , const Value& value ) {
 #endif // LAVASCRIPT_CHECK_OBJECTS
     entry->use = 1;
     entry->value = value;
+    entry->key.SetString( String::New(gc,key) );
+    entry->hash = h;
+    ++size_;
+    ++slot_size_;
+    return true;
   }
+  return false;
 }
+
+inline bool Map::Set( GC* gc , const std::string& key , const Value& value ) {
+
+#ifdef LAVASCRIPT_CHECK_OBJECTS
+  lava_verify(!NeedRehash());
+#endif // LAVASCRIPT_CHECK_OBJECTS
+
+  std::uint32_t f = Hash(key);
+  Entry* entry = FindEntry(key,f,INSERT);
+  if(entry) {
+#ifdef LAVASCRIPT_CHECK_OBJECTS
+    lava_verify(!entry->use);
+#endif // LAVASCRIPT_CHECK_OBJECTS
+    entry->use = 1;
+    entry->value = value;
+    entry->key.SetString( String::New(gc,key) );
+    entry->hash = h;
+    ++size_;
+    ++slot_size_;
+    return true;
+  }
+  return false;
+}
+
+inline void Map::Put( GC* gc , const Handler<String>& key , const Value& value ) {
+
+#ifdef LAVASCRIPT_CHECK_OBJECTS
+  lava_verify(!NeedRehash());
+#endif // LAVASCRIPT_CHECK_OBJECTS
+
+  std::uint32_t f = Hash(key);
+  Entry* entry = FindEntry(key,f,UPDATE);
+
+  entry->del = 0;
+  entry->use = 1;
+  entry->value = value;
+  entry->key.SetString(key);
+  entry->hash = h;
+  ++size_;
+  ++slot_size_;
+}
+
+inline void Map::Put( GC* gc , const char* key , const Value& value ) {
+
+#ifdef LAVASCRIPT_CHECK_OBJECTS
+  lava_verify(!NeedRehash());
+#endif // LAVASCRIPT_CHECK_OBJECTS
+
+  std::uint32_t f = Hash(key);
+  Entry* entry = FindEntry(key,f,UPDATE);
+
+  entry->del = 0;
+  entry->use = 1;
+  entry->value = value;
+  entry->key.SetString(String::New(gc,key));
+  entry->hash = h;
+  ++size_;
+  ++slot_size_;
+}
+
+inline void Map::Put( GC* gc , const std::string& key , const Value& value ) {
+
+#ifdef LAVASCRIPT_CHECK_OBJECTS
+  lava_verify(!NeedRehash());
+#endif // LAVASCRIPT_CHECK_OBJECTS
+
+  std::uint32_t f = Hash(key);
+  Entry* entry = FindEntry(key,f,UPDATE);
+
+  entry->del = 0;
+  entry->use = 1;
+  entry->value = value;
+  entry->key.SetString(String::New(gc,key));
+  entry->hash = h;
+  ++size_;
+  ++slot_size_;
+}
+
+inline bool Map::Delete( const Handler<String>& key ) {
+
+  Entry* entry = FindEntry(key,Hash(key),FIND);
+  if(entry) {
+    entry->del = 1;
+    --size_;
+    return true;
+  }
+  return false;
+}
+
+inline bool Map::Delete( const char*  key ) {
+  Entry* entry = FindEntry(key,Hash(key),FIND);
+  if(entry) {
+    entry->del = 1;
+    --size_;
+    return true;
+  }
+  return false;
+}
+
+inline bool Map::Delete( const std::string& key ) {
+  Entry* entry = FindEntry(key,Hash(key),FIND);
+  if(entry) {
+    entry->del = 1;
+    --size_;
+    return true;
+  }
+  return false;
+}
+
+
 
 
 

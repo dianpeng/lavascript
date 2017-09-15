@@ -1,8 +1,6 @@
 #ifndef OS_LINUX_H_
 #define OS_LINUX_H_
 
-#include "all-static.h"
-
 #include <cstdint>
 #include <sys/types.h>
 #include <unistd.h>

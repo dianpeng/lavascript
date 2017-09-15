@@ -15,6 +15,7 @@ void BumpAllocator::RefillPool( std::size_t size ) {
   current_capacity_ = size;
   used_ = 0;
   total_bytes_ += total;
+  ++segment_size_;
 }
 
 void* BumpAllocator::Grab( std::size_t size ) {
@@ -32,6 +33,7 @@ void* BumpAllocator::Grab( std::size_t size ) {
   void* ret = pool_;
   pool_ = reinterpret_cast<void*>(static_cast<char*>(pool_) + size);
   used_ += size;
+  ++size_;
   return ret;
 }
 

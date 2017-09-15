@@ -12,7 +12,7 @@ template< typename T > class FreeList {
  public:
   static_assert( sizeof(T) >= sizeof(std::uintptr_t) );
 
-  FreeList( size_t current , size_t maximum , HeapAllocator* allocator );
+  FreeList( std::size_t current , std::size_t maximum , HeapAllocator* allocator );
   ~FreeList();
 
   // These 2 API will *NOT* construct the object or destruct the object
@@ -22,11 +22,12 @@ template< typename T > class FreeList {
   void Drop( T* );
 
  public:
-  size_t size() const { return size_; }
-  size_t capacity() const { return capacity_; }
+  std::size_t size() const { return size_; }
+  std::size_t chunk_size() const { return chunk_size_; }
+  std::size_t capacity() const { return capacity_; }
 
  private:
-  void Reserve( size_t count );
+  void Reserve( std::size_t count );
 
   struct Segment {
     Segment* next;              // Next segment
@@ -38,15 +39,16 @@ template< typename T > class FreeList {
 
   FreeNode* next_;              // Next available free node inside of FreeList
   Segment* chunk_;              // Head of the chunk pool
-  size_t size_;                 // Size of *allocated* FreeNode in FreeList
-  size_t capacity_;             // All the *existed* FreeNode in FreeList
-  size_t maximum_ ;             // Maximum upper bound for FreeList growing
+  std::size_t size_;            // Size of *allocated* FreeNode in FreeList
+  std::size_t chunk_size_;      // Chunk number
+  std::size_t capacity_;        // All the *existed* FreeNode in FreeList
+  std::size_t maximum_ ;        // Maximum upper bound for FreeList growing
   HeapAllocator* allocator_;    // HeapAllocator
 
   LAVA_DISALLOW_COPY_AND_ASSIGN(FreeList);
 };
 
-template< typename T > void FreeList<T>::Reserve( size_t count ) {
+template< typename T > void FreeList<T>::Reserve( std::size_t count ) {
   void* ptr = Malloc( allocator_ , sizeof(T) * count + sizeof(Segment) );
 
   Segment* f= reinterpret_cast<Segment*>(ptr);
@@ -57,7 +59,7 @@ template< typename T > void FreeList<T>::Reserve( size_t count ) {
   char* start = cur;
 
   // Linked the free-node into a free-list
-  for( size_t i = 0 ; i < count - 1 ; ++i ) {
+  for( std::size_t i = 0 ; i < count - 1 ; ++i ) {
     FreeNode* node = reinterpret_cast<FreeNode*>(cur);
     node->next     = reinterpret_cast<FreeNode*>(cur + sizeof(T));
     cur = reinterpret_cast<char*>(node->next);
@@ -65,13 +67,15 @@ template< typename T > void FreeList<T>::Reserve( size_t count ) {
   (reinterpret_cast<FreeNode*>(cur))->next = next_;
   next_ = reinterpret_cast<FreeNode*>(start);
   capacity_ = count;
+  ++chunk_size_;
 }
 
-template< typename T > FreeList<T>::FreeList( size_t current , size_t maximum ,
+template< typename T > FreeList<T>::FreeList( std::size_t current , std::size_t maximum ,
     HeapAllocator* allocator ):
   next_(NULL),
   chunk_(NULL),
   size_(0),
+  chunk_size_(0),
   capacity_(0),
   maximum_ (maximum),
   allocator_ (allocator)
@@ -90,7 +94,7 @@ template< typename T > FreeList<T>::~FreeList() {
 
 template< typename T > T* FreeList<T>::Grab() {
   if(!next_) {
-    size_t cap = capacity_ * 2;
+    std::size_t cap = capacity_ * 2;
     cap = cap > maximum_ ? maximum_ : cap;
     Reserve(cap);
   }

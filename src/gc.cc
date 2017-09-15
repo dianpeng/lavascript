@@ -9,12 +9,8 @@
 namespace lavascript {
 namespace gc {
 
-Heap::Heap( size_t threshold , double factor ,
-                               size_t chunk_capacity ,
-                               size_t init_size ,
-                               HeapAllocator* allocator ):
-  threshold_(threshold),
-  factor_(factor),
+Heap::Heap( size_t chunk_capacity , size_t init_size ,
+                                    HeapAllocator* allocator ):
   alive_size_(0),
   chunk_size_(0),
   allocated_bytes_(0),
@@ -47,8 +43,6 @@ bool Heap::Iterator::Move() {
 }
 
 void Heap::Swap( Heap* that ) {
-  std::swap( threshold_ , that->threshold_ );
-  std::swap( factor_    , that->factor_    );
   std::swap( alive_size_, that->alive_size_);
   std::swap( chunk_size_, that->chunk_size_);
   std::swap( allocated_bytes_ , that->allocated_bytes_ );
@@ -85,17 +79,14 @@ void* Heap::Grab( size_t object_size , ValueType type, GCState gc_state ,
                                                        bool is_long_str ) {
   object_size = Align(object_size,kAlignment);
   std::size_t size = object_size + HeapObjectHeader::kHeapObjectHeaderSize;
-
-  // Try to use slow FindInChunk when we trigger it because of we use too much
-  // memory now
-  size_t find_in_chunk_trigger = threshold_ * factor_;
-  if( find_in_chunk_trigger < allocated_bytes_ ) {
-    void* ret = FindInChunk(size);
-    if(ret) return ret;
-  }
+  void* buf = NULL;
 
   if(chunk_current_->bytes_left() < size) {
+    buf = FindInChunk(size);
+    if(buf) return buf;
     if(!RefillChunk(size)) return NULL;
+  } else {
+    buf = chunk_current_->Bump(size);
   }
 
   // Now try to allocate it from the newly created chunk
@@ -107,25 +98,23 @@ void* Heap::Grab( size_t object_size , ValueType type, GCState gc_state ,
   allocated_bytes_ += size;
   alive_size_++;
 
-  return SetHeapObjectHeader(chunk_current_->Bump(size),object_size,type,
-                                                                   gc_state,
-                                                                   is_long_str);
+  return SetHeapObjectHeader(buf,object_size,type, gc_state,is_long_str);
 }
 
 void* Heap::CopyObject( const void* ptr , std::size_t length ) {
 #ifdef LAVASCRIPT_CHECK_OBJECTS
+  lava_verify(!length);
   lava_verify( Align(length,kAlignment) == length );
 #endif // LAVASCRIPT_CHECK_OBJECTS
 
-  size_t find_in_chunk_trigger = threshold_ * factor_;
   void* buf = NULL;
-  if(find_in_chunk_trigger < allocated_bytes_) {
+  if(chunk_current_->bytes_left() < length) {
     buf = FindInChunk(length);
-  }
-  if(!buf) {
-    if(chunk_current_->bytes_left() < length) {
+    if(!buf) {
       if(!RefillChunk(length)) return NULL;
+      buf = chunk_current_->Bump(length);
     }
+  } else {
     buf = chunk_current_->Bump(length);
   }
   std::memcpy(buf,ptr,length);
@@ -224,6 +213,10 @@ SSOPool::Entry* SSOPool::FindOrInsert( std::vector<Entry>* entry ,
 }
 
 SSO* SSOPool::Get( const char* str , std::size_t length ) {
+  if(size() == entry_.size()) {
+    Rehash();
+  }
+
   std::uint32_t hash = Hasher::Hash(str,length);
   Entry* e = FindOrInsert(&entry_,str,length,hash);
   if(e->sso)
@@ -278,16 +271,10 @@ void Heap::HeapDump( int verbose , const char* filename ) {
   DumpWriter writer(filename);
 
   writer.Write("********************* Heap Dump ****************************");
-  writer.Write("Threshold:%zu;Factor:%d;AliveSize:%zu;"
-               "ChunkSize:%zu;AllocatedBytes:%zu;"
+  writer.Write("AliveSize:%zu;ChunkSize:%zu;AllocatedBytes:%zu;"
                "TotalBytes:%zu;ChunkCapacity:%zu",
-               threshold_,
-               factor_,
-               alive_size_,
-               chunk_size_,
-               allocated_bytes_,
-               total_bytes_,
-               chunk_capacity_);
+               alive_size_, chunk_size_, allocated_bytes_,
+               total_bytes_, chunk_capacity_);
 
   if(verbose != HEAP_DUMP_NORMAL) {
 
@@ -423,9 +410,7 @@ void GC::PhaseMark( MarkResult* result ) {
 }
 
 void GC::PhaseSwap( std::size_t new_heap_size ) {
-  gc::Heap new_heap(heap_.threshold(),
-                    heap_.factor(),
-                    heap_.chunk_capacity(),
+  gc::Heap new_heap(heap_.chunk_capacity(),
                     new_heap_size,
                     allocator_);
 

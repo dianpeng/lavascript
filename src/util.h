@@ -45,7 +45,7 @@ bool StringToBoolean( const char* , bool* );
 std::string PrettyPrintReal( double );
 
 template< typename T > T Align( T value , T alignment ) {
-  return (value + (alignment-1)) & ~alignment;
+  return (value + (alignment-1)) & ~(alignment-1);
 }
 
 template< typename T , typename Allocator , typename ... ARGS >

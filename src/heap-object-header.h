@@ -38,6 +38,7 @@ const char* GetGCStateName( GCState );
   __( TYPE_NULL    , Null    , "null"    )                            \
 
 
+/* NOTES: Order matters */
 #define LAVASCRIPT_VALUE_TYPE_LIST(__)                                \
   LAVASCRIPT_HEAP_OBJECT_LIST(__)                                     \
   LAVASCRIPT_PRIMITIVE_TYPE_LIST(__)
@@ -92,7 +93,7 @@ LAVASCRIPT_HEAP_OBJECT_LIST(__)
  *
  *
  * Low : Used for storing the size of the HeapObject , this means we can store
- *       object as large as 2^32^8 , since all the pointer on Heap is aligned with 8
+ *       object as large as 2^32 (4GB) , which is way more than enough
  *
  * High: Used for storing bit flags and other stuffs .
  *
@@ -118,10 +119,10 @@ class HeapObjectHeader : DoNotAllocateOnNormalHeap {
   static const std::uint32_t kEndOfChunkMask = (1<<6); // 0b01000000
 
   // Mask for getting the heap object type , should be 0b0011100
-  static const std::uint32_t kHeapObjectTypeMask  = bits::BitOn<std::uint32_t,2,5>::value;
+  static const std::uint32_t kHeapObjectTypeMask  = bits::BitOn<std::uint32_t,2,6>::value;
 
-  GCState gc_state() const { return static_cast<GCState>(low_ & kGCStateMask); }
-  void set_gc_state( GCState state ) { low_ |= static_cast<std::uint32_t>(state); }
+  GCState gc_state() const { return static_cast<GCState>(high_ & kGCStateMask); }
+  void set_gc_state( GCState state ) { high_ |= static_cast<std::uint32_t>(state); }
 
   bool IsGCBlack() const { return gc_state() == GC_BLACK; }
   bool IsGCWhite() const { return gc_state() == GC_WHITE; }
@@ -149,12 +150,28 @@ class HeapObjectHeader : DoNotAllocateOnNormalHeap {
   ValueType type() const {
     return static_cast<ValueType>( (high_ & kHeapObjectTypeMask) >> 2 );
   }
+  bool IsString() const { return type() == TYPE_STRING; }
+  bool IsList() const { return type() == TYPE_LIST; }
+  bool IsSlice() const { return type() == TYPE_SLICE; }
+  bool IsObject() const { return type() == TYPE_OBJECT; }
+  bool IsMap() const { return type() == TYPE_MAP; }
+  bool IsIterator() const { return type() == TYPE_ITERATOR; }
+  bool IsPrototype() const { return type() == TYPE_PROTOTYPE; }
+  bool IsClosure() const { return type() == TYPE_CLOSURE; }
+  bool IsExtension() const { return type() == TYPE_EXTENSION; }
+
   void set_type( ValueType type ) {
+    high_ &= ~kHeapObjectTypeMask;
     high_ |= (static_cast<std::uint32_t>(type) << 2);
   }
 
   // Size of the object + the header size
-  std::size_t total_size() const { return size() + kHeapObjectHeaderSize; }
+  //
+  // NOTES:
+  // implementation uses size() which has std::size_t larger
+  // range than std::uint32_t catch corner case that size is
+  // std::uint32_t::max()
+  std::size_t total_size() const {return size() + kHeapObjectHeaderSize; }
 
   // Size of the object in byte
   std::size_t size() const { return low_ ; }
@@ -163,19 +180,25 @@ class HeapObjectHeader : DoNotAllocateOnNormalHeap {
   void set_size( std::uint32_t size ) { low_ = size; }
 
   // Return the heap object header in raw format basically a 64 bits number
-  std::uint64_t raw () const { return (static_cast<uint64_t>(low_) |
-                                      (static_cast<uint64_t>(high_)<<32)); }
+  Type raw () const { return (static_cast<uint64_t>(low_) |
+                             (static_cast<uint64_t>(high_)<<32)); }
 
-  operator std::uint64_t const () { return raw(); }
+  operator Type const () { return raw(); }
 
-  explicit HeapObjectHeader( std::uint64_t raw ) :
+ public:
+
+  static void SetHeader( void* here , const HeapObjectHeader& hdr ) {
+    *reinterpret_cast<Type*>(here) = hdr.raw();
+  }
+
+  explicit HeapObjectHeader( Type raw ) :
     high_( bits::High64(raw) ),
     low_ ( bits::Low64 (raw) )
   {}
 
   explicit HeapObjectHeader( void* raw ):
-    high_( bits::High64(*reinterpret_cast<std::uint64_t*>(raw)) ),
-    low_ ( bits::Low64 (*reinterpret_cast<std::uint64_t*>(raw)) )
+    high_( bits::High64(*reinterpret_cast<Type*>(raw)) ),
+    low_ ( bits::Low64 (*reinterpret_cast<Type*>(raw)) )
   {}
 
  private:

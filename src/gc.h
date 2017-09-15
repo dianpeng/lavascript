@@ -10,6 +10,7 @@
 #include "heap-object-header.h"
 #include "heap-allocator.h"
 
+#include "bits.h"
 #include "util.h"
 #include "trace.h"
 #include "free-list.h"
@@ -44,19 +45,13 @@ class GCRefPool final {
   std::size_t size() const { return free_list_.size(); }
 
   // Create a new Ref and add it internally to the GCRefPool
-  HeapObject** Grab() {
-    Ref* new_ref = free_list_.Grab();
-    new_ref->next = front_;
-    front_ = new_ref;
-    return &(new_ref->object);
-  }
+  inline HeapObject** Grab();
 
   // The deletion of GCRefPool happens when we want to iterate
   // through the whole GCRefPool and since it is a single linked
   // list and we cannot do move , typical trick for single linked
   // list deletion , we need to always keep track its *previous*
   // node.
-
   class Iterator {
    public:
      // Whether we has next available slot inside of the GCRefPool
@@ -83,6 +78,13 @@ class GCRefPool final {
 
   // Get the iterator for this GCRefPool
   Iterator GetIterator() const { return Iterator(front_); }
+
+  GCRefPool( std::size_t init_size ,
+             std::size_t maximum_size ,
+             HeapAllocator* allocator ):
+    front_(NULL),
+    free_list_(init_size,maximum_size,allocator)
+  {}
 
  private:
   // Delete the target from the GCRefPool
@@ -132,19 +134,13 @@ class Heap final {
     inline void* start();
     inline void* available();
     inline void* Bump( std::size_t size );
-    inline void SetEndOfBlock( void* header , bool flag );
+    inline void SetEndOfChunk( void* header , bool flag );
   };
 
  public:
   // Initialize the Heap object via Context object
-  Heap( std::size_t , double , std::size_t , std::size_t , HeapAllocator* );
+  Heap( std::size_t , std::size_t , HeapAllocator* );
   ~Heap();
-
-  std::size_t threshold() const { return threshold_; }
-  void set_threshold( std::size_t threshold ) { threshold_ = threshold; }
-
-  std::size_t factor() const { return factor_; }
-  void set_factor( std::size_t factor ) { factor_ = factor; }
 
   std::size_t alive_size() const { return alive_size_; }
   std::size_t allocated_bytes() const { return allocated_bytes_; }
@@ -218,7 +214,6 @@ class Heap final {
    private:
     Chunk* current_chunk_;                   // Current chunk
     std::size_t current_cursor_;             // Current cursor in bytes
-    bool end_of_chunk_;                      // Flag to indicate EndOfChunk
   };
 
   // Get the Iterator for the Heap
@@ -246,12 +241,6 @@ class Heap final {
   inline void* SetHeapObjectHeader( void* , std::size_t size , ValueType , GCState , bool );
 
  private:
-  std::size_t threshold_;                // The single threshold to tell whether we should fail the
-                                         // Grab operation
-
-  double factor_;                        // If we saturated this much of memory then we prefer walking
-                                         // the heap
-
   std::size_t alive_size_;               // Total allocated object's size
 
   std::size_t chunk_size_;               // Total memory chunk's size
@@ -289,7 +278,6 @@ class Heap final {
  */
 
 class SSOPool {
-  static const std::size_t kDefaultSSOPoolSlotSize = 1024; // 1KB slots
   struct Entry {
     Entry* next;
     SSO* sso;
@@ -328,12 +316,27 @@ class SSOPool {
  *
  * ==========================================================================*/
 
+inline HeapObject** GCRefPool::Grab() {
+  Ref* new_ref = free_list_.Grab();
+  new_ref->next = front_;
+  front_ = new_ref;
+  return &(new_ref->object);
+}
+
 inline GCRefPool::Ref* GCRefPool::Delete( Ref* prev , Ref* target ) {
 #ifdef LAVASCRIPT_CHECK_OBJECTS
-  lava_verify( prev->next == target );
+  lava_verify( !prev || prev->next == target );
 #endif // LAVASCRIPT_CHECK_OBJECTS
   Ref* ret = target->next;
-  prev->next = target->next;
+  if(prev)
+    prev->next = target->next;
+  else {
+#ifdef LAVASCRIPT_CHECK_OBJECTS
+    lava_verify( front_ == target );
+#endif // LAVASCRIPT_CHECK_OBJECTS
+    front_ = ret;
+  }
+
   free_list_.Drop(target);
   return ret;
 }
@@ -358,7 +361,7 @@ inline bool GCRefPool::Iterator::Remove( GCRefPool* pool ) {
 }
 
 inline GCRefPool::Iterator::Iterator( GCRefPool::Ref* ref ):
-  previous_(ref),
+  previous_(NULL),
   current_ (ref)
 {}
 
@@ -376,11 +379,13 @@ GCRefPool::Iterator::operator = ( const GCRefPool::Iterator& that ) {
   return *this;
 }
 
-inline void Heap::Chunk::SetEndOfBlock( void* header , bool flag ) {
-  HeapObjectHeader hdr(*reinterpret_cast<std::uint64_t*>(header));
-  if(flag) hdr.set_end_of_chunk();
-  else hdr.set_not_end_of_chunk();
-  (*reinterpret_cast<std::uint64_t*>(header)) = hdr.raw();
+inline void Heap::Chunk::SetEndOfChunk( void* header , bool flag ) {
+  HeapObjectHeader hdr(*reinterpret_cast<HeapObjectHeader::Type*>(header));
+  if(flag)
+    hdr.set_end_of_chunk();
+  else
+    hdr.set_not_end_of_chunk();
+  HeapObjectHeader::SetHeader(header,hdr);
 }
 
 inline void* Heap::Chunk::start() {
@@ -396,9 +401,9 @@ inline void* Heap::Chunk::available() {
 inline void* Heap::Chunk::Bump( std::size_t size ) {
   void* ret = available();
   if(previous) {
-    SetEndOfBlock(previous,false);
+    SetEndOfChunk(previous,false);
   }
-  SetEndOfBlock(ret,true);
+  SetEndOfChunk(ret,true);
   previous = ret;
   bytes_used += size;
   return ret;
@@ -418,15 +423,13 @@ inline Heap::Iterator::Iterator():
 
 inline Heap::Iterator::Iterator( const Iterator& that ):
   current_chunk_(that.current_chunk_),
-  current_cursor_(that.current_cursor_),
-  end_of_chunk_(that.end_of_chunk_)
+  current_cursor_(that.current_cursor_)
 {}
 
 inline Heap::Iterator& Heap::Iterator::operator = ( const Iterator& that ){
   if(this != &that) {
     current_chunk_ = that.current_chunk_;
     current_cursor_ = that.current_cursor_;
-    end_of_chunk_ = that.end_of_chunk_;
   }
   return *this;
 }
@@ -456,8 +459,8 @@ inline void Heap::Iterator::set_hoh(
 #ifdef LAVASCRIPT_CHECK_OBJECTS
   lava_verify(HasNext());
 #endif // LAVASCRIPT_CHECK_OBJECTS
-  *reinterpret_cast<std::uint64_t*>(
-      static_cast<char*>(current_chunk_->start()) + current_cursor_) = hdr.raw();
+  HeapObjectHeader::SetHeader(
+      static_cast<char*>(current_chunk_->start()) + current_cursor_,hdr);
 }
 
 inline void* Heap::SetHeapObjectHeader( void* ptr , size_t size , ValueType type,
@@ -467,7 +470,13 @@ inline void* Heap::SetHeapObjectHeader( void* ptr , size_t size , ValueType type
   hdr.set_size(size);
   hdr.set_type(type);
   hdr.set_gc_state(gc_state);
-  if(is_long_str) hdr.set_long_string();
+
+  if(is_long_str)
+    hdr.set_long_string();
+  else
+    hdr.set_sso();
+
+  HeapObjectHeader::SetHeader(ptr,hdr);
   return static_cast<char*>(ptr) + HeapObjectHeader::kHeapObjectHeaderSize;
 }
 
@@ -485,9 +494,12 @@ inline SSOPool::SSOPool( std::size_t init_capacity ,
                          HeapAllocator* allocator ):
   entry_(),
   size_ (0),
-  allocator_(init_capacity,maximum,allocator)
-{}
-
+  allocator_(::lavascript::bits::NextPowerOf2(init_capacity),
+             maximum,
+             allocator)
+{
+  entry_.resize(::lavascript::bits::NextPowerOf2(init_capacity));
+}
 
 } // namespace gc
 
@@ -517,15 +529,24 @@ class GC : AllStatic {
    */
 
   struct GCConfig {
-    size_t minimum_gap;
+    std::size_t minimum_gap;
     double factor;
-    size_t heap_threshold;
-    double heap_factor;
-    size_t heap_capacity;
+    // heap related configuration
+    std::size_t heap_init_capacity;
+    std::size_t heap_capacity;
+    // gcref related configuration
+    std::size_t gcref_init_capacity;
+    std::size_t gcref_capacity;
+    // sso related information
+    std::size_t sso_init_capacity;
+    std::size_t sso_capacity;
+
     HeapAllocator* allocator;
+
+    inline GCConfig();
   };
 
-  GC( const GCConfig& , Context* , HeapAllocator* allocator = NULL );
+  inline GC( const GCConfig& , Context* );
 
  public:
   std::size_t cycle() const { return cycle_; }
@@ -652,6 +673,31 @@ T** GC::New( T** holder , ARGS ...args ) {
                                                 false ) , args... );
   return holder;
 }
+
+inline GC::GCConfig::GCConfig():
+  minimum_gap(0),
+  factor(0),
+  heap_init_capacity(1024),
+  heap_capacity(1024*1024*4),
+  gcref_init_capacity(1024),
+  gcref_capacity(4096),
+  sso_init_capacity(1024),
+  sso_capacity     (1024*64),
+  allocator(NULL)
+{}
+
+inline GC::GC( const GCConfig& config , Context* context ):
+  cycle_(0),
+  minimum_gap_(config.minimum_gap),
+  previous_alive_size_(0),
+  previous_dead_size_ (0),
+  factor_(config.factor),
+  heap_(config.heap_init_capacity,config.heap_capacity,config.allocator),
+  ref_pool_(config.gcref_init_capacity,config.gcref_capacity,config.allocator),
+  sso_pool_(config.sso_init_capacity,config.sso_capacity,config.allocator),
+  context_(context),
+  allocator_(config.allocator)
+{}
 
 } // namespace lavascript
 #endif // GC_H_

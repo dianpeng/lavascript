@@ -1,4 +1,5 @@
 #include <src/objects.h>
+#include <src/gc.h>
 #include <climits>
 #include <cstring>
 #include <gtest/gtest.h>
@@ -98,6 +99,97 @@ TEST(Objects,ValuePtr) {
   ASSERT_TRUE(v.IsHeapObject());
   ASSERT_EQ(Ptr(kLargestPointer),v.GetHeapObject());
 }
+
+
+/**
+ * ====================================================================
+ *
+ * Testing Objects
+ *
+ * ==================================================================*/
+
+TEST(Objects,String) {
+  GC gc(GC::GCConfig(),NULL);
+
+  Handle<String> empty_string(String::New(&gc));
+  ASSERT_TRUE( !empty_string.IsNull() );
+  ASSERT_TRUE(  empty_string->size() == 0 );
+  ASSERT_TRUE(  *empty_string == "" );
+  ASSERT_TRUE(  *empty_string == std::string() );
+
+  Handle<String> another(String::New(&gc));
+  ASSERT_TRUE( !empty_string.IsNull() );
+  ASSERT_TRUE(  empty_string->size() == 0 );
+  ASSERT_TRUE(  *empty_string == "" );
+  ASSERT_TRUE(  *empty_string == std::string() );
+
+  ASSERT_TRUE(  *empty_string == *another );
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 } // namespace lavascript
 

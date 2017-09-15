@@ -128,6 +128,39 @@ struct BitOff {
     ~detail::BitOnImpl<T,Start,End>::value;
 };
 
+inline
+std::uint16_t NextPowerOf2( std::uint16_t v ) {
+  --v;
+  v |= v >> 1;
+  v |= v >> 2;
+  v |= v >> 4;
+  v |= v >> 8;
+  return v + 1;
+}
+
+inline
+std::uint32_t NextPowerOf2( std::uint32_t v ) {
+  --v;
+  v |= v >> 1;
+  v |= v >> 2;
+  v |= v >> 4;
+  v |= v >> 8;
+  v |= v >> 16;
+  return v+1;
+}
+
+inline
+std::uint64_t NextPowerOf2( std::uint64_t v ) {
+  --v;
+  v |= v >> 1;
+  v |= v >> 2;
+  v |= v >> 4;
+  v |= v >> 8;
+  v |= v >> 16;
+  v |= v >> 32;
+  return v+1;
+}
+
 } // namespace bits
 } // namespace lavascript
 

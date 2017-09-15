@@ -24,7 +24,7 @@ RELEASE_LIBS  =
 
 TEST_DEF = -DLAVASCRIPT_CHECK_OBJECTS
 
-TEST_FLAGS = -I$(PWD) -g3 -Wall -fsanitize=address $(TEST_DEF) -Werror
+TEST_FLAGS = -I$(PWD) -g3 -Wall -fsanitize=address,leak,undefined $(TEST_DEF) -Werror
 TEST_LIBS = -lgtest -lpthread
 
 

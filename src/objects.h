@@ -91,19 +91,22 @@ class Value final {
   // reconstruct the pointer value from the full 64 bits machine word , but we
   // don't store the heap object type value directly inside of *Value* object
   // but put along with the heap object's common header HeapObject.
+  //
+  //
+  // NOTES: The following *ORDER* matters and also the *VALUE* matters.
   enum {
-    TAG_REAL   = 0xfff800000000000 ,                        // Real
-    TAG_INTEGER= 0xfff910000000000 ,                        // Integer
-    TAG_TRUE   = 0xfff920000000000 ,                        // True
-    TAG_FALSE  = 0xfff930000000000 ,                        // False
-    TAG_NULL   = 0xfff940000000000 ,                        // Null
-    TAG_HEAP   = 0xfffa00000000000                          // Heap
+    TAG_REAL   = 0xfff8000000000000,                        // Real
+    TAG_INTEGER= 0xfff9000000000000,                        // Integer
+    TAG_TRUE   = 0xfffa000000000000,                        // True
+    TAG_FALSE  = 0xfffa100000000000,                        // False
+    TAG_NULL   = 0xfffb000000000000,                        // Null
+    TAG_HEAP   = 0xfffc000000000000                         // Heap
   };
 
   // Masks
-  static const std::uint64_t kTagMask = 0xffff000000000000;
   static const std::uint64_t kIntMask = 0x00000000ffffffff;
   static const std::uint64_t kPtrMask = 0x0000ffffffffffff;
+  static const std::uint64_t kTagMask = 0xffff000000000000;
 
   // A mask that is used to check whether a pointer is a valid x64 pointer.
   // So not break our assumption. This assumption can be held always,I guess
@@ -113,9 +116,9 @@ class Value final {
 
   bool IsTagReal()    const { return tag() <  TAG_REAL; }
   bool IsTagInteger() const { return tag() == TAG_INTEGER; }
-  bool IsTagTrue()    const { return tag() == TAG_TRUE; }
-  bool IsTagFalse()   const { return tag() == TAG_FALSE; }
-  bool IsTagNull()    const { return tag() == TAG_NULL; }
+  bool IsTagTrue()    const { return raw_  == TAG_TRUE; }
+  bool IsTagFalse()   const { return raw_  == TAG_FALSE;}
+  bool IsTagNull()    const { return raw_  == TAG_NULL; }
   bool IsTagHeap()    const { return tag() == TAG_HEAP; }
 
   inline HeapObject** heap_object() const;
@@ -843,7 +846,7 @@ template< typename T > inline Handle<T>::Handle( HeapObject** ref ) {
   static_assert( std::is_base_of<HeapObject,T>::value );
 #ifdef LAVASCRIPT_CHECK_OBJECTS
   lava_verify(ref && *ref);
-  lava_verify(*ref->Is<T>());
+  lava_verify((*ref)->IsType<T>());
 #endif // LAVASCRIPT_CHECK_OBJECTS
   ref_ = reinterpret_cast<T**>(ref);
 }
@@ -934,9 +937,9 @@ inline void Value::SetHeapObject( HeapObject** ptr ) {
    * Checking whether the input pointer is valid pointer
    * with our assumptions
    */
-  lava_assert( (static_cast<std::uintptr_t>(ptr)&kPtrCheckMask) == 0 ,
-               "the pointer %x specified here is not a valid pointer,"
-               "upper 16 bits is not 0s", ptr );
+  lava_assertF( (reinterpret_cast<std::uintptr_t>(ptr)&kPtrCheckMask) == 0 ,
+                "the pointer %x specified here is not a valid pointer,"
+                "upper 16 bits is not 0s", ptr );
 #endif // LAVASCRIPT_CHECK_OBJECTS
 
   raw_ = static_cast<std::uint64_t>(
@@ -946,14 +949,24 @@ inline void Value::SetHeapObject( HeapObject** ptr ) {
 inline ValueType Value::type() const {
   if(IsTagHeap()) {
     return (*heap_object())->type();
-  } else if(IsTagTrue() || IsTagFalse()) {
-    return TYPE_BOOLEAN;
-  } else if(IsTagNull()) {
-    return TYPE_NULL;
-  } else if(IsTagInteger()) {
-    return TYPE_INTEGER;
-  } else {
+  } else if(IsTagReal()) {
     return TYPE_REAL;
+  } else {
+    static const std::uint64_t kMask = 0x000f000000000000;
+    static const std::uint32_t kShift= 48;
+
+    /**
+     * NOTES:
+     * Here I use a small trick to generate ValueType enumeration.
+     * The TAG_XXX are ordered same as PRIMITIVE_TYPE enumeration,
+     * except the TAG_TRUE/TAG_FALSE ,they share same 0xfffb prefix.
+     *
+     * The following code should be cheaper than a large if/else
+     * chain. Branch may not be very expensive but expensive for inline
+     * Be care for the TYPE_REAL which cannot be tested via raw_ flag
+     */
+    return static_cast<ValueType>(
+        ((raw_ & kMask) >> kShift) - 8 + SIZE_OF_HEAP_OBJECT);
   }
 }
 
@@ -2080,6 +2093,66 @@ inline void Map::Put( GC* gc , const std::string& key , const Value& value ) {
   entry->hash = f;
   ++size_;
   ++slot_size_;
+}
+
+inline bool Map::Update( GC* gc , const Handle<String>& key , const Value& value ) {
+
+#ifdef LAVASCRIPT_CHECK_OBJECTS
+  lava_verify(!NeedRehash());
+#endif // LAVASCRIPT_CHECK_OBJECTS
+
+  std::uint32_t f = Hash(key);
+  Entry* entry = FindEntry(key,f,FIND);
+
+  if(entry) {
+    entry->value = value;
+#ifdef LAVASCRIPT_CHECK_OBJECTS
+    lava_verify( entry->hash == f  );
+    lava_verify( *key == (*entry->key.GetString()) );
+#endif // LAVASCRIPT_CHECK_OBJECTS
+    return true;
+  }
+  return false;
+}
+
+inline bool Map::Update( GC* gc , const char* key , const Value& value ) {
+
+#ifdef LAVASCRIPT_CHECK_OBJECTS
+  lava_verify(!NeedRehash());
+#endif // LAVASCRIPT_CHECK_OBJECTS
+
+  std::uint32_t f = Hash(key);
+  Entry* entry = FindEntry(key,f,FIND);
+
+  if(entry) {
+    entry->value = value;
+#ifdef LAVASCRIPT_CHECK_OBJECTS
+    lava_verify( entry->hash == f  );
+    lava_verify( (*entry->key.GetString()) == key );
+#endif // LAVASCRIPT_CHECK_OBJECTS
+    return true;
+  }
+  return false;
+}
+
+inline bool Map::Update( GC* gc , const std::string& key , const Value& value ) {
+
+#ifdef LAVASCRIPT_CHECK_OBJECTS
+  lava_verify(!NeedRehash());
+#endif // LAVASCRIPT_CHECK_OBJECTS
+
+  std::uint32_t f = Hash(key);
+  Entry* entry = FindEntry(key,f,FIND);
+
+  if(entry) {
+    entry->value = value;
+#ifdef LAVASCRIPT_CHECK_OBJECTS
+    lava_verify( entry->hash == f  );
+    lava_verify( (*entry->key.GetString()) == key );
+#endif // LAVASCRIPT_CHECK_OBJECTS
+    return true;
+  }
+  return false;
 }
 
 inline bool Map::Delete( const Handle<String>& key ) {

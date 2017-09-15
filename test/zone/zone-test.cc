@@ -1,4 +1,4 @@
-#include <src/core/trace.h>
+#include <src/trace.h>
 #include <src/zone/zone.h>
 #include <gtest/gtest.h>
 
@@ -23,7 +23,7 @@ TEST(Zone,Zone) {
 } // namespace lavascript
 
 int main( int argc, char* argv[] ) {
-  ::lavascript::core::InitTrace("-");
+  ::lavascript::InitTrace("-");
   testing::InitGoogleTest(&argc,argv);
   return RUN_ALL_TESTS();
 }

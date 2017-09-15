@@ -22,9 +22,9 @@ CXX = g++
 RELEASE_FLAGS = -I$(PWD) -g3 -O3 -Wall
 RELEASE_LIBS  =
 
-TEST_DEF =
+TEST_DEF = -DLAVASCRIPT_CHECK_OBJECTS
 
-TEST_FLAGS = -I$(PWD) -g3 -Wall -fsanitize=address $(TEST_DEF)
+TEST_FLAGS = -I$(PWD) -g3 -Wall -fsanitize=address $(TEST_DEF) -Werror
 TEST_LIBS = -lgtest -lpthread
 
 

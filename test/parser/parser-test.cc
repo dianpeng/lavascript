@@ -232,7 +232,7 @@ TEST(Parser,Expression) {
 } // namespace lavascript
 
 int main( int argc, char* argv[] ) {
-  ::lavascript::core::InitTrace("-");
+  ::lavascript::InitTrace("-");
   testing::InitGoogleTest(&argc,argv);
   return RUN_ALL_TESTS();
 }

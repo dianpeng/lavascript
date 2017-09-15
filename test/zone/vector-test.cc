@@ -1,6 +1,6 @@
 #include <src/zone/vector.h>
 #include <src/zone/zone.h>
-#include <src/core/trace.h>
+#include <src/trace.h>
 #include <gtest/gtest.h>
 
 namespace lavascript {
@@ -33,7 +33,7 @@ TEST(Vector,Vector) {
 
 int main( int argc, char* argv[] ) {
   srand(0);
-  ::lavascript::core::InitTrace("-");
+  ::lavascript::InitTrace("-");
   testing::InitGoogleTest(&argc,argv);
   return RUN_ALL_TESTS();
 }

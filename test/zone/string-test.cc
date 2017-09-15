@@ -1,5 +1,5 @@
 #include <src/zone/string.h>
-#include <src/core/trace.h>
+#include <src/trace.h>
 #include <gtest/gtest.h>
 #include <cstdlib>
 
@@ -74,7 +74,7 @@ TEST(Zone,String) {
 
 int main( int argc, char* argv[] ) {
   srand(0);
-  ::lavascript::core::InitTrace("-");
+  ::lavascript::InitTrace("-");
   testing::InitGoogleTest(&argc,argv);
   return RUN_ALL_TESTS();
 }

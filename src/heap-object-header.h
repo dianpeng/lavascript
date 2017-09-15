@@ -27,13 +27,13 @@ const char* GetGCStateName( GCState );
   __( TYPE_OBJECT  ,  Object  , "object"  )                           \
   __( TYPE_MAP     ,  Map     , "map"     )                           \
   __( TYPE_STRING  ,  String  , "string"  )                           \
-  __( TYPE_PROTOTYPE, Prototype, "prototype")                         \
+  __( TYPE_PROTOTYPE, Prototype,"prototype")                          \
   __( TYPE_CLOSURE ,  Closure , "closure" )                           \
-  __( TYPE_EXTENSION, Extension , "extension")
+  __( TYPE_EXTENSION, Extension,"extension")
 
 #define LAVASCRIPT_PRIMITIVE_TYPE_LIST(__)                            \
-  __( TYPE_INTEGER , Integer , "integer" )                            \
   __( TYPE_REAL    , Real    , "real"    )                            \
+  __( TYPE_INTEGER , Integer , "integer" )                            \
   __( TYPE_BOOLEAN , Boolean , "boolean" )                            \
   __( TYPE_NULL    , Null    , "null"    )                            \
 
@@ -42,6 +42,19 @@ const char* GetGCStateName( GCState );
   LAVASCRIPT_HEAP_OBJECT_LIST(__)                                     \
   LAVASCRIPT_PRIMITIVE_TYPE_LIST(__)
 
+#define __(A,B,C) LAVASCRIPT_UNUSED_##A,
+enum {
+  LAVASCRIPT_HEAP_OBJECT_LIST(__)
+  SIZE_OF_HEAP_OBJECT
+};
+#undef __ // __
+
+#define __(A,B,C) LAVASCRIPT_UNUSED_##A,
+enum {
+  LAVASCRIPT_PRIMITIVE_TYPE_LIST(__)
+  SIZE_OF_PRIMITIVE_TYPE
+};
+#undef __ // __
 
 enum ValueType {
 #define __(A,B,C) A,

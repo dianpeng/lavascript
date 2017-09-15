@@ -53,9 +53,19 @@ T* Construct( Allocator* allocator , ARGS ...args ) {
   return ::new (allocator->Grab(sizeof(T))) T(args...);
 }
 
+template< typename T , typename Allocator >
+T* Construct( Allocator* allocator ) {
+  return ::new (allocator->Grab(sizeof(T))) T();
+}
+
 template< typename T , typename ... ARGS >
 T* ConstructFromBuffer( void* buffer , ARGS ...args ) {
   return ::new (buffer) T(args...);
+}
+
+template< typename T >
+T* ConstructFromBuffer( void* buffer ) {
+  return ::new (buffer) T();
 }
 
 template< typename T > void Destruct( T* object ) {

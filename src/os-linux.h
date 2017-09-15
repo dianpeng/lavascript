@@ -1,6 +1,8 @@
 #ifndef OS_LINUX_H_
 #define OS_LINUX_H_
+
 #include "all-static.h"
+
 #include <cstdint>
 #include <sys/types.h>
 #include <unistd.h>
@@ -8,11 +10,15 @@
 
 namespace lavascript {
 
-class OS : AllStatic {
+class OS {
  public:
-  static std::int64_t GetPid() { return static_cast<std::int64_t>(getpid()); }
+  static inline std::int64_t GetPid();
   static inline std::uint64_t NowInMicroSeconds();
 };
+
+inline std::int64_t OS::GetPid() {
+  return static_cast<std::int64_t>(getpid());
+}
 
 inline std::uint64_t OS::NowInMicroSeconds() {
   struct timespec tv;

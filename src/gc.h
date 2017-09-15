@@ -4,6 +4,7 @@
 #include <algorithm>
 #include <vector>
 #include <string>
+#include <cstring>
 
 #include "common.h"
 #include "heap-object-header.h"
@@ -66,7 +67,7 @@ class GCRefPool final {
 
     // Move to next available slot , if the next slot is available
     // then return true ; otherwise return false
-    inline bool Move();
+    bool Move();
 
     // Remove the current iterator and move to next slot, if next
     // slot is available then return true ; otherwise return false
@@ -148,6 +149,7 @@ class Heap final {
   std::size_t alive_size() const { return alive_size_; }
   std::size_t allocated_bytes() const { return allocated_bytes_; }
   std::size_t chunk_size() const { return chunk_size_; }
+  std::size_t chunk_capacity() const { return chunk_capacity_; }
   std::size_t total_bytes() const { return total_bytes_; }
 
  public: // Allocation functions
@@ -202,7 +204,7 @@ class Heap final {
     inline bool HasNext() const;
 
     // Move the iterator to next
-    bool Move() const;
+    bool Move();
 
     // Dereference an object from current position
     inline HeapObject* heap_object() const;
@@ -299,7 +301,10 @@ class SSOPool {
                   HeapAllocator* allocator = NULL );
  public:
   SSO* Get( const char* , std::size_t );
-  SSO* Get( const char* str ) { return Get(str,strlen(str)); }
+  SSO* Get( const void* data , std::size_t size ) {
+    return Get(static_cast<const char*>(data),size);
+  }
+  SSO* Get( const char* str ) { return Get(str,std::strlen(str)); }
   SSO* Get( const std::string& str ) { return Get(str.c_str(),str.size()); }
 
   std::size_t capacity() const { return entry_.size(); }
@@ -312,6 +317,7 @@ class SSOPool {
 
   std::vector<Entry> entry_;
   std::size_t size_;
+  BumpAllocator allocator_;
 
   LAVA_DISALLOW_COPY_AND_ASSIGN(SSOPool);
 };
@@ -467,12 +473,21 @@ inline void* Heap::SetHeapObjectHeader( void* ptr , size_t size , ValueType type
 
 inline void* Heap::RawCopyObject( const void* ptr , std::size_t length ) {
   void* ret = chunk_current_->Bump(length);
-  memcpy(ret,ptr,length);
+  std::memcpy(ret,ptr,length);
 
   ++allocated_bytes_ += length;
   alive_size_++;
   return ret;
 }
+
+inline SSOPool::SSOPool( std::size_t init_capacity ,
+                         std::size_t maximum ,
+                         HeapAllocator* allocator ):
+  entry_(),
+  size_ (0),
+  allocator_(init_capacity,maximum,allocator)
+{}
+
 
 } // namespace gc
 
@@ -561,21 +576,21 @@ class GC : AllStatic {
    * Create an empty string , though the above API can take care of this case
    * as well.
    */
-  String** NewString() { return NewString( "" , 0 ); }
+  String** NewString() { return NewString( static_cast<const void*>("") , 0 ); }
 
   /**
    * Specialized New for Slice creation . It will properly construct the
    * slice array
    */
-  Slice** NewSlice();
   Slice** NewSlice( std::size_t capacity );
+  Slice** NewSlice() { return NewSlice(0); }
 
   /**
    * Specialized New for Map creation . It will properly construct all the
    * entry
    */
-  Map** NewMap();
   Map** NewMap( std::size_t capacity );
+  Map** NewMap() { return NewMap(0); }
 
 
  public:

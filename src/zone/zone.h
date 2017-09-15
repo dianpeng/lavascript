@@ -2,20 +2,16 @@
 #define ZONE_ZONE_H_
 #include <src/util.h>
 #include <src/trace.h>
-
+#include <src/bump-allocator.h>
 #include <cstddef>
 
 namespace lavascript {
 namespace zone {
 
-// A simple bump allocator. Used to construct all the AST Node
+// Just a wrapper around BumpAllocator. In the future the Zone may have a better
+// implementation like a slab than a simple BumpAllocator.
 class Zone {
  public:
-  Zone();
-  Zone( size_t minimum , size_t maximum );
-
-  ~Zone();
-
   static const size_t kMaximum =
 #ifndef LAVA_ZONE_MAXIMUM_SIZE
     1024*1024*4; // 4MB
@@ -30,34 +26,23 @@ class Zone {
     LAVA_ZONE_MINIMUM_SIZE;
 #endif // LAVA_ZONE_MINIMUM_SIZE
 
-  inline void* Malloc( size_t );
-  template< typename T > T* Malloc() { return static_cast<T*>(Malloc(sizeof(T))); }
+  inline Zone( size_t minimum = kMinimum, size_t maximum = kMaximum,
+                                          HeapAllocator* allocator = NULL );
+
+  void* Malloc( size_t size ) { return allocator_.Grab(size); }
+
+  template< typename T >
+  T* Malloc() { return static_cast<T*>(Malloc(sizeof(T))); }
 
  private:
-  void Grow( size_t require );
-
- private:
-  struct Chunk {
-    Chunk* next;     // Pointer points to the next chunk
-  };
-
-  Chunk* first_chunk_;   // First avaiable chunk
-  size_t capacity_;      // Current capacity
-  void* pool_;           // Current avaiable pointer in our pool
-  size_t left_;          // How many memory left in the current pool
-  size_t minimum_;       // Minimum pool size
-  size_t maximum_;       // Maximum pool size
-
+  BumpAllocator allocator_;   // internal bump allocator
   LAVA_DISALLOW_COPY_AND_ASSIGN(Zone);
 };
 
-inline void* Zone::Malloc( size_t size ) {
-  if( left_ < size ) Grow(size);
-  lava_assert ( size <= left_ , "" );
-  void* ret = pool_; pool_ = ((char*)pool_ + size);
-  left_ -= size;
-  return ret;
-}
+inline Zone::Zone( size_t minimum , size_t maximum ,
+                                    HeapAllocator* allocator ):
+  allocator_(minimum,maximum,allocator)
+{}
 
 // All object that is gonna allocated from *zone* must be derived from the *ZoneObject*.
 //

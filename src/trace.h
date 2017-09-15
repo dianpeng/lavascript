@@ -36,7 +36,7 @@ inline bool Crash ( const char* expression , const char* file , int line ,
   (void)((EXPRESSION) || ::lavascript::Crash(#EXPRESSION,__FILE__,__LINE__,MESSAGE))
 
 #define lava_assertF( EXPRESSION , FORMAT , ... ) \
-  (void)((EXPRESSION) || ::lavascriot::Crash(#EXPRESSION,__FILE__,__LINE__,FORMAT,__VA_ARGS__))
+  (void)((EXPRESSION) || ::lavascript::Crash(#EXPRESSION,__FILE__,__LINE__,FORMAT,__VA_ARGS__))
 
 #define lava_unreach(MESSAGE) ::lavascript::Crash("unreachable!!",__FILE__,__LINE__,MESSAGE)
 

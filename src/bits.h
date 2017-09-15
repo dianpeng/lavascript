@@ -94,7 +94,7 @@ namespace detail {
 
 template< typename T , std::size_t Start , std::size_t End >
 struct BitOnImpl {
-  static const std::size_t value = BitOnImp<T,Start+1,End>::value |
+  static const std::size_t value = BitOnImpl<T,Start+1,End>::value |
                                    static_cast<T>(1 << Start);
 };
 

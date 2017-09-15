@@ -13,7 +13,6 @@ namespace lavascript {
 namespace parser {
 
 using namespace lavascript::zone;
-using namespace lavascript::core;
 
 void Parser::ErrorAtV( size_t start , size_t end , const char* format , va_list vl ) {
   if(lexer_.lexeme().token == Token::kError) {

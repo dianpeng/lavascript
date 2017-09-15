@@ -2,17 +2,17 @@
 #define FREE_LIST_H_
 #include <cstdint>
 
+#include "heap-allocator.h"
 #include "common.h"
 #include "trace.h"
 
 namespace lavascript {
-namespace core {
 
 template< typename T > class FreeList {
  public:
   static_assert( sizeof(T) >= sizeof(std::uintptr_t) );
 
-  FreeList( size_t current , size_t maximum );
+  FreeList( size_t current , size_t maximum , HeapAllocator* allocator );
   ~FreeList();
 
   // These 2 API will *NOT* construct the object or destruct the object
@@ -41,12 +41,13 @@ template< typename T > class FreeList {
   size_t size_;                 // Size of *allocated* FreeNode in FreeList
   size_t capacity_;             // All the *existed* FreeNode in FreeList
   size_t maximum_ ;             // Maximum upper bound for FreeList growing
+  HeapAllocator* allocator_;    // HeapAllocator
 
   LAVA_DISALLOW_COPY_AND_ASSIGN(FreeList);
 };
 
-template< typename T > void FreeList::Reserve( size_t count ) {
-  void* ptr = ::malloc( sizeof(T) * count + sizeof(Segment) );
+template< typename T > void FreeList<T>::Reserve( size_t count ) {
+  void* ptr = Malloc( allocator_ , sizeof(T) * count + sizeof(Segment) );
 
   Segment* f= reinterpret_cast<Segment*>(ptr);
   f->next = chunk_;
@@ -57,35 +58,37 @@ template< typename T > void FreeList::Reserve( size_t count ) {
 
   // Linked the free-node into a free-list
   for( size_t i = 0 ; i < count - 1 ; ++i ) {
-    FreeNode* node = static_cast<FreeNode*>(cur);
-    node->next     = static_cast<FreeNode*>(cur + sizeof(T));
+    FreeNode* node = reinterpret_cast<FreeNode*>(cur);
+    node->next     = reinterpret_cast<FreeNode*>(cur + sizeof(T));
     cur = reinterpret_cast<char*>(node->next);
   }
   (reinterpret_cast<FreeNode*>(cur))->next = next_;
-  next_ = static_cast<FreeNode*>(start);
+  next_ = reinterpret_cast<FreeNode*>(start);
   capacity_ = count;
 }
 
-template< typename T > FreeList::FreeList( size_t current , size_t maximum ):
+template< typename T > FreeList<T>::FreeList( size_t current , size_t maximum ,
+    HeapAllocator* allocator ):
   next_(NULL),
   chunk_(NULL),
   size_(0),
   capacity_(0),
-  maximum_ (maximum)
+  maximum_ (maximum),
+  allocator_ (allocator)
 {
   lava_verify( current != 0 && current <= maximum );
   Reserve(current);
 }
 
-template< typename T > FreeList::~FreeList() {
+template< typename T > FreeList<T>::~FreeList() {
   while(chunk_) {
     Segment* n = chunk_->next;
-    ::free(chunk_);
+    Free(allocator_,chunk_);
     chunk_ = n;
   }
 }
 
-template< typename T > T* FreeList::Grab() {
+template< typename T > T* FreeList<T>::Grab() {
   if(!next_) {
     size_t cap = capacity_ * 2;
     cap = cap > maximum_ ? maximum_ : cap;
@@ -99,10 +102,10 @@ template< typename T > T* FreeList::Grab() {
 
   next_ = next_->next;
   ++size_;
-  return ret;
+  return reinterpret_cast<T*>(ret);
 }
 
-template< typename T > void FreeList::Drop( T* ptr ) {
+template< typename T > void FreeList<T>::Drop( T* ptr ) {
 #ifdef LAVASCRIPT_CHECK_OBJECTS
   lava_verify(size_ >0);
 #endif // LAVASCRIPT_CHECK_OBJECTS
@@ -114,7 +117,6 @@ template< typename T > void FreeList::Drop( T* ptr ) {
 }
 
 
-} // namespace core
 } // namespace lavascript
 
 #endif // FREE_LIST_H_

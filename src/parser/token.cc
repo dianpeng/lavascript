@@ -1,5 +1,5 @@
 #include "token.h"
-#include <src/core/trace.h>
+#include <src/trace.h>
 
 #include <cstddef>
 

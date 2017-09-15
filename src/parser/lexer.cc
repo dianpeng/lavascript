@@ -3,8 +3,8 @@
 #include <src/zone/zone.h>
 #include <src/zone/string.h>
 
-#include <src/core/util.h>
-#include <src/core/trace.h>
+#include <src/util.h>
+#include <src/trace.h>
 #include <limits>
 
 namespace lavascript {

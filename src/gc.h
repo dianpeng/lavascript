@@ -2,6 +2,8 @@
 #define GC_H_
 
 #include <algorithm>
+#include <vector>
+#include <string>
 
 #include "common.h"
 #include "heap-object-header.h"
@@ -10,10 +12,12 @@
 #include "util.h"
 #include "trace.h"
 #include "free-list.h"
+#include "bump-allocator.h"
 
 namespace lavascript {
 
 class Context;
+class SSO;
 
 /**
  * GC implemention for lavascript. This GC implementation is a stop-the-world
@@ -32,14 +36,19 @@ namespace gc {
 class GCRefPool final {
   struct Ref {
     Ref* next;            // Pointer to the next Ref in RefList
-    HeapObject** object;  // Actual references
+    HeapObject* object;  // Actual references
   };
  public:
   // Size of all active/alive GCRef reference
   std::size_t size() const { return free_list_.size(); }
 
   // Create a new Ref and add it internally to the GCRefPool
-  inline HeapObject** AddRef();
+  HeapObject** Grab() {
+    Ref* new_ref = free_list_.Grab();
+    new_ref->next = front_;
+    front_ = new_ref;
+    return &(new_ref->object);
+  }
 
   // The deletion of GCRefPool happens when we want to iterate
   // through the whole GCRefPool and since it is a single linked
@@ -53,11 +62,11 @@ class GCRefPool final {
     inline bool HasNext() const;
 
     // Get the current HeapObject in the current cursor/iterator
-    inline HeapObject** heap_object() const;
+    inline HeapObject** heap_object();
 
     // Move to next available slot , if the next slot is available
     // then return true ; otherwise return false
-    inline bool Move() const;
+    inline bool Move();
 
     // Remove the current iterator and move to next slot, if next
     // slot is available then return true ; otherwise return false
@@ -119,8 +128,8 @@ class Heap final {
     void* previous;                // Where is the previous object's heap object header
 
     std::size_t bytes_left() const { return size_in_bytes - bytes_used; }
-    inline void* start() const;
-    inline void* available() const;
+    inline void* start();
+    inline void* available();
     inline void* Bump( std::size_t size );
     inline void SetEndOfBlock( void* header , bool flag );
   };
@@ -262,6 +271,51 @@ class Heap final {
   LAVA_DISALLOW_COPY_AND_ASSIGN(Heap);
 };
 
+/**
+ * SSO pool is a pool for holding all the SSO strings.
+ *
+ * A SSO stands for Small String Object and will be optimized in different phases.
+ * A SSO will not be GCed which leads to potential leak of memory , but currently
+ * that's our design. A SSO is managed via a hash table internally with hash value
+ * embedded inside of the SSO string. This hash value is critical since it may help
+ * us to bypass the normal Hash process for getting object from Object/Map without
+ * the need of *hidden class* implementation. This idea is brought from LuaJIT.
+ *
+ * SSO is also de-duplicated , so a comparison between SSO only compares the pointer,
+ * this makes SSO super good for hash key since the lookup process for hash is really
+ * performant.
+ */
+
+class SSOPool {
+  static const std::size_t kDefaultSSOPoolSlotSize = 1024; // 1KB slots
+  struct Entry {
+    Entry* next;
+    SSO* sso;
+    Entry():next(NULL),sso(NULL){}
+  };
+ public:
+  inline SSOPool( size_t init_capacity ,
+                  size_t maximum_size  ,
+                  HeapAllocator* allocator = NULL );
+ public:
+  SSO* Get( const char* , std::size_t );
+  SSO* Get( const char* str ) { return Get(str,strlen(str)); }
+  SSO* Get( const std::string& str ) { return Get(str.c_str(),str.size()); }
+
+  std::size_t capacity() const { return entry_.size(); }
+  std::size_t size    () const { return size_ ; }
+
+ private:
+  void Rehash();
+  Entry* FindOrInsert( std::vector<Entry>* ,
+                       const char* , std::size_t , std::uint32_t hash );
+
+  std::vector<Entry> entry_;
+  std::size_t size_;
+
+  LAVA_DISALLOW_COPY_AND_ASSIGN(SSOPool);
+};
+
 /* ===========================================================================
  *
  * Inline functions
@@ -282,9 +336,13 @@ inline bool GCRefPool::Iterator::HasNext() const {
   return current_ != NULL;
 }
 
-inline bool GCRefPool::Iterator::Move() const {
+inline HeapObject** GCRefPool::Iterator::heap_object() {
+  return &(current_->object);
+}
+
+inline bool GCRefPool::Iterator::Move() {
   previous_ = current_;
-  current_ = curren_->next;
+  current_ = current_->next;
   return current_ != NULL;
 }
 
@@ -304,7 +362,7 @@ inline GCRefPool::Iterator::Iterator( const Iterator& that ):
 {}
 
 inline GCRefPool::Iterator&
-GCRefPool::Iterator::Iterator( const GCRefPool::Iterator& that ) {
+GCRefPool::Iterator::operator = ( const GCRefPool::Iterator& that ) {
   if(this != &that) {
     previous_ = that.previous_;
     current_  = that.current_ ;
@@ -314,19 +372,19 @@ GCRefPool::Iterator::Iterator( const GCRefPool::Iterator& that ) {
 
 inline void Heap::Chunk::SetEndOfBlock( void* header , bool flag ) {
   HeapObjectHeader hdr(*reinterpret_cast<std::uint64_t*>(header));
-  if(flag) hdr.set_end_of_block();
-  else hdr.set_not_end_of_block();
-  (*reinterpret_cast<std::uint64_t*>(ret)) = hdr.raw();
+  if(flag) hdr.set_end_of_chunk();
+  else hdr.set_not_end_of_chunk();
+  (*reinterpret_cast<std::uint64_t*>(header)) = hdr.raw();
 }
 
-inline void* Heap::Chunk::start() const {
+inline void* Heap::Chunk::start() {
   return static_cast<void*>(
       reinterpret_cast<char*>(this) + sizeof(Chunk));
 }
 
-inline void* Heap::Chunk::available() const {
+inline void* Heap::Chunk::available() {
   return static_cast<void*>(
-      static_cast<char*>(this) + sizeof(Chunk) + bytes_used);
+      static_cast<char*>(start()) + bytes_used);
 }
 
 inline void* Heap::Chunk::Bump( std::size_t size ) {
@@ -348,7 +406,7 @@ inline Heap::Iterator::Iterator( Chunk* chunk ):
 }
 
 inline Heap::Iterator::Iterator():
-  current_chunk_(chunk),
+  current_chunk_(NULL),
   current_cursor_(0)
 {}
 
@@ -393,7 +451,7 @@ inline void Heap::Iterator::set_hoh(
   lava_verify(HasNext());
 #endif // LAVASCRIPT_CHECK_OBJECTS
   *reinterpret_cast<std::uint64_t*>(
-      static_cast<char*>(current_chunk_->start()) + current_cursor) = hdr.raw();
+      static_cast<char*>(current_chunk_->start()) + current_cursor_) = hdr.raw();
 }
 
 inline void* Heap::SetHeapObjectHeader( void* ptr , size_t size , ValueType type,
@@ -459,7 +517,7 @@ class GC : AllStatic {
   std::size_t alive_size() const { return heap_.alive_size(); }
   std::size_t allocated_bytes() const { return heap_.allocated_bytes(); }
   std::size_t total_bytes() const { return heap_.total_bytes(); }
-  std::size_t ref_size() const { return ref_pool.size(); }
+  std::size_t ref_size() const { return ref_pool_.size(); }
   std::size_t minimum_gap() const { return minimum_gap_; }
   std::size_t previous_alive_size() const { return previous_alive_size_; }
   std::size_t previous_dead_size()  const { return previous_dead_size_; }
@@ -503,7 +561,22 @@ class GC : AllStatic {
    * Create an empty string , though the above API can take care of this case
    * as well.
    */
-  String** NewString();
+  String** NewString() { return NewString( "" , 0 ); }
+
+  /**
+   * Specialized New for Slice creation . It will properly construct the
+   * slice array
+   */
+  Slice** NewSlice();
+  Slice** NewSlice( std::size_t capacity );
+
+  /**
+   * Specialized New for Map creation . It will properly construct all the
+   * entry
+   */
+  Map** NewMap();
+  Map** NewMap( std::size_t capacity );
+
 
  public:
   // Force a GC cycle to happen
@@ -529,13 +602,13 @@ class GC : AllStatic {
     MarkResult() : alive_size(0),dead_size(0),new_heap_size(0) {}
   };
 
-  void Mark( MarkResult* );
+  void PhaseMark( MarkResult* );
 
   /**
    * API to do the Swap phase which basically move all alive object from old
    * heap to new heap and patch all the reference to the new heap
    */
-  void Swap( std::size_t new_heap_size );
+  void PhaseSwap( std::size_t new_heap_size );
 
  private:
   std::size_t cycle_;                                 // How many GC cycles are performed
@@ -545,22 +618,23 @@ class GC : AllStatic {
   double factor_;                                     // Tunable factor
   gc::Heap heap_;                                     // Current active heap
   gc::GCRefPool ref_pool_;                            // Ref pool
+  gc::SSOPool sso_pool_;                              // SSO pool
   Context* context_;                                  // Context object
   HeapAllocator* allocator_;                          // Allocator
 };
 
 template< typename T , typename ...ARGS >
 T** GC::New( ARGS ...args ) {
-  return New( reinterpret_cast<T**>(ref_pool_.Grab()) , hdr , args... );
+  return New( reinterpret_cast<T**>(ref_pool_.Grab()) , args... );
 }
 
 template< typename T , typename ...ARGS >
 T** GC::New( T** holder , ARGS ...args ) {
   TryGC(); // Try to perform GC if we need to
-  *holder = Construct( heap_.Grab( sizeof(T),
-                                         GetObjectValueType<T>::value,
-                                         GC_WHITE,
-                                         false ) , args... );
+  *holder = ConstructFromBuffer<T>( heap_.Grab( sizeof(T),
+                                                GetObjectType<T>::value,
+                                                GC_WHITE,
+                                                false ) , args... );
   return holder;
 }
 

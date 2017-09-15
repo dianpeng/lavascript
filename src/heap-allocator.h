@@ -1,6 +1,7 @@
 #ifndef HEAP_ALLOCATOR_H_
 #define HEAP_ALLOCATOR_H_
 #include <cstdint>
+#include <cstdlib>
 
 namespace lavascript {
 
@@ -12,10 +13,18 @@ namespace lavascript {
 
 class HeapAllocator {
  public:
-  virtual void* Malloc( size_t size ) = 0;
+  virtual void* Malloc( std::size_t ) = 0;
   virtual void  Free  ( void* ) = 0;
   virtual ~HeapAllocator() {}
 };
+
+inline void* Malloc( HeapAllocator* allocator , std::size_t size ) {
+  return allocator ? allocator->Malloc(size) : ::malloc(size);
+}
+
+inline void Free( HeapAllocator* allocator , void* ptr ) {
+  allocator ? allocator->Free(ptr) : ::free(ptr);
+}
 
 } // namespace lavascript
 

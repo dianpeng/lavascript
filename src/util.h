@@ -48,8 +48,13 @@ template< typename T > T Align( T value , T alignment ) {
   return (value + (alignment-1)) & ~alignment;
 }
 
+template< typename T , typename Allocator , typename ... ARGS >
+T* Construct( Allocator* allocator , ARGS ...args ) {
+  return ::new (allocator->Grab(sizeof(T))) T(args...);
+}
+
 template< typename T , typename ... ARGS >
-T* Construct( T* buffer , ARGS ...args ) {
+T* ConstructFromBuffer( void* buffer , ARGS ...args ) {
   return ::new (buffer) T(args...);
 }
 

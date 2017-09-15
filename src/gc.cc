@@ -1,5 +1,7 @@
 #include "gc.h"
 #include "os.h"
+#include "objects.h"
+#include "hash.h"
 
 #include <iostream>
 
@@ -63,9 +65,7 @@ bool Heap::RefillChunk( size_t size ) {
   } else {
     raw_size = chunk_capacity_;
   }
-
-  void* new_buf = allocator ? allocator->Malloc( raw_size + sizeof(Chunk) ) :
-                              ::malloc( raw_size + sizeof(Chunk) );
+  void* new_buf = Malloc( allocator_ , raw_size + sizeof(Chunk) );
   if(!new_buf) return false;
 
   Chunk* ck = reinterpret_cast<Chunk*>(new_buf);
@@ -100,7 +100,7 @@ void* Heap::Grab( size_t object_size , ValueType type, GCState gc_state ,
   // Now try to allocate it from the newly created chunk
 #ifdef LAVASCRIPT_CHECK_OBJECTS
   lava_verify(chunk_current_->bytes_left() >= size);
-  lava_verify( is_long_str ? type == VALUE_STRING : true );
+  lava_verify( is_long_str ? type == TYPE_STRING : true );
 #endif // LAVASCRIPT_CHECK_OBJECTS
 
   allocated_bytes_ += size;
@@ -157,8 +157,83 @@ void* Heap::FindInChunk( std::size_t raw_bytes_length ) {
 Heap::~Heap() {
   while(chunk_current_) {
     Chunk* ck = chunk_current_->next;
-    allocator ? allocator->Free(chunk_current_) : ::free(chunk_current_);
+    Free( allocator_ , chunk_current_ );
     chunk_current_ = ck;
+  }
+}
+
+void SSOPool::Rehash() {
+  std::vector<Entry> new_entry;
+  new_entry.resize( entry_.size() * 2 );
+
+  for( auto &e : entry_ ) {
+    if(e.sso) {
+      Entry* new_entry = FindOrInsert(&new_entry,
+                                      e.sso->data(),
+                                      e.sso->size(),
+                                      e.sso->hash());
+#ifdef LAVASCRIPT_CHECK_OBJECTS
+      lava_verify(new_entry->sso == NULL);
+      lava_verify(new_entry->next== NULL);
+#endif // LAVASCRIPT_CHECK_OBJECTS
+
+      new_entry->sso = e.sso;
+    }
+  }
+
+  entry_.swap(new_entry);
+}
+
+namespace {
+
+bool Equal( const char* l , std::size_t lh , const SSO& right ) {
+  if(lh != right.size())
+    return false;
+  else {
+    int r = memcmp(l,right.data(),lh);
+    return r == 0;
+  }
+}
+
+} // namespace
+
+SSOPool::Entry* SSOPool::FindOrInsert( std::vector<Entry>* entry ,
+                                       const char* str,
+                                       std::size_t length ,
+                                       std::uint32_t hash ) {
+  std::size_t index = (hash & (entry->size()-1));
+  Entry* e = &(entry->at(index));
+  if(!e->sso) { return e; }
+  else {
+    do {
+      if(e->sso->hash() == hash && Equal(str,length,*e->sso)) {
+        return &e;
+      }
+      if(e->next) e = e->next;
+      else break;
+    } while(true);
+
+    int h = hash;
+    Entry* prev = e;
+    while( (e = &(entry->at(++h &(entry->size()-1))))->sso )
+      ;
+    prev->next = e;
+    return e;
+  }
+}
+
+SSO* SSOPool::Get( const char* str , std::size_t length ) {
+  std::uint32_t hash = Hasher::Hash(str,length);
+  Entry* e = FindOrInsert(&entry_,str,length,hash);
+  if(e->sso)
+    return e->sso;
+  else {
+    SSO* sso = ConstructFromBuffer<SSO>( allocator_.Grab( sizeof(SSO) + length ) ,
+                                         length,
+                                         hash );
+    memcpy( reinterpret_cast<char*>(sso) + sizeof(SSO) , str , length );
+    e->sso = sso;
+    return sso;
   }
 }
 
@@ -249,6 +324,43 @@ void Heap::HeapDump( int verbose , const char* filename ) {
 
 } // namespace gc
 
+String** GC::NewString( const char* str , std::size_t length ) {
+  /**
+   * String is an object without any data member all it needs
+   * to do is to place correct object at the pointer of String.
+   * Internally String will cast *this* to correct type based
+   * on the heap header tag
+   */
+  if(length > kSSOMaxSize) {
+    LongString* long_string = ConstructFromBuffer(
+        heap_.Grab( sizeof(LongString) + length , /* The string is stored right after LongString object */
+                    TYPE_STRING,
+                    GC_WHITE,
+                    true ) , length );
+
+    /** Copy the content from str to the end of long_string */
+    memcpy( reinterpret_cast<char*>(long_string) + sizeof(LongString) ,
+            str, length );
+
+    String** ref = reinterpret_cast<String**>(ref_pool_.Grab());
+    *ref = reinterpret_cast<String*>(long_string);
+    return ref;
+  } else {
+    /** Okay short string stays here */
+    SSO* sso = sso_pool_.Get( str , length );
+    SSO** sso_string = ConstructFromBuffer(
+        heap_.Grab( sizeof(SSO*),
+                    TYPE_STRING ,
+                    GC_WHITE,
+                    false ) , str, length );
+    *sso_string = sso;
+
+    String** ref = reinterpret_cast<String**>(ref_pool_.Grab());
+    *ref = reinterpret_cast<String*>(sso_string);
+    return ref;
+  }
+}
+
 /**
  * Marking phase for our GC
  *
@@ -259,13 +371,13 @@ void Heap::HeapDump( int verbose , const char* filename ) {
  *  3. C++ Local (LocalScope/GlobalScope)
  */
 
-void GC::Mark( MarkResult* result ) {
+void GC::PhaseMark( MarkResult* result ) {
   /*
    * TODO:: Add implementation when we finish our stuff
    */
 }
 
-void GC::Swap( std::size_t new_heap_size ) {
+void GC::PhaseSwap( std::size_t new_heap_size ) {
   gc::Heap new_heap(heap_.threshold(),
                     heap_.factor(),
                     heap_.chunk_capacity(),
@@ -292,8 +404,8 @@ void GC::Swap( std::size_t new_heap_size ) {
       new_heap.RawCopyObject( raw_address , (*ref)->hoh().total_size() );
 
       // Patch the reference pointer address
-      *ref = reinterpret_cast<HeapObject*>(
-          static_cast<char*>(raw_address) + HeapObjectHeader::kHeapObjectHeaderSize );
+      *ref = reinterpret_cast<HeapObject*>( static_cast<char*>(raw_address) +
+          HeapObjectHeader::kHeapObjectHeaderSize );
 
       // Move to the next slot
       itr.Move();
@@ -309,9 +421,9 @@ void GC::Swap( std::size_t new_heap_size ) {
 
 void GC::ForceGC() {
   MarkResult reuslt;
-  Mark(&result);
+  PhaseMark(&result);
   if(result.dead_size >0) {
-    Swap(result.new_heap_size);
+    PhaseSwap(result.new_heap_size);
   }
   ++cycle_;
 }

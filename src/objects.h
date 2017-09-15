@@ -1,21 +1,16 @@
 #ifndef OBJECTS_H_
 #define OBJECTS_H_
 
+#include <string>
 #include <cstdint>
 #include <cstring>
 #include <type_traits>
 
+#include "common.h"
 #include "hash.h"
 #include "trace.h"
 #include "all-static.h"
 #include "heap-object-header.h"
-
-/**
- * Objects are representation of all runtime objects in C++ side and
- * script side. It is designed to be efficient and also friendly to
- * assembly code since we will write interpreter and JIT mostly in the
- * assembly code
- */
 
 namespace lavascript {
 
@@ -42,17 +37,15 @@ class Extension;
  * A handler is a holder that holds a typped GCRef object. This save
  * us from cosntantly typping whether a certain GCRef is certain type
  * and also gurantee the type safe since it checks the type during
- * Handler creation
+ * Handle creation
  */
-template< typename T > class Handler {
+template< typename T > class Handle {
  public:
-  static_assert( std::is_base_of<HeapObject,T>::value );
-
-  Handler():ref_(NULL) {}
-  inline Handler( HeapObject** );
-  inline Handler( T** );
-  inline Handler( const Handler& );
-  inline Handler& operator = ( const Handler& );
+  inline Handle();
+  inline Handle( HeapObject** );
+  inline Handle( T** );
+  inline Handle( const Handle& );
+  inline Handle& operator = ( const Handle& );
 
   bool IsEmpty() const { return *ref_ != NULL; }
   bool IsRefEmpty() const { return ref_ != NULL; }
@@ -61,12 +54,13 @@ template< typename T > class Handler {
 
  public:
   inline HeapObject** heap_object() const;
+  inline T* ptr() const;
   inline T** ref() const;
 
   inline T* operator -> ();
-  inline T* operator -> () const;
-  inline T& operator -> () ;
-  inline const T& operator -> () const;
+  inline const T* operator -> () const;
+  inline T& operator * () ;
+  inline const T& operator * () const;
 
  private:
   T** ref_;
@@ -107,7 +101,6 @@ class Value final {
   };
 
   // Masks
-  static const std::uint64_t kPtrCheckMask = 0xffff000000000000;
   static const std::uint64_t kTagMask = 0xffff000000000000;
   static const std::uint64_t kIntMask = 0x00000000ffffffff;
   static const std::uint64_t kPtrMask = 0x0000ffffffffffff;
@@ -126,8 +119,6 @@ class Value final {
   bool IsTagHeap()    const { return tag() == TAG_HEAP; }
 
   inline HeapObject** heap_object() const;
-  inline void set_heap_object( HeapObject** );
-
  public:
   /**
    * Returns a type enumeration for this Value.
@@ -156,6 +147,7 @@ class Value final {
   inline bool IsClosure() const;
   inline bool IsPrototype() const;
   inline bool IsExtension() const;
+  inline bool IsIterator() const;
 
   // Getters --------------------------------------------
   inline std::uint32_t GetInteger() const;
@@ -163,17 +155,18 @@ class Value final {
   inline double GetReal() const;
 
   inline HeapObject** GetHeapObject() const;
-  inline Handler<String> GetString() const;
-  inline Handler<List> GetList() const;
-  inline Handler<Slice> GetSlice() const;
-  inline Handler<Object> GetObject() const;
-  inline Handler<Map> GetMap() const;
-  inline Handler<Prototype> GetPrototype() const;
-  inline Handler<Closure> GetClosure() const;
-  inline Handler<Extension> GetExtension() const;
+  inline Handle<String> GetString() const;
+  inline Handle<List> GetList() const;
+  inline Handle<Slice> GetSlice() const;
+  inline Handle<Object> GetObject() const;
+  inline Handle<Map> GetMap() const;
+  inline Handle<Prototype> GetPrototype() const;
+  inline Handle<Closure> GetClosure() const;
+  inline Handle<Extension> GetExtension() const;
+  inline Handle<Iterator> GetIterator() const;
 
   template< typename T >
-  inline Handler<T> GetHandler() const { return Handler<T>(GetHeapObject()); }
+  inline Handle<T> GetHandle() const { return Handle<T>(GetHeapObject()); }
 
   // Setters ---------------------------------------------
   inline void SetInteger( std::uint32_t );
@@ -184,17 +177,18 @@ class Value final {
   void SetFalse  () { raw_ = TAG_FALSE;}
 
   inline void SetHeapObject( HeapObject** );
-  inline void SetString( const Handler<String>& );
-  inline void SetList  ( const Handler<List>& );
-  inline void SetSlice ( const Handler<Slice>& );
-  inline void SetObject( const Handler<Object>& );
-  inline void SetMap   ( const Handler<Map>& );
-  inline void SetPrototype( const Handler<Prototype>& );
-  inline void SetClosure  ( const Handler<Closure>& );
-  inline void SetExtension( const Handler<Extension>& );
+  inline void SetString( const Handle<String>& );
+  inline void SetList  ( const Handle<List>& );
+  inline void SetSlice ( const Handle<Slice>& );
+  inline void SetObject( const Handle<Object>& );
+  inline void SetMap   ( const Handle<Map>& );
+  inline void SetPrototype( const Handle<Prototype>& );
+  inline void SetClosure  ( const Handle<Closure>& );
+  inline void SetExtension( const Handle<Extension>& );
+  inline void SetIterator ( const Handle<Iterator>& );
 
   template< typename T >
-  void SetHandler( const Handler<T>& h ) { set_heap_object(h.heap_object()); }
+  void SetHandle( const Handle<T>& h ) { SetHeapObject(h.heap_object()); }
 
  public:
   Value() { SetNull(); }
@@ -203,7 +197,7 @@ class Value final {
   inline explicit Value( bool v ) { SetBoolean(v); }
   inline explicit Value( HeapObject** v ) { SetHeapObject(v); }
   template< typename T >
-  explicit Value( const Handler<T>& h ) { SetGCRef(h.ref()); }
+  explicit Value( const Handle<T>& h ) { SetGCRef(h.ref()); }
 };
 
 // The handle must be as long as a machine word , here for simplicitly we assume
@@ -229,24 +223,27 @@ static_assert( sizeof(Value) == sizeof(std::uintptr_t) );
 //
 //  The HeapObject is an empty object at all and all the states it needs are stored
 //  inside of the HeapObjectHeader object which can be referend via (this-8)
-class HeapObject : DoNotAllocateOnNormalHeap {
+class HeapObject {
  public:
-  bool IsString() const { return hoh().type() == VALUE_STRING; }
-  bool IsList  () const { return hoh().type() == VALUE_LIST; }
-  bool IsSlice () const { return hoh().type() == VALUE_SLICE; }
-  bool IsObject() const { return hoh().type() == VALUE_OBJECT; }
-  bool IsMap   () const { return hoh().type() == VALUE_MAP; }
-  bool IsPrototype() const { return hoh().type() == VALUE_PROTOTYPE; }
-  bool IsClosure() const { return hoh().type() == VALUE_CLOSURE; }
-  bool IsExtension() const { return hoh().type() == VALUE_EXTENSION; }
+  bool IsString() const { return hoh().type() == TYPE_STRING; }
+  bool IsList  () const { return hoh().type() == TYPE_LIST; }
+  bool IsSlice () const { return hoh().type() == TYPE_SLICE; }
+  bool IsObject() const { return hoh().type() == TYPE_OBJECT; }
+  bool IsMap   () const { return hoh().type() == TYPE_MAP; }
+  bool IsPrototype() const { return hoh().type() == TYPE_PROTOTYPE; }
+  bool IsClosure() const { return hoh().type() == TYPE_CLOSURE; }
+  bool IsExtension() const { return hoh().type() == TYPE_EXTENSION; }
+  bool IsIterator() const { return hoh().type() == TYPE_ITERATOR; }
 
   // Generic way to check whether this HeapObject is certain type
-  template< typename T > bool IsType() const;
+  template< typename T > bool IsType() ;
+  ValueType type() const { return hoh().type(); }
 
  public:
   HeapObjectHeader::Type* hoh_address() const {
+    HeapObject* self = const_cast<HeapObject*>(this);
     return reinterpret_cast<HeapObjectHeader::Type*>(
-        static_cast<std::uint8_t*>(this) - HeapObjectHeader::kHeapObjectHeaderSize);
+        reinterpret_cast<char*>(self) - HeapObjectHeader::kHeapObjectHeaderSize);
   }
 
   HeapObjectHeader::Type hoh_raw() const {
@@ -258,15 +255,11 @@ class HeapObject : DoNotAllocateOnNormalHeap {
   }
 
   void set_hoh( const HeapObjectHeader& word ) {
-    *heap_word_address() = word.raw();
+    *hoh_address() = word.raw();
   }
 
   // Helper function for setting the GC state for this HeapObject
   inline void set_gc_state( GCState state );
-
-  virtual ~HeapObject() = 0;
- private:
-  LAVA_DISALLOW_COPY_AND_ASSIGN(HeapObject);
 };
 
 
@@ -284,8 +277,8 @@ class HeapObject : DoNotAllocateOnNormalHeap {
 class SSO final {
  public:
   std::uint32_t hash() const { return hash_; }
-  size_t size() const { return size_; }
-  inline void* data() const;
+  std::size_t size() const { return size_; }
+  inline const void* data() const;
 
  public:
   inline bool operator == ( const char* ) const;
@@ -318,9 +311,12 @@ class SSO final {
   inline bool operator <= ( const String& ) const;
   inline bool operator <= ( const SSO& ) const;
 
+  // constructor
+  SSO( std::size_t size , std::uint32_t hash ) : size_(size) , hash_(hash) {}
+
  private:
   // size of the data
-  size_t size_;
+  std::size_t size_;
 
   // hash value of this SSO
   std::uint32_t hash_;
@@ -340,11 +336,11 @@ class SSO final {
  */
 struct LongString final {
   // Size of the LongString
-  size_t size;
-
-  LongString() : size(0) {}
+  std::size_t size;
   // Return the stored the data inside of the LongString
-  inline void* data() const;
+  inline const void* data() const;
+
+  LongString( std::size_t sz ) : size(sz) {}
 };
 
 /**
@@ -365,8 +361,8 @@ struct LongString final {
 
 class String final : public HeapObject {
  public:
-  void*  data() const { return sso.data(); }
-  size_t size() const { return long_string().data(); }
+  inline const void* data() const;
+  inline std::size_t size() const;
 
   const SSO& sso() const;
   const LongString& long_string() const;
@@ -377,7 +373,9 @@ class String final : public HeapObject {
   // Obviously , we are not null terminated string , but with ToStdString,
   // we are able to gap the String object to real world string with a little
   // bit expensive operations.
-  std::string ToStdString() const { return std::string(data(),size()); }
+  std::string ToStdString() const {
+    return std::string(static_cast<const char*>(data()),size());
+  }
 
  public:
   inline bool operator == ( const char* ) const;
@@ -411,13 +409,14 @@ class String final : public HeapObject {
   inline bool operator <= ( const SSO& ) const;
 
  public: // Factory functions
-  static Handler<String> New( GC* );
-  static Handler<String> New( GC* , const char* );
-  static Handler<String> New( GC* , const char* , size_t );
-  static Handler<String> New( GC* , const std::string& );
-
-  template< typename T , typename DATA >
-  bool Visit( const T& , const Data& d );
+  static Handle<String> New( GC* );
+  static Handle<String> New( GC* , const char* , std::size_t );
+  static Handle<String> New( GC* gc , const char* str ) {
+    return New(gc,str,strlen(str));
+  }
+  static Handle<String> New( GC* gc , const std::string& str ) {
+    return New(gc,str.c_str(),str.size());
+  }
 
  private:
 
@@ -437,15 +436,15 @@ class String final : public HeapObject {
 class List final : public HeapObject {
  public:
   // Where the list's underlying Slice object are located
-  Handler<Slice> slice() const { return slice_ };
+  Handle<Slice> slice() const { return slice_; };
 
   inline bool IsEmpty() const;
-  inline size_t size() const;
-  inline size_t capacity() const;
-  inline const Value& Index( size_t ) const;
-  inline Value& Index( size_t );
-  Value& operator [] ( size_t index ) { return Index(index); }
-  const Value& operator [] ( size_t index ) const { return Index(index); }
+  inline std::size_t size() const;
+  inline std::size_t capacity() const;
+  inline const Value& Index( std::size_t ) const;
+  inline Value& Index( std::size_t );
+  Value& operator [] ( std::size_t index ) { return Index(index); }
+  const Value& operator [] ( std::size_t index ) const { return Index(index); }
 
   inline Value& Last();
   inline const Value& Last() const;
@@ -457,18 +456,25 @@ class List final : public HeapObject {
   bool Push( GC* , const Value& );
   void Pop ();
 
- public: // Factory functions
-  static Handler<List> New( GC* );
-  static Handler<List> New( GC* , size_t capacity );
-  static Handler<List> New( GC* , const Handler<Slice>& slice );
+  Handle<Iterator> GetIterator() const;
 
-  template< typename T , typename DATA >
-  bool Visit( const T& , const Data& d );
+ public: // Factory functions
+  static Handle<List> New( GC* );
+  static Handle<List> New( GC* , std::size_t capacity );
+  static Handle<List> New( GC* , const Handle<Slice>& slice );
+
+  template< typename T >
+  bool Visit( T* );
+
+  List( const Handle<Slice>& slice ):
+    size_(0),
+    slice_(slice)
+  {}
 
  private:
 
-  size_t size_;
-  Handler<Slice> slice_;
+  std::size_t size_;
+  Handle<Slice> slice_;
 
   friend class GC;
   LAVA_DISALLOW_COPY_AND_ASSIGN(List);
@@ -487,25 +493,29 @@ class Slice final : public HeapObject {
   inline void* array() const;
  public:
   bool IsEmpty() const { return capacity() != 0; }
-  size_t capacity() const { return capacity_; }
+  std::size_t capacity() const { return capacity_; }
   const Value* data() const;
   Value* data();
-  inline Value& Index( size_t );
-  inline const Value& Index( size_t ) const;
-  Value& operator [] ( size_t index ) { return Index(index); }
-  const Value& operator [] ( size_t index ) const { return Index(index); }
+  inline Value& Index( std::size_t );
+  inline const Value& Index( std::size_t ) const;
+  Value& operator [] ( std::size_t index ) { return Index(index); }
+  const Value& operator [] ( std::size_t index ) const { return Index(index); }
+
+  Handle<Iterator> GetIterator() const;
 
  public: // Factory functions
-  static Handler<Slice> New( GC* );
-  static Handler<Slice> New( GC* , size_t capacity );
-  static Handler<Slice> Extend( GC* , const Handler<Slice>& old , size_t new_cap );
+  static Handle<Slice> Extend( GC* , const Handle<Slice>& old , std::size_t new_cap );
+  static Handle<Slice> New( GC* );
+  static Handle<Slice> New( GC* , std::size_t cap );
 
-  template< typename T , typename DATA >
-  bool Visit( const T& , const Data& d );
+  template< typename T >
+  bool Visit( T* );
+
+  Slice( std::size_t capacity ) : capacity_(capacity) {}
 
  private:
 
-  size_t capacity_;
+  std::size_t capacity_;
 
   friend class GC;
   LAVA_DISALLOW_COPY_AND_ASSIGN(Slice);
@@ -521,43 +531,49 @@ class Slice final : public HeapObject {
 
 class Object final : public HeapObject {
  public:
-   Handler<Map> map() const { return map_; }
+   Handle<Map> map() const { return map_; }
  public:
-  inline size_t capacity() const;
-  inline size_t size() const;
+  inline std::size_t capacity() const;
+  inline std::size_t size() const;
   inline bool IsEmpty() const;
 
  public:
-  inline bool Get ( const Handler<String>& , Value* ) const;
+  inline bool Get ( const Handle<String>& , Value* ) const;
   inline bool Get ( const char* , Value* ) const;
   inline bool Get ( const std::string& , Value* ) const;
 
-  inline bool Set ( GC* , const Handler<String>& , const Value& );
+  inline bool Set ( GC* , const Handle<String>& , const Value& );
   inline bool Set ( GC* , const char*   , const Value& );
   inline bool Set ( GC* , const std::string& , const Value& );
 
-  inline bool Update ( GC* , const Handler<String>& , const Value& );
+  inline bool Update ( GC* , const Handle<String>& , const Value& );
   inline bool Update ( GC* , const char*   , const Value& );
   inline bool Update ( GC* , const std::string& , const Value& );
 
-  inline void Put ( GC* , const Handler<String>& , const Value& );
-  inline void Put ( GC* , const char*   , const Value& );
-  inline void Put ( GC* , const std::string& , const Value& );
+  inline bool Put ( GC* , const Handle<String>& , const Value& );
+  inline bool Put ( GC* , const char*   , const Value& );
+  inline bool Put ( GC* , const std::string& , const Value& );
 
-  inline bool Delete ( const Handler<String>& );
+  inline bool Delete ( const Handle<String>& );
   inline bool Delete ( const char*   );
   inline bool Delete ( const std::string& );
 
- public: // Factory functions
-  static Handler<Object> New( GC* );
-  static Handler<Object> New( GC* , size_t capacity );
-  static Handler<Object> New( GC* , const Handler<Map>& );
+ public:
+  Handle<Iterator> GetIterator() const;
 
-  template< typename T , typename DATA >
-  bool Visit( const T& , const Data& d );
+ public: // Factory functions
+  static Handle<Object> New( GC* );
+  static Handle<Object> New( GC* , std::size_t capacity );
+  static Handle<Object> New( GC* , const Handle<Map>& );
+
+  template< typename T >
+  bool Visit( T* );
+
+  Object( const Handle<Map>& map ):map_(map) {}
 
  private:
-  Handler<Map> map_;
+
+  Handle<Map> map_;
 
   friend class GC;
   LAVA_DISALLOW_COPY_AND_ASSIGN(Object);
@@ -593,19 +609,21 @@ class Map final : public HeapObject {
     std::uint32_t more :  1;
     std::uint32_t del  :  1;
     std::uint32_t use  :  1;
+
+    bool active() const { return use && !del; }
   };
 
-  static const size_t kMaximumMapSize = 1<<29;
+  static const std::size_t kMaximumMapSize = 1<<29;
 
   // How many slots has been reserved for this Map object
-  size_t capacity() const { return capacity_; }
+  std::size_t capacity() const { return capacity_; }
 
   // How many live objects are inside of the Map
-  size_t size() const { return size_; }
+  std::size_t size() const { return size_; }
 
   // How many slots has been occupied , since deletion is marked with
   // tombstone
-  size_t slot_size() const { return slot_size_; }
+  std::size_t slot_size() const { return slot_size_; }
 
   // Do we need to do rehashing now
   bool NeedRehash() const { return slot_size() == capacity(); }
@@ -617,38 +635,41 @@ class Map final : public HeapObject {
   inline const Entry* data() const;
 
  public: // Mutators
-  inline bool Get ( const Handler<String>& , Value* ) const;
+  inline bool Get ( const Handle<String>& , Value* ) const;
   inline bool Get ( const char*, Value* ) const;
   inline bool Get ( const std::string& , Value* ) const;
 
-  inline bool Set ( GC* , const Handler<String>& , const Value& );
+  inline bool Set ( GC* , const Handle<String>& , const Value& );
   inline bool Set ( GC* , const char*   , const Value& );
   inline bool Set ( GC* , const std::string& , const Value& );
 
-  inline bool Update ( GC* , const Handler<String>& , const Value& );
+  inline bool Update ( GC* , const Handle<String>& , const Value& );
   inline bool Update ( GC* , const char*   , const Value& );
   inline bool Update ( GC* , const std::string& , const Value& );
 
-  inline void Put ( GC* , const Handler<String>& , const Value& );
+  inline void Put ( GC* , const Handle<String>& , const Value& );
   inline void Put ( GC* , const char*   , const Value& );
   inline void Put ( GC* , const std::string& , const Value& );
 
-  inline bool Delete ( const Handler<String>& );
+  inline bool Delete ( const Handle<String>& );
   inline bool Delete ( const char*   );
   inline bool Delete ( const std::string& );
 
- public:
-  inline static std::uint32_t Hash( const char* );
-  inline static std::uint32_t Hash( const std::string& );
-  inline static std::uint32_t Hash( const Handler<String>& );
+  Handle<Iterator> GetIterator() const;
 
  public: // Factory functions
-  static Handler<Map> New( GC* );
-  static Handler<Map> New( GC* , size_t capacity );
-  static Handler<Map> Rehash( GC* , const Handler<Map>& , size_t );
+  static Handle<Map> New( GC* );
+  static Handle<Map> New( GC* , std::size_t capacity );
+  static Handle<Map> Rehash( GC* , const Handle<Map>&);
 
-  template< typename T , typename DATA >
-  bool Visit( const T& , const Data& d );
+  template< typename T >
+  bool Visit( T* );
+
+  Map( std::size_t capacity ):
+    capacity_(capacity),
+    size_(0),
+    slot_size_(0)
+  {}
 
  private:
   /**
@@ -663,14 +684,28 @@ class Map final : public HeapObject {
 
   };
 
+  inline static std::uint32_t Hash( const char* );
+  inline static std::uint32_t Hash( const std::string& );
+  inline static std::uint32_t Hash( const Handle<String>& );
+  static bool Equal( const Handle<String>& lhs ,
+                     const Handle<String>& rhs ) {
+    return *lhs == *rhs;
+  }
+  static bool Equal( const Handle<String>& lhs , const char* rhs ) {
+    return *lhs == rhs;
+  }
+  static bool Equal( const Handle<String>& lhs , const std::string& rhs ) {
+    return *lhs == rhs;
+  }
+
   template< typename T >
-  Entry* FindEntry( const T& , std::uint32_t , Option );
+  Entry* FindEntry( const T& , std::uint32_t , Option ) const;
 
  private:
 
-  size_t capacity_;
-  size_t size_;
-  size_t slot_size_;
+  std::size_t capacity_;
+  std::size_t size_;
+  std::size_t slot_size_;
 
   friend class GC;
   LAVA_DISALLOW_COPY_AND_ASSIGN(Map);
@@ -728,24 +763,24 @@ class Prototype final : public HeapObject {
   // const vm::ConstantTable& constant_table() const { return constant_table_; }
   // const vm::UpValueIndexArray& upvalue_array() const { return upvalue_array_; }
   Handle<String> proto_string() const { return proto_string_; }
-  size_t argument_size() const { return argument_size_; }
+  std::size_t argument_size() const { return argument_size_; }
 
  public: // Mutator
   // vm::Bytecode& bytecode() { return bytecode_; }
   // vm::ConstantTable& constant_table() { return constant_table_; }
   // vm::UpValueIndexArray& upvalue_array() { return upvalue_array_; }
   void set_proto_string( const Handle<String>& str ) { proto_string_ = str; }
-  void set_argument_size( size_t arg) { argument_size_ = arg;}
+  void set_argument_size( std::size_t arg) { argument_size_ = arg;}
 
-  template< typename T , typename DATA >
-  bool Visit( const T& , const Data& d );
+  template< typename T >
+  bool Visit( T* );
 
  private:
   // vm::BytecodeArray code_;
   // vm::ConstantTable const_table_;
   // vm::UpValueIndexArray upvalue_array_;
   Handle<String> proto_string_;
-  size_t argument_size_;
+  std::size_t argument_size_;
 
   friend class GC;
 
@@ -767,16 +802,15 @@ class Prototype final : public HeapObject {
 
 class Closure final : public HeapObject {
  public:
-  GCRef  prototype() const { return prototype_; }
+  Handle<Prototype> prototype() const { return prototype_; }
   inline Value* upvalue();
   inline const Value* upvalue() const;
 
-  template< typename T , typename DATA >
-  bool Visit( const T& , const Data& d );
+  template< typename T >
+  bool Visit( T* );
 
  private:
-
-  GCRef prototype_;
+  Handle<Prototype> prototype_;
 
   friend class GC;
   LAVA_DISALLOW_COPY_AND_ASSIGN(Closure);
@@ -799,10 +833,14 @@ class Extension : public HeapObject {
  * ================================================================================*/
 
 /* --------------------------------------------------------------------
- * Handler
+ * Handle
  * ------------------------------------------------------------------*/
-
-template< typename T > inline Handler<T>::Handler( HeapObject** ref ) {
+template< typename T > inline Handle<T>::Handle():
+  ref_(NULL) {
+  static_assert( std::is_base_of<HeapObject,T>::value );
+}
+template< typename T > inline Handle<T>::Handle( HeapObject** ref ) {
+  static_assert( std::is_base_of<HeapObject,T>::value );
 #ifdef LAVASCRIPT_CHECK_OBJECTS
   lava_verify(ref && *ref);
   lava_verify(*ref->Is<T>());
@@ -810,22 +848,23 @@ template< typename T > inline Handler<T>::Handler( HeapObject** ref ) {
   ref_ = reinterpret_cast<T**>(ref);
 }
 
-template< typename T > inline Handler<T>::Handler( T** ref ):
-  ref_(ref)
-{}
+template< typename T > inline Handle<T>::Handle( T** ref ):
+  ref_(ref) {
+  static_assert( std::is_base_of<HeapObject,T>::value );
+}
 
-template< typename T > inline Handler<T>::Handler( const Handler& that ):
+template< typename T > inline Handle<T>::Handle( const Handle& that ):
   ref_(that.ref_)
 {}
 
 template< typename T >
-inline Handler<T>& Handler<T>::operator = ( const Handler<T>& that ) {
+inline Handle<T>& Handle<T>::operator = ( const Handle<T>& that ) {
   ref_ = that.ref_;
   return *this;
 }
 
 template< typename T >
-inline T* Handler<T>::operator -> () {
+inline T* Handle<T>::operator -> () {
 #ifdef LAVASCRIPT_CHECK_OBJECTS
   lava_verify(!IsNull());
 #endif // LAVASCRIPT_CHECK_OBJECTS
@@ -833,7 +872,7 @@ inline T* Handler<T>::operator -> () {
 }
 
 template< typename T >
-inline const T* Handler<T>::operator -> () const {
+inline const T* Handle<T>::operator -> () const {
 #ifdef LAVASCRIPT_CHECK_OBJECTS
   lava_verify(!IsNull());
 #endif // LAVASCRIPT_CHECK_OBJECTS
@@ -841,7 +880,7 @@ inline const T* Handler<T>::operator -> () const {
 }
 
 template< typename T >
-inline T& Handler<T>::operator * () {
+inline T& Handle<T>::operator * () {
 #ifdef LAVASCRIPT_CHECK_OBJECTS
   lava_verify(!IsNull());
 #endif // LAVASCRIPT_CHECK_OBJECTS
@@ -849,11 +888,35 @@ inline T& Handler<T>::operator * () {
 }
 
 template< typename T >
-inline const T& Handler<T>::operator * () const {
+inline const T& Handle<T>::operator * () const {
 #ifdef LAVASCRIPT_CHECK_OBJECTS
   lava_verify(!IsNull());
 #endif // LAVASCRIPT_CHECK_OBJECTS
   return **ref_;
+}
+
+template< typename T >
+inline HeapObject** Handle<T>::heap_object() const {
+#ifdef LAVASCRIPT_CHECK_OBJECTS
+  lava_verify(!IsNull());
+#endif // LAVASCRIPT_CHECK_OBJECTS
+  return reinterpret_cast<HeapObject**>(ref_);
+}
+
+template< typename T >
+inline T** Handle<T>::ref() const {
+#ifdef LAVASCRIPT_CHECK_OBJECTS
+  lava_verify(!IsRefEmpty());
+#endif // LAVASCRIPT_CHECK_OBJECTS
+  return ref_;
+}
+
+template< typename T >
+inline T* Handle<T>::ptr() const {
+#ifdef LAVASCRIPT_CHECK_OBJECTS
+  lava_verify(!IsNull());
+#endif // LAVASCRIPT_CHECK_OBJECTS
+  return *ref_;
 }
 
 /* --------------------------------------------------------------------
@@ -864,7 +927,7 @@ inline HeapObject** Value::heap_object() const {
   return reinterpret_cast<HeapObject**>(raw_ & kPtrMask);
 }
 
-inline void Value::set_heap_object( HeapObject** ptr ) {
+inline void Value::SetHeapObject( HeapObject** ptr ) {
 
 #ifdef LAVASCRIPT_CHECK_OBJECTS
   /**
@@ -873,24 +936,24 @@ inline void Value::set_heap_object( HeapObject** ptr ) {
    */
   lava_assert( (static_cast<std::uintptr_t>(ptr)&kPtrCheckMask) == 0 ,
                "the pointer %x specified here is not a valid pointer,"
-               " upper 16 bits is not 0s", ptr );
+               "upper 16 bits is not 0s", ptr );
 #endif // LAVASCRIPT_CHECK_OBJECTS
 
   raw_ = static_cast<std::uint64_t>(
-      static_cast<std::uintptr_t>(ptr) | tag);
+      reinterpret_cast<std::uintptr_t>(ptr) | TAG_HEAP);
 }
 
 inline ValueType Value::type() const {
   if(IsTagHeap()) {
-    return heap_object()->type();
+    return (*heap_object())->type();
   } else if(IsTagTrue() || IsTagFalse()) {
-    return VALUE_BOOLEAN;
+    return TYPE_BOOLEAN;
   } else if(IsTagNull()) {
-    return VALUE_NULL;
+    return TYPE_NULL;
   } else if(IsTagInteger()) {
-    return VALUE_INTEGER;
+    return TYPE_INTEGER;
   } else {
-    return VALUE_REAL;
+    return TYPE_REAL;
   }
 }
 
@@ -930,6 +993,10 @@ inline bool Value::IsExtension() const {
   return IsHeapObject() && (*heap_object())->IsExtension();
 }
 
+inline bool Value::IsIterator() const {
+  return IsHeapObject() && (*heap_object())->IsIterator();
+}
+
 inline std::uint32_t Value::GetInteger() const {
 #ifdef LAVASCRIPT_CHECK_OBJECTS
   lava_verify(IsInteger());
@@ -960,7 +1027,6 @@ inline bool Value::GetBoolean() const {
   return IsTagTrue();
 }
 
-
 inline double Value::GetReal() const {
 #ifdef LAVASCRIPT_CHECK_OBJECTS
   lava_verify(IsReal());
@@ -969,66 +1035,73 @@ inline double Value::GetReal() const {
 }
 
 inline HeapObject** Value::GetHeapObject() const {
-#define LAVASCRIPT_CHECK_OBJECTS
+#ifdef LAVASCRIPT_CHECK_OBJECTS
   lava_verify(IsHeapObject());
 #endif // LAVASCRIPT_CHECK_OBJECTS
   return heap_object();
 }
 
-inline Handler<String> Value::GetString() const {
-#define LAVASCRIPT_CHECK_OBJECTS
+inline Handle<String> Value::GetString() const {
+#ifdef LAVASCRIPT_CHECK_OBJECTS
   lava_verify(IsHeapObject());
 #endif // LAVASCRIPT_CHECK_OBJECTS
-  return Handler<String>(heap_object());
+  return Handle<String>(heap_object());
 }
 
-inline Handler<List> Value::GetList() const {
-#define LAVASCRIPT_CHECK_OBJECTS
+inline Handle<List> Value::GetList() const {
+#ifdef LAVASCRIPT_CHECK_OBJECTS
   lava_verify(IsHeapObject());
 #endif // LAVASCRIPT_CHECK_OBJECTS
-  return Handler<List>(heap_object());
+  return Handle<List>(heap_object());
 }
 
-inline Handler<Slice> Value::GetSlice() const {
-#define LAVASCRIPT_CHECK_OBJECTS
+inline Handle<Slice> Value::GetSlice() const {
+#ifdef LAVASCRIPT_CHECK_OBJECTS
   lava_verify(IsHeapObject());
 #endif // LAVASCRIPT_CHECK_OBJECTS
-  return Handler<Slice>(heap_object());
+  return Handle<Slice>(heap_object());
 }
 
-inline Handler<Object> Value::GetObject() const {
-#define LAVASCRIPT_CHECK_OBJECTS
+inline Handle<Object> Value::GetObject() const {
+#ifdef LAVASCRIPT_CHECK_OBJECTS
   lava_verify(IsHeapObject());
 #endif // LAVASCRIPT_CHECK_OBJECTS
-  return Handler<Object>(heap_object());
+  return Handle<Object>(heap_object());
 }
 
-inline Handler<Map> Value::GetMap() const {
-#define LAVASCRIPT_CHECK_OBJECTS
+inline Handle<Map> Value::GetMap() const {
+#ifdef LAVASCRIPT_CHECK_OBJECTS
   lava_verify(IsHeapObject());
 #endif // LAVASCRIPT_CHECK_OBJECTS
-  return Handler<Map>(heap_object());
+  return Handle<Map>(heap_object());
 }
 
-inline Handler<Prototype> Value::GetPrototype() const {
-#define LAVASCRIPT_CHECK_OBJECTS
+inline Handle<Prototype> Value::GetPrototype() const {
+#ifdef LAVASCRIPT_CHECK_OBJECTS
   lava_verify(IsHeapObject());
 #endif // LAVASCRIPT_CHECK_OBJECTS
-  return Handler<Prototype>(heap_object());
+  return Handle<Prototype>(heap_object());
 }
 
-inline Handler<Closure> Value::GetClosure() const {
-#define LAVASCRIPT_CHECK_OBJECTS
+inline Handle<Closure> Value::GetClosure() const {
+#ifdef LAVASCRIPT_CHECK_OBJECTS
   lava_verify(IsHeapObject());
 #endif // LAVASCRIPT_CHECK_OBJECTS
-  return Handler<Closure>(heap_object());
+  return Handle<Closure>(heap_object());
 }
 
-inline Handler<Extension> Value::GetExtension() const {
-#define LAVASCRIPT_CHECK_OBJECTS
+inline Handle<Extension> Value::GetExtension() const {
+#ifdef LAVASCRIPT_CHECK_OBJECTS
   lava_verify(IsHeapObject());
 #endif // LAVASCRIPT_CHECK_OBJECTS
-  return Handler<Extension>(heap_object());
+  return Handle<Extension>(heap_object());
+}
+
+inline Handle<Iterator> Value::GetIterator() const {
+#ifdef LAVASCRIPT_CHECK_OBJECTS
+  lava_verify(IsHeapObject());
+#endif // LAVASCRIPT_CHECK_OBJECTS
+  return Handle<Iterator>(heap_object());
 }
 
 inline void Value::SetInteger( std::uint32_t value ) {
@@ -1046,40 +1119,40 @@ inline void Value::SetBoolean( bool value ) {
     raw_ = TAG_FALSE;
 }
 
-inline void Value::SetHeapObject( HeapObject** ptr ) {
-  set_pointer(reinterpret_cast<void*>(ptr),TAG_HEAP);
-}
-
-inline void Value::SetString( const Handler<String>& str ) {
+inline void Value::SetString( const Handle<String>& str ) {
   SetHeapObject(str.heap_object());
 }
 
-inline void Value::SetList( const Handler<List>& list ) {
+inline void Value::SetList( const Handle<List>& list ) {
   SetHeapObject(list.heap_object());
 }
 
-inline void Value::SetSlice( const Handler<Slice>& slice ) {
+inline void Value::SetSlice( const Handle<Slice>& slice ) {
   SetHeapObject(slice.heap_object());
 }
 
-inline void Value::SetObject( const Handler<Object>& object ) {
+inline void Value::SetObject( const Handle<Object>& object ) {
   SetHeapObject(object.heap_object());
 }
 
-inline void Value::SetMap( const Handler<Map>& map ) {
+inline void Value::SetMap( const Handle<Map>& map ) {
   SetHeapObject(map.heap_object());
 }
 
-inline void Value::SetPrototype( const Handler<Prototype>& proto ) {
+inline void Value::SetPrototype( const Handle<Prototype>& proto ) {
   SetHeapObject(proto.heap_object());
 }
 
-inline void Value::SetClosure( const Handler<Closure>& closure ) {
+inline void Value::SetClosure( const Handle<Closure>& closure ) {
   SetHeapObject(closure.heap_object());
 }
 
-inline void Value::SetExtension( const Handler<Extension>& ext ) {
-  SetHeapObject(set.heap_object());
+inline void Value::SetExtension( const Handle<Extension>& ext ) {
+  SetHeapObject(ext.heap_object());
+}
+
+inline void Value::SetIterator( const Handle<Iterator>& itr ) {
+  SetHeapObject(itr.heap_object());
 }
 
 /* --------------------------------------------------------------------
@@ -1087,7 +1160,7 @@ inline void Value::SetExtension( const Handler<Extension>& ext ) {
  * ------------------------------------------------------------------*/
 
 template< typename T >
-bool HeapObject::IsType<T>() const {
+bool HeapObject::IsType() {
   if(std::is_same<T,String>::value)
     return IsString();
   else if(std::is_same<T,List>::value)
@@ -1100,7 +1173,7 @@ bool HeapObject::IsType<T>() const {
     return IsMap();
   else if(std::is_same<T,Iterator>::value)
     return IsIterator();
-  else if(std;:is_same<T,Prototype>::value)
+  else if(std::is_same<T,Prototype>::value)
     return IsPrototype();
   else if(std::is_same<T,Closure>::value)
     return IsClosure();
@@ -1122,27 +1195,26 @@ inline void HeapObject::set_gc_state( GCState state ) {
  * SSO
  * ------------------------------------------------------------------*/
 
-inline void* SSO::data() const {
-  SSO* self = const_cast<SSO*>(this);
-  return reinterpret_cast<void*>(
-      static_cast<char*>(self) + sizeof(SSO));
+inline const void* SSO::data() const {
+  return reinterpret_cast<const void*>(
+      reinterpret_cast<const char*>(this) + sizeof(SSO));
 }
 
 inline bool SSO::operator == ( const char* str ) const {
-  const size_t l = strlen(str);
-  const size_t len = std::min(l,size_);
+  const std::size_t l = strlen(str);
+  const std::size_t len = std::min(l,size_);
   int r = std::memcmp(data(),str,len);
   return r == 0 ? (len == l) : false;
 }
 
 inline bool SSO::operator == ( const std::string& str ) const {
-  const size_t len = std::min(size_,str.size());
+  const std::size_t len = std::min(size_,str.size());
   int r = std::memcmp(data(),str.c_str(),len);
   return r == 0 ? (size_ == len) : false;
 }
 
 inline bool SSO::operator == ( const String& str ) const {
-  const size_t len = std::min(size_,str.size());
+  const std::size_t len = std::min(size_,str.size());
   int r = std::memcmp(data(),str.data(),len);
   return r == 0 ? (size_ == len) : false;
 }
@@ -1152,34 +1224,34 @@ inline bool SSO::operator == ( const SSO& str ) const {
 }
 
 inline bool SSO::operator != ( const char* str ) const {
-  const size_t l = strlen(str);
-  const size_t len = std::min(size_,l);
+  const std::size_t l = strlen(str);
+  const std::size_t len = std::min(size_,l);
   int r = std::memcmp(data(),str,len);
   return r == 0 ? (size_ != len) : true;
 }
 
 inline bool SSO::operator != ( const std::string& str ) const {
-  const size_t len = std::min(size_,str.size());
+  const std::size_t len = std::min(size_,str.size());
   int r = std::memcmp(data(),str.c_str(),len);
   return r == 0 ? (size_ != len) : true;
 }
 
 inline bool SSO::operator != ( const String& str ) const {
-  const size_t len = std::min(size_,str.size());
+  const std::size_t len = std::min(size_,str.size());
   int r = std::memcmp(data(),str.data(),len);
   return r == 0 ? (size_ != len ) : true;
 }
 
 inline bool SSO::operator != ( const SSO& str ) const {
-  const size_t len = std::min(size_,str.size());
+  const std::size_t len = std::min(size_,str.size());
   int r = std::memcmp(data(),str.data(),len);
   return r == 0 ? (size_ != len) : true;
 }
 
 inline bool SSO::operator >  ( const char* str ) const {
-  const size_t l = strlen(str);
-  const size_t len = std::min(size_,l);
-  int r = std::memcmp(data(),str.data(),len);
+  const std::size_t l = strlen(str);
+  const std::size_t len = std::min(size_,l);
+  int r = std::memcmp(data(),str,len);
   if(r > 0 || (r == 0 && size_ > len))
     return true;
   else
@@ -1187,7 +1259,7 @@ inline bool SSO::operator >  ( const char* str ) const {
 }
 
 inline bool SSO::operator > ( const std::string& str ) const {
-  const size_t len = std::min(size_,str.size());
+  const std::size_t len = std::min(size_,str.size());
   int r = std::memcmp(data(),str.c_str(),len);
   if(r > 0 || (r == 0 && size_ > len))
     return true;
@@ -1196,8 +1268,8 @@ inline bool SSO::operator > ( const std::string& str ) const {
 }
 
 inline bool SSO::operator > ( const String& str ) const {
-  const size_t len = std::min(size_,str.size());
-  int r = std::memcmp(data(),str.c_str(),len);
+  const std::size_t len = std::min(size_,str.size());
+  int r = std::memcmp(data(),str.data(),len);
   if(r > 0 || (r == 0 && size_ > len))
     return true;
   else
@@ -1205,7 +1277,7 @@ inline bool SSO::operator > ( const String& str ) const {
 }
 
 inline bool SSO::operator > ( const SSO& str ) const {
-  const size_t len = std::min(size_,str.size());
+  const std::size_t len = std::min(size_,str.size());
   int r = std::memcmp(data(),str.data(),len);
   if(r > 0 || (r == 0 && size_ > len))
     return true;
@@ -1214,8 +1286,8 @@ inline bool SSO::operator > ( const SSO& str ) const {
 }
 
 inline bool SSO::operator >= ( const char* str ) const {
-  const size_t l = strlen(str);
-  const size_t len = std::min(size_,l);
+  const std::size_t l = strlen(str);
+  const std::size_t len = std::min(size_,l);
   int r = std::memcmp(data(),str,len);
   if(r > 0 || (r == 0 && size_ >= len))
     return true;
@@ -1224,7 +1296,7 @@ inline bool SSO::operator >= ( const char* str ) const {
 }
 
 inline bool SSO::operator >= ( const std::string& str ) const {
-  const size_t len = std::min(size_,str.size());
+  const std::size_t len = std::min(size_,str.size());
   int r = std::memcmp(data(),str.c_str(),len);
   if(r > 0 || (r == 0 && size_ >= len))
     return true;
@@ -1233,7 +1305,7 @@ inline bool SSO::operator >= ( const std::string& str ) const {
 }
 
 inline bool SSO::operator >= ( const String& str ) const {
-  const size_t len = std::min(size_,str.size());
+  const std::size_t len = std::min(size_,str.size());
   int r = std::memcmp(data(),str.data(),len);
   if(r > 0 || (r == 0 && size_ >= len))
     return true;
@@ -1242,7 +1314,7 @@ inline bool SSO::operator >= ( const String& str ) const {
 }
 
 inline bool SSO::operator >= ( const SSO& str ) const {
-  const size_t len = std::min(size_,str.size());
+  const std::size_t len = std::min(size_,str.size());
   int r = std::memcmp(data(),str.data(),len);
   if(r > 0 || (r == 0 && size_ >= len ))
     return true;
@@ -1251,8 +1323,8 @@ inline bool SSO::operator >= ( const SSO& str ) const {
 }
 
 inline bool SSO::operator < ( const char* str ) const {
-  const size_t l = strlen(str);
-  const size_t len = std::min(size_,l);
+  const std::size_t l = strlen(str);
+  const std::size_t len = std::min(size_,l);
   int r = std::memcmp(data(),str,len);
   if(r < 0 || (r == 0 && size_ < l))
     return true;
@@ -1261,7 +1333,7 @@ inline bool SSO::operator < ( const char* str ) const {
 }
 
 inline bool SSO::operator < ( const std::string& str ) const {
-  const size_t len = std::min(size_,str.size());
+  const std::size_t len = std::min(size_,str.size());
   int r = std::memcmp(data(),str.c_str(),len);
   if(r < 0 || (r == 0 && size_ < str.size()))
     return true;
@@ -1270,8 +1342,8 @@ inline bool SSO::operator < ( const std::string& str ) const {
 }
 
 inline bool SSO::operator < ( const String& str ) const {
-  const size_t len = std::min(size_,str.size());
-  int r = std::memcmp(data(),str.c_str(),len);
+  const std::size_t len = std::min(size_,str.size());
+  int r = std::memcmp(data(),str.data(),len);
   if(r < 0 || (r == 0 && size_ < str.size()))
     return true;
   else
@@ -1279,7 +1351,7 @@ inline bool SSO::operator < ( const String& str ) const {
 }
 
 inline bool SSO::operator < ( const SSO& str ) const {
-  const size_t len = std::min(size_,str.size());
+  const std::size_t len = std::min(size_,str.size());
   int r = std::memcmp(data(),str.data(),len);
   if(r < 0 || (r == 0 && size_ < str.size()))
     return true;
@@ -1288,8 +1360,8 @@ inline bool SSO::operator < ( const SSO& str ) const {
 }
 
 inline bool SSO::operator <= ( const char* str ) const {
-  const size_t l = strlen(str);
-  const size_t len = std::min(size_,l);
+  const std::size_t l = strlen(str);
+  const std::size_t len = std::min(size_,l);
   int r = std::memcmp(data(),str,len);
   if(r < 0 || (r == 0 && size_ <= l))
     return true;
@@ -1298,7 +1370,7 @@ inline bool SSO::operator <= ( const char* str ) const {
 }
 
 inline bool SSO::operator <= ( const std::string& str ) const {
-  const size_t len = std::min(size_,str.size());
+  const std::size_t len = std::min(size_,str.size());
   int r = std::memcmp(data(),str.c_str(),len);
   if(r < 0 || (r == 0 && size_ <= str.size()))
     return true;
@@ -1307,8 +1379,8 @@ inline bool SSO::operator <= ( const std::string& str ) const {
 }
 
 inline bool SSO::operator <= ( const String& str ) const {
-  const size_t len = std::min(size_,str.size());
-  int r = std:memcmp(data(),str.c_str(),len);
+  const std::size_t len = std::min(size_,str.size());
+  int r = std::memcmp(data(),str.data(),len);
   if(r < 0 || (r == 0 && size_ <= str.size()))
     return true;
   else
@@ -1316,8 +1388,8 @@ inline bool SSO::operator <= ( const String& str ) const {
 }
 
 inline bool SSO::operator <= ( const SSO& str ) const {
-  const size_t len = std::min(size_,str.size());
-  int r = std::memcmp(data(),str.size(),len);
+  const std::size_t len = std::min(size_,str.size());
+  int r = std::memcmp(data(),str.data(),len);
   if(r < 0 || (r == 0 && size_ <= str.size()))
     return true;
   else
@@ -1325,8 +1397,30 @@ inline bool SSO::operator <= ( const SSO& str ) const {
 }
 
 /* --------------------------------------------------------------------
+ * Long String
+ * ------------------------------------------------------------------*/
+inline const void* LongString::data() const {
+  return reinterpret_cast<const void*>(
+      reinterpret_cast<const char*>(this) + sizeof(LongString));
+}
+
+/* --------------------------------------------------------------------
  * String
  * ------------------------------------------------------------------*/
+
+inline const void* String::data() const {
+  if(IsSSO())
+    return sso().data();
+  else
+    return long_string().data();
+}
+
+inline std::size_t String::size() const {
+  if(IsSSO())
+    return sso().size();
+  else
+    return long_string().size;
+}
 
 inline const SSO& String::sso() const {
 #ifdef LAVASCRIPT_CHECK_OBJECTS
@@ -1336,7 +1430,7 @@ inline const SSO& String::sso() const {
   // The SSO are actually stored inside of SSOPool.
   // For a String object, it only stores a pointer
   // to the actual SSO object
-  return **reinterpret_cast<const SSO**>(this);
+  return **reinterpret_cast<SSO**>(const_cast<String*>(this));
 }
 
 inline const LongString& String::long_string() const {
@@ -1347,7 +1441,7 @@ inline const LongString& String::long_string() const {
 }
 
 inline bool String::operator == ( const char* str ) const {
-  const size_t l = strlen(str);
+  const std::size_t l = strlen(str);
   const std::size_t len = std::min(size(),l);
   int r = std::memcmp(data(),str,len);
   return r == 0 ? size() == len : false;
@@ -1377,7 +1471,7 @@ inline bool String::operator == ( const SSO& str ) const {
 }
 
 inline bool String::operator != ( const char* str ) const {
-  const std::sizez_t l = strlen(str);
+  const std::size_t l = strlen(str);
   const std::size_t len = std::min(size(),l);
   int r = std::memcmp(data(),str,len);
   return r == 0 ? size() != len : true;
@@ -1407,7 +1501,7 @@ inline bool String::operator != ( const SSO& str ) const {
 }
 
 inline bool String::operator > ( const char* str ) const {
-  const size_t l = strlen(str);
+  const std::size_t l = strlen(str);
   const std::size_t len = std::min(size(),l);
   int r = std::memcmp(data(),str,len);
   if(r > 0 || (r == 0 && size() > len))
@@ -1437,7 +1531,7 @@ inline bool String::operator > ( const SSO& str ) const {
 inline bool String::operator >= ( const char* str ) const {
   const std::size_t l = strlen(str);
   const std::size_t len = std::min(size(),l);
-  int r = std::memcmp(data(),str.data(),len);
+  int r = std::memcmp(data(),str,len);
   return (r > 0 ||(r == 0 && size() >= len));
 }
 
@@ -1517,19 +1611,19 @@ inline bool List::IsEmpty() const {
   return slice()->IsEmpty();
 }
 
-inline bool List::size() const {
-  return slice()->size();
+inline std::size_t List::size() const {
+  return size_;
 }
 
-inline bool List::capacity() const {
+inline std::size_t List::capacity() const {
   return slice()->capacity();
 }
 
-inline const Value& List::Index( size_t index ) const {
+inline const Value& List::Index( std::size_t index ) const {
   return slice()->Index(index);
 }
 
-inline Value& List::Index( size_t index ) {
+inline Value& List::Index( std::size_t index ) {
   return slice()->Index(index);
 }
 
@@ -1540,7 +1634,7 @@ inline Value& List::Last() {
   return slice()->Index( size() - 1 );
 }
 
-inline Value& List::Last() const {
+inline const Value& List::Last() const {
 #ifdef LAVASCRIPT_CHECK_OBJECTS
   lava_verify(size() >0);
 #endif // LAVASCRIPT_CHECK_OBJECTS
@@ -1554,7 +1648,7 @@ inline Value& List::First() {
   return slice()->Index(0);
 }
 
-inline Value& List::First() const {
+inline const Value& List::First() const {
 #ifdef LAVASCRIPT_CHECK_OBJECTS
   lava_verify(size() >0);
 #endif // LAVASCRIPT_CHECK_OBJECTS
@@ -1582,14 +1676,23 @@ inline void List::Pop() {
   --size_;
 }
 
+template< typename T >
+bool List::Visit( T* visitor ) {
+  if(visitor->Begin(this)) {
+    if(visitor->VisitSlice(slice()))
+      return visitor->End(this);
+  }
+  return false;
+}
 
 /* --------------------------------------------------------------------
  * Slice
  * ------------------------------------------------------------------*/
 
 inline void* Slice::array() const {
+  Slice* self = const_cast<Slice*>(this);
   return reinterpret_cast<void*>(
-      static_cast<char*>(this) + sizeof(Slice));
+      reinterpret_cast<char*>(self) + sizeof(Slice));
 }
 
 inline Value* Slice::data() {
@@ -1600,32 +1703,42 @@ inline const Value* Slice::data() const {
   return static_cast<const Value*>(array());
 }
 
-inline const Value& Slice::Index( size_t index ) const {
+inline const Value& Slice::Index( std::size_t index ) const {
   return data()[index];
 }
 
-inline Value& Slice::Index( size_t index ) {
+inline Value& Slice::Index( std::size_t index ) {
   return data()[index];
 }
 
+template< typename T >
+bool Slice::Visit( T* visitor ) {
+  if(visitor->Begin(this)) {
+    for( std::size_t i = 0 ; i < capacity() ; ++i ) {
+      if(!visitor->VisitValue(Index(i))) return false;
+    }
+    return visitor->End(this);
+  }
+  return false;
+}
 
 /* --------------------------------------------------------------------
  * Slice
  * ------------------------------------------------------------------*/
 
-inline size_t Object::capacity() const {
+inline std::size_t Object::capacity() const {
   return map()->capacity();
 }
 
-inline size_t Object::size() const {
+inline std::size_t Object::size() const {
   return map()->size();
 }
 
-inline size_t Object::IsEmpty() const {
+inline bool Object::IsEmpty() const {
   return map()->IsEmpty();
 }
 
-inline bool Object::Get( const String& key , Value* output ) const {
+inline bool Object::Get( const Handle<String>& key , Value* output ) const {
   return map()->Get(key,output);
 }
 
@@ -1637,7 +1750,7 @@ inline bool Object::Get( const std::string& key , Value* output ) const {
   return map()->Get(key,output);
 }
 
-inline bool Object::Set( GC* gc , const String& key ,
+inline bool Object::Set( GC* gc , const Handle<String>& key ,
     const Value& val ) {
   if(map_->NeedRehash()) {
     map_ = Map::Rehash(gc,map_);
@@ -1665,7 +1778,7 @@ inline bool Object::Set( GC* gc , const std::string& key ,
   return map_->Set(gc,key,val);
 }
 
-inline bool Object::Update( GC* gc , const String& key ,
+inline bool Object::Update( GC* gc , const Handle<String>& key ,
     const Value& val ) {
   if(map_->NeedRehash()) {
     map_ = Map::Rehash(gc,map_);
@@ -1692,13 +1805,14 @@ inline bool Object::Update( GC* gc , const std::string& key ,
   return map_->Update(gc,key,val);
 }
 
-inline bool Object::Put( GC* gc , const String& key ,
+inline bool Object::Put( GC* gc , const Handle<String>& key ,
     const Value& val ) {
   if(map_->NeedRehash()) {
     map_ = Map::Rehash(gc,map_);
     if(!map_) return false;
   }
-  return map_->Put(gc,key,val);
+  map_->Put(gc,key,val);
+  return true;
 }
 
 inline bool Object::Put( GC* gc , const char* key ,
@@ -1707,7 +1821,8 @@ inline bool Object::Put( GC* gc , const char* key ,
     map_ = Map::Rehash(gc,map_);
     if(!map_) return false;
   }
-  return map_->Put(gc,key,val);
+  map_->Put(gc,key,val);
+  return true;
 }
 
 inline bool Object::Put( GC* gc , const std::string& key,
@@ -1716,10 +1831,11 @@ inline bool Object::Put( GC* gc , const std::string& key,
     map_ = Map::Rehash(gc,map_);
     if(!map_) return false;
   }
-  return map_->Put(gc,key,val);
+  map_->Put(gc,key,val);
+  return true;
 }
 
-inline bool Object::Delete( const String& key ) {
+inline bool Object::Delete( const Handle<String>& key ) {
   return map_->Delete(key);
 }
 
@@ -1731,15 +1847,25 @@ inline bool Object::Delete( const std::string& key ) {
   return map_->Delete(key);
 }
 
+template<typename T>
+bool Object::Visit( T* visitor ) {
+  if(visitor->Begin(this)) {
+    if(visitor->VisitMap(map()))
+      return visitor->End(this);
+  }
+  return false;
+}
+
 /* --------------------------------------------------------------------
  * Map
  * ------------------------------------------------------------------*/
 
 inline std::uint32_t Map::Hash( const Handle<String>& key ) {
-  if(key.IsSSO()) {
-    return key.sso().hash();
+  if(key->IsSSO()) {
+    // Use default hash when it is SSO
+    return key->sso().hash();
   } else {
-    return Hasher::Hash(key.long_string().data(),key.long_string().size());
+    return Hasher::Hash(key->long_string().data(),key->long_string().size);
   }
 }
 
@@ -1752,10 +1878,11 @@ inline std::uint32_t Map::Hash( const std::string& key ) {
 }
 
 template< typename T >
-Entry* Map::FindEntry<T>( const T& key , std::uint32_t fullhash ,
-                                         Option opt ) {
+Map::Entry* Map::FindEntry( const T& key , std::uint32_t fullhash ,
+                                           Option opt ) const {
+  Map* self = const_cast<Map*>(this);
   int main_position = fullhash & (capacity()-1);
-  Entry* main = entry()[main_position];
+  Entry* main = self->data()+main_position;
   if(!main->use) return opt == FIND ? NULL : main;
 
   // Okay the main entry is been used or at least it is a on chain of the
@@ -1769,12 +1896,12 @@ Entry* Map::FindEntry<T>( const T& key , std::uint32_t fullhash ,
       lava_verify( cur->key.IsString() );
 #endif // LAVASCRIPT_CHECK_OBJECTS
 
-      if(cur->hash == fullhash && *cur->key.GetString() == key) {
+      if(cur->hash == fullhash && Equal(cur->key.GetString(),key)) {
         return opt == INSERT ? NULL : cur;
       }
     }
     if(cur->more)
-      cur = entry()[cur->next];
+      cur = self->data()+(cur->next);
     else
       break;
   } while(true);
@@ -1784,27 +1911,27 @@ Entry* Map::FindEntry<T>( const T& key , std::uint32_t fullhash ,
   // linear probing to find the next available new_slot
   Entry* new_slot = NULL;
   std::uint32_t h = fullhash;
-  while( (new_slot = entry()[ ++h &(capacity()-1)])->use )
+  while( (new_slot = self->data()+(++h &(capacity()-1)))->use )
     ;
 
   // linked the previous Entry to the current found one
-  cur->next = (new_slot - entry());
+  cur->next = (new_slot - self->data());
 
   return new_slot;
 }
 
-inline void* Map::array() const {
+inline void* Map::entry() const {
   return reinterpret_cast<void*>(
-      static_cast<char*>(this) + sizeof(Map));
+      reinterpret_cast<char*>(const_cast<Map*>(this)) + sizeof(Map));
 }
 
-inline Entry* Map::data() { return static_cast<Entry*>(array()); }
+inline Map::Entry* Map::data() { return static_cast<Entry*>(entry()); }
 
-inline const Entry* Map::data() const {
-  return static_cast<const Entry*>(array());
+inline const Map::Entry* Map::data() const {
+  return static_cast<const Entry*>(entry());
 }
 
-inline bool Map::Get( const Handler<String>& key , Value* output ) const {
+inline bool Map::Get( const Handle<String>& key , Value* output ) const {
   Entry* entry = FindEntry(key,Hash(key),FIND);
   if(entry) {
     *output = entry->value;
@@ -1825,13 +1952,13 @@ inline bool Map::Get( const char* key , Value* output ) const {
 inline bool Map::Get( const std::string& key , Value* output ) const {
   Entry* entry = FindEntry(key,Hash(key),FIND);
   if(entry) {
-    *output = entry->Value;
+    *output = entry->value;
     return true;
   }
   return false;
 }
 
-inline bool Map::Set( GC* gc , const Handler<String>& key , const Value& value ) {
+inline bool Map::Set( GC* gc , const Handle<String>& key , const Value& value ) {
   (void)gc;
 
 #ifdef LAVASCRIPT_CHECK_OBJECTS
@@ -1846,8 +1973,8 @@ inline bool Map::Set( GC* gc , const Handler<String>& key , const Value& value )
 #endif // LAVASCRIPT_CHECK_OBJECTS
     entry->use = 1;
     entry->value = value;
-    entry->key.SetHandler(key);
-    entry->hash = h;
+    entry->key.SetHandle(key);
+    entry->hash = f;
     ++size_;
     ++slot_size_;
     return true;
@@ -1870,7 +1997,7 @@ inline bool Map::Set( GC* gc , const char* key , const Value& value ) {
     entry->use = 1;
     entry->value = value;
     entry->key.SetString( String::New(gc,key) );
-    entry->hash = h;
+    entry->hash = f;
     ++size_;
     ++slot_size_;
     return true;
@@ -1893,7 +2020,7 @@ inline bool Map::Set( GC* gc , const std::string& key , const Value& value ) {
     entry->use = 1;
     entry->value = value;
     entry->key.SetString( String::New(gc,key) );
-    entry->hash = h;
+    entry->hash = f;
     ++size_;
     ++slot_size_;
     return true;
@@ -1901,7 +2028,7 @@ inline bool Map::Set( GC* gc , const std::string& key , const Value& value ) {
   return false;
 }
 
-inline void Map::Put( GC* gc , const Handler<String>& key , const Value& value ) {
+inline void Map::Put( GC* gc , const Handle<String>& key , const Value& value ) {
 
 #ifdef LAVASCRIPT_CHECK_OBJECTS
   lava_verify(!NeedRehash());
@@ -1914,7 +2041,7 @@ inline void Map::Put( GC* gc , const Handler<String>& key , const Value& value )
   entry->use = 1;
   entry->value = value;
   entry->key.SetString(key);
-  entry->hash = h;
+  entry->hash = f;
   ++size_;
   ++slot_size_;
 }
@@ -1932,7 +2059,7 @@ inline void Map::Put( GC* gc , const char* key , const Value& value ) {
   entry->use = 1;
   entry->value = value;
   entry->key.SetString(String::New(gc,key));
-  entry->hash = h;
+  entry->hash = f;
   ++size_;
   ++slot_size_;
 }
@@ -1950,12 +2077,12 @@ inline void Map::Put( GC* gc , const std::string& key , const Value& value ) {
   entry->use = 1;
   entry->value = value;
   entry->key.SetString(String::New(gc,key));
-  entry->hash = h;
+  entry->hash = f;
   ++size_;
   ++slot_size_;
 }
 
-inline bool Map::Delete( const Handler<String>& key ) {
+inline bool Map::Delete( const Handle<String>& key ) {
 
   Entry* entry = FindEntry(key,Hash(key),FIND);
   if(entry) {
@@ -1982,6 +2109,21 @@ inline bool Map::Delete( const std::string& key ) {
     entry->del = 1;
     --size_;
     return true;
+  }
+  return false;
+}
+
+template< typename T > bool Map::Visit( T* visitor ) {
+  if(visitor->Begin(this)) {
+    for( std::size_t i = 0 ; i < capacity() ; ++i ) {
+      Entry* e = data()[i];
+      if(e->active()) {
+        if(!visitor->VisitString( e->key.GetString() ) ||
+           !visitor->VisitValue ( e->value ))
+          return false;
+      }
+    }
+    return visitor->End(this);
   }
   return false;
 }

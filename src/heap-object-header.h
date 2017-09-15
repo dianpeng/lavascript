@@ -52,16 +52,16 @@ enum ValueType {
 
 const char* GetValueTypeName( ValueType );
 
-template< typename T > struct GetObjectTypeName {};
+template< typename T > struct GetObjectType {};
 
 #define __(A,B,C) \
-  class B; template<> struct GetObjectTypeName<B> {        \
+  class B; template<> struct GetObjectType<B> {        \
     static const ValueType value = A;                      \
   };
 
 LAVASCRIPT_HEAP_OBJECT_LIST(__)
 
-#undef // __
+#undef __ // __
 
 
 /**
@@ -124,8 +124,8 @@ class HeapObjectHeader : DoNotAllocateOnNormalHeap {
 
   // These two functions doesn't test whether the HeapObjectType is a TYPE_STRING but
   // assume it is a string
-  bool IsSSO() const { return !IsLongString(); }
-  bool IsLongString() const  { return (high_ & kLongStringMask); }
+  bool IsSSO() const { return type() == TYPE_STRING && !(high_ & kLongStringMask); }
+  bool IsLongString() const  { return type() == TYPE_STRING && (high_ & kLongStringMask); }
 
   // Check if it is end of the chunk. Used when iterating through object on heap
   bool IsEndOfChunk() const { return (high_ & kEndOfChunkMask); }

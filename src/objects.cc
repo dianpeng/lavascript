@@ -34,9 +34,12 @@ Handle<List> List::New( GC* gc , const Handle<Slice>& slice ) {
 /* ---------------------------------------------------------------
  * Slice
  * -------------------------------------------------------------*/
-Handle<Slice> Slice::Extend( GC* gc, const Handle<Slice>& old , size_t new_cap ) {
+Handle<Slice> Slice::Extend( GC* gc, const Handle<Slice>& old ) {
+  std::size_t new_cap = (old->capacity()) * 2;
+  if(!new_cap) new_cap = kDefaultListSize;
+
   Handle<Slice> new_slice(gc->NewSlice(new_cap));
-  memcpy(new_slice->data(),old->data(),sizeof(Value)*old->capacity());
+  memcpy(new_slice->data(),old->data(),old->capacity()*sizeof(Value));
   return new_slice;
 }
 
@@ -76,25 +79,29 @@ Handle<Map> Map::New( GC* gc , std::size_t capacity ) {
 
 Handle<Map> Map::Rehash( GC* gc , const Handle<Map>& old_map ) {
   std::size_t new_cap = old_map->capacity() * 2;
+  if(!new_cap) new_cap = kDefaultObjectSize;
 
   Handle<Map> new_map(gc->NewMap(new_cap));
+  const std::size_t capacity = old_map->capacity();
 
-  const std::size_t len = old_map->size();
-
-  for( std::size_t i = 0 ; i < len ; ++i ) {
+  for( std::size_t i = 0 ; i < capacity ; ++i ) {
     const Entry* e = old_map->data()+i;
     if(e->active()) {
       Entry* new_entry = new_map->FindEntry(e->key.GetString(),
                                             e->hash,
                                             INSERT);
 #ifdef LAVASCRIPT_CHECK_OBJECTS
-      lava_verify(new_entry);
+      lava_verify(new_entry && !new_entry->use);
 #endif // LAVASCRIPT_CHECK_OBJECTS
 
-      *new_entry = *e;
+      new_entry->use = 1;
+      new_entry->value = e->value;
+      new_entry->key = e->key;
+      new_entry->hash = e->hash;
+      ++new_map->size_;
+      ++new_map->slot_size_;
     }
   }
-
   return new_map;
 }
 

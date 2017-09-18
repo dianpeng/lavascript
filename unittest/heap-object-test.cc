@@ -100,6 +100,16 @@ TEST(HeapObjectHeader,EncodeDecode) {
   ASSERT_TRUE(result.total_size() == 1024+8);
 }
 
+TEST(HeapObjectHeader,GCState) {
+  HeapObjectHeader v(RandUInt64());
+  v.set_gc_black();
+  ASSERT_TRUE( v.IsGCBlack() );
+  v.set_gc_white();
+  ASSERT_TRUE( v.IsGCWhite() );
+  v.set_gc_gray();
+  ASSERT_TRUE( v.IsGCGray() );
+}
+
 } // namespace lavascript
 
 int main( int argc, char* argv[] ) {

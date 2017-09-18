@@ -7,6 +7,7 @@
 #include <type_traits>
 
 #include "common.h"
+#include "bits.h"
 #include "hash.h"
 #include "trace.h"
 #include "all-static.h"
@@ -195,17 +196,20 @@ class Value final {
 
  public:
   Value() { SetNull(); }
-  inline explicit Value( double v ) { SetReal(v); }
-  inline explicit Value( std::int32_t v ) { SetInteger(v); }
-  inline explicit Value( bool v ) { SetBoolean(v); }
-  inline explicit Value( HeapObject** v ) { SetHeapObject(v); }
+  explicit Value( double v ) { SetReal(v); }
+  explicit Value( std::int32_t v ) { SetInteger(v); }
+  explicit Value( bool v ) { SetBoolean(v); }
+  explicit Value( HeapObject** v ) { SetHeapObject(v); }
+  Value( const Value& that ): raw_(that.raw_) {}
+  Value& operator = ( const Value& );
   template< typename T >
-  explicit Value( const Handle<T>& h ) { SetGCRef(h.ref()); }
+  explicit Value( const Handle<T>& h ) { SetHandle(h); }
 };
 
 // The handle must be as long as a machine word , here for simplicitly we assume
 // the machine word to be the size of uintptr_t type.
 static_assert( sizeof(Value) == sizeof(std::uintptr_t) );
+
 
 // Heap object's shared base object
 //
@@ -226,6 +230,7 @@ static_assert( sizeof(Value) == sizeof(std::uintptr_t) );
 //
 //  The HeapObject is an empty object at all and all the states it needs are stored
 //  inside of the HeapObjectHeader object which can be referend via (this-8)
+
 class HeapObject {
  public:
   bool IsString() const { return hoh().type() == TYPE_STRING; }
@@ -337,6 +342,7 @@ class SSO final {
  * by the String object internally. LongString is not a collectable object
  * but String is and it is held by String in place.
  */
+
 struct LongString final {
   // Size of the LongString
   std::size_t size;
@@ -346,6 +352,7 @@ struct LongString final {
   LongString( std::size_t sz ) : size(sz) {}
 };
 
+
 /**
  * A String object is a normal long string object that resides
  * on top the real heap and it is due to GC. String is an immutable
@@ -353,9 +360,9 @@ struct LongString final {
  * The String object directly uses memory that is after the *this*
  * pointer. Its memory layout is like this:
  *
- * ---------------------------------------------
+ * ----------------------------------------------
  * |sizeof(String)|  union { LongString ; SSO } |
- * ---------------------------------------------
+ * ----------------------------------------------
  *
  * Use HeapObjectHeader to tell whether we store a SSO or just a LongString
  * internally
@@ -441,8 +448,8 @@ class List final : public HeapObject {
   // Where the list's underlying Slice object are located
   Handle<Slice> slice() const { return slice_; };
 
-  inline bool IsEmpty() const;
-  inline std::size_t size() const;
+  bool IsEmpty() const { return size_ == 0; }
+  std::size_t size() const { return size_; }
   inline std::size_t capacity() const;
   inline const Value& Index( std::size_t ) const;
   inline Value& Index( std::size_t );
@@ -495,7 +502,7 @@ class List final : public HeapObject {
 class Slice final : public HeapObject {
   inline void* array() const;
  public:
-  bool IsEmpty() const { return capacity() != 0; }
+  bool IsEmpty() const { return capacity() == 0; }
   std::size_t capacity() const { return capacity_; }
   const Value* data() const;
   Value* data();
@@ -507,7 +514,7 @@ class Slice final : public HeapObject {
   Handle<Iterator> GetIterator() const;
 
  public: // Factory functions
-  static Handle<Slice> Extend( GC* , const Handle<Slice>& old , std::size_t new_cap );
+  static Handle<Slice> Extend( GC* , const Handle<Slice>& old );
   static Handle<Slice> New( GC* );
   static Handle<Slice> New( GC* , std::size_t cap );
 
@@ -664,22 +671,16 @@ class Map final : public HeapObject {
   static Handle<Map> New( GC* );
   static Handle<Map> New( GC* , std::size_t capacity );
   static Handle<Map> Rehash( GC* , const Handle<Map>&);
+  template< typename T > bool Visit( T* );
 
-  template< typename T >
-  bool Visit( T* );
-
-  Map( std::size_t capacity ):
-    capacity_(capacity),
-    size_(0),
-    slot_size_(0)
-  {}
+  Map( std::size_t capacity ): capacity_(capacity), size_(0), slot_size_(0) {}
 
  private:
+
   /**
-   * Helper function for fetching the slot inside of Entry
+   * Helper function for fetching the slot inside of Entry 
    * array with certain option.
    */
-
   enum Option {
     FIND = 0 ,               // Find , do not do linear probing
     INSERT=1 ,               // If not found, do linear probing
@@ -690,13 +691,15 @@ class Map final : public HeapObject {
   inline static std::uint32_t Hash( const char* );
   inline static std::uint32_t Hash( const std::string& );
   inline static std::uint32_t Hash( const Handle<String>& );
-  static bool Equal( const Handle<String>& lhs ,
-                     const Handle<String>& rhs ) {
+
+  static bool Equal( const Handle<String>& lhs , const Handle<String>& rhs ) {
     return *lhs == *rhs;
   }
+
   static bool Equal( const Handle<String>& lhs , const char* rhs ) {
     return *lhs == rhs;
   }
+
   static bool Equal( const Handle<String>& lhs , const std::string& rhs ) {
     return *lhs == rhs;
   }
@@ -705,7 +708,6 @@ class Map final : public HeapObject {
   Entry* FindEntry( const T& , std::uint32_t , Option ) const;
 
  private:
-
   std::size_t capacity_;
   std::size_t size_;
   std::size_t slot_size_;
@@ -819,10 +821,12 @@ class Closure final : public HeapObject {
   LAVA_DISALLOW_COPY_AND_ASSIGN(Closure);
 };
 
+
 /**
  * Extension is the only interfaces that user can be used to extend the whole world
  * of lavascript. An extension is a specialized HeapObject that is used to customization.
  */
+
 class Extension : public HeapObject {
  public:
 };
@@ -925,6 +929,13 @@ inline T* Handle<T>::ptr() const {
 /* --------------------------------------------------------------------
  * Value
  * ------------------------------------------------------------------*/
+
+inline Value& Value::operator = ( const Value& that ) {
+  if(this != &that) {
+    raw_ = that.raw_;
+  }
+  return *this;
+}
 
 inline HeapObject** Value::heap_object() const {
   return reinterpret_cast<HeapObject**>(raw_ & kPtrMask);
@@ -1172,8 +1183,7 @@ inline void Value::SetIterator( const Handle<Iterator>& itr ) {
  * HeapObject
  * ------------------------------------------------------------------*/
 
-template< typename T >
-bool HeapObject::IsType() {
+template< typename T > bool HeapObject::IsType() {
   if(std::is_same<T,String>::value)
     return IsString();
   else if(std::is_same<T,List>::value)
@@ -1256,9 +1266,7 @@ inline bool SSO::operator != ( const String& str ) const {
 }
 
 inline bool SSO::operator != ( const SSO& str ) const {
-  const std::size_t len = std::min(size_,str.size());
-  int r = std::memcmp(data(),str.data(),len);
-  return r == 0 ? (size_ != len) : true;
+  return this != &str;
 }
 
 inline bool SSO::operator >  ( const char* str ) const {
@@ -1327,12 +1335,7 @@ inline bool SSO::operator >= ( const String& str ) const {
 }
 
 inline bool SSO::operator >= ( const SSO& str ) const {
-  const std::size_t len = std::min(size_,str.size());
-  int r = std::memcmp(data(),str.data(),len);
-  if(r > 0 || (r == 0 && size_ >= len ))
-    return true;
-  else
-    return false;
+  return (*this == str) || (*this > str);
 }
 
 inline bool SSO::operator < ( const char* str ) const {
@@ -1401,21 +1404,18 @@ inline bool SSO::operator <= ( const String& str ) const {
 }
 
 inline bool SSO::operator <= ( const SSO& str ) const {
-  const std::size_t len = std::min(size_,str.size());
-  int r = std::memcmp(data(),str.data(),len);
-  if(r < 0 || (r == 0 && size_ <= str.size()))
-    return true;
-  else
-    return false;
+  return (*this == str) || (*this < str);
 }
 
 /* --------------------------------------------------------------------
  * Long String
  * ------------------------------------------------------------------*/
+
 inline const void* LongString::data() const {
   return reinterpret_cast<const void*>(
       reinterpret_cast<const char*>(this) + sizeof(LongString));
 }
+
 
 /* --------------------------------------------------------------------
  * String
@@ -1457,19 +1457,19 @@ inline bool String::operator == ( const char* str ) const {
   const std::size_t l = strlen(str);
   const std::size_t len = std::min(size(),l);
   int r = std::memcmp(data(),str,len);
-  return r == 0 ? size() == len : false;
+  return r == 0 ? size() == l : false;
 }
 
 inline bool String::operator == ( const std::string& str ) const {
   const std::size_t len = std::min(size(),str.size());
   int r = std::memcmp(data(),str.c_str(),len);
-  return r == 0 ? size() == len : false;
+  return r == 0 ? size() == str.size() : false;
 }
 
 inline bool String::operator == ( const String& str ) const {
   const std::size_t len = std::min(size(),str.size());
   int r = std::memcmp(data(),str.data(),len);
-  return r == 0 ? size() == len : false;
+  return r == 0 ? size() == str.size() : false;
 }
 
 inline bool String::operator == ( const SSO& str ) const {
@@ -1479,7 +1479,7 @@ inline bool String::operator == ( const SSO& str ) const {
     const LongString& lstr = long_string();
     const std::size_t len = std::min(lstr.size,str.size());
     int r = std::memcmp(lstr.data(),str.data(),len);
-    return r == 0 ? lstr.size == len : false;
+    return r == 0 ? lstr.size == str.size() : false;
   }
 }
 
@@ -1487,19 +1487,19 @@ inline bool String::operator != ( const char* str ) const {
   const std::size_t l = strlen(str);
   const std::size_t len = std::min(size(),l);
   int r = std::memcmp(data(),str,len);
-  return r == 0 ? size() != len : true;
+  return r == 0 ? size() != l : true;
 }
 
 inline bool String::operator != ( const std::string& str ) const {
   const std::size_t len = std::min(size(),str.size());
   int r = std::memcmp(data(),str.c_str(),len);
-  return r == 0 ? size() != len : true;
+  return r == 0 ? size() != str.size() : true;
 }
 
 inline bool String::operator != ( const String& str ) const {
   const std::size_t len = std::min(size(),str.size());
   int r = std::memcmp(data(),str.data(),len);
-  return r == 0 ? size() != len : true;
+  return r == 0 ? size() != str.size() : true;
 }
 
 inline bool String::operator != ( const SSO& str ) const {
@@ -1509,7 +1509,7 @@ inline bool String::operator != ( const SSO& str ) const {
     const LongString& lstr = long_string();
     const std::size_t len = std::min(lstr.size,str.size());
     int r = std::memcmp(lstr.data(),str.data(),len);
-    return r == 0 ? lstr.size != len : true;
+    return r == 0 ? lstr.size != str.size() : true;
   }
 }
 
@@ -1517,7 +1517,7 @@ inline bool String::operator > ( const char* str ) const {
   const std::size_t l = strlen(str);
   const std::size_t len = std::min(size(),l);
   int r = std::memcmp(data(),str,len);
-  if(r > 0 || (r == 0 && size() > len))
+  if(r > 0 || (r == 0 && size() > l))
     return true;
   else
     return false;
@@ -1526,44 +1526,44 @@ inline bool String::operator > ( const char* str ) const {
 inline bool String::operator > ( const std::string& str ) const {
   const std::size_t len = std::min(size(),str.size());
   int r = std::memcmp(data(),str.c_str(),len);
-  return (r > 0 ||(r == 0 && size() > len));
+  return (r > 0 ||(r == 0 && size() > str.size()));
 }
 
 inline bool String::operator > ( const String& str ) const {
   const std::size_t len = std::min(size(),str.size());
   int r = std::memcmp(data(),str.data(),len);
-  return (r > 0 ||(r == 0 && size() > len));
+  return (r > 0 ||(r == 0 && size() > str.size()));
 }
 
 inline bool String::operator > ( const SSO& str ) const {
   const std::size_t len = std::min(size(),str.size());
   int r = std::memcmp(data(),str.data(),len);
-  return (r > 0 ||(r == 0 && size() > len));
+  return (r > 0 ||(r == 0 && size() > str.size()));
 }
 
 inline bool String::operator >= ( const char* str ) const {
   const std::size_t l = strlen(str);
   const std::size_t len = std::min(size(),l);
   int r = std::memcmp(data(),str,len);
-  return (r > 0 ||(r == 0 && size() >= len));
+  return (r > 0 ||(r == 0 && size() >= l));
 }
 
 inline bool String::operator >= ( const std::string& str ) const {
   const std::size_t len = std::min(size(),str.size());
   int r = std::memcmp(data(),str.c_str(),len);
-  return (r > 0 ||(r == 0 && size() >= len));
+  return (r > 0 ||(r == 0 && size() >= str.size()));
 }
 
 inline bool String::operator >= ( const String& str ) const {
   const std::size_t len = std::min(size(),str.size());
   int r = std::memcmp(data(),str.data(),len);
-  return (r > 0 ||(r == 0 && size() >= len));
+  return (r > 0 ||(r == 0 && size() >= str.size()));
 }
 
 inline bool String::operator >= ( const SSO& str ) const {
   const std::size_t len = std::min(size(),str.size());
   int r = std::memcmp(data(),str.data(),len);
-  return (r > 0 ||(r == 0 && size() >= len));
+  return (r > 0 ||(r == 0 && size() >= str.size()));
 }
 
 inline bool String::operator <  ( const char* str ) const {
@@ -1607,26 +1607,18 @@ inline bool String::operator <= ( const std::string& str ) const {
 inline bool String::operator <= ( const String& str ) const {
   const std::size_t len = std::min(size(),str.size());
   int r = std::memcmp(data(),str.data(),len);
-  return (r < 0 || (r == 0 && size() < str.size()));
+  return (r < 0 || (r == 0 && size() <= str.size()));
 }
 
 inline bool String::operator <= ( const SSO& str ) const {
   const std::size_t len = std::min(size(),str.size());
   int r = std::memcmp(data(),str.data(),len);
-  return (r < 0 || (r == 0 && size() < str.size()));
+  return (r < 0 || (r == 0 && size() <= str.size()));
 }
 
 /* --------------------------------------------------------------------
  * List
  * ------------------------------------------------------------------*/
-
-inline bool List::IsEmpty() const {
-  return slice()->IsEmpty();
-}
-
-inline std::size_t List::size() const {
-  return size_;
-}
 
 inline std::size_t List::capacity() const {
   return slice()->capacity();
@@ -1671,7 +1663,7 @@ inline const Value& List::First() const {
 inline bool List::Push( GC* gc , const Value& value ) {
   if(size_ == slice_->capacity()) {
     // We run out of memory for this slice , just dump it
-    slice_ = Slice::Extend(gc,slice_,2*size_);
+    slice_ = Slice::Extend(gc,slice_);
 
     // We cannot allocate a larger Slice , return false directly
     if(!slice_) return false;
@@ -1689,8 +1681,7 @@ inline void List::Pop() {
   --size_;
 }
 
-template< typename T >
-bool List::Visit( T* visitor ) {
+template< typename T > bool List::Visit( T* visitor ) {
   if(visitor->Begin(this)) {
     if(visitor->VisitSlice(slice()))
       return visitor->End(this);
@@ -1717,15 +1708,20 @@ inline const Value* Slice::data() const {
 }
 
 inline const Value& Slice::Index( std::size_t index ) const {
+#ifdef LAVASCRIPT_CHECK_OBJECTS
+  lava_verify(index < capacity());
+#endif // LAVASCRIPT_CHECK_OBJECTS
   return data()[index];
 }
 
 inline Value& Slice::Index( std::size_t index ) {
+#ifdef LAVASCRIPT_CHECK_OBJECTS
+  lava_verify(index < capacity());
+#endif // LAVASCRIPT_CHECK_OBJECTS
   return data()[index];
 }
 
-template< typename T >
-bool Slice::Visit( T* visitor ) {
+template< typename T > bool Slice::Visit( T* visitor ) {
   if(visitor->Begin(this)) {
     for( std::size_t i = 0 ; i < capacity() ; ++i ) {
       if(!visitor->VisitValue(Index(i))) return false;
@@ -1764,7 +1760,7 @@ inline bool Object::Get( const std::string& key , Value* output ) const {
 }
 
 inline bool Object::Set( GC* gc , const Handle<String>& key ,
-    const Value& val ) {
+                                  const Value& val ) {
   if(map_->NeedRehash()) {
     map_ = Map::Rehash(gc,map_);
     if(!map_) return false;
@@ -1773,8 +1769,7 @@ inline bool Object::Set( GC* gc , const Handle<String>& key ,
   return map_->Set(gc,key,val);
 }
 
-inline bool Object::Set( GC* gc , const char* key ,
-    const Value& val ) {
+inline bool Object::Set( GC* gc , const char* key , const Value& val ) {
   if(map_->NeedRehash()) {
     map_ = Map::Rehash(gc,map_);
     if(!map_) return false;
@@ -1792,7 +1787,7 @@ inline bool Object::Set( GC* gc , const std::string& key ,
 }
 
 inline bool Object::Update( GC* gc , const Handle<String>& key ,
-    const Value& val ) {
+                                     const Value& val ) {
   if(map_->NeedRehash()) {
     map_ = Map::Rehash(gc,map_);
     if(!map_) return false;
@@ -1801,7 +1796,7 @@ inline bool Object::Update( GC* gc , const Handle<String>& key ,
 }
 
 inline bool Object::Update( GC* gc , const char* key ,
-    const Value& val ) {
+                                     const Value& val ) {
   if(map_->NeedRehash()) {
     map_ = Map::Rehash(gc,map_);
     if(!map_) return false;
@@ -1810,7 +1805,7 @@ inline bool Object::Update( GC* gc , const char* key ,
 }
 
 inline bool Object::Update( GC* gc , const std::string& key ,
-    const Value& val ) {
+                                     const Value& val ) {
   if(map_->NeedRehash()) {
     map_ = Map::Rehash(gc,map_);
     if(!map_) return false;
@@ -1819,7 +1814,7 @@ inline bool Object::Update( GC* gc , const std::string& key ,
 }
 
 inline bool Object::Put( GC* gc , const Handle<String>& key ,
-    const Value& val ) {
+                                  const Value& val ) {
   if(map_->NeedRehash()) {
     map_ = Map::Rehash(gc,map_);
     if(!map_) return false;
@@ -1829,7 +1824,7 @@ inline bool Object::Put( GC* gc , const Handle<String>& key ,
 }
 
 inline bool Object::Put( GC* gc , const char* key ,
-    const Value& val ) {
+                                  const Value& val ) {
   if(map_->NeedRehash()) {
     map_ = Map::Rehash(gc,map_);
     if(!map_) return false;
@@ -1839,7 +1834,7 @@ inline bool Object::Put( GC* gc , const char* key ,
 }
 
 inline bool Object::Put( GC* gc , const std::string& key,
-    const Value& val ) {
+                                  const Value& val ) {
   if(map_->NeedRehash()) {
     map_ = Map::Rehash(gc,map_);
     if(!map_) return false;
@@ -1860,8 +1855,7 @@ inline bool Object::Delete( const std::string& key ) {
   return map_->Delete(key);
 }
 
-template<typename T>
-bool Object::Visit( T* visitor ) {
+template<typename T> bool Object::Visit( T* visitor ) {
   if(visitor->Begin(this)) {
     if(visitor->VisitMap(map()))
       return visitor->End(this);
@@ -1883,7 +1877,7 @@ inline std::uint32_t Map::Hash( const Handle<String>& key ) {
 }
 
 inline std::uint32_t Map::Hash( const char* key ) {
-  return Hasher::Hash(key);
+  return Hasher::Hash(key,strlen(key));
 }
 
 inline std::uint32_t Map::Hash( const std::string& key ) {
@@ -1893,6 +1887,10 @@ inline std::uint32_t Map::Hash( const std::string& key ) {
 template< typename T >
 Map::Entry* Map::FindEntry( const T& key , std::uint32_t fullhash ,
                                            Option opt ) const {
+#ifdef LAVASCRIPT_CHECK_OBJECTS
+  lava_verify(capacity() && bits::NextPowerOf2(capacity()) == capacity());
+#endif // LAVASCRIPT_CHECK_OBJECTS
+
   Map* self = const_cast<Map*>(this);
   int main_position = fullhash & (capacity()-1);
   Entry* main = self->data()+main_position;
@@ -1927,6 +1925,8 @@ Map::Entry* Map::FindEntry( const T& key , std::uint32_t fullhash ,
   while( (new_slot = self->data()+(++h &(capacity()-1)))->use )
     ;
 
+  cur->more = 1;
+
   // linked the previous Entry to the current found one
   cur->next = (new_slot - self->data());
 
@@ -1945,6 +1945,8 @@ inline const Map::Entry* Map::data() const {
 }
 
 inline bool Map::Get( const Handle<String>& key , Value* output ) const {
+  if(size_ == 0) return false;
+
   Entry* entry = FindEntry(key,Hash(key),FIND);
   if(entry) {
     *output = entry->value;
@@ -1954,6 +1956,8 @@ inline bool Map::Get( const Handle<String>& key , Value* output ) const {
 }
 
 inline bool Map::Get( const char* key , Value* output ) const {
+  if(size_ == 0) return false;
+
   Entry* entry = FindEntry(key,Hash(key),FIND);
   if(entry) {
     *output = entry->value;
@@ -1963,6 +1967,8 @@ inline bool Map::Get( const char* key , Value* output ) const {
 }
 
 inline bool Map::Get( const std::string& key , Value* output ) const {
+  if(size_ == 0) return false;
+
   Entry* entry = FindEntry(key,Hash(key),FIND);
   if(entry) {
     *output = entry->value;
@@ -2049,14 +2055,16 @@ inline void Map::Put( GC* gc , const Handle<String>& key , const Value& value ) 
 
   std::uint32_t f = Hash(key);
   Entry* entry = FindEntry(key,f,UPDATE);
+  if(!entry->use) {
+    ++slot_size_;
+    ++size_;
+  }
 
   entry->del = 0;
   entry->use = 1;
   entry->value = value;
   entry->key.SetString(key);
   entry->hash = f;
-  ++size_;
-  ++slot_size_;
 }
 
 inline void Map::Put( GC* gc , const char* key , const Value& value ) {
@@ -2067,14 +2075,16 @@ inline void Map::Put( GC* gc , const char* key , const Value& value ) {
 
   std::uint32_t f = Hash(key);
   Entry* entry = FindEntry(key,f,UPDATE);
+  if(!entry->use) {
+    ++slot_size_;
+    ++size_;
+  }
 
   entry->del = 0;
   entry->use = 1;
   entry->value = value;
   entry->key.SetString(String::New(gc,key));
   entry->hash = f;
-  ++size_;
-  ++slot_size_;
 }
 
 inline void Map::Put( GC* gc , const std::string& key , const Value& value ) {
@@ -2085,21 +2095,20 @@ inline void Map::Put( GC* gc , const std::string& key , const Value& value ) {
 
   std::uint32_t f = Hash(key);
   Entry* entry = FindEntry(key,f,UPDATE);
+  if(!entry->use) {
+    ++slot_size_;
+    ++size_;
+  }
 
   entry->del = 0;
   entry->use = 1;
   entry->value = value;
   entry->key.SetString(String::New(gc,key));
   entry->hash = f;
-  ++size_;
-  ++slot_size_;
 }
 
 inline bool Map::Update( GC* gc , const Handle<String>& key , const Value& value ) {
-
-#ifdef LAVASCRIPT_CHECK_OBJECTS
-  lava_verify(!NeedRehash());
-#endif // LAVASCRIPT_CHECK_OBJECTS
+  if(size_ == 0) return false;
 
   std::uint32_t f = Hash(key);
   Entry* entry = FindEntry(key,f,FIND);
@@ -2116,10 +2125,7 @@ inline bool Map::Update( GC* gc , const Handle<String>& key , const Value& value
 }
 
 inline bool Map::Update( GC* gc , const char* key , const Value& value ) {
-
-#ifdef LAVASCRIPT_CHECK_OBJECTS
-  lava_verify(!NeedRehash());
-#endif // LAVASCRIPT_CHECK_OBJECTS
+  if(size_ == 0) return false;
 
   std::uint32_t f = Hash(key);
   Entry* entry = FindEntry(key,f,FIND);
@@ -2136,10 +2142,7 @@ inline bool Map::Update( GC* gc , const char* key , const Value& value ) {
 }
 
 inline bool Map::Update( GC* gc , const std::string& key , const Value& value ) {
-
-#ifdef LAVASCRIPT_CHECK_OBJECTS
-  lava_verify(!NeedRehash());
-#endif // LAVASCRIPT_CHECK_OBJECTS
+  if(size_ == 0) return false;
 
   std::uint32_t f = Hash(key);
   Entry* entry = FindEntry(key,f,FIND);
@@ -2156,6 +2159,7 @@ inline bool Map::Update( GC* gc , const std::string& key , const Value& value ) 
 }
 
 inline bool Map::Delete( const Handle<String>& key ) {
+  if(size_ == 0) return false;
 
   Entry* entry = FindEntry(key,Hash(key),FIND);
   if(entry) {
@@ -2167,6 +2171,8 @@ inline bool Map::Delete( const Handle<String>& key ) {
 }
 
 inline bool Map::Delete( const char*  key ) {
+  if(size_ == 0) return false;
+
   Entry* entry = FindEntry(key,Hash(key),FIND);
   if(entry) {
     entry->del = 1;
@@ -2177,6 +2183,8 @@ inline bool Map::Delete( const char*  key ) {
 }
 
 inline bool Map::Delete( const std::string& key ) {
+  if(size_ == 0) return false;
+
   Entry* entry = FindEntry(key,Hash(key),FIND);
   if(entry) {
     entry->del = 1;

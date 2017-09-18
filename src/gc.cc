@@ -27,18 +27,33 @@ bool Heap::Iterator::Move() {
 #ifdef LAVASCRIPT_CHECK_OBJECTS
   lava_verify(HasNext());
 #endif // LAVASCRIPT_CHECK_OBJECTS
-  do {
-    HeapObjectHeader hdr(
-        static_cast<char*>(current_chunk_->start()) + current_cursor_ );
-    if(hdr.IsEndOfChunk()) {
-      current_chunk_ = current_chunk_->next;
-      current_cursor_ = 0;
-      continue;
-    } else {
-      current_cursor_ += hdr.total_size();
+
+  HeapObjectHeader hdr(
+      static_cast<char*>(current_chunk_->start()) + current_cursor_ );
+  if(hdr.IsEndOfChunk()) {
+    current_chunk_ = current_chunk_->next;
+    current_cursor_ = 0;
+    // The following test for bytes_used > 0 is *NEEDED* for
+    // very corner case (highly unlikely) that the very first
+    // chunk cannot be used for satisfying the very first Grab
+    //
+    // The we may have a chunk that doesn't contain any useful
+    // object and it can only be the *first* chunk which is in
+    // the *last of our chunk queue.
+    if(current_chunk_ && current_chunk_->bytes_used > 0) {
       return true;
+    } else {
+      current_chunk_ = NULL;
     }
-  } while(current_chunk_);
+  } else {
+    current_cursor_ += hdr.total_size();
+    return true;
+  }
+
+#ifdef LAVASCRIPT_CHECK_OBJECTS
+  lava_verify(current_chunk_ == NULL);
+#endif // LAVASCRIPT_CHECK_OBJECTS
+
   return false;
 }
 
@@ -83,15 +98,21 @@ void* Heap::Grab( size_t object_size , ValueType type, GCState gc_state ,
 
   if(chunk_current_->bytes_left() < size) {
     buf = FindInChunk(size);
-    if(buf) return buf;
-    if(!RefillChunk(size)) return NULL;
+    if(!buf) {
+      if(!RefillChunk(size)) return NULL;
+
+#ifdef LAVASCRIPT_CHECK_OBJECTS
+  lava_verify(chunk_current_->bytes_left() >= size);
+#endif // LAVASCRIPT_CHECK_OBJECTS
+
+      buf = chunk_current_->Bump(size);
+    }
   } else {
     buf = chunk_current_->Bump(size);
   }
 
   // Now try to allocate it from the newly created chunk
 #ifdef LAVASCRIPT_CHECK_OBJECTS
-  lava_verify(chunk_current_->bytes_left() >= size);
   lava_verify( is_long_str ? type == TYPE_STRING : true );
 #endif // LAVASCRIPT_CHECK_OBJECTS
 
@@ -112,6 +133,11 @@ void* Heap::CopyObject( const void* ptr , std::size_t length ) {
     buf = FindInChunk(length);
     if(!buf) {
       if(!RefillChunk(length)) return NULL;
+
+#ifdef LAVASCRIPT_CHECK_OBJECTS
+  lava_verify(chunk_current_->bytes_left() >= length);
+#endif // LAVASCRIPT_CHECK_OBJECTS
+
       buf = chunk_current_->Bump(length);
     }
   } else {
@@ -222,14 +248,24 @@ SSO* SSOPool::Get( const char* str , std::size_t length ) {
   if(e->sso)
     return e->sso;
   else {
-    SSO* sso = ConstructFromBuffer<SSO>( allocator_.Grab( sizeof(SSO) + length ) ,
-                                         length,
-                                         hash );
+    SSO* sso = ConstructFromBuffer<SSO>(
+        allocator_.Grab(Align(sizeof(SSO)+length,kAlignment)), length, hash );
     if(length)
       std::memcpy( reinterpret_cast<char*>(sso) + sizeof(SSO) , str , length );
     e->sso = sso;
+    ++size_;
     return sso;
   }
+}
+
+bool SSOPool::Iterator::Move() {
+  for( ; index_ < entry_->size() ; ++index_ ) {
+    const Entry& e = entry_->at(index_);
+    if(e.sso) {
+      return true;
+    }
+  }
+  return false;
 }
 
 namespace {
@@ -267,7 +303,7 @@ class DumpWriter {
 
 } // namespace
 
-void Heap::HeapDump( int verbose , const char* filename ) {
+void Heap::Dump( int verbose , const char* filename ) {
   DumpWriter writer(filename);
 
   writer.Write("********************* Heap Dump ****************************");
@@ -276,7 +312,7 @@ void Heap::HeapDump( int verbose , const char* filename ) {
                alive_size_, chunk_size_, allocated_bytes_,
                total_bytes_, chunk_capacity_);
 
-  if(verbose != HEAP_DUMP_NORMAL) {
+  if(verbose != DUMP_NORMAL) {
 
     Chunk* ck = chunk_current_;
     while(ck) {
@@ -286,7 +322,7 @@ void Heap::HeapDump( int verbose , const char* filename ) {
           ck->size_in_objects,
           ck->bytes_used);
 
-      if(verbose == HEAP_DUMP_CRAZY) {
+      if(verbose == DUMP_CRAZY) {
         char* start = static_cast<char*>(ck->start());
         do  {
           HeapObjectHeader hdr(*reinterpret_cast<std::uint64_t*>(start));
@@ -314,6 +350,9 @@ void Heap::HeapDump( int verbose , const char* filename ) {
 } // namespace gc
 
 String** GC::NewString( const void* str , std::size_t length ) {
+#ifdef LAVASCRIPT_CHECK_OBJECTS
+  lava_verify(str);
+#endif // LAVASCRIPT_CHECK_OBJECTS
   /**
    * String is an object without any data member all it needs
    * to do is to place correct object at the pointer of String.
@@ -363,7 +402,7 @@ Slice** GC::NewSlice( std::size_t capacity ) {
       heap_.Grab( sizeof(Slice) + capacity * sizeof(Value) ,
                   TYPE_SLICE,
                   GC_WHITE,
-                  true ) , capacity );
+                  false ) , capacity );
 
   for( size_t i = 0 ; i < capacity ; ++i ) {
     ConstructFromBuffer<Value>( slice->data() + i );
@@ -381,7 +420,7 @@ Map** GC::NewMap( std::size_t capacity ) {
       heap_.Grab( sizeof(Map) + capacity * sizeof(Map::Entry) ,
                   TYPE_MAP,
                   GC_WHITE,
-                  true ) , capacity );
+                  false ) , capacity );
   if(capacity) {
     std::memset( map->data() , 0 , sizeof(Map::Entry)*capacity );
   }

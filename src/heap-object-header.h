@@ -122,7 +122,10 @@ class HeapObjectHeader : DoNotAllocateOnNormalHeap {
   static const std::uint32_t kHeapObjectTypeMask  = bits::BitOn<std::uint32_t,2,6>::value;
 
   GCState gc_state() const { return static_cast<GCState>(high_ & kGCStateMask); }
-  void set_gc_state( GCState state ) { high_ |= static_cast<std::uint32_t>(state); }
+  void set_gc_state( GCState state ) {
+    high_ &= ~kGCStateMask;
+    high_ |= static_cast<std::uint32_t>(state);
+  }
 
   bool IsGCBlack() const { return gc_state() == GC_BLACK; }
   bool IsGCWhite() const { return gc_state() == GC_WHITE; }

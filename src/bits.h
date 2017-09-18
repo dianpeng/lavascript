@@ -40,58 +40,6 @@ inline std::uint8_t Low16 ( std::uint16_t value ) {
 
 namespace detail {
 
-template< typename T , std::size_t N > struct OnMask {
-  static const T value = static_cast<T>(1)<<static_cast<T>(N);
-};
-
-template< typename T , std::size_t N > struct OffMask {
-  static const T value = ~OnMask<T,N>::value;
-};
-
-} // namespace
-
-template< std::size_t N >
-inline std::uint64_t Set( std::uint64_t value ) {
-  return value | detail::OnMask<std::uint64_t,N>::value;
-}
-
-template< std::size_t N >
-inline std::uint64_t Unset( std::uint64_t value ) {
-  return value & detail::OffMask<std::uint64_t,N>::value;
-}
-
-template< std::size_t N >
-inline std::uint32_t Set( std::uint32_t value ) {
-  return value | detail::OnMask<std::uint32_t,N>::value;
-}
-
-template< std::size_t N >
-inline std::uint32_t Unset( std::uint32_t value ) {
-  return value & detail::OffMask<std::uint32_t,N>::value;
-}
-
-template< std::size_t N >
-inline std::uint16_t Set( std::uint16_t value ) {
-  return value | detail::OnMask<std::uint16_t,N>::value;
-}
-
-template< std::size_t N >
-inline std::uint16_t Unset( std::uint16_t value ) {
-  return value & detail::OffMask<std::uint16_t,N>::value;
-}
-
-template< std::size_t N >
-inline std::uint8_t Set( std::uint8_t value ) {
-  return value | detail::OnMask<std::uint8_t,N>::value;
-}
-
-template< std::size_t N >
-inline std::uint8_t Unset( std::uint8_t value ) {
-  return value & detail::OffMask<std::uint8_t,N>::value;
-}
-
-namespace detail {
-
 template< typename T , std::size_t Start , std::size_t End >
 struct BitOnImpl {
   static const std::size_t value = BitOnImpl<T,Start+1,End>::value |

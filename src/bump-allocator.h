@@ -5,6 +5,7 @@
 #include <cstdint>
 
 #include "common.h"
+#include "util.h"
 #include "heap-allocator.h"
 
 namespace lavascript {
@@ -25,6 +26,9 @@ class BumpAllocator {
 
   // Grab memory from BumpAllocator
   void* Grab( std::size_t );
+  void* Grab( std::size_t sz , std::size_t alignment ) {
+    return Grab( Align(sz,alignment) );
+  }
   template< typename T > T* Grab() { return static_cast<T*>(Grab(sizeof(T))); }
 
  public:

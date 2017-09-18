@@ -9,7 +9,6 @@ namespace lavascript {
 
 class Hasher : public AllStatic {
  public:
-  static std::uint32_t Hash( const char* );
   static std::uint32_t Hash( const void* , size_t len );
 };
 

@@ -19,6 +19,10 @@ void BumpAllocator::RefillPool( std::size_t size ) {
 }
 
 void* BumpAllocator::Grab( std::size_t size ) {
+#ifdef LAVASCRIPT_CHECK_OBJECTS
+  lava_verify(size);
+#endif // LAVASCRIPT_CHECK_OBJECTS
+
   if( used_ + size > current_capacity_ ) {
     size_t new_cap = current_capacity_ * 2;
     if(new_cap > maximum_size_) new_cap = maximum_size_;

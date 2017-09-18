@@ -10,6 +10,7 @@
 #include "heap-object-header.h"
 #include "heap-allocator.h"
 
+#include "flags.h"
 #include "bits.h"
 #include "util.h"
 #include "trace.h"
@@ -29,6 +30,9 @@ class SSO;
  */
 
 namespace gc {
+
+static const std::size_t kAlignment = 8;
+
 /**
  * GCRefPool is a pool to track *ALL* the places that we store a heap pointer,
  * managed pointer. It is basically just a free list wrapper . We will walk
@@ -120,8 +124,6 @@ class GCRefPool final {
  */
 
 class Heap final {
-  static const std::size_t kAlignment = 8;
-
   // The actual owned memory of Chunk are starting from this + sizeof(Chunk).
   struct Chunk {
     Chunk* next;                   // Next chunk
@@ -220,15 +222,9 @@ class Heap final {
   Iterator GetIterator() const { return Iterator(chunk_current_); }
 
  public: // DEBUG related code , may not suitable for production
-  enum {
-    HEAP_DUMP_NORMAL = 0,
-    HEAP_DUMP_VERBOSE= 1,
-    HEAP_DUMP_CRAZY  = 2        // Very expansive since it dumps every objects at all
-                                // and store them into a dump file
-  };
 
   // Dump the heap into a filename or use normal lava_info to dump
-  void HeapDump( int verbose , const char* filename = NULL ); // Debug
+  void Dump( int verbose , const char* filename = NULL ); // Debug
 
  private:
   bool RefillChunk( size_t size );
@@ -284,7 +280,8 @@ class SSOPool {
     Entry():next(NULL),sso(NULL){}
   };
  public:
-  inline SSOPool( size_t init_capacity ,
+  inline SSOPool( size_t init_slot_size,
+                  size_t init_capacity ,
                   size_t maximum_size  ,
                   HeapAllocator* allocator = NULL );
  public:
@@ -297,6 +294,24 @@ class SSOPool {
 
   std::size_t capacity() const { return entry_.size(); }
   std::size_t size    () const { return size_ ; }
+
+ public:
+  // Iterator for iterating the SSOPool
+  class Iterator {
+   public:
+    inline Iterator( const SSOPool* pool );
+    inline Iterator( const Iterator& that );
+    inline Iterator& operator = ( const Iterator& that );
+   public:
+    inline bool HasNext() const;
+    bool Move();
+    inline SSO* sso() const;
+   private:
+    const std::vector<Entry>* entry_;
+    std::size_t index_;
+  };
+
+  Iterator GetIterator() const { return Iterator(this); }
 
  private:
   void Rehash();
@@ -412,9 +427,7 @@ inline void* Heap::Chunk::Bump( std::size_t size ) {
 inline Heap::Iterator::Iterator( Chunk* chunk ):
   current_chunk_(chunk),
   current_cursor_(0)
-{
-  Move();
-}
+{}
 
 inline Heap::Iterator::Iterator():
   current_chunk_(NULL),
@@ -489,7 +502,11 @@ inline void* Heap::RawCopyObject( const void* ptr , std::size_t length ) {
   return ret;
 }
 
-inline SSOPool::SSOPool( std::size_t init_capacity ,
+/* ----------------------------------------------------------
+ * SSOPool
+ * --------------------------------------------------------*/
+inline SSOPool::SSOPool( std::size_t init_slot_size ,
+                         std::size_t init_capacity ,
                          std::size_t maximum ,
                          HeapAllocator* allocator ):
   entry_(),
@@ -498,7 +515,40 @@ inline SSOPool::SSOPool( std::size_t init_capacity ,
              maximum,
              allocator)
 {
-  entry_.resize(::lavascript::bits::NextPowerOf2(init_capacity));
+  entry_.resize(::lavascript::bits::NextPowerOf2(init_slot_size));
+}
+
+inline SSOPool::Iterator::Iterator( const SSOPool* pool ):
+  entry_(&(pool->entry_)),
+  index_(0)
+{
+  if(!entry_->at(index_).sso)
+    Move();
+}
+
+inline SSOPool::Iterator::Iterator( const Iterator& that ):
+  entry_(that.entry_),
+  index_(that.index_)
+{}
+
+inline SSOPool::Iterator& SSOPool::Iterator::operator = ( const Iterator& that ) {
+  if(this != &that) {
+    entry_ = that.entry_;
+    index_ = that.index_;
+  }
+  return *this;
+}
+
+inline bool SSOPool::Iterator::HasNext() const {
+  return index_ < entry_->size();
+}
+
+inline SSO* SSOPool::Iterator::sso() const {
+#ifdef LAVASCRIPT_CHECK_OBJECTS
+  lava_verify( HasNext() );
+  lava_verify( entry_->at(index_).sso );
+#endif // LAVASCRIPT_CHECK_OBJECTS
+  return entry_->at(index_).sso;
 }
 
 } // namespace gc
@@ -538,6 +588,7 @@ class GC : AllStatic {
     std::size_t gcref_init_capacity;
     std::size_t gcref_capacity;
     // sso related information
+    std::size_t sso_init_slot;
     std::size_t sso_init_capacity;
     std::size_t sso_capacity;
 
@@ -559,6 +610,8 @@ class GC : AllStatic {
   std::size_t previous_dead_size()  const { return previous_dead_size_; }
   double factor() const { return factor_; }
   Context* context() const { return context_; }
+
+  void Dump( int option , const char* filename = NULL ) { heap_.Dump(option,filename); }
 
  public:
   /**
@@ -681,6 +734,7 @@ inline GC::GCConfig::GCConfig():
   heap_capacity(1024*1024*4),
   gcref_init_capacity(1024),
   gcref_capacity(4096),
+  sso_init_slot    (128),
   sso_init_capacity(1024),
   sso_capacity     (1024*64),
   allocator(NULL)
@@ -694,7 +748,10 @@ inline GC::GC( const GCConfig& config , Context* context ):
   factor_(config.factor),
   heap_(config.heap_init_capacity,config.heap_capacity,config.allocator),
   ref_pool_(config.gcref_init_capacity,config.gcref_capacity,config.allocator),
-  sso_pool_(config.sso_init_capacity,config.sso_capacity,config.allocator),
+  sso_pool_(config.sso_init_slot,
+            config.sso_init_capacity,
+            config.sso_capacity,
+            config.allocator),
   context_(context),
   allocator_(config.allocator)
 {}

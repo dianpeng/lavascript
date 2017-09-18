@@ -9,7 +9,7 @@ PWD:=$(shell pwd)
 SOURCE:=$(shell find src/ -type f -name "*.cc")
 INCLUDE:=$(shell find src/ -type f -name "*.h")
 OBJECT:=${SOURCE:.cc=.o}
-TEST:=$(shell find test/ -type f -name "*-test.cc")
+TEST:=$(shell find unittest/ -type f -name "*-test.cc")
 TESTOBJECT:=${TEST:.cc=.t}
 CXX = g++
 
@@ -41,7 +41,7 @@ src/%.o : src/%.cc src/%.h
 #  Testing Library
 #
 # -------------------------------------------------------------------------------
-test/%.t : test/%.cc $(OBJECT) $(INCLUDE) $(SOURCE)
+unittest/%.t : unittest/%.cc $(OBJECT) $(INCLUDE) $(SOURCE)
 	$(CXX) $(OBJECT) $(CXXFLAGS) -o $@ $< $(LDFLAGS)
 
 test: CXXFLAGS += $(TEST_FLAGS)

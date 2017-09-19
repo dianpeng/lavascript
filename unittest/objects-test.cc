@@ -597,6 +597,20 @@ TEST(Object,Object) {
     ASSERT_EQ(0,object->size());
     ASSERT_EQ(8,object->capacity());
     ASSERT_TRUE(object->IsEmpty());
+
+    std::vector<Entry> vec;
+
+    for( std::size_t i = 0 ; i < 1024; ++i ) {
+      std::string key(RandStr(RandRange(2,1024)));
+      vec.push_back(Entry(key,Value(static_cast<int>(i))));
+      ASSERT_TRUE(object->Set(&gc,key,Value(static_cast<int>(i))));
+    }
+
+    for( auto &e : vec ) {
+      Value v;
+      ASSERT_TRUE(object->Get(e.key,&v));
+      ASSERT_EQ(v.GetInteger(),e.value.GetInteger());
+    }
   }
 }
 

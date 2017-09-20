@@ -1,6 +1,7 @@
 #ifndef PARSER_AST_AST_H_
 #define PARSER_AST_AST_H_
 
+#include <src/source-code-info.h>
 #include <src/zone/zone.h>
 #include <src/zone/string.h>
 #include <src/zone/vector.h>
@@ -70,6 +71,7 @@ struct Node : zone::ZoneObject {
   size_t start;   // Starting position of this AST in source code
   size_t end;     // End position of this AST in source code
 
+  SourceCodeInfo sci() const { return SourceCodeInfo(start,end); }
   size_t code_length() const { return end - start; }
   const char* node_name() const { return GetAstTypeName(type); }
 

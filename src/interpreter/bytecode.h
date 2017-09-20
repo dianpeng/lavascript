@@ -42,6 +42,9 @@ class String;
 
 namespace interpreter{
 
+static const std::size_t kTotalBytecodeRegisterSize = 256;
+static const std::size_t kAllocatableBytecodeRegisterSize = 255;
+
 #define LAVASCRIPT_BYTECODE_LIST(__) \
   /* arithmetic bytecode , if cannot hold , then spill */ \
   __(C,ADDIV , addiv , "+" , ACC , IREF , REG ) \
@@ -141,9 +144,9 @@ namespace interpreter{
   __(A,LOADOBJ  , loadobj  , "loadobj" , REG , _ , _  ) \
   __(B,LOADCLS  , loadcls  , "loadcls" , REG , GARG , _  ) \
   /* subroutine */ \
-  __(B,CALL , call , "call" , ARG , GARG , _ ) \
-  __(B,FCALL, fcall, "fcall", ARG , FFUNC, _ ) \
-  __(B,TCALL, tcall, "tcall", ARG , GARG , _ ) \
+  __(A,CALL , call , "call" , NARG , REG ,  _ ) \
+  __(B,FCALL, fcall, "fcall", NARG , FFUNC, _ ) \
+  __(B,TCALL, tcall, "tcall", NARG , GARG , _ ) \
   __(X,RET  , ret  , "ret"  , _ , _ , _ ) \
   /* property/upvalue/global value */ \
   __(B,PROPGET,propget,"propget",REG,SREF,_) \
@@ -203,9 +206,9 @@ class BytecodeBuilder {
  public:
   inline BytecodeBuilder();
 
-  std::int32_t AddLit( std::int32_t );
-  std::int32_t AddLit( double );
-  std::int32_t AddString ( const ::lavascript::zone::String& );
+  std::int32_t Add( std::int32_t );
+  std::int32_t Add( double );
+  std::int32_t Add( const ::lavascript::zone::String& , Context* );
 
  public:
   inline const SourceCodeInfo& IndexSourceCodeInfo( std::size_t index ) const;

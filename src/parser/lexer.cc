@@ -80,26 +80,26 @@ namespace {
 // Helper class for handling string to *double* or *integer* via normal
 // C functions strtol and strtod
 
-bool Str2Int( const std::string& str , int* value ) {
+bool Str2Int( const std::string& str , std::int32_t* value ) {
   char* pend = NULL;
   errno = 0;
   long int v = ::strtol( str.c_str() , &pend , 10 );
 
-  static_assert( sizeof(long int) >= sizeof(int) );
+  static_assert( sizeof(long int) >= sizeof(std::int32_t) );
 
   if(errno || pend != (str.c_str()+str.size())) {
     return false; // Overflow
   } else {
-    if( sizeof(long int) == sizeof(int) ) {
+    if( sizeof(long int) == sizeof(std::int32_t) ) {
       *value = v;
       return true;
     } else {
       // Okay ,target machine has long int larger than a int
       long int min = static_cast<long int>(
-          std::numeric_limits<int>::min());
+          std::numeric_limits<std::int32_t>::min());
 
       long int max = static_cast<long int>(
-          std::numeric_limits<int>::max());
+          std::numeric_limits<std::int32_t>::max());
 
       if( v < min || v > max ) return false; // Overflow
 

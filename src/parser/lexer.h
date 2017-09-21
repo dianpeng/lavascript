@@ -2,7 +2,9 @@
 #define PARSER_LEXER_H_
 #include "token.h"
 #include <cctype>
+#include <cstdint>
 #include <string>
+
 #include <src/zone/zone.h>
 #include <src/error-report.h>
 #include <src/util.h>
@@ -24,7 +26,7 @@ struct Lexeme {
   size_t start;                   // Start position in source code
   size_t end  ;                   // End position in source code
   // Actual value
-  int int_value;                  // If token is a TK_INTEGER , then the actual value
+  std::int32_t int_value;         // If token is a TK_INTEGER , then the actual value
   double real_value;              // If token is a TK_REAL , then the actual value
   zone::String* str_value;        // If token is a TK_IDENTIFIER/TK_STRING , then the actual string value
   std::string error_description;  // If token is a TK_ERROR , then this is a error description

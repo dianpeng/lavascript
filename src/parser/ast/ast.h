@@ -8,6 +8,7 @@
 #include <src/parser/token.h>
 
 #include <iostream>
+#include <cstdint>
 
 /**
  * A normal AST implementation. We are trying to implement our AST as simple as
@@ -116,7 +117,7 @@ struct Literal : public Node {
   int literal_type;
 
   union {
-    int int_value;
+    std::int32_t int_value;
     double real_value;
     bool bool_value;
     zone::String* str_value;

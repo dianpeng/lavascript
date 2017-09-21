@@ -25,6 +25,7 @@ class Register {
 
  public:
   bool IsAcc() const { return index_ == kAccIndex; }
+  void SetAcc() { index_ = kAccIndex; }
   std::uint8_t index() const { return index_; }
   operator int () const { return index_; }
   bool operator == ( const Register& reg ) const{
@@ -174,7 +175,6 @@ class FunctionScope {
 };
 
 enum GenResultKind {
-  KERROR,             // Yeah, failed for compilation
   KREG,               // Okay, the result is been held by an register
   KACC,               // It is in ACC register and it is not reserved cross expression
   KINT,               // It is a integer literal
@@ -185,35 +185,67 @@ enum GenResultKind {
   KNULL               // It is a null literal
 };
 
-struct GenResult {
-  GenResultKind kind;
-  std::int32_t ref;           // Reference if it is a int/real/string type
-  Register reg;               // Register
-
-  bool IsOk() const { return kind != KERROR; }
-  operator bool () const { return !IsOk(); }
-  void release() { release_ = true; }
-
+class GenResult {
+ public:
   GenResult( Generator* gen ):
-    kind(KERROR),
-    ref(0),
-    reg(0),
+    kind_(KNULL),
+    ref_(0),
+    reg_(0),
     generator_(gen),
     release_(false)
   {}
 
-  GenResult( const GenResult& that ):
-    kind(that.kind),
-    ref (that.ref),
-    reg (that.ref),
-    generator_(that.generator_),
-    release_(that.release_)
-  {}
+  bool IsOk() const { return kind != KERROR; }
+  operator bool () const { return !IsOk(); }
+  void Release() { release_ = true; }
 
-  ~GenResult() { if(!release_ && kind == EREG) generator_->Drop(reg); }
-  private:
+  GenResultKind kind() const { return kind_; }
+  bool IsRefType() const { return kind_ == EINT || kind_ == EREAL || kind_ == ESTR; }
+  bool IsInt() const { return kind_ == EINT; }
+  bool IsReal()const { return kind_ == EREAL;}
+  bool IsReg() const { return kind_ == EREG; }
+  bool IsTrue() const { return kind_ == ETRUE; }
+  bool IsFalse() const { return kind_ == EFALSE; }
+  bool IsNull() const { return kind_ == ENULL; }
+  std::int32_t ref() const { lava_verify(IsRefType()); return ref_; }
+  const Register& reg() const { lava_verify(IsReg()); return reg_; }
+
+  void SetIRef( std::int32_t iref ) {
+    ref_ = iref;
+    kind_ = KINT;
+  }
+
+  void SetRRef( std::int32_t rref ) {
+    ref_ = rref;
+    kind_ = KREAL;
+  }
+
+  void SetSRef( std::int32_t sref ) {
+    ref_ = rref;
+    kind_ = KSTR;
+  }
+
+  void SetTrue() { kind_ = KTRUE; }
+  void SetFalse(){ kind_ = KFALSE;}
+  void SetNull() { kind_ = KNULL; }
+  void SetRegister( const Register& reg ) {
+    kind_ = EREG;
+    reg_  = reg;
+  }
+  void SetAcc() {
+    kind_ = EREG;
+    reg_.SetAcc();
+  }
+  inline Register NewRegister();
+
+ private:
+  GenResultKind kind_;
+  std::int32_t ref_;
+  Register reg_;
   Generator* generator_;
   bool release_;
+
+  LAVA_DISALLOW_COPY_AND_ASSIGN(GenResult);
 };
 
 #define emit func_scope()->bc_builder()->
@@ -247,25 +279,27 @@ class Generator {
 };
 
 bool Generator::Visit( const ast::Literal& lit , GenResult* result ) {
+  std::int32_t ref;
   switch(lit.literal_type) {
     case ast::Literal::LIT_INTEGER:
-      result->kind = KINT;
-      result->ref = func_scope()->bc_builder()->Add( result->int_value );
-      if(result->ref<0) {
+      if((ref=func_scope()->bc_builder()->Add( result->int_value )) < 0) {
         ErrorTooComplicatedFunc(result);
         return false;
       }
+      resullt->SetIRef(ref);
       return true;
     case ast::Literal::LIT_REAL:
-      result->kind = KREAL;
-      result->ref  = func_scope()->bc_builder()->Add( result->real_value );
-      if(result->ref<0) {
+      if((ref=func_scope()->bc_builder()->Add( result->real_value ))) {
         ErrorTooComplicatedFunc(result);
         return false;
       }
+      result->SetRRef(ref);
       return true;
     case ast::Literal::LIT_BOOLEAN:
-      result->kind = lit.bool_value ? KTRUE : KFALSE;
+      if(lit.bool_value)
+        result->SetTrue();
+      else
+        result->SetFalse();
       return true;
     case ast::Literal::LIT_STRING:
       result->kind = KSTR;

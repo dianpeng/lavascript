@@ -187,7 +187,7 @@ struct Prefix : public Node {
     enum { DOT , INDEX , CALL };
     Component( Variable* v ): t(DOT) , var(v) {}
     Component( Node* e )    : t(INDEX) , expr(e) {}
-    Component( FuncCall* f) : t(CALL)  , fc(f) {}
+    Component( FuncCall* f ) : t(CALL)  , fc(f) {}
     bool IsCall() const { return t == CALL; }
     bool IsDot () const { return t == DOT ; }
     bool IsIndex()const { return t == INDEX;}

@@ -4,6 +4,14 @@
 
 namespace lavascript {
 
+/* ---------------------------------------------------------------
+ *
+ *  The following configuration value are *fixed* and cannot be
+ *  mutated. The assumption is baked inside of how the code is
+ *  designed
+ *
+ * ---------------------------------------------------------------*/
+
 static const std::size_t kSSOMaxSize = 32;
 
 static const std::size_t kDefaultListSize = 4;
@@ -13,6 +21,12 @@ static const std::size_t kDefaultObjectSize = 8;
 static const std::size_t kMaxLiteralCount = 65536;
 
 static const std::size_t kMaxPrototypeCont = 65535;
+
+static const std::size_t kMaxFunctionArgumentCount = 256;
+
+static const std::size_t kMaxListEntryCount = 65536;
+
+static const std::size_t kMaxObjectEntryCount = 65536;
 
 } // namespace lavascript
 

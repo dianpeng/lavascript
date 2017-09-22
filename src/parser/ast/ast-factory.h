@@ -76,13 +76,13 @@ class AstFactory {
 
   inline If*   NewIf  ( size_t start , size_t end , ::lavascript::zone::Vector<If::Branch>* );
 
-  inline For*  NewFor ( size_t start , size_t end , Node* ,
+  inline For*  NewFor ( size_t start , size_t end , Var* ,
                                                     Node* ,
                                                     Node* ,
                                                     Chunk* );
 
 
-  inline ForEach* NewForEach( size_t start , size_t end , Node* ,
+  inline ForEach* NewForEach( size_t start , size_t end , Variable* ,
                                                           Node*,
                                                           Chunk* );
 
@@ -239,13 +239,13 @@ inline If* AstFactory::NewIf( size_t start , size_t end , ::lavascript::zone::Ve
   return new (zone_) If(start,end,bl);
 }
 
-inline For* AstFactory::NewFor( size_t start , size_t end , Node* first , Node* second,
-                                                                          Node* third,
-                                                                          Chunk* b) {
+inline For* AstFactory::NewFor( size_t start , size_t end , Var* first,  Node* second,
+                                                                         Node* third,
+                                                                         Chunk* b) {
   return new (zone_) For(start,end,first,second,third,b);
 }
 
-inline ForEach* AstFactory::NewForEach( size_t start , size_t end , Node* v ,
+inline ForEach* AstFactory::NewForEach( size_t start , size_t end , Variable* v ,
                                                                     Node* i,
                                                                     Chunk* b ) {
   return new (zone_) ForEach(start,end,v,i,b);

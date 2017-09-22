@@ -45,8 +45,8 @@ class Parser {
   ast::If* ParseIf();
   bool ParseCondBranch( ast::If::Branch* );
   ast::Node* ParseFor();
-  ast::For* ParseStepFor( size_t , ast::Node* );
-  ast::ForEach* ParseForEach( size_t , ast::Node* );
+  ast::For* ParseStepFor( size_t , ast::Var* );
+  ast::ForEach* ParseForEach( size_t , ast::Variable* );
   ast::Break* ParseBreak();
   ast::Continue* ParseContinue();
   ast::Return* ParseReturn();

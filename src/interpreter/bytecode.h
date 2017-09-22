@@ -153,27 +153,28 @@ static const std::size_t kAllocatableBytecodeRegisterSize = 255;
   __(F,LOADLIST0, loadlist0, "loadlist0", REG , _ , _ ) \
   __(E,LOADLIST1, loadlist1, "loadlist1", REG , REG , _ ) \
   __(D,LOADLIST2, loadlist2, "loadlist2", REG , REG , REG ) \
-  __(E,LOADIST, loadlist , "loadlist" , REG , NARG  , _ ) \
+  __(E,NEWLIST, newlist, "newlist" , REG , NARG  , _ ) \
+  __(E,ADDLIST, addlist, "addlist" , REG , REG , _ )   \
   __(F,LOADOBJ0 , loadobj0 , "loadobj0" , REG , _ , _ , _ ) \
-  __(E,LOADOBJ1, loadobj1, "loadobj1", REG , REG , _ ) \
-  __(D,LOADOBJ2, loadobj2, "loadobj2", REG , REG , REG ) \
-  __(E,LOADOBJ  , loadobj  , "loadobj" , REG , NARG  , _  ) \
+  __(E,LOADOBJ1, loadobj1, "loadobj1", REG , REG , REG ) \
+  __(E,NEWOBJ  , newobj , "newobj" , REG , NARG  , _  ) \
+  __(D,ADDOBJ  , addobj , "addobj" , REG , REG , REG ) \
   __(B,LOADCLS  , loadcls  , "loadcls" , REG , GARG , _  ) \
   /* subroutine */ \
   __(F,CALL0, call0, "call0", REG , _  , _ )   \
   __(E,CALL1, call1, "call1", REG , REG ,_ )   \
   __(D,CALL2, call2, "call2", REG , REG , REG ) \
   __(E,CALL , call , "call" , NARG , REG ,  _ ) \
-  __(E,FCALL, fcall, "fcall", NARG , FFUNC, _ ) \
   __(F,TCALL0,tcall0,"tcall0",REG,_,_)         \
   __(E,TCALL1,tacll1,"tcall1",REG,REG,_)       \
   __(D,TCALL2,tcall2,"tcall2",REG,REG,REG)     \
   __(E,TCALL, tcall, "tcall", NARG , REG , _ ) \
+  __(X,RET0 , ret0 , "ret0" , _ , _ , _ ) \
   __(X,RET  , ret  , "ret"  , _ , _ , _ ) \
   /* property/upvalue/global value */ \
   __(B,PROPGET,propget,"propget",REG,SREF,_) \
   __(B,PROPSET,propset,"propset",REG,SREF,_) \
-  __(B,IDXGET ,idxget,"idxget",REG,REG,_) \
+  __(E,IDXGET ,idxget,"idxget",REG,REG,_) \
   __(D,IDXSET ,idxset,"idxset",REG,REG,REG) \
   __(B,IDXGETI,idxgeti,"idxgeti",REG,IREF,_) \
   __(B,UVGET  ,uvget ,"uvget",REG,GARG,_) \
@@ -181,10 +182,13 @@ static const std::size_t kAllocatableBytecodeRegisterSize = 255;
   __(C,GSET   ,gset  ,"gset" ,GARG,REG,_) \
   __(B,GGET   ,gget  ,"gget" ,REG,GARG,_) \
   /* forloop tag */ \
-  __(B,FSTART,fstart,"fstart",REG,PC,_) \
-  __(B,FEND  ,fend  ,"fend"  ,REG,PC,_) \
+  __(A,FSTART,fstart,"fstart",PC,_) \
+  __(A,FEND  ,fend  ,"fend"  ,PC,_,_) \
+  __(X,FEVRSTART,fevrstart,"fevrstart",PC,_,_) \
+  __(A,FEVREND,fevrend,"frvrend",PC,_,_ ) \
   __(B,FESTART,festart,"festart",REG,PC,_) \
   __(B,FEEND  ,feend  ,"feend"  ,REG,PC,_) \
+  __(E,IDREF  ,idref  ,"idref"  ,REG,REG,_) \
   __(G,BRK   ,brk,"brk",PC,_,_) \
   __(G,CONT  ,cont,"cont",PC,_,_) \
   /* always the last one */ \
@@ -267,6 +271,7 @@ class BytecodeBuilder {
   inline bool EmitX( const SourceCodeInfo& , Bytecode );
 
   inline Label EmitAt( const SourceCodeInfo& , Bytecode );
+  inline Label EmitAt( const SourceCodeInfo& , Bytecode , std::uint8_t );
 
  public:
   /** ---------------------------------------------------
@@ -330,13 +335,16 @@ class BytecodeBuilder {
   /* -----------------------------------------------------
    * Jump related isntruction                            |
    * ----------------------------------------------------*/
-  Label jmpt( const SourceCodeInfo& si ) { return EmitAt(si,BC_JMPT); }
-  Label jmpf( const SourceCodeInfo& si ) { return EmitAt(si,BC_JMPF); }
+  Label jmpt( const SourceCodeInfo& si , const std::uint8_t r ) { return EmitAt(si,BC_JMPT,r); }
+  Label jmpf( const SourceCodeInfo& si , const std::uint8_t r ) { return EmitAt(si,BC_JMPF,r); }
   Label and ( const SourceCodeInfo& si ) { return EmitAt(si,BC_AND); }
-  Label or  ( const SourceCodeInfo& si ) { return EmitAt(si,BC_OR ); }
+  Label or  ( const SourceCodeInfo& si ) { return EmitAt(si,BC_OR); }
   Label jmp ( const SourceCodeInfo& si ) { return EmitAt(si,BC_JMP ); }
   Label brk ( const SourceCodeInfo& si ) { return EmitAt(si,BC_BRK ); }
   Label cont( const SourceCodeInfo& si ) { return EmitAt(si,BC_CONT); }
+  Label fstart( const SourceCodeInfo& si ) { return EmitAt(si,BC_FSTART); }
+  Label fevrend( const SourceCodeInfo& si ) { return EmitAt(si,BC_FEVREND); }
+
  public:
   /**
    * This XARG call is used to extend certain instruction , like:

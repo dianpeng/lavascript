@@ -321,8 +321,7 @@ struct If : public Node {
   struct Branch : zone::ZoneObject {
     Node* cond;
     Chunk* body;
-    size_t kw_pos; // Where if/elif/else keyword position is
-    Branch() : cond(NULL) , body(NULL) , kw_pos(0) {}
+    Branch() : cond(NULL) , body(NULL) {}
   };
   zone::Vector<Branch>* br_list;
   If( size_t sp , size_t ep , zone::Vector<Branch>* bl ) :
@@ -332,7 +331,7 @@ struct If : public Node {
 
 // Normal for with grammar like for ( expr ; expr ; expr )
 struct For : public Node {
-  Node* _1st;     // Initial declaration or assignment for induction variable
+  Var*  _1st;     // Initial declaration or assignment for induction variable
   Node* _2nd;     // Condition expression
   Node* _3rd;     // Incremental expression
 
@@ -353,11 +352,11 @@ struct For : public Node {
 };
 
 struct ForEach : public Node {
-  Node* var;
+  Variable* var;
   Node* iter;
   Chunk* body;
 
-  ForEach( size_t sp  ,size_t ep , Node* v , Node* i , Chunk* b ):
+  ForEach( size_t sp  ,size_t ep , Variable* v , Node* i , Chunk* b ):
     Node( FOREACH , sp , ep ),
     var(v),
     iter(i),

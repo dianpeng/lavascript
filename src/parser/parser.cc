@@ -111,6 +111,11 @@ ast::List* Parser::ParseList() {
       ast::Node* e = ParseExpression();
       if(!e) return NULL;
       entry->Add(zone_,e);
+      if(entry->size() > kMaxListEntryCount) {
+        Error("Too many list literal's entry, at most %zu is allowed",
+              kMaxListEntryCount);
+        return NULL;
+      }
       if( lexer_.lexeme().token == Token::kComma ) {
         lexer_.Next();
       } else if( lexer_.lexeme().token == Token::kRSqr ) {
@@ -167,6 +172,11 @@ ast::Object* Parser::ParseObject() {
 
       if(!(val = ParseExpression())) return NULL;
       entry->Add(zone_,ast::Object::Entry(key,val));
+      if(entry->size() > kMaxObjectEntryCount) {
+        Error("Too many object literal's entry, at most %zu is allowed",
+              kMaxObjectEntryCount);
+        return NULL;
+      }
 
       if(lexer_.lexeme().token == Token::kComma) {
         lexer_.Next();
@@ -201,6 +211,11 @@ ast::FuncCall* Parser::ParseFuncCall() {
       if(!expr) return NULL;
 
       arg_list->Add(zone_,expr);
+      if(arg_list->size() > kMaxFunctionArgumentCount) {
+        Error("Too many function argument, at most %zu is allowed",
+              kMaxFunctionArgumentCount);
+        return NULL;
+      }
 
       if(lexer_.lexeme().token == Token::kComma) {
         lexer_.Next();
@@ -503,7 +518,6 @@ ast::Node* Parser::ParseFor() {
     Error("Expect a \"(\" to start for statement");
     return NULL;
   }
-  ast::Node* var = NULL;
 
   if(lexer_.Next().token == Token::kVar) {
     ast::Var* short_assign = ParseVar();
@@ -513,10 +527,11 @@ ast::Node* Parser::ParseFor() {
       case Token::TK_IN:
         if(short_assign->expr) {
           ErrorAt(expr_start,short_assign->end, "foreach statement's variable "
-                                                "declaration cannot have assignment");
+                                                "expects a \"in\" after variable "
+                                                "not an normal assignment");
           return NULL;
         }
-        return ParseForEach(expr_start,short_assign);
+        return ParseForEach(expr_start,short_assign->var);
       case Token::TK_SEMICOLON:
         return ParseStepFor(expr_start,short_assign);
       default:
@@ -528,27 +543,14 @@ ast::Node* Parser::ParseFor() {
       // Can be null for for( _ ; _ ; _ ) style for statement
       return ParseStepFor(expr_start,NULL);
     } else {
-      if(!(var = ParseExpression())) return NULL;
-    }
-  }
-
-  if(lexer_.lexeme().token == Token::kIn) {
-    if(var->IsVariable())
-      return ParseForEach(expr_start,var);
-    else {
-      Error("Expect a variable or variable declaration "
-            "before \"in\" in foreach's statement");
+      Error("Unexpected statement in for/foreach.Requires a "
+            "short declaration or leave it just empty!");
       return NULL;
     }
-  } else if(lexer_.lexeme().token == Token::kSemicolon) {
-    return ParseStepFor(expr_start,var);
-  } else {
-    Error("Expect \":\" or \";\" in for statement");
-    return NULL;
   }
 }
 
-ast::For* Parser::ParseStepFor( size_t expr_start , ast::Node* expr ) {
+ast::For* Parser::ParseStepFor( size_t expr_start , ast::Var* expr ) {
   lava_verify( lexer_.lexeme().token == Token::kSemicolon );
   ast::Node* cond = NULL;
   ast::Node* step = NULL;
@@ -560,6 +562,12 @@ ast::For* Parser::ParseStepFor( size_t expr_start , ast::Node* expr ) {
       Error("Expect a \";\" here");
       return NULL;
     }
+    if(!expr) {
+      Error("You specify a condition for the loop,however you do not "
+            "specify the short assignment to initalize loop induction "
+            "variable!");
+      return NULL;
+    }
   } else {
     lexer_.Next();
   }
@@ -568,6 +576,11 @@ ast::For* Parser::ParseStepFor( size_t expr_start , ast::Node* expr ) {
     if(!(step = ParseExpression())) return NULL;
     if(!lexer_.Expect(Token::kRPar)) {
       Error("Expect a \")\" here");
+      return NULL;
+    }
+    if(!expr) {
+      Error("You specify a step variable,but you do not specify "
+            "loop induction variable");
       return NULL;
     }
   } else {
@@ -586,7 +599,7 @@ ast::For* Parser::ParseStepFor( size_t expr_start , ast::Node* expr ) {
                               body );
 }
 
-ast::ForEach* Parser::ParseForEach( size_t expr_start , ast::Node* expr ) {
+ast::ForEach* Parser::ParseForEach( size_t expr_start , ast::Variable* var ) {
   lava_verify( lexer_.lexeme().token == Token::kIn );
   ast::Node* itr = NULL;
   ast::Chunk* body = NULL;
@@ -605,7 +618,7 @@ ast::ForEach* Parser::ParseForEach( size_t expr_start , ast::Node* expr ) {
 
   return ast_factory_.NewForEach( expr_start ,
                                   lexer_.lexeme().start - 1,
-                                  expr,
+                                  var,
                                   itr,
                                   body );
 }
@@ -688,13 +701,6 @@ ast::Chunk* Parser::ParseChunk() {
   size_t expr_start = lexer_.lexeme().start;
   size_t expr_end   = lexer_.lexeme().end;
 
-  // For declaration statment
-  std::vector<ast::Node*> dec_stmt;
-
-  // For other normal statment
-  std::vector<ast::Node*> other_stmt;
-
-  // For final re-arranged chunk of statement
   Vector<ast::Node*>* ck = Vector<ast::Node*>::New(zone_);
 
   if(lexer_.Next().token == Token::kRBra) {
@@ -704,11 +710,7 @@ ast::Chunk* Parser::ParseChunk() {
       ast::Node* stmt = ParseStatement();
       if(!stmt) return NULL;
 
-      if(stmt->IsVar()) {
-        dec_stmt.push_back(stmt);
-      } else {
-        other_stmt.push_back(stmt);
-      }
+      ck->Add(zone_,stmt);
 
     } while( lexer_.lexeme().token != Token::kEof &&
              lexer_.lexeme().token != Token::kRBra );
@@ -720,12 +722,6 @@ ast::Chunk* Parser::ParseChunk() {
 
     expr_end = lexer_.lexeme().end;
     lexer_.Next(); // Skip the last }
-
-    // Generate the final chunk , basically we promote all
-    // declaration statement at the head of the current
-    // lexical scope
-    for( auto e : dec_stmt ) { ck->Add(zone_,e); }
-    for( auto e : other_stmt ) { ck->Add(zone_,e); }
 
     return ast_factory_.NewChunk(expr_start,expr_end,ck);
   }
@@ -770,6 +766,12 @@ Vector<ast::Variable*>* Parser::ParseFunctionPrototype() {
         arg_list->Add(zone_,ast_factory_.NewVariable(lexer_.lexeme().start,
                                                      lexer_.lexeme().end,
                                                      lexer_.lexeme().str_value));
+
+        if(arg_list->size() > kMaxFunctionArgumentCount) {
+          Error("Too many function argument, at most %zu is allowed",
+                kMaxFunctionArgumentCount);
+          return NULL;
+        }
         lexer_.Next();
       } else {
         Error("Expect a identifier to represent function argument");

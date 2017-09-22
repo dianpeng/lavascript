@@ -18,55 +18,9 @@ using namespace lavascript::parser;
 class Generator;
 class RegisterAllocator;
 
-class Register {
- public:
-  static const Register kAccReg;
-  static const std::size_t kAccIndex = 255;
-
-  Register( std::uint8_t index ): index_(index) {}
-  Register():index_(kAccIndex) {}
-
- public:
-  bool IsAcc() const { return index_ == kAccIndex; }
-  void SetAcc() { index_ = kAccIndex; }
-  std::uint8_t index() const { return index_; }
-  operator int () const { return index_; }
-  bool operator == ( const Register& reg ) const {
-    return index_ == reg.index_;
-  }
-  bool operator != ( const Register& reg ) const {
-    return index_ != reg.index_;
-  }
- private:
-  std::uint8_t index_;
-};
-
-class ScopedRegister {
- public:
-  ScopedRegister( Generator* generator , const Register& reg ):
-    generator_(generator),
-    reg_(reg)
-  {}
-
-  ScopedRegister( Generator* generator ):
-    generator_(generator),
-    reg_()
-  {}
-
-  inline ~ScopedRegister();
- public:
-  bool IsAcc() const { return reg_.IsAcc(); }
-  std::uint8_t index() const { return reg_.index(); }
-  operator int() const { return index(); }
-  const Register& Get() const { return reg_; }
-  inline Register Release();
-  inline void Reset( const Register& reg );
- private:
-  Generator* generator_;
-  Register reg_;
-  LAVA_DISALLOW_COPY_AND_ASSIGN(ScopedRegister);
-};
-
+/**
+ * Simple template class to represents existance of certain type/object.
+ */
 template< typename T >
 class Optional {
  public:
@@ -115,6 +69,75 @@ class Optional {
   bool has_;
 };
 
+/**
+ * Represent a bytecode register
+ */
+class Register {
+ public:
+  static const Register kAccReg;
+  static const std::size_t kAccIndex = 255;
+
+  Register( std::uint8_t index ): index_(index) {}
+  Register():index_(kAccIndex) {}
+
+ public:
+  bool IsAcc() const { return index_ == kAccIndex; }
+  void SetAcc() { index_ = kAccIndex; }
+  std::uint8_t index() const { return index_; }
+  operator int () const { return index_; }
+  bool operator == ( const Register& reg ) const {
+    return index_ == reg.index_;
+  }
+  bool operator != ( const Register& reg ) const {
+    return index_ != reg.index_;
+  }
+ private:
+  std::uint8_t index_;
+};
+
+/**
+ * Represent a lexical scoped bounded register. Mainly used to
+ * help reclaim registers. This class should be preferred to using
+ * the Register object directly.
+ */
+class ScopedRegister {
+ public:
+  ScopedRegister( Generator* generator , const Optional<Register>& reg ):
+    generator_(generator),
+    reg_(),
+    empty_(!reg.Has())
+  { if(reg.Has()) { reg_ = reg.Get(); } }
+
+  ScopedRegister( Generator* generator , const Register& reg ):
+    generator_(generator),
+    reg_(reg)
+  {}
+
+  ScopedRegister( Generator* generator ):
+    generator_(generator),
+    reg_()
+  {}
+
+  inline ~ScopedRegister();
+ public:
+  bool IsEmpty() const { return empty_; }
+  operator bool() const { return !IsEmpty(); }
+  const Register& Get() const { lava_verify(!IsEmpty()); return reg_; }
+  inline Register Release();
+  inline void Reset( const Register& reg = Register() );
+  inline void Reset( const Optional<Register>& reg );
+ private:
+  Generator* generator_;
+  Register reg_;
+  bool empty_;
+  LAVA_DISALLOW_COPY_AND_ASSIGN(ScopedRegister);
+};
+
+/**
+ * A class to track all used and available registers.  Since we don't
+ * have spill concept , when register run out, we notify user that the
+ * code is too complicated to handle
+ */
 class RegisterAllocator {
  public:
   RegisterAllocator();
@@ -190,7 +213,8 @@ inline bool RegisterAllocator::IsUsed( const Register& reg ) {
   return n->next == static_cast<Node*>(kNotUsed);
 }
 
-inline RegisterAllocator::Node* RegisterAllocator::RegisterToSlot( const Register& reg ) {
+inline RegisterAllocator::Node*
+RegisterAllocator::RegisterToSlot( const Register& reg ) {
 #ifdef LAVASCRIPT_CHECK_OBJECTS
   lava_verify(!reg.IsAcc());
 #endif // LAVASCRIPT_CHECK_OBJECTS
@@ -199,7 +223,6 @@ inline RegisterAllocator::Node* RegisterAllocator::RegisterToSlot( const Registe
 }
 
 /**
- *
  * Scope is an object that is used to track all the information generated
  * during the conversion phase. Basically we have 2 types of scopes:
  * 1) LexicalScope which is generated whenever we enter a lexical scope
@@ -217,15 +240,29 @@ class Scope {
   // Get its closest function scope
   Scope* function_scope() const;
 
+  // Get the generator
+  Generator* generator() const { return generator_; }
+
   virtual bool IsLexicalScope() const = 0;
   virtual bool IsFunctionScope()const = 0;
   virtual FunctionScope* AsFunctionScope() = 0;
   virtual LexicalScope*  AsLexicalScope () = 0;
+
+ private:
+  Generator* generator_;
+};
+
+class LexicalScope : public Scope {
  public:
   // Define a *local variable* and pin it to a register
   // If we can define then a positive number is returned indicate the Register that
   // holds the variable , otherwise an error is recoreded and Acc register is returned
   Optional<Register> DefineVar( const zone::String& );
+  bool DefineVar( const zone::String& , const Register& );
+
+  // Define a *anonymous variable* and pin it to a register.
+  Optional<Register> DefineAnonymousVar();
+  void DefineAnonymousVar( const Register& );
 
   // Get a local variable from current lexical scope
   Optional<Register> GetLocalVar( const zone::String& );
@@ -236,14 +273,25 @@ class Scope {
   // Size of variables defined in *this* scope
   std::size_t var_size() const;
 
-  // Get the generator
-  Generator* generator() const { return generator_; }
+ public:
+  /**----------------------------------------
+   * Loop related APIs                      |
+   * ---------------------------------------*/
+  bool IsLoop() const { return is_loop_; }
+  bool IsInLoop() const { return is_in_loop_; }
+  bool IsLoopScope() const { return IsLoop() || IsInLoop(); }
+
+  // Find its nearest enclosed loop scope can return *this*
+  LexicalScope* GetEnclosedLoopScope() const;
+
+  // Helpers for Break and Continue's jump
+  bool AddBreak( const ast::Break& );
+  bool AddContinue( const ast::Continue& );
+
+  void PatchBreak( std::uint16_t );
+  void PatchContinue( std::uint16_t );
 
  private:
-  Generator* generator_;
-};
-
-class LexicalScope {
 };
 
 class FunctionScope {
@@ -265,92 +313,80 @@ enum ExprResultKind {
 
 class ExprResult {
  public:
-  ExprResult( Generator* gen ):
+  ExprResult():
     kind_(KNULL),
     ref_(0),
-    reg_(0),
-    generator_(gen),
-    release_(false)
+    reg_(0)
   {}
 
-  ~ExprResult();
  public:
 
+  // getters ----------------------------------------------------
+  std::int32_t ref() const { lava_verify(IsRefType()); return ref_; }
+  const Register& reg() const { lava_verify(IsReg()); return reg_; }
   ExprResultKind kind() const { return kind_; }
+
+  // testers ----------------------------------------------------
+  bool IsLiteral() const { return !IsReg(); }
   bool IsRefType() const { return kind_ == KINT || kind_ == KREAL || kind_ == KSTR; }
-  bool IsInt() const { return kind_ == KINT; }
+  bool IsInteger() const { return kind_ == KINT; }
   bool IsReal()const { return kind_ == KREAL;}
   bool IsReg() const { return kind_ == KREG; }
   bool IsAcc() const { return kind_ == KREG && reg_.IsAcc(); }
   bool IsTrue() const { return kind_ == KTRUE; }
   bool IsFalse() const { return kind_ == KFALSE; }
   bool IsNull() const { return kind_ == KNULL; }
-  std::int32_t ref() const { lava_verify(IsRefType()); return ref_; }
-  const Register& reg() const { lava_verify(IsReg()); return reg_; }
 
+  // setters -----------------------------------------------------
   void SetIRef( std::int32_t iref ) {
-    FreeRegister();
     ref_ = iref;
     kind_ = KINT;
   }
 
   void SetRRef( std::int32_t rref ) {
-    FreeRegister();
     ref_ = rref;
     kind_ = KREAL;
   }
 
   void SetSRef( std::int32_t sref ) {
-    FreeRegister();
     ref_ = sref;
     kind_ = KSTR;
   }
 
-  void SetTrue() { FreeRegister(); kind_ = KTRUE; }
-  void SetFalse(){ FreeRegister(); kind_ = KFALSE;}
-  void SetNull() { FreeRegister(); kind_ = KNULL; }
- public:
-  /* -------------------------------------------------------
-   * Register related APIs. Once the register is set
-   * to the ExprResult then it is *owned* by the ExprResult
-   * unless user manually Release the register. Otherwise
-   * in ExprResult's destructor , the register will be freed
-   * automatically
-   * -------------------------------------------------------*/
+  void SetTrue() { kind_ = KTRUE; }
+  void SetFalse(){ kind_ = KFALSE;}
+  void SetNull() { kind_ = KNULL; }
+
   void SetRegister( const Register& reg ) {
     kind_ = KREG;
     reg_  = reg;
   }
 
-  inline Register NewRegister();
-
-  Register ReleaseRegister() {
-    Register ret = reg_;
-    kind_ = KNULL;
-    return ret;
-  }
-
- private:
-  inline void FreeRegister();
-
  private:
   ExprResultKind kind_;
   std::int32_t ref_;
   Register reg_;
-  Generator* generator_;
-  bool release_;
 
   LAVA_DISALLOW_COPY_AND_ASSIGN(ExprResult);
 };
 
-#define emit(RESULT,XX)                            \
+#define eemit(RESULT,XX)                           \
   do {                                             \
     auto _ret = func_scope()->bc_builder()->XX;    \
     if(!_ret) {                                    \
-      ErrorFunctionTooLong((RESULT));              \
+      if((RESULT)) ErrorFunctionTooLong((RESULT)); \
       return false;                                \
     }                                              \
   } while(false)
+
+#define semit(RESULT,XX)                           \
+  do {                                             \
+    auto _ret = func_scope()->bc_builder()->XX;    \
+    if(!_ret) {                                    \
+      return false;                                \
+    }                                              \
+  } while(false)
+
 
 /**
  * General rules for handling the registers in bytecode.
@@ -359,7 +395,7 @@ class ExprResult {
  * 2. Any function can potentially use Acc register and it won't save it for you.
  *    Acc is always caller saved. So if a part of sub-expression are held in Acc,
  *    then before you call out any other function , you should Save it by calling
- *    SpillAcc to move your result from Acc to another register that owns by you.
+ *    SpillFromAcc to move your result from Acc to another register that owns by you.
  * 3. Any function's result *CAN* be held in Acc register. So calling some internal
  *    Visit function can result in the value held in Acc register.
  */
@@ -367,7 +403,7 @@ class ExprResult {
 class Generator {
  public:
   /* ------------------------------------------------
-   * Generate expression
+   * Generate expression                            |
    * -----------------------------------------------*/
 
  public:
@@ -382,10 +418,13 @@ class Generator {
   bool CanBeSpecializedLiteral( ast::Literal& lit ) const {
     return lit.IsInteger() || lit.IsReal() || lit.IsString();
   }
+  bool CanBeSpecializedLiteral( const ExprResult& expr ) const {
+    return expr.IsInteger() || expr.IsReal() || expr.IsString();
+  }
 
   inline BinOperandType GetBinOperandType( const ast::Literal& ) const;
 
-  const char* GetBinOperandTypeName( BinOperandType t ) {
+  const char* GetBinOperandTypeName( BinOperandType t ) const {
     switch(t) {
       case TINT : return "int";
       case TREAL: return "real";
@@ -399,7 +438,7 @@ class Generator {
 
  private:
   /* --------------------------------------------
-   * Expression Code Generation
+   * Expression Code Generation                 |
    * -------------------------------------------*/
   // Visit function's call argument and generate code for them. Put all the reference
   // register into the reg_set vector
@@ -411,40 +450,86 @@ class Generator {
   bool Visit( const ast::Binary& , ExprResult* );
   bool VisitLogic( const ast::Binary& , ExprResult* );
   bool Visit( const ast::Ternary&, ExprResult* );
-  bool Visit( const List&   , ExprResult* );
-  bool Visit( const Object& , ExprResult* );
-  bool VisitExpression( const ast::Node&   , ExprResult* );
+  bool Visit( const ast::List&   , ExprResult* );
+  bool Visit( const ast::Object& , ExprResult* );
 
-  // This Visit will not generate any intermediate expression result stored in
-  // ExprResult but will put everything inside of the Register. It is used for
-  // cases that we can only work with register.
+  bool VisitExpression( const ast::Node&   , ExprResult* );
   bool VisitExpression( const ast::Node& expr , Register* );
   bool VisitExpression( const ast::Node& expr , ScopedRegister* );
+
+  // Visit prefix like ast until end is met
+  bool VisitPrefix( const ast::Prefix& pref , std::size_t end ,
+                                              bool tcall ,
+                                              Register* );
+
+  bool VisitPrefix( const ast::Prefix& pref , std::size_t end ,
+                                              bool tcall ,
+                                              ScopedRegister* );
 
   /* -------------------------------------------
    * Statement Code Generation                 |
    * ------------------------------------------*/
-  bool Visit( const Function& , const Optional<Register>& holder , ExprResult* );
+  bool Visit( const ast::Var& , Register* holder = NULL );
+  bool Visit( const ast::Assign& );
+  bool VisitSimpleAssign( const ast::Assign& );
+  bool VisitPrefixAssign( const ast::Assign& );
+  bool Visit( const ast::Call& );
+  bool Visit( const ast::If& );
+  bool VisitForCondition( const ast::For& , const Register& var );
+  bool Visit( const ast::For& );
+  bool Visit( const ast::Foreach& );
+  bool Visit( const ast::Break& );
+  bool Visit( const ast::Continue& );
+  bool CanBeTailCallOptimized( const ast::Node& node ) const;
+  bool Visit( const ast::Return& );
 
- private:
+  bool VisitStatment( const ast::Node& );
+
+  bool VisitChunkNoLexicalScope( const ast::Chunk& );
+  bool VisitChunk( const ast::Chunk& , bool );
+
+  bool VisitNamedFunction( const ast::Function& );
+  bool VisitAnonymousFunction( const ast::Function& , ExprResult* );
+
+ private: // Misc helpers --------------------------------------
   // Spill the Acc register to another register
-  Optional<Register> SpillAcc();
-  bool SpillAcc(ScopedRegister*);
+  Optional<Register> SpillFromAcc();
+  bool SpillFromAcc(ScopedRegister*);
   void SpillToAcc( const Register& );
 
- private: // Errors
+  // Allocate literal with in certain registers
+  Optional<Register> AllocateLiteral( const ast::Literal& );
+  void AllocateLiteral( const ast::Literal& , const Register& );
+
+  // Convert ExprResult to register, it may allocate new register
+  // to hold it if it is literal value
+  Optional<Register> ExprResultToRegister( const ExprResult& );
+
+ private: // Errors ---------------------------------------------
   void Error( const SourceCodeInfo& , ExprResult* , const char* fmt , ... );
 
   // The following ErrorXXX function is common or frequently used error report
   // function which captures certain common cases
-  void ErrorTooComplicatedFunc( const SourceCodeInfo& , ExprResult* );
+  void ErrorTooComplicatedFunc( const SourceCodeInfo& , ExprResult* result = NULL );
   void ErrorFunctionTooLong   ( ExprResult* );
+  void ErrorLocalVariable     ( const SourceCodeInfo& , const zone::String& );
+
+ private: // RAII for managing lexical scope --------------------
+  class EnterLoopScope;
+  class EnterLexicalScope;
+  class EnterFunctionScope;
+
+  friend class EnterLoopScope;
+  friend class EnterLexicalScope;
+  friend class EnterFunctionScope;
 
  private:
   FunctionScope* func_scope_;
-  Scope* cur_scope_;
+  LexicalScope* lexical_scope_;
   RegisterAllocator ra_;
   Context* context_;
+
+  LAVA_DISALLOW_COPY_AND_ASSIGN(Generator);
 };
 
 std::uint8_t kBinSpecialOpLookupTable [][][] = {
@@ -529,9 +614,9 @@ inline BinOperandType Generator::GetBinOperandType( const ast::Literal& ) const 
 }
 
 inline bool Generator::GetBinBytecode( const Token& tk , BinOperandType type ,
-                                                      bool lhs ,
-                                                      bool rhs ,
-                                                      Bytecode* output ) {
+                                                         bool lhs ,
+                                                         bool rhs ,
+                                                         Bytecode* output ) {
 #ifdef LAVASCRIPT_CHECK_OBJECTS
   lava_verify(!(rhs && lhs));
 #endif // LAVASCRIPT_CHECK_OBJECTS
@@ -554,6 +639,9 @@ inline bool Generator::GetBinBytecode( const Token& tk , BinOperandType type ,
   return true;
 }
 
+/* ----------------------------------------
+ * Expression                             |
+ * ---------------------------------------*/
 bool Generator::Visit( const ast::Literal& lit , ExprResult* result ) {
   std::int32_t ref;
   switch(lit.literal_type) {
@@ -598,7 +686,7 @@ bool Generator::Visit( const ast::Variable& var , ExprResult* result ) {
     return true;
   } else if(cur_scope_->GetUpValue()) {
   } else {
-    // It is a global variable so we need to emit global variable stuff
+    // It is a global variable so we need to eemit global variable stuff
     std::int32_t ref = func_scope_->bc_builder()->Add(*var.name,context_);
     if(ref<0) {
       ErrorTooComplicatedFunc(var.sci(),result);
@@ -606,7 +694,7 @@ bool Generator::Visit( const ast::Variable& var , ExprResult* result ) {
     }
 
     // Hold the global value inside of Acc register since we can
-    emit(result,gget(var.sci(),Register::kAccIndex,ref));
+    eemit(result,gget(var.sci(),Register::kAccIndex,ref));
     result->SetRegister(Register::kAccReg);
     return true;
   }
@@ -623,14 +711,18 @@ bool Generator::VisitFuncCall( const ast::FuncCall& fc ,
   return true;
 }
 
-bool Generator::Visit( const ast::Prefix& node , ExprResult* result ) {
+bool Generator::VisitPrefix( const ast::Prefix& node , std::size_t end ,
+                                                       bool tcall ,
+                                                       Register* result ) {
   // Allocate register for the *var* field in node
   Register var_reg;
   if(!Visit(*node.var,&var_reg)) return false;
 
   // Handle the component part
   const std::size_t len = node.list->size();
-  for( std::size_t i = 0 ; i < len ; ++i ) {
+  lava_verify(end <= len);
+
+  for( std::size_t i = 0 ; i < end ; ++i ) {
     const ast::Prefix::Component& c = node.list->Index(i);
     switch(c.t) {
       case ast::Prefix::Component::DOT:
@@ -643,7 +735,7 @@ bool Generator::Visit( const ast::Prefix& node , ExprResult* result ) {
             return false;
           }
           // Use PROPGET instruction
-          emit(result,propget(c.var->sci(),var_reg.index(),ref));
+          eemit(NULL,propget(c.var->sci(),var_reg.index(),ref));
 
           // Since PROPGET will put its value into the Acc so afterwards
           // the value will be held in scratch registers until we meet a
@@ -667,7 +759,7 @@ bool Generator::Visit( const ast::Prefix& node , ExprResult* result ) {
 
           // Use idxgeti bytecode to get the stuff and by default value
           // are stored in ACC register
-          emit(result,idxgeti(c.expr->sci(),var_reg.index(),ref));
+          eemit(NULL,idxgeti(c.expr->sci(),var_reg.index(),ref));
 
           // Drop register if it is not Acc
           if(!var_reg.IsAcc()) { ra_.Drop(var_reg); var_reg.SetAcc(); }
@@ -678,7 +770,7 @@ bool Generator::Visit( const ast::Prefix& node , ExprResult* result ) {
           // We need to spill ACC register if our current value are held inside
           // of ACC register due to *this* expression evaluating may use Acc.
           if(var_reg.IsAcc()) {
-            Optional<Register> new_reg(SpillAcc());
+            Optional<Register> new_reg(SpillFromAcc());
             if(!new_reg) return false;
             var_reg = new_reg.Get();
           }
@@ -686,9 +778,9 @@ bool Generator::Visit( const ast::Prefix& node , ExprResult* result ) {
           // Get the register for the expression
           if(!VisitExpression(*c.expr,&expr_reg)) return false;
 
-          // emit the code for getting the index and the value is stored
+          // eemit the code for getting the index and the value is stored
           // inside of the ACC register
-          emit(result,idxget(c.expr->sci(),var_reg.index(),expr_reg.index()));
+          eemit(NULL,idxget(c.expr->sci(),var_reg.index(),expr_reg.index()));
 
           // Drop register if it is not in Acc
           if(!var_reg.IsAcc()) { ra_.Drop(var_reg); var_reg.SetAcc(); }
@@ -701,7 +793,7 @@ bool Generator::Visit( const ast::Prefix& node , ExprResult* result ) {
           //    fact that acc will be *scratched* when evaluating the argument
           //    expression
           if(var_reg.IsAcc()) {
-            Optional<Register> reg = SpillAcc();
+            Optional<Register> reg = SpillFromAcc();
             if(!reg) return false;
             // hold the new register
             var_reg = reg.Get();
@@ -714,17 +806,40 @@ bool Generator::Visit( const ast::Prefix& node , ExprResult* result ) {
           // 3. Generate call instruction based on the argument size for
           //    sepcialization , this save us some decoding time when function
           //    call number is small ( <= 2 ).
+
+          // Check whether we can use tcall or not. The tcall instruction
+          // *must be* for the last component , since then we know we will
+          // forsure generate a ret instruction afterwards
+          const bool tc = tcall && (i == (len-1));
+
           if(areg_set.size() == 0) {
-            emit(result,call0(c.func->sci(),var_reg.index()));
+            if(tc)
+              eemit(NULL,tcall0(c.func->sci(),var_reg.index()));
+            else
+              eemit(NULL,call0(c.func->sci(),var_reg.index()));
           } else if(areg_set.size() == 1) {
-            emit(result,call1(c.func->sci(),var_reg.index(),areg_set[0]));
+            if(tc)
+              eemit(result,tall1(c.func->sci(),var_reg.index(),areg_set[0]));
+            else
+              eemit(result,call1(c.func->sci(),var_reg.index(),areg_set[0]));
           } else if(areg_set.size() == 2) {
-            emit(result.call2(c.func->sci(),var_reg.index(),areg_set[0],areg_set[1]));
+            if(tc)
+              eemit(NULL,tcall2(c.func->sci(),var_reg.index(),areg_set[0],
+                                                              areg_set[1]));
+            else
+              eemit(NULL,call2(c.func->sci(),var_reg.index(),areg_set[0],
+                                                             areg_set[1]));
           } else {
-            emit(result,call( c.func->sci() ,
-                  static_cast<std::uint32_t>(c.func->args->size()),
-                  var_reg.index() ));
-            emit(result,xarg(areg_set));
+            if(tc)
+              eemit(NULL,tcall( c.func->sci() ,
+                    static_cast<std::uint32_t>(c.func->args->size()),
+                    var_reg.index() ));
+            else
+              eemit(NULL,call( c.func->sci() ,
+                    static_cast<std::uint32_t>(c.func->args->size()),
+                    var_reg.index() ));
+
+            eemit(NULL,xarg(areg_set));
           }
 
           // 4.  the result will be stored inside of Acc
@@ -734,20 +849,123 @@ bool Generator::Visit( const ast::Prefix& node , ExprResult* result ) {
     }
   }
 
-  result->SetRegister(var_reg);
+  *result = var_reg;
+  return true;
+}
+
+bool Generator::Visit( const ast::Prefix& node , std::size_t end ,
+                                                 bool tcall ,
+                                                 ScopedRegister* result ) {
+  Regiser reg;
+  if(!Visit(node,end,tcall,&reg)) return false;
+  result->SetRegister(ret);
+  return true;
+}
+
+bool Generator::Visit( const ast::Prefix& node , ExprResult* result ) {
+  Register r;
+  if(!VisitPrefix(node,node.list->size(),false,&r)) return false;
+  result->SetRegister(r);
   return true;
 }
 
 bool Generator::Visit( const ast::List& node , ExprResult* result ) {
+  const std::size_t entry_size = node.entry->size();
+
+  if(entry_size == 0) {
+    eemit(result,loadlist0(node.sci(),Register::kAccReg));
+    result->SetAcc();
+  } else if(entry_size == 1) {
+    ScopedRegister r1(this);
+    if(!VisitExpression(*node.entry->Index(0),&r1)) return false;
+    eemit(result,loadlist1(node.sci(),Register::kAccReg,r1.Get().index()));
+    result->SetAcc();
+  } else if(entry_size == 2) {
+    ScopedRegister r1(this) , r2(this);
+    if(!VisitExpression(*node.entry->Index(0),&r1)) return false;
+    if(!VisitExpression(*node.entry->Index(1),&r2)) return false;
+    eemit(result,loadlist2(node.sci(),Register::kAccReg,r1.Get().index(),
+                                                        r2.Get().index()));
+    result->SetAcc();
+  } else {
+
+    /**
+     * When list has more than 2 entries, the situation becomes a little
+     * bit complicated. The way we generate the list literal cannot relay
+     * on the xarg since xarg requires the entries to be held inside of the
+     * registers which has at most 256 registers. This number is fine for
+     * function argument but too small for list entries. Therefore the bytecode
+     * allows us to use two set of instructions to perform this job. This is
+     * not ideal but this allow better flexibility
+     */
+
+    Optional<Register> reg;
+    if(!(reg = ra_.Grab())) {
+      ErrorTooComplicatedCode(node.sci(),result);
+      return false;
+    }
+
+    eemit(result,newlist(node.sci(),reg.Get().index(),
+          static_cast<std::uint16_t>(entry_size)));
+
+    // Go through each list entry/element
+    for( std::size_t i = 0 ; i < entry_size ; ++i ) {
+      ScopedRegister r1(this);
+      const ast::Node& e = *node.entry->Index(i);
+      if(!VisitExpression(e,&r1)) return false;
+      eemit(result,addlist(e.sci(),reg.Get().index(),r1.index()));
+    }
+    result->SetRegister(reg.Get());
+  }
+  return true;
+}
+
+bool Generator::Visit( const ast::Object& node , ExprResult* result ) {
+  const std::size_t entry_size = node.entry->size();
+  if(entry_size == 0) {
+    eemit(result,loadobj0(node.sci(),Register::kAccReg));
+    result->SetAcc();
+  } else if(entry_size == 1) {
+    ScopedRegister k(this);
+    ScopedRegister v(this);
+    const ast::Object::Entry& e = node.entry->Index(0);
+    if(!VisitExpression(*e.key,&k)) return false;
+    if(!VisitExpression(*e.val,&v)) return false;
+    eemit(result,loadobj1(node.sci(),Register::kAccReg,k.Get().index(),
+                                                       v.Get().index()));
+    result->SetAcc();
+  } else {
+    Optional<Register> reg;
+    if(!(reg = ra_.Grab())) {
+      ErrorTooComplicatedCode(node.sci(),result);
+      return false;
+    }
+
+    eemit(result,newobj(node.sci(),reg.Get().index(),
+          static_cast<std::uint16_t>(entry_size)));
+
+    for( std::size_t i = 0 ; i < entry_size ; ++i ) {
+      const ast::Object::Entry& e = node.entry->Index(i);
+      ScopedRegister k(this);
+      ScopedRegister v(this);
+      if(!VisitExpression(*e.key,&k)) return false;
+      if(!VisitExpression(*e.val,&v)) return false;
+      eemit(result,addobj(e.key->sci(),reg.Get().index(),k.Get().index(),
+                                                         v.Get().index()));
+    }
+
+    result->SetRegister(reg);
+  }
+  return true;
 }
 
 bool Generator::Visit( const ast::Unary& node , ExprResult* result ) {
   Register reg;
   if(!VisitExpression(*node.opr,&reg)) return false;
   if(node.op == Token::kSub) {
-    emit(result,negate(node.sci(),reg.index()));
+    eemit(result,negate(node.sci(),reg.index()));
   } else {
-    emit(result,not(node.sci(),reg.index()));
+    eemit(result,not(node.sci(),reg.index()));
   }
   result->SetRegister(reg);
   return true;
@@ -762,10 +980,10 @@ bool Generator::Visit( const ast::Unary& node , ExprResult* result ) {
  * So any logic expression's result will be in Acc register
  */
 bool Generator::VisitLogic( const ast::Binary& node , ExprResult* result ) {
-  Register reg;
+  ScopedRegister lhs;
   // Left hand side
-  if(!VisitExpression(*node.lhs,&reg)) return false;
-  if(!reg.IsAcc()) { SpillToAcc(reg); reg.SetAcc(); }
+  if(!VisitExpression(*node.lhs,&lhs)) return false;
+  if(!lhs.IsAcc()) SpillToAcc(lhs);
 
   // And or Or instruction
   Bytecode::Label label;
@@ -781,8 +999,9 @@ bool Generator::VisitLogic( const ast::Binary& node , ExprResult* result ) {
   }
 
   // Right hand side expression evaluation
-  if(!VisitExpression(*node.rhs,&reg)) return false;
-  if(!reg.IsAcc()) { SpillToAcc(reg); reg.SetAcc(); }
+  ScopedRegister rhs;
+  if(!VisitExpression(*node.rhs,&rhs)) return false;
+  if(!rhs.IsAcc()) SpillToAcc(rhs);
 
   // Patch the branch label
   label.Patch( func_scope()->bc_builder()->CodePosition() );
@@ -810,7 +1029,7 @@ bool Generator::Visit( const ast::Binary& node , ExprResult* result ) {
 
       // Evaluate each operand and its literal value
       if(node.lhs->IsLiteral()) {
-        Register rhs_reg;
+        ScopedRegister rhs_reg;
         if(!VisitExpression(*node.rhs,&rhs_reg)) return false;
         std::int32_t ref = func_scope()->bc_builder()->Add(
             node.lhs->AsLiteral()->int_value );
@@ -818,12 +1037,12 @@ bool Generator::Visit( const ast::Binary& node , ExprResult* result ) {
           ErrorTooComplicatedFunc(node.sci(),result);
           return false;
         }
-        if(!func_scope()->bc_builder()->EmitC(node.sci(),ref,rhs_reg.reg().index())) {
+        if(!func_scope()->bc_builder()->EmitC(node.sci(),ref,rhs_reg.Get().index())) {
           ErrorFunctionTooLong(result);
           return false;
         }
       } else {
-        Register lhs_reg;
+        ScopedRegister lhs_reg;
         if(!VisitExpression(*node.lhs,&lhs_reg)) return false;
         std::int32_t ref = func_scope()->bc_builder()->Add(
             node.rhs->AsLiteral()->int_value );
@@ -831,7 +1050,7 @@ bool Generator::Visit( const ast::Binary& node , ExprResult* result ) {
           ErrorTooComplicatedFunc(node.sci(),result);
           return false;
         }
-        if(!func_scope()->bc_builder()->EmitB(node.sci(),lhs_reg.index(),ref)) {
+        if(!func_scope()->bc_builder()->EmitB(node.sci(),lhs_reg.Get().index(),ref)) {
           ErrorFunctionTooLong(result);
           return false;
         }
@@ -848,7 +1067,7 @@ bool Generator::Visit( const ast::Binary& node , ExprResult* result ) {
       // the LHS can be held in a ACC register and if it is then we
       // need to spill it since RHS can use ACC register as well
       if(lhs.IsAcc()) {
-        if(!SpillAcc(&lhs)) return false;
+        if(!SpillFromAcc(&lhs)) return false;
       }
       if(!VisitExpression(*node.rhs,&rhs)) return false;
 
@@ -871,20 +1090,21 @@ bool Generator::Visit( const ast::Binary& node , ExprResult* result ) {
 
 bool Generator::Visit( const ast::Ternary& node , ExprResult* result ) {
   // Generate code for condition , don't have to be in Acc register
-  Register reg;
+  ScopedRegister reg;
   if(!VisitExpression(*node._1st,&reg)) return false;
 
   // Based on the current condition to branch
-  Bytecode::Label cond_label = func_scope()->bc_builder->jmpf(node.sci());
+  Bytecode::Label cond_label =
+    func_scope()->bc_builder->jmpf(node.sci(),reg.Get().index());
   if(!cond_label) {
     ErrorFunctionTooLong(result);
     return false;
   }
 
-  // Now true / 2nd expression generated here , which is natural fallthrough
-  Register reg_2nd;
+  // Now 2nd expression generated here , which is natural fallthrough
+  ScopedRegister reg_2nd;
   if(!VisitExpression(*node._2nd,&reg_2nd)) return false;
-  if(!reg_2nd.IsAcc()) { SpillToAcc(reg_2nd); reg_2nd.SetAcc(); }
+  if(!reg_2nd.IsAcc()) SpillToAcc(reg_2nd);
 
   // After the 2nd expression generated it needs to jump/skip the 3rd expression
   Bytecode::Label label_2nd = func_scope()->bc_builder()->jmp();
@@ -894,12 +1114,11 @@ bool Generator::Visit( const ast::Ternary& node , ExprResult* result ) {
   }
 
   // Now false / 3nd expression generated here , which is not a natural fallthrough
-
   // The conditional failed branch should jump here which is the false branch value
   cond_label.Patch(func_scope()->bc_builder()->CodePosition());
-  Register reg_3rd;
+  ScopedRegister reg_3rd;
   if(!VisitExpression(*node._3rd,&reg_3rd)) return false;
-  if(!reg_3rd.IsAcc()) { SpillToAcc(reg_3rd); reg_3rd.SetAcc(); }
+  if(!reg_3rd.IsAcc()) SpillToAcc(reg_3rd);
 
   // Now merge 2nd expression jump label
   label_2nd.Patch(func_scope()->bc_builder()->CodePosition());
@@ -907,6 +1126,458 @@ bool Generator::Visit( const ast::Ternary& node , ExprResult* result ) {
   result->SetAcc();
   return true;
 }
+
+bool Generator::VisitExpression( const ast::Node& node , ExprResult* result ) {
+  switch(node.type) {
+    case ast::LITERAL: return Visit(*node.AsLiteral(),result);
+    case ast::VARIABLE: return Visit(*node.AsVariable(),result);
+    case ast::PREFIX:  return Visit(*node.AsPrefix(),result);
+    case ast::BINARY: return Visit(*node.AsBinary(),result);
+    case ast::TERNARY: return Visit(*node.AsTernary(),result);
+    case ast::LIST: return Visit(*node.AsList(),result);
+    case ast::OBJECT: return Visit(*node.AsObject(),result);
+    case ast::FUNCTION: return VisitAnonymousFunction(node,result);
+    default:
+      lava_unreachF("Disallowed expression with node type %s",node.node_name());
+      return false;
+  }
+}
+
+bool Generator::VisitExpression( const ast::Node& node , Register* result ) {
+  ExprResult r;
+  if(!VisitExpression(node,&r)) return false;
+  ScopedRegister reg(this,ExprResultToRegister(r));
+  if(!reg) {
+    ErrorTooComplicatedCode();
+    return false;
+  }
+  *result = reg.Get();
+  return true;
+}
+
+bool Generator::VisitExpression( const ast::Node& node , ScopedRegister* result ) {
+  Register reg;
+  if(!VisitExpression(node,&reg)) return false;
+  result->Reset(reg);
+  return true;
+}
+
+/* ---------------------------------
+ * Statement                       |
+ * --------------------------------*/
+bool Generator::Visit( const ast::Var& node , Register* holder ) {
+  if(node.expr) {
+    Register rhs;
+    if(!VisitExpression(*node.expr,&rhs)) return false;
+    if(rhs.IsAcc()) {
+      // we cannot use acc to hold a local variable
+      Optional<Register> reg(lexical_scope_->DefineVar(*node.var->name));
+      if(!reg) {
+        ErrorLocalVariable(node.sci(),*node.var->name);
+        return false;
+      }
+      semit(move(node.sci(),reg.Get().index(),Register::kAccIndex));
+      if(holder) *holder = reg.Get();
+    } else {
+      if(!lexical_scope_->DefineVar(*node.var->name,rhs)) {
+        ErrorLocalVariable(node.sci(),*node.var->name);
+        return false;
+      }
+      if(holder) *holder = rhs;
+    }
+  } else {
+    Optional<Register> reg(lexical_scope_->DefineVar(*node.var->name));
+    if(!reg) {
+      ErrorLocalVariable(node.sci(),*node.var->name);
+      return false;
+    }
+    if(holder) *holder = reg.Get();
+  }
+  return true;
+}
+
+bool Generator::Visit( const ast::Assign& node ) {
+  if(node.lhs_type() == ast::Assign::LHS_VAR) {
+    return VisitSimpleAssign(node);
+  } else {
+    return VisitComplexAssign(node);
+  }
+}
+
+bool Generator::VisitSimpleAssign( const ast::Assign& node ) {
+  Optional<Register> r(lexical_scope_->GetLocalVar(*node.lhs_var->name));
+  if(!r) {
+    ErrorLocalVariableNotExisted(node.sci(),*node.lhs_var->name);
+    return false;
+  }
+  /**
+   * Optimize for common case since our expression generator allocate
+   * register on demand , this may requires an extra move to move the
+   * intermediate register used to hold rhs to lhs's register
+   */
+  if(node.IsLiteral()) {
+    AllocateLiteral(*node.AsLiteral(),r.Get());
+  } else {
+    ScopedRegister rhs(this);
+    if(!VisitExpression(*node.lhs_var,&rhs)) return false;
+    semit(move(node.sci(),r.index(),rhs.Get().index()));
+  }
+  return true;
+}
+
+bool Generator::VisitPrefixAssign( const ast::Assign& node ) {
+  ScopedRegister lhs(this);
+  ScopedRegister rhs(this);
+  if(!VisitExpression(*node.rhs,&rhs)) return false;
+  if(!VisitPrefix(*node.lhs_pref,node.lhs_pref->list->size()-1,false,&lhs)) return false;
+  const ast::Prefix::Component& last_comp = node.lhs_pref->list->Last();
+  switch(last_comp.t) {
+    case ast::Prefix::Component::DOT:
+      {
+        std::int32_t ref = func_scope_->bc_builder()->Add(
+            *last_comp.var->name,context_);
+        if(ref<0) {
+          ErrorTooComplicatedCode(node.sci());
+          return false;
+        }
+        if(!rhs.IsAcc()) {
+          semit(move(node.sci(),Register::kAccIndex,rhs.Get().index()));
+        }
+        semit(propset(node.sci(),lhs.Get().index(),ref));
+      }
+      break;
+    case ast::Prefix::Component::INDEX:
+      {
+        /**
+         * Since we need to evaluate the component expression inside of
+         * the IDXSET instruction to feed it. And the evaluation can
+         * result in Acc to be scratched. So we need to move the result
+         * from the rhs to be in a temporary register and then evaluate
+         * the stuff
+         */
+        Register rhs_reg(rhs.Get());
+        if(rhs_reg.IsAcc()) {
+          Optional<Register> temp(SpillFromAcc());
+          if(!temp) return false;
+          rhs_reg = temp.Get();
+        }
+
+        ScopedRegister expr_reg;
+        if(!VisitExpression(*last_comp.expr,&expr_reg)) return false;
+
+        // idxset REG REG REG
+        semit(idxset(node.sci(),lhs.Get().index(),expr_reg.Get().index(),
+                                                  rhs_reg.index()));
+
+        if(rhs.IsAcc()) ra_.Drop(rhs_reg); // Drop rhs_reg since in this case the rhs_reg
+                                           // is not protected by the rhs ScopedRegister
+
+      }
+      break;
+    default:
+      lava_unreach("Cannot be in this case ending with a function call");
+      return false;
+  }
+  return true;
+}
+
+bool Generator::Visit( const ast::Call& node ) {
+  Register reg;
+  if(!VisitPrefix(*node.call,node.call->list->size(),false,&reg)) return false;
+  // Must be inside of the Acc since the Prefix is ending with a CALL component
+  lava_verify(reg.IsAcc());
+  return true;
+}
+
+bool Generator::Visit( const ast::If& node ) {
+  std::vector<Bytecode::Label> label_vec;
+  Bytecode::Label prev_jmp;
+  const std::size_t len = node.br_list->size();
+  for( std::size_t i = 0 ; i < len ; ++i ) {
+    const If::Branch& br = node.br_list->Index(i);
+    // If we have a previous branch, then its condition should jump
+    // to this place
+    if(prev_jmp) {
+      prev_jmp.Patch(func_scope_->bb_builder()->CodePosition());
+    }
+
+    // Generate condition code if we need to
+    if(br.cond) {
+      ScopedRegister cond(this);
+      if(!VisitExpression(*br.cond,&cond)) return false;
+      prev_jmp = func_scope_->bb_builder()->jmpf(br.cond->sci(),cond.Get().index());
+      if(!prev_jmp) {
+        ErrorTooComplicatedCode(br.cond->sci());
+        return false;
+      }
+    } else {
+#ifdef LAVASCRIPT_CHECK_OBJECTS
+      lava_verify( i == len - 1);
+#endif // LAVASCRIPT_CHECK_OBJECTS
+    }
+
+    // Generate code body
+    if(!VisitChunk(*br.body)) return false;
+
+    // Generate the jump
+    if(br.cond)
+      label_vec.push(func_scope_->bb_builder()->jmp(br.cond->sci()));
+  }
+
+  for(auto &e : label_vec) e.Patch(func_scope_->bb_builder()->CodePosition());
+  return true;
+}
+
+bool Generator::VisitForCondition( const ast::For& node ,
+                                   const Register& var  ) {
+  ExprResult cond;
+  if(!VisitExpression(*node._2nd,&cond)) return false;
+  switch(cond.kind()) {
+    case KINT:
+      semit(ltvi(node._2nd->sci(),var.index(),cond.ref()));
+      break;
+    case KREAL:
+      semit(ltvr(node._2nd->sci(),var.index(),cond.ref()));
+      break;
+    case KSTR:
+      semit(ltvs(node._2nd->sci(),var.index(),cond.ref()));
+    default:
+      {
+        ScopedRegister r(this,ExprResultToRegister(cond));
+        if(!r) {
+          ErrorTooComplicatedCode();
+          return false;
+        }
+        smit(ltvv(node._2nd->sci(),var.index(),r.Get().index()));
+      }
+      break;
+  }
+  return true;
+}
+
+bool Generator::Visit( const ast::For& node ) {
+  Bytecode::Label forward;
+  Register induct_reg;
+
+  if(node._2nd) {
+    lava_verify(node._1st);
+    if(!Visit(*node._1st,&induct_reg)) return false;
+    if(!VisitForCondition(node,induct_reg)) return false;
+    forward = func_scope_->bc_builder()->fstart( node.sci() );
+  } else {
+    if(node._1st) {
+      if(!Visit(*node._1st,&induct_reg)) return false;
+    }
+    semit(fevrstart(node.sci())); // Mark for JIT
+  }
+
+  /* ------------------------------------------
+   * Loop body                                |
+   * -----------------------------------------*/
+  {
+    EnterLoopScope scope(this);
+
+    std::uint16_t header = static_cast<std::uint16_t>(
+        func_scope_->bc_builder()->CodePosition());
+
+    if(!VisitChunk(*node.body,false)) return false;
+
+    // Patch all contiune to jump here
+    scope.loop_scope()->PatchContinue(static_cast<std::uint16_t>(
+          func_scope_->bc_builder()->CodePosition()));
+
+    /**
+     * Now generate loop header at the bottom of the loop. Basically
+     * we have a simple loop inversion for the for loop
+     */
+    if(node._2nd) {
+      if(!VisitForCondition(node,induct_reg)) return false;
+
+      // Jump back to the loop header
+      semit(fend(node.sci(),header));
+    } else {
+      semit(fevrend(node.sci(),header));
+    }
+
+    // Patch all break to jump here , basically jumps out of
+    // the scope
+    scope.loop_scope()->PatchBreak(static_cast<std::uint16_t>(
+          func_scope_->bc_builder()->CodePosition()));
+  }
+  if(forward) {
+    forward.Patch( static_cast<std::uint16_t>(
+          func_scope_->bc_builder()->CodePosition()) );
+  }
+
+  return true;
+}
+
+bool Generator::Visit( const ast::ForEach& node ) {
+  Register reg;
+  if(!VisitExpression(*node.itr,&reg)) return false;
+
+  // Pin the iterator's register to a name
+  lexical_scope_->DefineAnonymousVar(reg);
+
+  // Generate the festart
+  Bytecode::Label forward = func_scope_->bc_builder()->festart(node.sci());
+
+  {
+    EnterLoopScope scope(this);
+
+    std::uint16_t header = static_cast<std::uint16_t>(
+        func_scope_->bc_builder()->CodePosition());
+
+    Optional<Register> v(func_scope_->DefineVar(*node.var->name));
+    if(!v) {
+      ErrorTooComplicatedCode(node.var->sci());
+      return false;
+    }
+
+    // Deref the key from iterator register into the target register
+    semit(idref(node.var->sci(),v.Get().index(),reg.index()));
+
+    // Visit the chunk
+    if(!VisitChunk(*node.body,false)) return false;
+
+    scope.loop_scope()->PatchContinue(static_cast<std::uint16_t>(
+          func_scope_->bc_builder()->CodePosition()));
+
+    semit(feend(node.sci(),reg.index(),header));
+
+
+    scope.loop_scope()->PatchBreak(static_cast<std::uint16_t>(
+          func_scope_->bc_builder()->CodePosition()));
+  }
+
+  forward.Patch(static_cast<std::uint16_t>(
+        func_scope_->bc_builder()->CodePosition()));
+
+  return true;
+}
+
+bool Generator::Visit( const ast::Continue& node ) {
+  if(!lexical_scope_->AddContinue(node)) {
+    ErrorTooComplicatedCode(node.sci());
+    return false;
+  }
+  return true;
+}
+
+bool Generator::Visit( const ast::Break& node ) {
+  if(!lexical_scope_->AddBreak(node)) {
+    ErrorTooComplicatedCode(node.sci());
+    return false;
+  }
+  return true;
+}
+
+/*
+ * As long as the return value is a function call , then we can
+ * tail call optimized it
+ */
+bool Generator::CanBeTailCallOptimized( const ast::Node& node ) {
+  if(node.IsPrefix()) {
+    const ast::Prefix& p = *node.AsPrefix();
+    if(p.list->Last().IsCall()) {
+      return true;
+    }
+  }
+  return false;
+}
+
+bool Generator::Return( const ast::Return& node ) {
+  if(!node.has_return_value()) {
+    semit(ret0(node.sci()));
+  } else {
+    // Look for return function-call() style code and then perform
+    // tail call optimization on this case. Basically, as long as
+    // the return is returning a function call , then we can perform
+    // tail call optimization since we don't need to return to the
+    // previous call frame at all.
+    if(CanBeTailCallOptimized(*node.expr)) {
+#ifdef LAVASCRIPT_CHECK_OBJECTS
+      lava_verify(node.expr->IsPrefix());
+#endif // LAVASCRIPT_CHECK_OBJECTS
+      ScopedRegister ret;
+      if(!VisitPrefix(*node.expr->AsPrefix(),
+                      node.expr->AsPrefix()->list->size(),
+                      true, // allow the tail call optimization
+                      &ret))
+        return false;
+      if(!ret.IsAcc()) SpillToAcc(ret);
+    } else {
+      ScopedRegister ret;
+      if(!VisitExpression(*node.expr,&ret)) return false;
+      if(!ret.IsAcc()) SpillToAcc(ret);
+    }
+    semit(ret(node.sci()));
+  }
+  return true;
+}
+
+bool Generator::VisitStatment( const ast::Node& node ) {
+  switch(node.type) {
+    case ast::VAR: return Visit(*node.AsVar());
+    case ast::ASSIGN: return Visit(*node.AsAssign());
+    case ast::CALL: return Visit(*node.AsCall());
+    case ast::IF: return Visit(*node.AsIf());
+    case ast::FOR: return Visit(*node.AsFor());
+    case ast::FOREACH: return Visit(*node.AsForEach());
+    case ast::BREAK: return Visit(*node.AsBreak());
+    case ast::CONTINUE: return Visit(*node.AsContinue());
+    case ast::RETURN: return Visit(*node.AsReturn());
+    case ast::FUNCTION: return VisitNamedFunction(*node.AsFunction());
+    default: lava_unreachF("Unexpected statement node %s",node.node_name());
+  }
+  return false;
+}
+
+bool Generator::VisitChunkNoLexicalScope( const ast::Chunk& node ) {
+  const std::size_t len = node.body->size();
+  for( std::size_t i = 0 ; i < len ; ++i ) {
+    if(!VisitStatment(*node.body->Index(i))) return false;
+  }
+  return true;
+}
+
+bool Generator::VisitChunk( const ast::Chunk& node , bool scope ) {
+  if(scope) {
+    EnterLexicalScope scope(this);
+    return VisitChunkNoLexicalScope(node);
+  }
+  return VisitChunkNoLexicalScope(node);
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 

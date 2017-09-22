@@ -77,6 +77,8 @@ template< typename T > class Handle {
  * of lavascript. It can hold things like:
  *    1) primitive type or value type holding, and it is value copy
  *    3) GCRef hold, implicitly hold HeapObject , and it is reference copy
+ *
+ * The implementation of Value uses NaN-tagging
  */
 
 class Value final {

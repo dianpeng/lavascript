@@ -62,7 +62,8 @@ class AstFactory {
   inline Ternary* NewTernary( size_t start , size_t end , Node* , Node* , Node* );
   inline Ternary* NewTernary( const Lexer& , Node* , Node* , Node* );
 
-  inline List* NewList( size_t start , size_t end , ::lavascript::zone::Vector<Node*>* a = NULL );
+  inline List* NewList( size_t start , size_t end ,
+      ::lavascript::zone::Vector<Node*>* a = NULL );
 
   inline Object* NewObject( size_t start , size_t end ,
       ::lavascript::zone::Vector<Object::Entry>* a = NULL );
@@ -90,7 +91,9 @@ class AstFactory {
   inline Continue* NewContinue( size_t start , size_t end );
   inline Return* NewReturn( size_t start , size_t end , Node* );
 
-  inline Chunk* NewChunk( size_t , size_t , ::lavascript::zone::Vector<Node*>* );
+  inline Chunk* NewChunk( size_t , size_t , ::lavascript::zone::Vector<Node*>* ,
+                                            ::lavascript::zone::Vector<Variable*>*,
+                                            bool );
 
   inline Function* NewFunction( size_t , size_t , Variable* ,
                                                   ::lavascript::zone::Vector<Variable*>*,
@@ -263,8 +266,11 @@ inline Return* AstFactory::NewReturn( size_t start , size_t end , Node* e ) {
   return new (zone_) Return(start,end,e);
 }
 
-inline Chunk* AstFactory::NewChunk( size_t start , size_t end , ::lavascript::zone::Vector<Node*>* b ) {
-  return new (zone_) Chunk(start,end,b);
+inline Chunk* AstFactory::NewChunk( size_t start , size_t end ,
+    ::lavascript::zone::Vector<Node*>* b ,
+    ::lavascript::zone::Vector<Variable*>* lv ,
+    bool has_iterator ) {
+  return new (zone_) Chunk(start,end,b,lv,has_iterator);
 }
 
 inline Function* AstFactory::NewFunction( size_t start , size_t end , Variable* n ,

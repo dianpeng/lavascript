@@ -702,13 +702,32 @@ ast::Chunk* Parser::ParseChunk() {
   size_t expr_end   = lexer_.lexeme().end;
 
   Vector<ast::Node*>* ck = Vector<ast::Node*>::New(zone_);
+  Vector<ast::Variable*>* lv = Vector<ast::Variable*>::New(zone_);
+  bool has_iterator = false;
 
   if(lexer_.Next().token == Token::kRBra) {
-    return ast_factory_.NewChunk( expr_start , expr_end , ck );
+    return ast_factory_.NewChunk( expr_start , expr_end , ck , lv , 
+                                                               has_iterator );
   } else {
     do {
       ast::Node* stmt = ParseStatement();
       if(!stmt) return NULL;
+
+      /**
+       * Sort out all the local variable declaration and put them
+       * into the local_vars list. The code generator will first
+       * reserve the needed register for those local variable to
+       * maintain register allocation in order
+       */
+      if(stmt->IsVar()) {
+        lv->Add(zone_,stmt->AsVar()->var);
+      } else if(stmt->IsFor()) {
+        ast::Var* v = stmt->AsFor()->_1st;
+        if(v) lv->Add(zone_,v->var);
+      } else if(stmt->IsForEach()) {
+        lv->Add(stmt->AsForEach()->var);
+        has_iterator = true;
+      }
 
       ck->Add(zone_,stmt);
 
@@ -723,7 +742,7 @@ ast::Chunk* Parser::ParseChunk() {
     expr_end = lexer_.lexeme().end;
     lexer_.Next(); // Skip the last }
 
-    return ast_factory_.NewChunk(expr_start,expr_end,ck);
+    return ast_factory_.NewChunk(expr_start,expr_end,ck,lv,has_iterator);
   }
 }
 

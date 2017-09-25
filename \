@@ -231,7 +231,7 @@ enum BytecodeType {
  */
 enum UpValueState {
   UV_EMBED,
-  UV_DETACH
+  UB_DETACH
 };
 
 const char* GetUpValueStateName( UpValueState );
@@ -259,7 +259,8 @@ class BytecodeBuilder {
   inline BytecodeBuilder();
 
  public:
-  inline bool AddUpValue( UpValueState , std::uint16_t , std::uint16_t* );
+  /* Add an upvalue into the prototype of this function. */
+  inline std::int32_t AddUpValue( UpValueState state );
 
   std::int32_t Add( std::int32_t );
   std::int32_t Add( double );
@@ -279,6 +280,7 @@ class BytecodeBuilder {
     bool IsOk() const { return builder_ != NULL; }
     operator bool () const { return IsOk(); }
     inline void Patch( std::uint16_t );
+    inline void PatchX();
    private:
     std::size_t index_;
     BytecodeBuilder* builder_;
@@ -374,7 +376,16 @@ class BytecodeBuilder {
 
  public:
   /**
-   * This XARG call is used to extend CALL/MCALL instruction.
+   * This XARG call is used to extend certain instruction , like:
+   *   1) all call instruction
+   *   2) LOADOBJ
+   *   3) LOADLIST
+   *
+   * The reason is above instruction requires many additionally
+   * argument :
+   *   1) call has its argument stored inside register
+   *   2) loadobj has its literal argument stored inside of register
+   *   3) loadlist has its literal argument stored inside of register
    *
    * What argument are used depends on the bytecode, the xarg function
    * will do proper padding to ensure we all end up with 4 bytes aligned

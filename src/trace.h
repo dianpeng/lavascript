@@ -104,6 +104,32 @@ inline void LogD( LogSeverity severity , const char* file ,
 #define lava_errorD( FMT , ... ) \
   ::lavascript::detail::LogD( kLogError , __FILE__ , __LINE__ , FMT , __VA_ARGS__ )
 
+/**
+ * Helper for debugging code or other verification when certain compiler
+ * level is reached.
+ */
+
+#define lava_debug( LEVEL , ... ) \
+  _LAVA_DEBUG_##LEVEL( __VA_ARGS__ )
+
+#if LAVASCRIPT_DEBUG_LEVEL == 0
+#define _LAVA_DEBUG_NORMAL( ... ) (void)(NULL)
+#define _LAVA_DEBUG_VERBOSE(... ) (void)(NULL)
+#define _LAVA_DEBUG_CRAZY ( ... ) (void)(NULL)
+#elif LAVASCRIPT_DEBUG_LEVE == 1
+#define _LAVA_DEBUG_NORMAL( ... ) do { __VA_ARGS__ } while(false)
+#define _LAVA_DEBUG_VERBOSE( ... ) (void)(NULL)
+#define _LAVA_DEBUG_CRAZY ( ... ) (void)(NULL)
+#elif LAVASCRIPT_DEBUG_LEVEL == 2
+#define _LAVA_DEBUG_NORMAL( ... ) do { __VA_ARGS__ } while(false)
+#define _LAVA_DEBUG_VERBOSE( ... ) do { __VA_ARGS__ } while(false)
+#define _LAVA_DEBUG_CRAZY ( ... ) (void)(NULL)
+#elif LAVASCRIPT_DEBUG_LEVEL == 2
+#define _LAVA_DEBUG_NORMAL( ... ) do { __VA_ARGS__ } while(false)
+#define _LAVA_DEBUG_VERBOSE( ... ) do { __VA_ARGS__ } while(false)
+#define _LAVA_DEBUG_CRAZY ( ... ) do ( __VA_ARGS__ } while(false)
+#endif // LAVASCRIPT_DEBUG_LEVEL
+
 
 /**
  * Helper function for tracking the time spent in certain lexical scope

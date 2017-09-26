@@ -13,8 +13,6 @@
  * Each bytecode occupies 4 bytes , it generally consists of following different types :
  *
  * ----------------------------
- * | OP |   Operand           |             type A
- * ----------------------------
  * | OP |  A   |       B      |             type B
  * ----------------------------
  * | OP |      A       |  B   |             type C
@@ -182,10 +180,10 @@ static const std::size_t kAllocatableBytecodeRegisterSize = 255;
   __(C,GSET   ,gset  ,"gset" ,GARG,REG,_) \
   __(B,GGET   ,gget  ,"gget" ,REG,GARG,_) \
   /* forloop tag */ \
-  __(A,FSTART,fstart,"fstart",PC,_) \
-  __(A,FEND  ,fend  ,"fend"  ,PC,_,_) \
-  __(X,FEVRSTART,fevrstart,"fevrstart",PC,_,_) \
-  __(A,FEVREND,fevrend,"frvrend",PC,_,_ ) \
+  __(C,FSTART,fstart,"fstart",PC,REG,_) \
+  __(G,FEND  ,fend  ,"fend"  ,PC,_,_) \
+  __(G,FEVRSTART,fevrstart,"fevrstart",PC,_,_) \
+  __(G,FEVREND,fevrend,"frvrend",PC,_,_ ) \
   __(B,FESTART,festart,"festart",REG,PC,_) \
   __(B,FEEND  ,feend  ,"feend"  ,REG,PC,_) \
   __(E,IDREF  ,idref  ,"idref"  ,REG,REG,_) \
@@ -207,7 +205,6 @@ static_assert( SIZE_OF_BYTECODE <= 255 );
 
 /** bytecode type **/
 enum BytecodeType {
-  TYPE_A,
   TYPE_B,
   TYPE_C,
   TYPE_D,
@@ -280,11 +277,11 @@ class BytecodeBuilder {
     operator bool () const { return IsOk(); }
     inline void Patch( std::uint16_t );
    private:
+    BytecodeType type_;
     std::size_t index_;
     BytecodeBuilder* builder_;
   };
 
-  inline bool EmitA( const SourceCodeInfo& , Bytecode , std::uint32_t );
   inline bool EmitB( const SourceCodeInfo& , Bytecode , std::uint8_t , std::uint16_t );
   inline bool EmitC( const SourceCodeInfo& , Bytecode , std::uint16_t, std::uint8_t  );
   inline bool EmitD( const SourceCodeInfo& , Bytecode , std::uint8_t , std::uint8_t ,
@@ -293,18 +290,15 @@ class BytecodeBuilder {
   inline bool EmitG( const SourceCodeInfo& , Bytecode , std::uint16_t );
   inline bool EmitX( const SourceCodeInfo& , Bytecode );
 
-  inline Label EmitAt( const SourceCodeInfo& , Bytecode );
-  inline Label EmitAt( const SourceCodeInfo& , Bytecode , std::uint8_t );
+  template< int BC , int TP , bool A1 = false , bool A2 = false , bool A3 = false >
+  inline Lable EmitAt( const SourceCodeInfo& , std::uint32_t a1 = 0 ,
+                                               std::uint32_t a2 = 0 ,
+                                               std::uint32_t a3 = 0 );
 
  public:
   /** ---------------------------------------------------
    * Bytecode emittion
    * ---------------------------------------------------*/
-
-#define IMPLA(INSTR,C)                                         \
-  bool C(const SourceCodeInfo& si , std::uint32_t a1) {        \
-    return EmitA(si,INSTR,a1);                                 \
-  }
 
 #define IMPLB(INSTR,C)                                                     \
   bool C(const SourceCodeInfo& si , std::uint8_t a1 , std::uint16_t a2 ) { \
@@ -345,7 +339,6 @@ class BytecodeBuilder {
 #define __(A,B,C,D,E,F,G) IMPL##A(BC_##B,C)
   LAVASCRIPT_BYTECODE_LIST(__)
 #undef __           // __
-#undef IMPLA        // IMPLA
 #undef IMPLB        // IMPLB
 #undef IMPLC        // IMPLC
 #undef IMPLD        // IMPLD
@@ -358,20 +351,17 @@ class BytecodeBuilder {
   /* -----------------------------------------------------
    * Jump related isntruction                            |
    * ----------------------------------------------------*/
-  Label jmpt( const SourceCodeInfo& si , const std::uint8_t r ) {
-    return EmitAt(si,BC_JMPT,r);
-  }
-  Label jmpf( const SourceCodeInfo& si , const std::uint8_t r ) {
-    return EmitAt(si,BC_JMPF,r);
-  }
-  Label and ( const SourceCodeInfo& si ) { return EmitAt(si,BC_AND); }
-  Label or  ( const SourceCodeInfo& si ) { return EmitAt(si,BC_OR); }
-  Label jmp ( const SourceCodeInfo& si ) { return EmitAt(si,BC_JMP ); }
-  Label brk ( const SourceCodeInfo& si ) { return EmitAt(si,BC_BRK ); }
-  Label cont( const SourceCodeInfo& si ) { return EmitAt(si,BC_CONT); }
-  Label fstart( const SourceCodeInfo& si ) { return EmitAt(si,BC_FSTART); }
-  Label fevrend( const SourceCodeInfo& si ) { return EmitAt(si,BC_FEVREND); }
-
+  inline Label jmpt( const SourceCodeInfo& si , const std::uint8_t r );
+  inline Label jmpf( const SourceCodeInfo& si , const std::uint8_t r );
+  inline Label and ( const SourceCodeInfo& si );
+  inline Label or  ( const SourceCodeInfo& si );
+  inline Label jmp ( const SourceCodeInfo& si );
+  inline Label brk ( const SourceCodeInfo& si );
+  inline Label cont( const SourceCodeInfo& si );
+  inline Label fstart( const SourceCodeInfo& si );
+  inline Label fevrend( const SourceCodeInfo& si );
+  inline Label festart( const SourceCodeInfo& si , const Register& a1 );
+  inline Label feend( const SourceCodeInfo& si , const Register& a1 );
  public:
   /**
    * This XARG call is used to extend CALL/MCALL instruction.

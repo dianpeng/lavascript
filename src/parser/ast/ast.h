@@ -382,7 +382,7 @@ struct Return : public Node {
 
 struct Chunk : public Node {
   zone::Vector<Node*>* body;
-  zone::Vector<Variable*> local_vars;      // All the local variable definition , includes
+  zone::Vector<Variable*>* local_vars;     // All the local variable definition , includes
                                            // those defined inside of the for/foreach stmt
   bool has_iterator;                       // Indicate whether this scope has iterator
                                            // introduced. As long as there is at least

@@ -129,8 +129,9 @@ class ScopedRegister {
   operator bool() const { return !IsEmpty(); }
   const Register& Get() const { lava_verify(!IsEmpty()); return reg_; }
   inline Register Release();
-  inline void Reset( const Register& reg = Register() );
-  inline void Reset( const Optional<Register>& reg );
+  inline void Reset( const Register& reg );
+  inline void Reset();
+  inline bool Reset( const Optional<Register>& reg );
  private:
   Generator* generator_;
   Register reg_;
@@ -167,7 +168,7 @@ class RegisterAllocator {
   std::size_t size() const { return size_; }
  public:
   // The following API are used for local variable reservation
-  inline bool EnterScope( std::size_t );
+  inline bool EnterScope( std::size_t , std::uint8_t* base );
   inline void LeaveScope();
   std::uint8_t base() const { return scope_base_.back(); }
   bool IsReserved( const Registe& reg ) const {
@@ -196,158 +197,6 @@ class RegisterAllocator {
   std::vector<std::uint8_t> scope_base_;
 };
 
-RegisterAllocator::RegisterAllocator():
-  free_register_(NULL),
-  size_(kAllocatableBytecodeRegisterSize),
-  reg_buffer_()
-{
-  Node* n = reinterpret_cast<Node*>(reg_buffer_);
-
-  for( std::size_t i = 0 ; i < kAllocatableBytecodeRegisterSize-1; ++i ) {
-    ConstructFromBuffer<Node>(n,i);
-    n->next = n+1;
-    ++n;
-  }
-  ConstructFromBuffer<Node>(n,kAllocatableBytecodeRegisterSize-1);
-  n->next = NULL;
-}
-
-inline Optional<Register> RegisterAllocator::Grab() {
-  if(free_register_) {
-    Node* ret = free_register_;
-    free_register_ = free_register_->next;
-    ret->next = static_cast<Node*>(kNotUsed);
-    --size_;
-    return Optional<Register>(ret->reg);
-  }
-  return Optional<Register>();
-}
-
-inline void RegisterAllocator::Drop( const Register& reg ) {
-  if(!reg.IsAcc() && !IsReserved(reg)) {
-    Node* n = RegisterToSlot(reg);
-
-#ifdef LAVASCRIPT_CHECK_OBJECTS
-    lava_verify(n->next == static_cast<Node*>(kNotUsed));
-#endif // LAVASCRIPT_CHECK_OBJECTS
-
-    /**
-     * Ensure the register is put in order and then Grab function
-     * will always return the least indexed registers
-     */
-    if(free_register_) {
-      if(free_register_->reg.index() > reg.index()) {
-        n->next = free_register_;
-        free_register_ = n;
-      } else {
-        for( Node* c = free_register_ ; c ; c = c->next ) {
-#ifdef LAVASCRIPT_CHECK_OBJECTS
-          lava_verify(c->reg.index() <  reg.index());
-#endif // LAVASCRIPT_CHECK_OBJECTS
-
-          Node* next = c->next;
-          if(next) {
-            if(next->reg.index() > reg.index()) {
-              c->next = n;
-              n->next = next;
-              break;
-            }
-          } else {
-            c->next = n;
-            break;
-          }
-        }
-      }
-    } else {
-      n->next = NULL;
-      free_register_ = n;
-    }
-    ++size_;
-  }
-
-#ifdef LAVASCRIPT_CHECK_OBJECTS
-  for( Node* c = free_register_ ; c ; c = c->next ) {
-    lava_verify( c->next && c->reg.index() < c->next->reg.index() );
-  }
-#endif // LAVASCRIPT_CHECK_OBJECTS
-}
-
-inline bool RegisterAllocator::IsAvailable( const Register& reg ) {
-  Node* n = RegisterToSlot(reg);
-  return n->next != static_cast<Node*>(kNotUsed);
-}
-
-inline bool RegisterAllocator::IsUsed( const Register& reg ) {
-  Node* n = RegisterToSlot(reg);
-  return n->next == static_cast<Node*>(kNotUsed);
-}
-
-inline RegisterAllocator::Node*
-RegisterAllocator::RegisterToSlot( const Register& reg ) {
-#ifdef LAVASCRIPT_CHECK_OBJECTS
-  lava_verify(!reg.IsAcc());
-#endif // LAVASCRIPT_CHECK_OBJECTS
-  Node* n = reinterpret_cast<Node*>(reg_buffer_) + reg.index();
-  return n;
-}
-
-bool RegisterAllocator::EnterScope( std::size_t size ) {
-#ifdef LAVASCRIPT_CHECK_OBJECTS
-  if(free_register_)
-    lava_verify( free_register_->reg.index() == base() + 1 );
-#endif // LAVASCRIPT_CHECK_OBJECTS
-
-  if((base() + size) > kAllocatableBytecodeRegisterSize) {
-    return false; // Too many registers so we cannot handle it
-  } else {
-    std::size_t start = base();
-    Node* next;
-    Node* cur;
-
-    for( cur = free_register_ ; cur ; cur = next ) {
-
-#ifdef LAVASCRIPT_CHECK_OBJECTS
-      lava_verify(cur->reg.index() == start);
-#endif // LAVASCRIPT_CHECK_OBJECTS
-
-      next = cur->next;
-      cur->next = static_cast<Node*>(kNotUsed);
-      ++start;
-      if(start == base()+size) break;
-    }
-
-    size_ -= size;
-    free_register_ = cur;
-    scope_base_.push_back(base()+size);
-
-    return true;
-  }
-}
-
-void RegisterAllocator::LeaveScope() {
-#ifdef LAVASCRIPT_CHECK_OBJECTS 
-  lava_verify(!scope_base_.empty());
-  lava_verify(!free_register_ ||
-              (free_register_->reg.index() == scope_base_.back()));
-#endif // LAVASCRIPT_CHECK_OBJECTS
-  std::uint8_t end = scope_base_.back();
-  scope_base_.pop();
-  std::uint8_t start = scope_base_.empty() ? 0 : scope_base_.back();
-
-  if(end == kAllocatableBytecodeRegisterSize) {
-    RegisterToSlot(end)->next = NULL;
-  }
-
-  for( --end ; end > start ; --end ) {
-    Node* to = RegisterToSlot(Register(end));
-    Node* from = RegisterToSlot(end-1);
-    from->next = to;
-  }
-
-  free_register_ = RegisterToSlot(start);
-  size_ += (end-start);
-}
-
 /**
  * Scope is an object that is used to track all the information generated
  * during the conversion phase. Basically we have 2 types of scopes:
@@ -364,19 +213,17 @@ class Scope {
 
   virtual bool IsLexicalScope() const = 0;
   virtual bool IsFunctionScope()const = 0;
-  virtual FunctionScope* AsFunctionScope() = 0;
-  virtual LexicalScope*  AsLexicalScope () = 0;
+  inline FunctionScope* AsFunctionScope();
+  inline LexicalScope*  AsLexicalScope ();
 
  protected:
   // Get the nearest enclosed function scope
   static FunctionScope* GetEnclosedFunctionScope( Scope* );
 
-  Scope( Generator* gen , Scope* p ):
-    generator_(gen),
+  Scope( Generator* gen ):
+    generator_(gen,gen->lexical_scope_),
     parent_(p)
   {}
-
-  virtual ~Scope() {}
 
  private:
   Generator* generator_;      // generator object
@@ -385,17 +232,18 @@ class Scope {
   LAVA_DISALLOW_COPY_AND_ASSIGN(Scope);
 };
 
-FunctionScope* Scope::GetEnclosedFunctionScope( Scope* scope ) {
-  while(scope && !scope->IsFunctionScope()) {
-    scope = scope->parent();
-  }
-  return scope ? scope->AsFunctionScope() : NULL;
-}
-
 class LexicalScope : public Scope {
  public:
-  inline LexicalScope( Generator* , bool loop );
-  inline ~LexicalScope();
+  virtual bool IsLexicalScope() const { return true; }
+  virtual bool IsFunctionScope() const { return false; }
+ public:
+  LexicalScope( Generator* , bool loop );
+  ~LexicalScope();
+
+  // We need to call this function right after the LexicalScope is
+  // setup since inside of this function it reserves the registers
+  // slot at very first part of the stack for local variables.
+  bool Init( const ast::Chunk& );
 
   FunctionScope* func_scope() const { return func_scope_; }
  public:
@@ -404,13 +252,19 @@ class LexicalScope : public Scope {
    * -----------------------------------*/
 
   // Define a local variable with the given Register
-  bool DefineLocalVar( const zone::String& , const Regiser& );
+  inline bool DefineLocalVar( const zone::String& , const Regiser& );
 
   // Get a local variable from current lexical scope
-  Optional<Register> GetLocalVar( const zone::String& );
+  inline Optional<Register> GetLocalVar( const zone::String& );
+
+  // Get a loop variable in current scope and it *must* be in this loop.
+  Register GetIterator() const {
+    lava_debug(NORMAL,lava_verify(iterator_.Has()););
+    return iterator_.Get();
+  }
 
   // Size of variables defined in *this* scope
-  std::size_t var_size() const;
+  std::size_t var_size() const { return local_vars_.size(); }
 
  public:
   /**----------------------------------------
@@ -421,14 +275,14 @@ class LexicalScope : public Scope {
   bool IsLoopScope() const { return IsLoop() || IsInLoop(); }
 
   // Find its nearest enclosed loop scope can return *this*
-  LexicalScope* GetEnclosedLoopScope() const;
+  LexicalScope* GetEnclosedLoopScope();
 
   // Helpers for Break and Continue's jump
   inline bool AddBreak( const ast::Break& );
   inline bool AddContinue( const ast::Continue& );
 
-  inline void PatchBreak( std::uint16_t );
-  inline void PatchContinue( std::uint16_t );
+  void PatchBreak( std::uint16_t );
+  void PatchContinue( std::uint16_t );
 
  private:
   // Local variables related to this lexical scope
@@ -446,7 +300,7 @@ class LexicalScope : public Scope {
 
   // Whether this lexical scope is a direct body of a loop
   bool is_loop_;
-  
+
   // Whether this lexical scope is a scope that has been enclosed
   // by a loop body scope
   bool is_in_loop;
@@ -460,13 +314,16 @@ class LexicalScope : public Scope {
   // Function scope that enclose this lexical scope
   FunctionScope* func_scope_;
 
+  // Iterator that is used for the loops right inside of this loops
+  Optional<Register> iterator_;
+
 
   LAVA_DISALLOW_COPY_AND_ASSIGN(FunctionScope);
 };
 
-class FunctionScope {
+class FunctionScope : public Scope {
  public:
-  inline FunctionScope( Generator* );
+  inline FunctionScope( Generator* , const ast::Function& node );
   inline ~FunctionScope();
 
  public:
@@ -475,6 +332,8 @@ class FunctionScope {
 
   // register allocator
   RegisterAllocator* ra() { return &ra_; }
+
+  const ast::Function& func_node() const { return *func_node_; }
  public:
   /* --------------------------------
    * full lexical scope local var   |
@@ -514,7 +373,7 @@ class FunctionScope {
   struct UpValue {
     const zone::String* name;
     std::uint16_t index;
-    UpValue( const zone::String* n , std::uint16_t* i ):name(n),index(i) {}
+    UpValue( const zone::String* n , std::uint16_t i ):name(n),index(i) {}
     bool operator == ( const zone::String& n ) const {
       return *name == n;
     }
@@ -524,89 +383,12 @@ class FunctionScope {
   // All enclosed lexical scope at this time
   std::vector<LexicalScope*> lexical_scope_list_;
 
+  const ast::Function* func_node_;
+
   friend class LexicalScope;
 
   LAVA_DISALLOW_COPY_AND_ASSIGN(FunctionScope);
 };
-
-int FunctionScope::GetUpValue( const zone::String& name ,
-                               std::uint16_t* index ) {
-#ifdef LAVASCRIPT_CHECK_OBJECTS
-  lava_verify( !GetLocalVar(name).Has() );
-#endif // LAVASCRIPT_CHECK_OBJECTS
-
-  if(FindUpValue(name,index)) {
-    return UV_SUCCESS;
-  } else {
-    FunctionScope* scope = GetEnclosedFunctionScope(this);
-    std::vector<FunctionScope*> scopes;
-    scopes.push_back(this);
-
-    while(scope) {
-      // find the name inside of upvalue slot
-      std::uint16_t index;
-      if(scope->FindUpValue(name,&indx)) {
-
-        // find the name/symbol as upvalue in the |scope|
-        for( std::vector<Scope*>::reverse_iterator itr =
-            scopes.rbegin() ; itr != scopes.rend() ; ++itr ) {
-          std::uint16_t idx;
-          if(!scope->bb()->AddUpValue(UV_DETACH,rindex,&idx))
-            return UV_FAILED;
-          index = idx;
-        }
-        return UV_SUCCESS;
-      }
-
-      Optional<Register> reg(scope->GetLocalVar(name));
-      if(reg) {
-        {
-          FunctionScope* last = scopes.back();
-          if(!last->AddUpValue(UV_EMBED,reg.Get().index(),&index))
-            return UV_FAILED; 
-        }
-
-        if(scopes.rbegin() != scopes.rend()) {
-          std::vector<Scope*>::reverse_iterator itr = ++scopes.rbegin();
-          for( ; itr != scopes.rend() ; ++itr ) {
-            std::uint16_t idx;
-            if(!scope->bb()->AddUpValue(UV_DETACH,index,&idx))
-              return UV_FAILED;
-            index = idx;
-          }
-        }
-
-        return UV_SUCCESS;
-      }
-
-      // record the scopes inside of the scopes array
-      scopes.push_back(scope);
-
-      // move to previous function scope
-      scope = GetEnclosedFunctionScope(scope);
-    }
-
-    return UV_NOT_EXISTED;
-  }
-}
-
-bool FunctionScope::FindUpValue( const zone::String& name ,
-                                 std::uint16_t* index ) {
-  std::vector<UpValue>::iterator
-    ret = std::find( upvalue_.begin() , upvalue_.end() , name );
-  if(ret == upvalue_.end())
-    return false;
-  *index = ret->index;
-  return true;
-}
-
-Optional<Register> FunctionScope::GetLocalVar( const zone::String& name ) {
-  for( auto &e : lexical_scope_ ) {
-    Optional<Register> r(e->GetLocalVar(name));
-    if(r) return r;
-  }
-  return Optional<Register>
-}
 
 
 /* =======================================
@@ -625,11 +407,18 @@ enum ExprResultKind {
 
 class ExprResult {
  public:
-  ExprResult():
-    kind_(KNULL),
-    ref_(0),
-    reg_(0)
+  ExprResult(): kind_(KNULL), ref_(0), reg_(0) {}
+  ExprResult( const ExprResult& that ):
+    kind_(that.kind_), ref_(that.ref_) , reg_(that.reg_)
   {}
+  ExprResult& operator = ( const ExprResult& that ) {
+    if(this != &that) {
+      kind_ = that.kind_;
+      ref_  = that.ref_ ;
+      reg_  = that.reg_ ;
+    }
+    return *this;
+  }
 
  public:
   /* --------------------
@@ -683,31 +472,30 @@ class ExprResult {
   ExprResultKind kind_;
   std::int32_t ref_;
   Register reg_;
-
-  LAVA_DISALLOW_COPY_AND_ASSIGN(ExprResult);
 };
 
 /* ==================================
  * Code emit macro:
- * eemit is for expression level
- * semit is for statement  level
+ * EEMIT is for expression level
+ * SEMIT is for statement  level
  * =================================*/
 
-#define eemit(RESULT,XX)                           \
-  do {                                             \
-    auto _ret = func_scope()->bb()->XX;    \
-    if(!_ret) {                                    \
-      if((RESULT)) ErrorFunctionTooLong((RESULT)); \
-      return false;                                \
-    }                                              \
+#define EEMIT(XX)                                            \
+  do {                                                       \
+    auto _ret = func_scope()->bb()->XX;                      \
+    if(!_ret) {                                              \
+      Error(ERR_FUNCTION_TOO_LONG,func_scope()->func_node()); \
+      return false;                                          \
+    }                                                        \
   } while(false)
 
-#define semit(RESULT,XX)                           \
-  do {                                             \
-    auto _ret = func_scope()->bb()->XX;    \
-    if(!_ret) {                                    \
-      return false;                                \
-    }                                              \
+#define SEMIT(RESULT,XX)                                     \
+  do {                                                       \
+    auto _ret = func_scope()->bb()->XX;                      \
+    if(!_ret) {                                              \
+      ERROR(ERR_FUNCTION_TOO_LONG,func_scope()->func_node()); \
+      return false;                                          \
+    }                                                        \
   } while(false)
 
 
@@ -732,10 +520,14 @@ class Generator {
  public:
   Generator( Context* , const ast::Root& , Script* , std::string* );
   FunctionScope* func_scope() const { return func_scope_; }
+  LexicalScope*  lexical_scope() const { return lexical_scope_; }
 
   bool Generate();
 
- private: // Binary bytecode lookup table
+ private:
+  /* --------------------------------------------
+   * Helper for specialized binary instruction  |
+   * -------------------------------------------*/
   enum BinOperandType{ TINT = 0 , TREAL , TSTR };
 
   bool CanBeSpecializedLiteral( ast::Literal& lit ) const {
@@ -744,21 +536,17 @@ class Generator {
   bool CanBeSpecializedLiteral( const ExprResult& expr ) const {
     return expr.IsInteger() || expr.IsReal() || expr.IsString();
   }
-
-  inline BinOperandType GetBinOperandType( const ast::Literal& ) const;
-
-  const char* GetBinOperandTypeName( BinOperandType t ) const {
-    switch(t) {
-      case TINT : return "int";
-      case TREAL: return "real";
-      default:    return "string";
-    }
+  bool SpecializedLiteralToExprResult( const ast::Literal& lit ,
+                                       ExprResult* result ) {
+    return Visit(lit,result);
   }
 
-  inline bool GetBinBytecode( const Token& tk , BinOperandType type , bool lhs ,
-                                                                      bool rhs ,
-                                                                      Bytecode* );
-
+  inline BinOperandType GetBinOperandType( const ast::Literal& ) const;
+  inline const char* GetBinOperandTypeName( BinOperandType t ) const;
+  inline bool GetBinBytecode( const Token& tk , BinOperandType type ,
+                                                bool lhs ,
+                                                bool rhs ,
+                                                Bytecode* );
  private:
   /* --------------------------------------------
    * Expression Code Generation                 |
@@ -773,8 +561,14 @@ class Generator {
   bool Visit( const ast::Binary& , ExprResult* );
   bool VisitLogic( const ast::Binary& , ExprResult* );
   bool Visit( const ast::Ternary&, ExprResult* );
-  bool Visit( const ast::List&   , ExprResult* );
-  bool Visit( const ast::Object& , ExprResult* );
+  bool Visit( const ast::List&   , const Register& , ExprResult* );
+  bool Visit( const ast::Object& , const Register& , ExprResult* );
+  bool Visit( const ast::List&  node , ExprResult* result ) {
+    return Visit(node,Register::kAccReg,result);
+  }
+  bool Visit( const ast::Object& node , ExprResult* result ) {
+    return Visit(node,Register::kAccReg,result);
+  }
 
   bool VisitExpression( const ast::Node&   , ExprResult* );
   bool VisitExpression( const ast::Node& expr , Register* );
@@ -831,20 +625,18 @@ class Generator {
  private: // Errors ---------------------------------------------
   void Error( const SourceCodeInfo& , ExprResult* , const char* fmt , ... );
 
+  // Predefined error category for helping manage consistent error reporting
+  enum ErrorCategory {
+    ERR_REGISTER_OVERFLOW,
+    ERR_TOO_MANY_LITERALS,
+    ERR_FUNCTION_TOO_LONG,
+    ERR_LOCAL_VARIABLE_NOT_EXISTED
+  };
+
   // The following ErrorXXX function is common or frequently used error report
   // function which captures certain common cases
-  void ErrorTooComplicatedFunc( const SourceCodeInfo& , ExprResult* result = NULL );
-  void ErrorFunctionTooLong   ( ExprResult* );
-  void ErrorLocalVariable     ( const SourceCodeInfo& , const zone::String& );
-
- private: // RAII for managing lexical scope --------------------
-  class EnterLoopScope;
-  class EnterLexicalScope;
-  class EnterFunctionScope;
-
-  friend class EnterLoopScope;
-  friend class EnterLexicalScope;
-  friend class EnterFunctionScope;
+  void Error( ErrorCategory , const ast::Node& , const char* fmt , ... );
+  void Error( ErrorCategory , const ast::Node& );
 
  private:
   FunctionScope* func_scope_;
@@ -852,8 +644,400 @@ class Generator {
   RegisterAllocator ra_;
   Context* context_;
 
+  friend class LexicalScope;
+  friend class FunctionScope;
   LAVA_DISALLOW_COPY_AND_ASSIGN(Generator);
 };
+
+/* =====================================================================
+ *
+ * Definition
+ *
+ * ===================================================================*/
+
+RegisterAllocator::RegisterAllocator():
+  free_register_(NULL),
+  size_(kAllocatableBytecodeRegisterSize),
+  reg_buffer_()
+{
+  Node* n = reinterpret_cast<Node*>(reg_buffer_);
+
+  for( std::size_t i = 0 ; i < kAllocatableBytecodeRegisterSize-1; ++i ) {
+    ConstructFromBuffer<Node>(n,i);
+    n->next = n+1;
+    ++n;
+  }
+  ConstructFromBuffer<Node>(n,kAllocatableBytecodeRegisterSize-1);
+  n->next = NULL;
+}
+
+inline Optional<Register> RegisterAllocator::Grab() {
+  if(free_register_) {
+    Node* ret = free_register_;
+    free_register_ = free_register_->next;
+    ret->next = static_cast<Node*>(kNotUsed);
+    --size_;
+    return Optional<Register>(ret->reg);
+  }
+  return Optional<Register>();
+}
+
+inline void RegisterAllocator::Drop( const Register& reg ) {
+  if(!reg.IsAcc() && !IsReserved(reg)) {
+    Node* n = RegisterToSlot(reg);
+
+    lava_debug(NORMAL,
+        lava_verify(n->next == static_cast<Node*>(kNotUsed));
+        );
+
+    /**
+     * Ensure the register is put in order and then Grab function
+     * will always return the least indexed registers */
+    if(free_register_) {
+      if(free_register_->reg.index() > reg.index()) {
+        n->next = free_register_;
+        free_register_ = n;
+      } else {
+        for( Node* c = free_register_ ; c ; c = c->next ) {
+
+          lava_debug(NORMAL,
+              lava_verify(c->reg.index()<reg.index());
+              );
+
+          Node* next = c->next;
+          if(next) {
+            if(next->reg.index() > reg.index()) {
+              c->next = n;
+              n->next = next;
+              break;
+            }
+          } else {
+            c->next = n;
+            break;
+          }
+        }
+      }
+    } else {
+      n->next = NULL;
+      free_register_ = n;
+    }
+    ++size_;
+  }
+
+  lava_debug(NORMAL,
+      for( Node* c = free_register_ ; c ; c = c->next ) {
+      lava_verify( c->next && c->reg.index() < c->next->reg.index() );
+      }
+  );
+}
+
+inline bool RegisterAllocator::IsAvailable( const Register& reg ) {
+  Node* n = RegisterToSlot(reg);
+  return n->next != static_cast<Node*>(kNotUsed);
+}
+
+inline bool RegisterAllocator::IsUsed( const Register& reg ) {
+  Node* n = RegisterToSlot(reg);
+  return n->next == static_cast<Node*>(kNotUsed);
+}
+
+inline RegisterAllocator::Node*
+RegisterAllocator::RegisterToSlot( const Register& reg ) {
+  lava_debug(NORMAL,!reg.IsAcc(););
+  Node* n = reinterpret_cast<Node*>(reg_buffer_) + reg.index();
+  return n;
+}
+
+bool RegisterAllocator::EnterScope( std::size_t size , std::uint8_t* b ) {
+  lava_debug(NORMAL,
+      if(free_register_)
+        lava_verify(free_register->reg.index() == base()+1);
+      );
+
+  if((base() + size) > kAllocatableBytecodeRegisterSize) {
+    return false; // Too many registers so we cannot handle it
+  } else {
+    std::size_t start = base();
+    Node* next;
+    Node* cur;
+
+    for( cur = free_register_ ; cur ; cur = next ) {
+
+      lava_debug(NORMAL,lava_verify(cur->reg.index() == start););
+
+      next = cur->next;
+      cur->next = static_cast<Node*>(kNotUsed);
+      ++start;
+      if(start == base()+size) break;
+    }
+
+    size_ -= size;
+    free_register_ = cur;
+
+    *b = base();
+    scope_base_.push_back(base()+size);
+
+    return true;
+  }
+}
+
+void RegisterAllocator::LeaveScope() {
+  lava_debug(NORMAL,
+      lava_verify(!scope_base_.empty());
+      lava_verify(!free_register_ ||
+                  (free_register_->reg.index() == scope_base_.back()));
+      );
+  std::uint8_t end = scope_base_.back();
+  scope_base_.pop();
+  std::uint8_t start = scope_base_.empty() ? 0 : scope_base_.back();
+
+  if(end == kAllocatableBytecodeRegisterSize) {
+    RegisterToSlot(end)->next = NULL;
+  }
+
+  for( --end ; end > start ; --end ) {
+    Node* to = RegisterToSlot(Register(end));
+    Node* from = RegisterToSlot(end-1);
+    from->next = to;
+  }
+
+  free_register_ = RegisterToSlot(start);
+  size_ += (end-start);
+}
+
+inline Register ScopedRegister::Release() {
+  lava_debug( NORMAL , lava_verify(!empty_); );
+  Register reg(reg_);
+  empty_ = true;
+  return reg;
+}
+
+inline void ScopedRegister::Reset( const Register& reg ) {
+  if(!empty_) {
+    generator_->func_scope()->ra()->Drop(reg_);
+  }
+  reg_ = reg;
+}
+
+inline void ScopedRegister::Reset() {
+  if(!empty_) {
+    generator_->func_scope()->ra()->Drop(reg_);
+    empty_ = true;
+  }
+}
+
+inline bool ScopedRegister::Reset( const Optional<Register>& reg ) {
+  if(!empty_) {
+    generator_->func_scope()->ra()->Drop(reg_);
+  }
+  if(reg.Has()) {
+    reg_ = reg.Get();
+    return true;
+  } else {
+    empty_ = true;
+    return false;
+  }
+}
+
+inline ScopedRegister::~ScopedRegister() {
+  if(!empty_) generator_->func_scope()->ra()->Drop(reg_);
+}
+
+FunctionScope* Scope::GetEnclosedFunctionScope( Scope* scope ) {
+  while(scope && !scope->IsFunctionScope()) {
+    scope = scope->parent();
+  }
+  return scope ? scope->AsFunctionScope() : NULL;
+}
+
+bool LexicalScope::Init( const ast::Chunk& node ) {
+  std::uint8_t base;
+  const std::size_t len = node.local_vars->size() + node.has_iterator;
+  if(!func_scope()->ra()->EnterScope(len,base))
+    return false;
+
+  for( std::size_t i = 0; i < node.local_vars->size(); ++i ) {
+    local_vars_.push_back(
+        LocalVar(node.local_vars->Index(i)->name,base + i) );
+  }
+
+  if(node.has_iterator) {
+    lava_debug(NORMAL,lava_verify(is_loop_););
+    const std::uint8_t idx =
+      base + static_cast<std::uint8_t>(node.local_vars->size());
+    iterator_.Set(Register(idx));
+  }
+
+  return true;
+}
+
+inline bool LexicalScope::DefineLocalVar( const zone::String& name ,
+                                          const Register& reg ) {
+  lava_debug( NORMAL , lava_verify(GetLocalVar(name).Has()); );
+  local_vars_.push_back( LocalVar( &name , reg ) );
+  return true;
+}
+
+inline Optional<Register> LexicalScope::GetLocalVar( const zone::String& name ) {
+  std::vector<LocalVar>::iterator itr =
+    std::find( local_vars_.begin() , local_vars_.end() , name );
+  return itr  == local_vars_.end() ? Optional<Register>() :
+                                     Optional<Register>( itr->reg );
+}
+
+inline bool LexicalScope::AddBreak( const ast::Break& node ) {
+  BytecodeBuilder::Label l( func_scope()->bb()->brk(node.sci()) );
+  if(!l) return false;
+  break_list_.push_back(l);
+  return true;
+}
+
+inline bool LexicalScope::AddContinue( const ast::Continue& node ) {
+  BytecodeBuilder::Label l( func_scope()->bb()->cont(node.sci()) );
+  if(!l) return false;
+  continue_list_.push_back(l);
+  return true;
+}
+
+void LexicalScope::PatchBreak( std::uint16_t pos ) {
+  for( auto &e : break_list_ ) {
+    e.Patch(pos);
+  }
+}
+
+void LexicalScope::PatchContinue( std::uint16_t pos ) {
+  for( auto &e : continue_list_ ) {
+    e.Patch(pos);
+  }
+}
+
+LexicalScope::LexicalScope( Generator* gen , bool loop ):
+  Scope      (gen),
+  local_vars_(),
+  is_loop_   (loop),
+  is_in_loop_(gen->lexcial_scope()->IsLoop() || gen->lexcial_scope()->IsInLoop()),
+  break_list_(),
+  continue_list_(),
+  func_scope_(gen->func_scope()),
+  iterator_  () {
+
+  lava_debug(NORMAL,
+      if(!func_scope()->lexical_scope_list_.empty()) {
+        LelxicalScope* back = func_scope()->lexical_scope_list_.back();
+        lava_verify(back == parent());
+      }
+    );
+
+  func_scope()->lexcial_scope_list_.push_back(this);
+}
+
+LexicalScope::~LexicalScope() {
+  lava_debug(NORMAL,
+      lava_verify(func_scope()->lexical_scope_list.back() == this);
+      );
+
+  if(!local_vars_.empty())
+    func_scope()->bb()->LeaveScope();
+
+  func_scope()->lexical_scope_List_.pop_back();
+}
+
+LexicalScope* LexicalScope::GetEnclosedLoopScope() const {
+  Scope* scope = this;
+  do {
+    if(scope->IsLexicalScope() && scope->AsLexicalScope()->IsLoop())
+      return scope->AsLexicalScope();
+  } while((scope = scope->parent()));
+  return NULL;
+}
+
+int FunctionScope::GetUpValue( const zone::String& name ,
+                               std::uint16_t* index ) {
+  lava_debug(NORMAL,
+      lava_verify(!GetLocalVar(name).Has());
+      );
+
+  if(FindUpValue(name,index)) {
+    return UV_SUCCESS;
+  } else {
+    FunctionScope* scope = GetEnclosedFunctionScope(this);
+    std::vector<FunctionScope*> scopes;
+    scopes.push_back(this);
+
+    while(scope) {
+      // find the name inside of upvalue slot
+      std::uint16_t index;
+      if(scope->FindUpValue(name,&indx)) {
+        // find the name/symbol as upvalue in the |scope|
+        for( std::vector<Scope*>::reverse_iterator itr =
+            scopes.rbegin() ; itr != scopes.rend() ; ++itr ) {
+          std::uint16_t idx;
+          if(!scope->bb()->AddUpValue(UV_DETACH,rindex,&idx))
+            return UV_FAILED;
+          index = idx;
+        }
+        return UV_SUCCESS;
+      }
+
+      Optional<Register> reg(scope->GetLocalVar(name));
+      if(reg) {
+        {
+          FunctionScope* last = scopes.back();
+          if(!last->AddUpValue(UV_EMBED,reg.Get().index(),&index))
+            return UV_FAILED;
+        }
+        std::vector<Scope*>::reverse_iterator itr = ++scopes.rbegin();
+        for( ; itr != scopes.rend() ; ++itr ) {
+          std::uint16_t idx;
+          if(!scope->bb()->AddUpValue(UV_DETACH,index,&idx))
+            return UV_FAILED;
+          index = idx;
+        }
+        return UV_SUCCESS;
+      }
+
+      // record the scopes inside of the scopes array
+      scopes.push_back(scope);
+
+      // move to previous function scope
+      scope = GetEnclosedFunctionScope(scope);
+    }
+
+    return UV_NOT_EXISTED;
+  }
+}
+
+bool FunctionScope::FindUpValue( const zone::String& name ,
+                                 std::uint16_t* index ) {
+  std::vector<UpValue>::iterator
+    ret = std::find( upvalue_.begin() , upvalue_.end() , name );
+  if(ret == upvalue_.end()) return false;
+  *index = ret->index;
+  return true;
+}
+
+Optional<Register> FunctionScope::GetLocalVar( const zone::String& name ) {
+  for( auto &e : lexical_scope_ ) {
+    Optional<Register> r(e->GetLocalVar(name));
+    if(r) return r;
+  }
+  return Optional<Register>();
+}
+
+inline FunctionScope::FunctionScope( Generator* gen , const ast::Function& node ):
+  Scope(gen),
+  bb_  (),
+  ra_  (),
+  upvalue_ (),
+  lexical_scope_list_(),
+  func_node_(&node)
+{}
+
+inline FunctionScope::~FunctionScope() {
+  lava_debug(NORMAL,
+      lava_verify( lexcial_scope_list.empty() );
+      );
+}
 
 std::uint8_t kBinSpecialOpLookupTable [][][] = {
   /* arithmetic operator */
@@ -936,13 +1120,19 @@ inline BinOperandType Generator::GetBinOperandType( const ast::Literal& ) const 
   }
 }
 
+inline const char* Generator::GetBinOperandTypeName( BinOperandType t ) const {
+  switch(t) {
+    case TINT : return "int";
+    case TREAL: return "real";
+    default:    return "string";
+  }
+}
+
 inline bool Generator::GetBinBytecode( const Token& tk , BinOperandType type ,
                                                          bool lhs ,
                                                          bool rhs ,
                                                          Bytecode* output ) {
-#ifdef LAVASCRIPT_CHECK_OBJECTS
-  lava_verify(!(rhs && lhs));
-#endif // LAVASCRIPT_CHECK_OBJECTS
+  lava_debug(NORMAL, lava_verify(!(rhs && lhs)); );
 
   int index = static_cast<int>(rhs) << 1 | static_cast<int>(rhs);
   int opindex = static_cast<int>(tk.token());
@@ -954,9 +1144,7 @@ inline bool Generator::GetBinBytecode( const Token& tk , BinOperandType type ,
     return false;
   }
 
-#ifdef LAVASCRIPT_CHECK_OBJECTS
-  lava_verify(bc >=0 && bc <= BC_NEVV);
-#endif // LAVASCRIPT_CHECK_OBJECTS
+  lava_debug(NORMAL, lava_verify(bc >= 0 && bc <= BC_NEVV); );
 
   *output = bc;
   return true;
@@ -970,14 +1158,14 @@ bool Generator::Visit( const ast::Literal& lit , ExprResult* result ) {
   switch(lit.literal_type) {
     case ast::Literal::LIT_INTEGER:
       if((ref=func_scope()->bb()->Add(lit.int_value))<0) {
-        ErrorTooComplicatedFunc(lit.sci(),result);
+        Error(ERR_REGISTER_OVERFLOW,lit);
         return false;
       }
       result->SetIRef(ref);
       return true;
     case ast::Literal::LIT_REAL:
       if((ref=func_scope()->bb()->Add(lit.real_value))<0) {
-        ErrorTooComplicatedFunc(lit.sci(),result);
+        Error(ERR_REGISTER_OVERFLOW,lit);
         return false;
       }
       result->SetRRef(ref);
@@ -990,7 +1178,7 @@ bool Generator::Visit( const ast::Literal& lit , ExprResult* result ) {
       return true;
     case ast::Literal::LIT_STRING:
       if((ref = func_scope()->bb()->Add(*lit.str_value,context_))<0) {
-        ErrorTooComplicatedFunc(lit.sci(),result);
+        Error(ERR_REGISTER_OVERFLOW,lit());
         return false;
       }
       result->SetSRef(ref);
@@ -1004,23 +1192,26 @@ bool Generator::Visit( const ast::Literal& lit , ExprResult* result ) {
 bool Generator::Visit( const ast::Variable& var , ExprResult* result ) {
   // 1. Try to establish it as local variable
   Optional<Register> reg;
+  std::uint16_t upindex;
+
   if((reg=cur_scope_->GetLocalVar(*var.name))) {
     result->SetRegister( reg.Get() );
-    return true;
-  } else if(cur_scope_->GetUpValue()) {
+  } else if(cur_scope_->GetUpValue(*var.name,&upindex)) {
+    EEMIT(uvget(var.sci(),Register::kAccIndex,upindex));
+    result->SetAcc();
   } else {
-    // It is a global variable so we need to eemit global variable stuff
-    std::int32_t ref = func_scope_->bb()->Add(*var.name,context_);
+    // It is a global variable so we need to EEMIT global variable stuff
+    std::int32_t ref = func_scope()->bb()->Add(*var.name,context_);
     if(ref<0) {
-      ErrorTooComplicatedFunc(var.sci(),result);
+      Error(ERR_REGISTER_OVERFLOW,var());
       return false;
     }
 
     // Hold the global value inside of Acc register since we can
-    eemit(result,gget(var.sci(),Register::kAccIndex,ref));
-    result->SetRegister(Register::kAccReg);
-    return true;
+    EEMIT(gget(var.sci(),Register::kAccIndex,ref));
+    result->SetAcc();
   }
+  return true;
 }
 
 bool Generator::VisitFuncCall( const ast::FuncCall& fc ,
@@ -1029,7 +1220,14 @@ bool Generator::VisitFuncCall( const ast::FuncCall& fc ,
   for( std::size_t i = 0 ; i < arg_size ; ++i ) {
     Register reg;
     if(!VisitExpression(*fc.args->Index(i),&reg)) return false;
-    reg_set->push_back(reg.index());
+
+    if(reg.IsAcc()) {
+      Optional<Register> new_reg( SpillFromAcc() );
+      if(!new_reg) return false;
+      reg_set->push_back(new_reg.Get().index());
+    } else {
+      reg_set->push_back(reg.index());
+    }
   }
   return true;
 }
@@ -1054,17 +1252,17 @@ bool Generator::VisitPrefix( const ast::Prefix& node , std::size_t end ,
           std::int32_t ref = func_scope()->bb_builder()->Add(
               *c.var->name , context_ );
           if(ref<0) {
-            ErrorTooComplicatedFunc(c.var->sci(),result);
+            Error(ERR_REGISTER_OVERFLOW,*c.var);
             return false;
           }
           // Use PROPGET instruction
-          eemit(NULL,propget(c.var->sci(),var_reg.index(),ref));
+          EEMIT(NULL,propget(c.var->sci(),var_reg.index(),ref));
 
           // Since PROPGET will put its value into the Acc so afterwards
           // the value will be held in scratch registers until we meet a
           // function call since function call will just mess up the
           // scratch register. We don't have spill in register
-          if(!var_reg.IsAcc()) { ra_.Drop(var_reg); var_reg.SetAcc(); }
+          if(!var_reg.IsAcc()) { SpillToAcc(var_reg); var_reg.SetAcc(); }
         }
         break;
       case ast::Prefix::Component::INDEX:
@@ -1082,7 +1280,7 @@ bool Generator::VisitPrefix( const ast::Prefix& node , std::size_t end ,
 
           // Use idxgeti bytecode to get the stuff and by default value
           // are stored in ACC register
-          eemit(NULL,idxgeti(c.expr->sci(),var_reg.index(),ref));
+          EEMIT(NULL,idxgeti(c.expr->sci(),var_reg.index(),ref));
 
           // Drop register if it is not Acc
           if(!var_reg.IsAcc()) { ra_.Drop(var_reg); var_reg.SetAcc(); }
@@ -1101,12 +1299,12 @@ bool Generator::VisitPrefix( const ast::Prefix& node , std::size_t end ,
           // Get the register for the expression
           if(!VisitExpression(*c.expr,&expr_reg)) return false;
 
-          // eemit the code for getting the index and the value is stored
+          // EEMIT the code for getting the index and the value is stored
           // inside of the ACC register
-          eemit(NULL,idxget(c.expr->sci(),var_reg.index(),expr_reg.index()));
+          EEMIT(NULL,idxget(c.expr->sci(),var_reg.index(),expr_reg.index()));
 
           // Drop register if it is not in Acc
-          if(!var_reg.IsAcc()) { ra_.Drop(var_reg); var_reg.SetAcc(); }
+          if(!var_reg.IsAcc()) { SpillToAcc(var_reg); var_reg.SetAcc(); }
         }
         break;
       default:
@@ -1137,36 +1335,39 @@ bool Generator::VisitPrefix( const ast::Prefix& node , std::size_t end ,
 
           if(areg_set.size() == 0) {
             if(tc)
-              eemit(NULL,tcall0(c.func->sci(),var_reg.index()));
+              EEMIT(NULL,tcall0(c.func->sci(),var_reg.index()));
             else
-              eemit(NULL,call0(c.func->sci(),var_reg.index()));
+              EEMIT(NULL,call0(c.func->sci(),var_reg.index()));
           } else if(areg_set.size() == 1) {
             if(tc)
-              eemit(result,tall1(c.func->sci(),var_reg.index(),areg_set[0]));
+              EEMIT(tall1(c.func->sci(),var_reg.index(),areg_set[0]));
             else
-              eemit(result,call1(c.func->sci(),var_reg.index(),areg_set[0]));
+              EEMIT(call1(c.func->sci(),var_reg.index(),areg_set[0]));
           } else if(areg_set.size() == 2) {
             if(tc)
-              eemit(NULL,tcall2(c.func->sci(),var_reg.index(),areg_set[0],
+              EEMIT(NULL,tcall2(c.func->sci(),var_reg.index(),areg_set[0],
                                                               areg_set[1]));
             else
-              eemit(NULL,call2(c.func->sci(),var_reg.index(),areg_set[0],
+              EEMIT(NULL,call2(c.func->sci(),var_reg.index(),areg_set[0],
                                                              areg_set[1]));
           } else {
             if(tc)
-              eemit(NULL,tcall( c.func->sci() ,
+              EEMIT(NULL,tcall( c.func->sci() ,
                     static_cast<std::uint32_t>(c.func->args->size()),
                     var_reg.index() ));
             else
-              eemit(NULL,call( c.func->sci() ,
+              EEMIT(NULL,call( c.func->sci() ,
                     static_cast<std::uint32_t>(c.func->args->size()),
                     var_reg.index() ));
 
-            eemit(NULL,xarg(areg_set));
+            EEMIT(NULL,xarg(areg_set));
           }
 
           // 4.  the result will be stored inside of Acc
-          if(!var_reg.IsAcc()) { ra_.Drop(var_reg); var_reg.SetAcc(); }
+          if(!var_reg.IsAcc()) { SpillToAcc(var_reg); var_reg.SetAcc(); }
+
+          // 5. drop all the called registers
+          for( auto &e : areg_set ) { func_scope()->ra()->Drop(e); }
         }
         break;
     }
@@ -1192,25 +1393,42 @@ bool Generator::Visit( const ast::Prefix& node , ExprResult* result ) {
   return true;
 }
 
-bool Generator::Visit( const ast::List& node , ExprResult* result ) {
+bool Generator::Visit( const ast::List& node , const Register& reg ,
+                                               ExprResult* result ) {
   const std::size_t entry_size = node.entry->size();
 
   if(entry_size == 0) {
-    eemit(result,loadlist0(node.sci(),Register::kAccReg));
-    result->SetAcc();
+    EEMIT(loadlist0(node.sci(),reg.index()));
+    result->SetRegister(reg);
   } else if(entry_size == 1) {
     ScopedRegister r1(this);
     if(!VisitExpression(*node.entry->Index(0),&r1)) return false;
-    eemit(result,loadlist1(node.sci(),Register::kAccReg,r1.Get().index()));
-    result->SetAcc();
+    EEMIT(loadlist1(node.sci(),reg.index(),r1.Get().index()));
+    result->SetRegister(reg);
   } else if(entry_size == 2) {
     ScopedRegister r1(this) , r2(this);
     if(!VisitExpression(*node.entry->Index(0),&r1)) return false;
+    if(r1.Get().IsAcc()) {
+      if(!r1.Reset(SpillFromAcc(r1.Get()))) return false;
+    }
     if(!VisitExpression(*node.entry->Index(1),&r2)) return false;
-    eemit(result,loadlist2(node.sci(),Register::kAccReg,r1.Get().index(),
-                                                        r2.Get().index()));
-    result->SetAcc();
+    EEMIT(loadlist2(node.sci(),reg.index(),r1.Get().index(),
+                                           r2.Get().index()));
+    result->SetRegister(reg);
   } else {
+    Register r;
+    if(reg.IsAcc()) {
+      // We are trying to use ACC register here for long version
+      // of list . This is not very efficient , so we spill the
+      // register out of ACC.
+      Optional<Register> new_reg(func_scope_->ra()->Grab());
+      if(!new_reg) {
+        Error(ERR_REGISTER_OVERFLOW,node.sci());
+        return false;
+      }
+      r = new_reg.Get();
+    } else
+      r = reg;
 
     /**
      * When list has more than 2 entries, the situation becomes a little
@@ -1221,50 +1439,50 @@ bool Generator::Visit( const ast::List& node , ExprResult* result ) {
      * allows us to use two set of instructions to perform this job. This is
      * not ideal but this allow better flexibility
      */
-
-    Optional<Register> reg;
-    if(!(reg = ra_.Grab())) {
-      ErrorTooComplicatedCode(node.sci(),result);
-      return false;
-    }
-
-    eemit(result,newlist(node.sci(),reg.Get().index(),
-          static_cast<std::uint16_t>(entry_size)));
+    EEMIT(newlist(node.sci(),r.index(),static_cast<std::uint16_t>(entry_size)));
 
     // Go through each list entry/element
     for( std::size_t i = 0 ; i < entry_size ; ++i ) {
       ScopedRegister r1(this);
       const ast::Node& e = *node.entry->Index(i);
       if(!VisitExpression(e,&r1)) return false;
-      eemit(result,addlist(e.sci(),reg.Get().index(),r1.index()));
+      EEMIT(addlist(e.sci(),r.index(),r1.index()));
     }
-    result->SetRegister(reg.Get());
+    result->SetRegister(r);
   }
   return true;
 }
 
-bool Generator::Visit( const ast::Object& node , ExprResult* result ) {
+bool Generator::Visit( const ast::Object& node , const Register& reg ,
+                                                 ExprResult* result ) {
   const std::size_t entry_size = node.entry->size();
   if(entry_size == 0) {
-    eemit(result,loadobj0(node.sci(),Register::kAccReg));
-    result->SetAcc();
+    EEMIT(loadobj0(node.sci(),reg));
+    result->SetRegister(reg);
   } else if(entry_size == 1) {
     ScopedRegister k(this);
     ScopedRegister v(this);
     const ast::Object::Entry& e = node.entry->Index(0);
     if(!VisitExpression(*e.key,&k)) return false;
-    if(!VisitExpression(*e.val,&v)) return false;
-    eemit(result,loadobj1(node.sci(),Register::kAccReg,k.Get().index(),
-                                                       v.Get().index()));
-    result->SetAcc();
-  } else {
-    Optional<Register> reg;
-    if(!(reg = ra_.Grab())) {
-      ErrorTooComplicatedCode(node.sci(),result);
-      return false;
+    if(k.Get().IsAcc()) {
+      if(!k.Reset(SpillFromAcc(k.Get()))) return false;
     }
+    if(!VisitExpression(*e.val,&v)) return false;
+    EEMIT(loadobj1(node.sci(),reg,k.Get().index(),v.Get().index()));
+    result->SetRegister(reg);
+  } else {
+    Register r;
+    if(reg.IsAcc()) {
+      Optional<Register> new_reg( func_scope()->ra()->Grab() );
+      if(!new_reg) {
+        Error(ERR_REGISTER_OVERFLOW,node.sci());
+        return false;
+      }
+      r = new_reg.Get();
+    } else
+      r = reg;
 
-    eemit(result,newobj(node.sci(),reg.Get().index(),
+    EEMIT(newobj(node.sci(),reg.Get().index(),
           static_cast<std::uint16_t>(entry_size)));
 
     for( std::size_t i = 0 ; i < entry_size ; ++i ) {
@@ -1272,9 +1490,12 @@ bool Generator::Visit( const ast::Object& node , ExprResult* result ) {
       ScopedRegister k(this);
       ScopedRegister v(this);
       if(!VisitExpression(*e.key,&k)) return false;
+      if(k.Get().IsAcc()) {
+        if(!k.Reset(SpillFromAcc(k.Get()))) return false;
+      }
       if(!VisitExpression(*e.val,&v)) return false;
-      eemit(result,addobj(e.key->sci(),reg.Get().index(),k.Get().index(),
-                                                         v.Get().index()));
+      EEMIT(addobj(e.key->sci(),r.index(),k.Get().index(),
+                                          v.Get().index()));
     }
 
     result->SetRegister(reg);
@@ -1286,9 +1507,9 @@ bool Generator::Visit( const ast::Unary& node , ExprResult* result ) {
   Register reg;
   if(!VisitExpression(*node.opr,&reg)) return false;
   if(node.op == Token::kSub) {
-    eemit(result,negate(node.sci(),reg.index()));
+    EEMIT(negate(node.sci(),reg.index()));
   } else {
-    eemit(result,not(node.sci(),reg.index()));
+    EEMIT(not(node.sci(),reg.index()));
   }
   result->SetRegister(reg);
   return true;
@@ -1317,7 +1538,7 @@ bool Generator::VisitLogic( const ast::Binary& node , ExprResult* result ) {
     label = func_scope()->bb()->or(node.lhs->sci());
   }
   if(!label) {
-    ErrorFunctionTooLong(result);
+    Error(ERR_RUNCTION_TOO_LONG,func_scope()->func_node());
     return false;
   }
 
@@ -1337,43 +1558,45 @@ bool Generator::Visit( const ast::Binary& node , ExprResult* result ) {
   if(node.op.IsArithmetic() || node.op.IsComparison()) {
     if((node.lhs->IsLiteral() && CanBeSpecializedLiteral(*node.lhs->AsLiteral())) ||
        (node.rhs->IsLiteral() && CanBeSpecializedLiteral(*node.rhs->AsLiteral())) ) {
-#ifdef LAVASCRIPT_CHECK_OBJECTS
-      lava_verify(!(node.lhs->IsLiteral() && node.rhs->IsLiteral()));
-#endif // LAVASCRIPT_CHECK_OBJECTS
+
+      lava_debug(NORMAL,
+          lava_verify(!(node.lhs->IsLiteral() && node.rhs->IsLiteral())); );
+
       BinOperandType t = node.lhs->IsLiteral() ? GetBinOperandType(*node.lhs->AsLiteral()) :
                                                  GetBinOperandType(*node.rhs->AsLiteral());
       Bytecode bc;
 
       // Get the bytecode for this expression
       if(!GetBinBytecode(node.op,t,node.lhs->IsLiteral(),
-                                   node.rhs->IsLiteral(),
-                                   &bc))
+                                   node.rhs->IsLiteral(), &bc))
         return false;
 
       // Evaluate each operand and its literal value
       if(node.lhs->IsLiteral()) {
         ScopedRegister rhs_reg;
         if(!VisitExpression(*node.rhs,&rhs_reg)) return false;
-        std::int32_t ref = func_scope()->bb()->Add(
-            node.lhs->AsLiteral()->int_value );
-        if(ref<0) {
-          ErrorTooComplicatedFunc(node.sci(),result);
+
+        // Get the reference for the literal
+        ExprResult lhs_expr;
+        if(!SpecializedLiteralToExprResult(*node.lhs->AsLiteral(),&lhs_expr))
+          return false;
+
+        if(!func_scope()->bb()->EmitC(
+              node.sci(),lhs_expr.ref(),rhs_reg.Get().index())) {
+          Error(ERR_FUNCTION_TOO_LONG,func_scope()->func_node());
           return false;
         }
-        if(!func_scope()->bb()->EmitC(node.sci(),ref,rhs_reg.Get().index())) {
-          ErrorFunctionTooLong(result);
-          return false;
-        }
+
       } else {
         ScopedRegister lhs_reg;
         if(!VisitExpression(*node.lhs,&lhs_reg)) return false;
-        std::int32_t ref = func_scope()->bb()->Add(
-            node.rhs->AsLiteral()->int_value );
-        if(ref <0) {
-          ErrorTooComplicatedFunc(node.sci(),result);
+
+        ExprResult rhs_expr;
+        if(!SpecializedLiteralToExprResult(*node.rhs->AsLiteral(),&rhs_expr))
           return false;
-        }
-        if(!func_scope()->bb()->EmitB(node.sci(),lhs_reg.Get().index(),ref)) {
+
+        if(!func_scope()->bb()->EmitB(
+              node.sci(),lhs_reg.Get().index(),rhs_expr.ref())) {
           ErrorFunctionTooLong(result);
           return false;
         }
@@ -1384,15 +1607,16 @@ bool Generator::Visit( const ast::Binary& node , ExprResult* result ) {
       // to using variable as operand for above operands.
       ScopedRegister lhs(this);
       ScopedRegister rhs(this);
-      if(!VisitExpression(*node.lhs,&lhs)) return false;
 
-      // This is a small place likely to be forgetten by people since
-      // the LHS can be held in a ACC register and if it is then we
-      // need to spill it since RHS can use ACC register as well
-      if(lhs.IsAcc()) {
-        if(!SpillFromAcc(&lhs)) return false;
-      }
+      // Due to the fact our parser generate right hand side recursive AST.
+      // We visit right hand side first since this will save us on the fly
+      // register and avoid needless register overflow in certain cases
       if(!VisitExpression(*node.rhs,&rhs)) return false;
+      if(rhs.IsAcc()) {
+        if(!rhs.Reset(SpillFromAcc())) return false;
+      }
+
+      if(!VisitExpression(*node.lhs,&lhs)) return false;
 
       if(!func_scope()->bb()->EmitE(
           node.sci(),
@@ -1404,9 +1628,7 @@ bool Generator::Visit( const ast::Binary& node , ExprResult* result ) {
       }
     }
   } else {
-#ifdef LAVASCRIPT_CHECK_OBJECTS
-    lava_verify(node.op.IsLogic());
-#endif // LAVASCRIPT_CHECK_OBJECTS
+    lava_debug(NORMAL, lava_verify(node.op.IsLogic()); );
     return VisitLogic(node,result);
   }
 }
@@ -1452,13 +1674,13 @@ bool Generator::Visit( const ast::Ternary& node , ExprResult* result ) {
 
 bool Generator::VisitExpression( const ast::Node& node , ExprResult* result ) {
   switch(node.type) {
-    case ast::LITERAL: return Visit(*node.AsLiteral(),result);
+    case ast::LITERAL:  return Visit(*node.AsLiteral(),result);
     case ast::VARIABLE: return Visit(*node.AsVariable(),result);
-    case ast::PREFIX:  return Visit(*node.AsPrefix(),result);
-    case ast::BINARY: return Visit(*node.AsBinary(),result);
-    case ast::TERNARY: return Visit(*node.AsTernary(),result);
-    case ast::LIST: return Visit(*node.AsList(),result);
-    case ast::OBJECT: return Visit(*node.AsObject(),result);
+    case ast::PREFIX:   return Visit(*node.AsPrefix(),result);
+    case ast::BINARY:   return Visit(*node.AsBinary(),result);
+    case ast::TERNARY:  return Visit(*node.AsTernary(),result);
+    case ast::LIST:     return Visit(*node.AsList(),result);
+    case ast::OBJECT:   return Visit(*node.AsObject(),result);
     case ast::FUNCTION: return VisitAnonymousFunction(node,result);
     default:
       lava_unreachF("Disallowed expression with node type %s",node.node_name());
@@ -1470,10 +1692,7 @@ bool Generator::VisitExpression( const ast::Node& node , Register* result ) {
   ExprResult r;
   if(!VisitExpression(node,&r)) return false;
   ScopedRegister reg(this,ExprResultToRegister(r));
-  if(!reg) {
-    ErrorTooComplicatedCode();
-    return false;
-  }
+  if(!reg) return false;
   *result = reg.Get();
   return true;
 }
@@ -1493,35 +1712,25 @@ bool Generator::Visit( const ast::Var& node , Register* holder ) {
    * The local variable will be defined during we setup the lexcial scope
    * so here we just need to get the local variable and it *MUST* be existed
    */
-  Optional<Register> lhs(lexical_scope_->GetLocalVar(*node.var->name));
-
-#ifdef LAVASCRIPT_CHECK_OBJECTS
-  lava_verify(lhs.Has());
-#endif // LAVASCRIPT_CHECK_OBJECTS
+  Optional<Register> lhs(lexcial_scope()->GetLocalVar(*node.var->name));
+  lava_debug(NORMAL, lava_verify(lhs.Has()); );
 
   if(node.expr) {
     Register rhs;
     if(!VisitExpression(*node.expr,&rhs)) return false;
-    semit(move(node.sci(),lhs.Get().index(),rhs.index()));
+    SEMIT(move(node.sci(),lhs.Get().index(),rhs.index()));
   } else {
     // put a null to that value as default value
-    semit(loadnull(node.sci(),lhs.Get().index()));
+    SEMIT(loadnull(node.sci(),lhs.Get().index()));
   }
   return true;
 }
 
-bool Generator::Visit( const ast::Assign& node ) {
-  if(node.lhs_type() == ast::Assign::LHS_VAR) {
-    return VisitSimpleAssign(node);
-  } else {
-    return VisitComplexAssign(node);
-  }
-}
-
 bool Generator::VisitSimpleAssign( const ast::Assign& node ) {
-  Optional<Register> r(lexical_scope_->GetLocalVar(*node.lhs_var->name));
+  Optional<Register> r(lexcial_scope()->GetLocalVar(*node.lhs_var->name));
   if(!r) {
-    ErrorLocalVariableNotExisted(node.sci(),*node.lhs_var->name);
+    Error(ERR_LOCAL_VARIABLE_NOT_EXISTED,"variable name: %s",
+        node.lhs_var->name->data());
     return false;
   }
   /**
@@ -1531,10 +1740,17 @@ bool Generator::VisitSimpleAssign( const ast::Assign& node ) {
    */
   if(node.IsLiteral()) {
     AllocateLiteral(*node.AsLiteral(),r.Get());
+  } else if(node.IsList()) {
+    ExprResult res;
+    if(!Visit(*node.AsList(),r.Get(),&res)) return false;
+    lava_debug(NORMAL,lava_verify(res.IsReg() && (res.reg() == r.Get())););
+  } else if(node.IsObject()) {
+    if(!Visit(*node.AsObject(),r.Get(),&res)) return false;
+    lava_debug(NORMAL,lava_verify(res.IsReg() && (res.reg() == r.Get())););
   } else {
     ScopedRegister rhs(this);
     if(!VisitExpression(*node.lhs_var,&rhs)) return false;
-    semit(move(node.sci(),r.index(),rhs.Get().index()));
+    SEMIT(move(node.sci(),r.index(),rhs.Get().index()));
   }
   return true;
 }
@@ -1548,16 +1764,15 @@ bool Generator::VisitPrefixAssign( const ast::Assign& node ) {
   switch(last_comp.t) {
     case ast::Prefix::Component::DOT:
       {
-        std::int32_t ref = func_scope_->bb()->Add(
-            *last_comp.var->name,context_);
+        std::int32_t ref = func_scope()->bb()->Add(*last_comp.var->name,context_);
         if(ref<0) {
-          ErrorTooComplicatedCode(node.sci());
+          Error(ERR_TOO_MANY_LITERALS,node);
           return false;
         }
         if(!rhs.IsAcc()) {
-          semit(move(node.sci(),Register::kAccIndex,rhs.Get().index()));
+          SEMIT(move(node.sci(),Register::kAccIndex,rhs.Get().index()));
         }
-        semit(propset(node.sci(),lhs.Get().index(),ref));
+        SEMIT(propset(node.sci(),lhs.Get().index(),ref));
       }
       break;
     case ast::Prefix::Component::INDEX:
@@ -1569,23 +1784,16 @@ bool Generator::VisitPrefixAssign( const ast::Assign& node ) {
          * from the rhs to be in a temporary register and then evaluate
          * the stuff
          */
-        Register rhs_reg(rhs.Get());
-        if(rhs_reg.IsAcc()) {
-          Optional<Register> temp(SpillFromAcc());
-          if(!temp) return false;
-          rhs_reg = temp.Get();
+        if(rhs.Get().IsAcc()) {
+          if(rhs.Reset(SpillFromAcc(rhs.Get()))) return false;
         }
 
         ScopedRegister expr_reg;
         if(!VisitExpression(*last_comp.expr,&expr_reg)) return false;
 
         // idxset REG REG REG
-        semit(idxset(node.sci(),lhs.Get().index(),expr_reg.Get().index(),
-                                                  rhs_reg.index()));
-
-        if(rhs.IsAcc()) ra_.Drop(rhs_reg); // Drop rhs_reg since in this case the rhs_reg
-                                           // is not protected by the rhs ScopedRegister
-
+        SEMIT(idxset(node.sci(),lhs.Get().index(),expr_reg.Get().index(),
+                                                  rhs.Get().index()));
       }
       break;
     default:
@@ -1593,6 +1801,14 @@ bool Generator::VisitPrefixAssign( const ast::Assign& node ) {
       return false;
   }
   return true;
+}
+
+bool Generator::Visit( const ast::Assign& node ) {
+  if(node.lhs_type() == ast::Assign::LHS_VAR) {
+    return VisitSimpleAssign(node);
+  } else {
+    return VisitComplexAssign(node);
+  }
 }
 
 bool Generator::Visit( const ast::Call& node ) {
@@ -1612,22 +1828,20 @@ bool Generator::Visit( const ast::If& node ) {
     // If we have a previous branch, then its condition should jump
     // to this place
     if(prev_jmp) {
-      prev_jmp.Patch(func_scope_->bb_builder()->CodePosition());
+      prev_jmp.Patch(func_scope()->bb_builder()->CodePosition());
     }
 
     // Generate condition code if we need to
     if(br.cond) {
       ScopedRegister cond(this);
       if(!VisitExpression(*br.cond,&cond)) return false;
-      prev_jmp = func_scope_->bb_builder()->jmpf(br.cond->sci(),cond.Get().index());
+      prev_jmp = func_scope()->bb_builder()->jmpf(br.cond->sci(),cond.Get().index());
       if(!prev_jmp) {
-        ErrorTooComplicatedCode(br.cond->sci());
+        Error(ERR_FUNCTION_TOO_LONG,br.cond->sci());
         return false;
       }
     } else {
-#ifdef LAVASCRIPT_CHECK_OBJECTS
-      lava_verify( i == len - 1);
-#endif // LAVASCRIPT_CHECK_OBJECTS
+      lava_debug( NORMAL , lava_verify( i == len - 1 ); );
     }
 
     // Generate code body
@@ -1635,10 +1849,11 @@ bool Generator::Visit( const ast::If& node ) {
 
     // Generate the jump
     if(br.cond)
-      label_vec.push(func_scope_->bb_builder()->jmp(br.cond->sci()));
+      label_vec.push(func_scope()->bb_builder()->jmp(br.cond->sci()));
   }
 
-  for(auto &e : label_vec) e.Patch(func_scope_->bb_builder()->CodePosition());
+  for(auto &e : label_vec)
+    e.Patch(func_scope()->bb_builder()->CodePosition());
   return true;
 }
 
@@ -1648,20 +1863,17 @@ bool Generator::VisitForCondition( const ast::For& node ,
   if(!VisitExpression(*node._2nd,&cond)) return false;
   switch(cond.kind()) {
     case KINT:
-      semit(ltvi(node._2nd->sci(),var.index(),cond.ref()));
+      SEMIT(ltvi(node._2nd->sci(),var.index(),cond.ref()));
       break;
     case KREAL:
-      semit(ltvr(node._2nd->sci(),var.index(),cond.ref()));
+      SEMIT(ltvr(node._2nd->sci(),var.index(),cond.ref()));
       break;
     case KSTR:
-      semit(ltvs(node._2nd->sci(),var.index(),cond.ref()));
+      SEMIT(ltvs(node._2nd->sci(),var.index(),cond.ref()));
     default:
       {
         ScopedRegister r(this,ExprResultToRegister(cond));
-        if(!r) {
-          ErrorTooComplicatedCode();
-          return false;
-        }
+        if(!r) return false;
         smit(ltvv(node._2nd->sci(),var.index(),r.Get().index()));
       }
       break;
@@ -1677,28 +1889,32 @@ bool Generator::Visit( const ast::For& node ) {
     lava_verify(node._1st);
     if(!Visit(*node._1st,&induct_reg)) return false;
     if(!VisitForCondition(node,induct_reg)) return false;
-    forward = func_scope_->bb()->fstart( node.sci() );
+    forward = func_scope()->bb()->fstart( node.sci() , induct_reg.index() );
   } else {
     if(node._1st) {
       if(!Visit(*node._1st,&induct_reg)) return false;
     }
-    semit(fevrstart(node.sci())); // Mark for JIT
+    SEMIT(fevrstart(node.sci())); // Mark for JIT
   }
 
   /* ------------------------------------------
    * Loop body                                |
    * -----------------------------------------*/
   {
-    EnterLoopScope scope(this,*node.body);
+    LexicalScope scope(this,true);
+    if(!scope.Init(*node.body)) {
+      Error(ERR_REGISTER_OVERFLOW,node.sci());
+      return false;
+    }
 
     std::uint16_t header = static_cast<std::uint16_t>(
-        func_scope_->bb()->CodePosition());
+        func_scope()->bb()->CodePosition());
 
     if(!VisitChunk(*node.body,false)) return false;
 
     // Patch all contiune to jump here
-    scope.loop_scope()->PatchContinue(static_cast<std::uint16_t>(
-          func_scope_->bb()->CodePosition()));
+    scope.PatchContinue(
+        static_cast<std::uint16_t>(func_scope()->bb()->CodePosition()));
 
     /**
      * Now generate loop header at the bottom of the loop. Basically
@@ -1708,79 +1924,84 @@ bool Generator::Visit( const ast::For& node ) {
       if(!VisitForCondition(node,induct_reg)) return false;
 
       // Jump back to the loop header
-      semit(fend(node.sci(),header));
+      SEMIT(fend(node.sci(),header));
     } else {
-      semit(fevrend(node.sci(),header));
+      SEMIT(fevrend(node.sci(),header));
     }
 
     // Patch all break to jump here , basically jumps out of
     // the scope
-    scope.loop_scope()->PatchBreak(static_cast<std::uint16_t>(
-          func_scope_->bb()->CodePosition()));
+    scope.PatchBreak(
+        static_cast<std::uint16_t>(func_scope()->bb()->CodePosition()));
   }
   if(forward) {
-    forward.Patch( static_cast<std::uint16_t>(
-          func_scope_->bb()->CodePosition()) );
+    forward.Patch(
+        static_cast<std::uint16_t>(func_scope()->bb()->CodePosition()) );
   }
 
   return true;
 }
 
 bool Generator::Visit( const ast::ForEach& node ) {
-  Register reg;
-  if(!VisitExpression(*node.itr,&reg)) return false;
+  // Get the iterator register
+  Register itr_reg(lexical_scope()->GetIterator());
 
-  // Pin the iterator's register to a name
-  lexical_scope_->DefineAnonymousVar(reg);
+  // Evaluate the interator initial value
+  ScopedRegister init_reg;
+  if(!VisitExpression(*node.iter,&init_reg)) return false;
+
+  SEMIT(move(node.iter->sci(),itr_reg.index(),init_reg.Get().index()));
 
   // Generate the festart
-  BytecodeBuilder::Label forward = func_scope_->bb()->festart(node.sci());
+  BytecodeBuilder::Label forward =
+    func_scope()->bb()->festart(node.sci(),itr_reg.index());
 
   {
-    EnterLoopScope scope(this,*node.body);
-
-    std::uint16_t header = static_cast<std::uint16_t>(
-        func_scope_->bb()->CodePosition());
-
-    Optional<Register> v(func_scope_->DefineVar(*node.var->name));
-    if(!v) {
-      ErrorTooComplicatedCode(node.var->sci());
+    LexicalScope scope(this,true);
+    if(!scope.Init(*node.body)) {
+      Error(ERR_REGISTER_OVERFLOW,node.sci());
       return false;
     }
 
+    std::uint16_t header = static_cast<std::uint16_t>(
+        func_scope()->bb()->CodePosition());
+
+    Optional<Register> v(func_scope()->GetLocalVar(*node.var->name));
+    lava_debug(NORMAL,lava_verify(v.Has()););
+
     // Deref the key from iterator register into the target register
-    semit(idref(node.var->sci(),v.Get().index(),reg.index()));
+    SEMIT(idref(node.var->sci(),v.Get().index(),itr_reg.index()));
 
     // Visit the chunk
     if(!VisitChunk(*node.body,false)) return false;
 
-    scope.loop_scope()->PatchContinue(static_cast<std::uint16_t>(
-          func_scope_->bb()->CodePosition()));
+    scope.PatchContinue(
+        static_cast<std::uint16_t>(func_scope()->bb()->CodePosition()));
 
-    semit(feend(node.sci(),reg.index(),header));
+    SEMIT(feend(node.sci(),itr_reg.index(),header));
 
 
-    scope.loop_scope()->PatchBreak(static_cast<std::uint16_t>(
-          func_scope_->bb()->CodePosition()));
+    scope.PatchBreak(
+        static_cast<std::uint16_t>(func_scope()->bb()->CodePosition()));
   }
 
-  forward.Patch(static_cast<std::uint16_t>(
-        func_scope_->bb()->CodePosition()));
+  forward.Patch(
+      static_cast<std::uint16_t>(func_scope()->bb()->CodePosition()));
 
   return true;
 }
 
 bool Generator::Visit( const ast::Continue& node ) {
-  if(!lexical_scope_->AddContinue(node)) {
-    ErrorTooComplicatedCode(node.sci());
+  if(!lexcial_scope()->AddContinue(node)) {
+    Error(ERR_FUNCTION_TOO_LONG,node.sci());
     return false;
   }
   return true;
 }
 
 bool Generator::Visit( const ast::Break& node ) {
-  if(!lexical_scope_->AddBreak(node)) {
-    ErrorTooComplicatedCode(node.sci());
+  if(!lexcial_scope()->AddBreak(node)) {
+    Error(ERR_FUNCTION_TOO_LONG,node.sci());
     return false;
   }
   return true;
@@ -1802,7 +2023,7 @@ bool Generator::CanBeTailCallOptimized( const ast::Node& node ) {
 
 bool Generator::Return( const ast::Return& node ) {
   if(!node.has_return_value()) {
-    semit(ret0(node.sci()));
+    SEMIT(ret0(node.sci()));
   } else {
     // Look for return function-call() style code and then perform
     // tail call optimization on this case. Basically, as long as
@@ -1810,9 +2031,8 @@ bool Generator::Return( const ast::Return& node ) {
     // tail call optimization since we don't need to return to the
     // previous call frame at all.
     if(CanBeTailCallOptimized(*node.expr)) {
-#ifdef LAVASCRIPT_CHECK_OBJECTS
-      lava_verify(node.expr->IsPrefix());
-#endif // LAVASCRIPT_CHECK_OBJECTS
+      lava_debug(NORMAL, lava_verify(node.expr->IsPrefix()); );
+
       ScopedRegister ret;
       if(!VisitPrefix(*node.expr->AsPrefix(),
                       node.expr->AsPrefix()->list->size(),
@@ -1825,7 +2045,7 @@ bool Generator::Return( const ast::Return& node ) {
       if(!VisitExpression(*node.expr,&ret)) return false;
       if(!ret.IsAcc()) SpillToAcc(ret);
     }
-    semit(ret(node.sci()));
+    SEMIT(ret(node.sci()));
   }
   return true;
 }
@@ -1858,42 +2078,15 @@ bool Generator::VisitChunkNoLexicalScope( const ast::Chunk& node ) {
 bool Generator::VisitChunk( const ast::Chunk& node , bool scope ) {
   if(scope) {
     EnterLexicalScope scope(this,node);
+    LexicalScope(this,false);
+    if(!scope.Init(node)) {
+      ErrorTooComplicatedCode(node.sci());
+      return false;
+    }
     return VisitChunkNoLexicalScope(node);
   }
   return VisitChunkNoLexicalScope(node);
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 } // namespace interpreter
 } // namespace lavascript

@@ -37,8 +37,9 @@ class Script {
    * used to mark where the function is. Later on if a loading
    * happened, use this index to reference a function.
    */
-  inline std::int32_t AddFunction( const Handle<Prototype>& function );
-  inline const Handle<Prototype>& IndexFunction( std::int32_t ) const;
+  inline std::int32_t AddFunction();
+  inline void SetFunction( std::int32_t , const Handle<Prototype>& function );
+  inline const Handle<Prototype>& GetFunction( std::int32_t ) const;
 
  private:
   std::string filename_;
@@ -78,7 +79,7 @@ inline std::int32_t AddFunction( const Handle<Prototype>& function ) {
   }
 }
 
-inline const Handle<Prototype>& Script::IndexFunction( std::int32_t index ) const {
+inline const Handle<Prototype>& Script::GetFunction( std::int32_t index ) const {
 #ifdef LAVASCRIPT_CHECK_OBJECTS
   lava_verify(index >= 0 && static_cast<std::size_t>(index) < function_table_.size());
 #endif // LAVASCRIPT_CHECK_OBJECTS

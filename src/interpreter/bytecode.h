@@ -159,14 +159,8 @@ static const std::size_t kAllocatableBytecodeRegisterSize = 255;
   __(D,ADDOBJ  , addobj , "addobj" , REG , REG , REG ) \
   __(B,LOADCLS  , loadcls  , "loadcls" , REG , GARG , _  ) \
   /* subroutine */ \
-  __(F,CALL0, call0, "call0", REG , _  , _ )   \
-  __(E,CALL1, call1, "call1", REG , REG ,_ )   \
-  __(D,CALL2, call2, "call2", REG , REG , REG ) \
-  __(E,CALL , call , "call" , NARG , REG ,  _ ) \
-  __(F,TCALL0,tcall0,"tcall0",REG,_,_)         \
-  __(E,TCALL1,tacll1,"tcall1",REG,REG,_)       \
-  __(D,TCALL2,tcall2,"tcall2",REG,REG,REG)     \
-  __(E,TCALL, tcall, "tcall", NARG , REG , _ ) \
+  __(D,CALL , call , "call" , NARG , REG , BASE ) \
+  __(D,TCALL, tcall, "tcall", NARG , REG , BASE ) \
   __(X,RET0 , ret0 , "ret0" , _ , _ , _ ) \
   __(X,RET  , ret  , "ret"  , _ , _ , _ ) \
   /* property/upvalue/global value */ \
@@ -362,17 +356,6 @@ class BytecodeBuilder {
   inline Label fevrend( const SourceCodeInfo& si );
   inline Label festart( const SourceCodeInfo& si , const Register& a1 );
   inline Label feend( const SourceCodeInfo& si , const Register& a1 );
- public:
-  /**
-   * This XARG call is used to extend CALL/MCALL instruction.
-   *
-   * What argument are used depends on the bytecode, the xarg function
-   * will do proper padding to ensure we all end up with 4 bytes aligned
-   *
-   * Since the above instruction will store the # of argument, so the
-   * decode can figure out how many 4bytes are left there after the bytecode.
-   */
-  void xarg( const std::vector<std::uint8_t>& arg );
 
  public:
   void Dump( DumpFlag flag , const char* file = NULL ) const;

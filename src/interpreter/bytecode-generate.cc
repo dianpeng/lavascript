@@ -484,7 +484,7 @@ class ExprResult {
   do {                                                       \
     auto _ret = func_scope()->bb()->XX;                      \
     if(!_ret) {                                              \
-      Error(ERR_FUNCTION_TOO_LONG,func_scope()->func_node()); \
+      Error(ERR_FUNCTION_TOO_LONG,func_scope()->func_node());\
       return false;                                          \
     }                                                        \
   } while(false)
@@ -493,7 +493,7 @@ class ExprResult {
   do {                                                       \
     auto _ret = func_scope()->bb()->XX;                      \
     if(!_ret) {                                              \
-      ERROR(ERR_FUNCTION_TOO_LONG,func_scope()->func_node()); \
+      ERROR(ERR_FUNCTION_TOO_LONG,func_scope()->func_node());\
       return false;                                          \
     }                                                        \
   } while(false)
@@ -551,9 +551,6 @@ class Generator {
   /* --------------------------------------------
    * Expression Code Generation                 |
    * -------------------------------------------*/
-  // Visit function's call argument and generate code for them. Put all the reference
-  // register into the reg_set vector
-  bool VisitFuncCall( const ast::FuncCall& fc , std::vector<std::uint8_t>* reg_set );
   bool Visit( const ast::Literal& lit , ExprResult* );
   bool Visit( const ast::Variable& var, ExprResult* );
   bool Visit( const ast::Prefix& pref , ExprResult* );
@@ -1214,24 +1211,6 @@ bool Generator::Visit( const ast::Variable& var , ExprResult* result ) {
   return true;
 }
 
-bool Generator::VisitFuncCall( const ast::FuncCall& fc ,
-                               std::vector<std::uint8_t>* reg_set ) {
-  const std::size_t arg_size = fc.args->size();
-  for( std::size_t i = 0 ; i < arg_size ; ++i ) {
-    Register reg;
-    if(!VisitExpression(*fc.args->Index(i),&reg)) return false;
-
-    if(reg.IsAcc()) {
-      Optional<Register> new_reg( SpillFromAcc() );
-      if(!new_reg) return false;
-      reg_set->push_back(new_reg.Get().index());
-    } else {
-      reg_set->push_back(reg.index());
-    }
-  }
-  return true;
-}
-
 bool Generator::VisitPrefix( const ast::Prefix& node , std::size_t end ,
                                                        bool tcall ,
                                                        Register* result ) {
@@ -1321,8 +1300,28 @@ bool Generator::VisitPrefix( const ast::Prefix& node , std::size_t end ,
           }
 
           // 2. Visit each argument and get all its related registers
-          std::vector<std::uint8_t> areg_set;
-          if(!VisitFuncCall(*c.func,&areg_set)) return false;
+          const std::size_t len = c.func->args->size();
+          {
+            std::uint8_t base = 255;
+
+            for( std::size_t i = 0; i < len; ++i ) {
+              Register reg;
+              if(!VisitExpression(*c.func->args->Index(i),&reg)) return false;
+              if(reg.IsAcc()) {
+                Optional<Register> r(SpillFromAcc());
+                if(!r) return false;
+                reg = r.Get();
+              }
+
+              lava_debug(NORMAL,
+                  if(base != 255) {
+                    lava_verify(prev_index+1 == reg.index());
+                  }
+                );
+
+              if(base == 255) base = r.index();
+            }
+          }
 
           // 3. Generate call instruction based on the argument size for
           //    sepcialization , this save us some decoding time when function
@@ -1332,6 +1331,9 @@ bool Generator::VisitPrefix( const ast::Prefix& node , std::size_t end ,
           // *must be* for the last component , since then we know we will
           // forsure generate a ret instruction afterwards
           const bool tc = tcall && (i == (len-1));
+          if(tc) {
+            EEMIT(NULL,tcall(c.func->sci(),static_cast<std::uint8_t>(c.func->args->size()),
+                                           var_reg.index(),
 
           if(areg_set.size() == 0) {
             if(tc)

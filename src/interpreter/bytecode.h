@@ -182,7 +182,7 @@ static const std::size_t kAllocatableBytecodeRegisterSize = 255;
   __(C,GSET   ,gset  ,"gset" ,GARG,REG,_) \
   __(B,GGET   ,gget  ,"gget" ,REG,GARG,_) \
   /* forloop tag */ \
-  __(C,FSTART,fstart,"fstart",PC,REG,_) \
+  __(B,FSTART,fstart,"fstart",REG,PC,_) \
   __(G,FEND  ,fend  ,"fend"  ,PC,_,_) \
   __(G,FEVRSTART,fevrstart,"fevrstart",PC,_,_) \
   __(G,FEVREND,fevrend,"frvrend",PC,_,_ ) \
@@ -247,13 +247,7 @@ const char* GetUpValueStateName( UpValueState );
 
 class BytecodeBuilder {
  public:
-  static const std::uint32_t kOpcodeMask = 0xff;
-  static const std::uint32_t kTypeA_ArgA = 0xffffff00;
-  static const std::uint32_t kTypeB_ArgA = 0x0000ff00;
-  static const std::uint32_t kTypeB_ArgB = 0xffff0000;
-  static const std::uint32_t kTypeC_ArgA = 0xffff0000;
-  static const std::uint32_t kTypeC_ArgB = 0x0000ff00;
-  static const std::uint32_t kTypeD_ArgA = 0xff000000;
+  static const std::size_t kMaxCodeLength = 65536;
  public:
   inline BytecodeBuilder();
 
@@ -273,7 +267,7 @@ class BytecodeBuilder {
 
   class Label {
    public:
-    Label( BytecodeBuilder* , std::size_t );
+    Label( BytecodeBuilder* , std::size_t , BytecodeType );
     Label();
     bool IsOk() const { return builder_ != NULL; }
     operator bool () const { return IsOk(); }
@@ -287,6 +281,7 @@ class BytecodeBuilder {
   inline bool EmitB( const SourceCodeInfo& , Bytecode , std::uint8_t , std::uint16_t );
   inline bool EmitC( const SourceCodeInfo& , Bytecode , std::uint16_t, std::uint8_t  );
   inline bool EmitD( const SourceCodeInfo& , Bytecode , std::uint8_t , std::uint8_t ,
+                                                                       std::uint8_t );
   inline bool EmitE( const SourceCodeInfo& , Bytecode , std::uint8_t , std::uint8_t );
   inline bool EmitF( const SourceCodeInfo& , Bytecode , std::uint8_t );
   inline bool EmitG( const SourceCodeInfo& , Bytecode , std::uint16_t );
@@ -353,17 +348,15 @@ class BytecodeBuilder {
   /* -----------------------------------------------------
    * Jump related isntruction                            |
    * ----------------------------------------------------*/
-  inline Label jmpt( const SourceCodeInfo& si , const std::uint8_t r );
-  inline Label jmpf( const SourceCodeInfo& si , const std::uint8_t r );
-  inline Label and ( const SourceCodeInfo& si );
-  inline Label or  ( const SourceCodeInfo& si );
-  inline Label jmp ( const SourceCodeInfo& si );
-  inline Label brk ( const SourceCodeInfo& si );
-  inline Label cont( const SourceCodeInfo& si );
-  inline Label fstart( const SourceCodeInfo& si );
-  inline Label fevrend( const SourceCodeInfo& si );
-  inline Label festart( const SourceCodeInfo& si , const Register& a1 );
-  inline Label feend( const SourceCodeInfo& si , const Register& a1 );
+  inline Label jmpt   ( const SourceCodeInfo& si , const std::uint8_t r );
+  inline Label jmpf   ( const SourceCodeInfo& si , const std::uint8_t r );
+  inline Label and    ( const SourceCodeInfo& si );
+  inline Label or     ( const SourceCodeInfo& si );
+  inline Label jmp    ( const SourceCodeInfo& si );
+  inline Label brk    ( const SourceCodeInfo& si );
+  inline Label cont   ( const SourceCodeInfo& si );
+  inline Label fstart ( const SourceCodeInfo& si , const std::uint8_t a1 );
+  inline Label festart( const SourceCodeInfo& si , const std::uint8_t a1 );
 
  public:
   void Dump( DumpFlag flag , const char* file = NULL ) const;
@@ -390,6 +383,176 @@ class BytecodeBuilder {
   };
   std::vector<UpValueSlot> upvalue_slot_;
 };
+
+/*--------------------------------------------
+ * Inline Definitions                        |
+ * ------------------------------------------*/
+inline bool BytecodeBuilder::EmitB( const SourceCodeInfo& sci , Bytecode bc,
+                                                                std::uint8_t  a1,
+                                                                std::uint16_t a2) {
+  if(code_buffer_.size() == kMaxCodeLength)
+    return false;
+  std::uint32_t value = static_cast<std::uint32_t>(bc) |
+                        (static_cast<std::uint32_t>(a1) << 8) |
+                        (static_cast<std::uint32_t>(a2) << 16);
+  code_buffer_.push_back(value);
+  debug_info_.push_back (sci);
+  return true;
+}
+
+inline bool BytecodeBuilder::EmitC( const SourceCodeInfo& sci , Bytecode bc,
+                                                                std::uint16_t a1 ,
+                                                                std::uint8_t a2 ) {
+  if(code_buffer_.size() == kMaxCodeLength)
+    return false;
+  std::uint32_t value = static_cast<std::uint32_t>(bc) |
+                        (static_cast<std::uint32_t>(a1) << 8) |
+                        (static_cast<std::uint32_t>(a2) <<24);
+  code_buffer_.push_back(value);
+  debug_info_.push_back(sci);
+  return true;
+}
+
+inline bool BytecodeBuilder::EmitD( const SourceCodeInfo& sci , Bytecode bc,
+                                                                std::uint8_t a1,
+                                                                std::uint8_t a2,
+                                                                std::uint8_t a3 ) {
+  if(code_buffer_.size() == kMaxCodeLength)
+    return false;
+
+  std::uint32_t value = static_cast<std::uint32_t>(bc) |
+                        (static_cast<std::uint32_t>(a1) << 8)  |
+                        (static_cast<std::uint32_t>(a2) << 16) |
+                        (static_cast<std::uint32_t>(a3) << 24);
+  code_buffer_.push_back(value);
+  debug_info_.push_back(sci);
+  return true;
+}
+
+inline bool BytecodeBuilder::EmitE( const SourceCodeInfo& sci , Bytecode bc,
+                                                                std::uint8_t a1,
+                                                                std::uint8_t a2 ) {
+  if(code_buffer_.size() == kMaxCodeLength)
+    return false;
+  std::uint32_t value = static_cast<std::uint32_t>(bc) |
+                        (static_cast<std::uint32_t>(a1) << 8) |
+                        (static_cast<std::uint32_t>(a2) << 16);
+  code_buffer_.push_back(value);
+  debug_info_.push_back(sci);
+  return true;
+}
+
+inline bool BytecodeBuilder::EmitF( const SourceCodeInfo& sci , Bytecode bc,
+                                                                std::uint8_t a1 ) {
+  if(code_buffer_.size() == kMaxCodeLength)
+    return false;
+  std::uint32_t value = static_cast<std::uint32_t>(bc) |
+                        (static_cast<std::uint32_t>(a1) << 8);
+  code_buffer_.push_back(value);
+  debug_info_.push_back(sci);
+  return true;
+}
+
+inline bool BytecodeBuilder::EmitG( const SourceCodeInfo& sci , Bytecode bc,
+                                                                std::uint16_t a1 ) {
+  if(code_buffer_.size() == kMaxCodeLength)
+    return false;
+  std::uint32_t value = static_cast<std::uint32_t>(bc) |
+                        (static_cast<std::uint32_t>(a1) << 8);
+  code_buffer_.push_back(value);
+  debug_info_.push_back(sci);
+  return true;
+}
+
+inline bool BytecodeBuilder::EmitX( const SourceCodeInfo& sci , Bytecode bc ) {
+  if(code_buffer_.size() == kMaxCodeLength)
+    return false;
+
+  code_buffer_.push_back(static_cast<std::uint32_t>(bc));
+  debug_info_.push_back(sci);
+  return true;
+}
+
+template< int BC , int TP , bool A1 , bool A2 , bool A3 >
+inline BytecodeBuilder::Label BytecodeBuilder::EmitAt( const SourceCodeInfo& sci ,
+                                                       std::uint32_t a1 ,
+                                                       std::uint32_t a2 ,
+                                                       std::uint32_t a3 ) {
+  if( code_buffer_.size() == kMaxCodeLength )
+    return BytecodeBuilder::Label();
+
+  std::size_t idx = debug_info_.size();
+  std::uint32_t encode = static_cast<std::uint32_t>(BC);
+
+  switch(TP) {
+    case TYPE_B:
+      if(A1) encode |= (a1 << 8);
+      if(A2) encode |= (a2 <<16);
+      break;
+    case TYPE_C:
+      if(A1) encode |= (a1 << 8);
+      if(A2) encode |= (a2 <<24);
+      break;
+    case TYPE_D:
+      if(A1) encode |= (a1 << 8);
+      if(A2) encode |= (a2 <<16);
+      if(A3) encode |= (a3 <<24);
+      break;
+    case TYPE_E:
+      if(A1) encode |= (a1 << 8);
+      if(A2) encode |= (a2 <<16);
+      break;
+    case TYPE_F:
+    case TYPE_G:
+      if(A1) encode |= (a1 << 8);
+      break;
+    default:
+      break;
+  }
+
+  debug_info_.push_back(encode);
+  return Label(this,idx,static_cast<BytecodeType>(TP));
+}
+
+inline BytecodeBuilder::Label BytecodeBuilder::jmpt( const SourceCodeInfo& sci,
+                                                     std::uint8_t a1 ) {
+  return EmitAt<BC_JMPT,TYPE_B,true,false,false>(sci,a1);
+}
+
+inline BytecodeBuilder::Label BytecodeBuilder::jmpf( const SourceCodeInfo& sci,
+                                                     std::uint8_t a1 ) {
+  return EmitAt<BC_JMPF,TYPE_B,true,false,false>(sci,a1);
+}
+
+inline BytecodeBuilder::Label BytecodeBuilder::and ( const SourceCodeInfo& sci ) {
+  return EmitAt<BC_AND,TYPE_G,false,false,false>(sci);
+}
+
+inline BytecodeBuilder::Label BytecodeBuilder::or  ( const SourceCodeInfo& sci ) {
+  return EmitAt<BC_OR,TYPE_G,false,false,false>(sci);
+}
+
+inline BytecodeBuilder::Label BytecodeBuilder::jmp ( const SourceCodeInfo& sci ) {
+  return EmitAt<BC_OR,TYPE_G,false,false,false>(sci);
+}
+
+inline BytecodeBuilder::Label BytecodeBuilder::brk ( const SourceCodeInfo& sci ) {
+  return EmitAt<BC_BRK,TYPE_G,false,false,false>(sci);
+}
+
+inline BytecodeBuilder::Label BytecodeBuilder::cont( const SourceCodeInfo& sci ) {
+  return EmitAt<BC_CONT,TYPE_G,false,false,false>(sci);
+}
+
+inline BytecodeBuilder::Label BytecodeBuilder::fstart( const SourceCodeInfo& sci ,
+                                                       std::uint8_t a1 ) {
+  return EmitAt<BC_FSTART,TYPE_B,true,false,false>(sci,a1);
+}
+
+inline BytecodeBuilder::Label BytecodeBuilder::festart( const SourceCodeInfo& sci ,
+                                                        std::uint8_t a1 ) {
+  return EmitAt(BC_FSTART,TYPE_B,true,false,false>(sci,a1);
+}
 
 
 } // namespace interpreter

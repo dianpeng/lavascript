@@ -6,6 +6,10 @@
 
 
 namespace lavascript {
+namespace zone {
+class String;
+} // namespace zone
+
 class Context;
 
 /**
@@ -37,9 +41,10 @@ class Script {
    * used to mark where the function is. Later on if a loading
    * happened, use this index to reference a function.
    */
-  inline std::int32_t AddFunction();
-  inline void SetFunction( std::int32_t , const Handle<Prototype>& function );
-  inline const Handle<Prototype>& GetFunction( std::int32_t ) const;
+  inline std::int32_t AddPrototype( const Handle<Prototype>& );
+  inline std::int32_t AddPrototype( const Handle<Prototype>& ,
+                                    const zone::String& );
+  inline const Handle<Prototype>& GetPrototype( std::int32_t ) const;
 
  private:
   std::string filename_;
@@ -67,7 +72,7 @@ inline void Script::set_main( const Handle<Prototype>& main ) {
   function_table_.insert( function_table_.begin() , main );
 }
 
-inline std::int32_t AddFunction( const Handle<Prototype>& function ) {
+inline std::int32_t AddPrototype( const Handle<Prototype>& function ) {
 #ifdef LAVASCRIPT_CHECK_OBJECTS
   lava_verify(!function.IsNull());
 #endif // LAVASCRIPT_CHECK_OBJECTS

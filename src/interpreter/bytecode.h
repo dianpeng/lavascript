@@ -3,6 +3,7 @@
 #include <cstdint>
 #include <vector>
 
+#include <src/objects.h>
 #include <src/flags.h>
 #include <src/source-code-info.h>
 
@@ -42,9 +43,16 @@
 namespace lavascript {
 class Context;
 class String;
+
 namespace zone {
 class String;
 } // namespace zone
+
+namespace parser {
+namespace ast {
+struct Function;
+} // namespace ast
+} // namespace parser
 
 namespace interpreter{
 
@@ -58,7 +66,7 @@ static const std::size_t kAllocatableBytecodeRegisterSize = 255;
   __(B,ADDVI , addvi , "+" , ACC , REG , IREF ) \
   __(C,ADDRV , addrv , "+" , ACC , RREF , REG ) \
   __(B,ADDVR , addvr , "+" , ACC , REG , RREF ) \
-  __(E,ADDVV , addvv , "+" , ACC , REG , REG) \
+  __(E,ADDVV , addvv , "+" , ACC , REG , REG)   \
   __(C,SUBIV , subiv , "-" , ACC , IREF , REG ) \
   __(B,SUBVI , subvi , "-" , ACC , REG , IREF ) \
   __(C,SUBRV , subrv , "-" , ACC , RREF , REG ) \
@@ -68,7 +76,7 @@ static const std::size_t kAllocatableBytecodeRegisterSize = 255;
   __(B,MULVI , mulvi , "*" , ACC , REG , IREF ) \
   __(C,MULRV , mulrv , "*" , ACC , RREF , REG ) \
   __(B,MULVR , mulvr , "*" , ACC , REG  , RREF) \
-  __(E,MULVV , mulvv , "*" , ACC , REG , REG) \
+  __(E,MULVV , mulvv , "*" , ACC , REG , REG)   \
   __(C,DIVIV , diviv , "/" , ACC , IREF , REG ) \
   __(B,DIVVI , divvi , "/" , ACC , REG , IREF ) \
   __(C,DIVRV , divrv , "/" , ACC , RREF , REG ) \
@@ -76,55 +84,55 @@ static const std::size_t kAllocatableBytecodeRegisterSize = 255;
   __(E,DIVVV , divvv , "/" , ACC , REG , REG)   \
   __(C,MODIV , modiv , "%" , ACC , IREF , REG ) \
   __(B,MODVI , modvi , "%" , ACC , REG , IREF ) \
-  __(E,MODVV , modvv , "%" , ACC , REG , REG ) \
+  __(E,MODVV , modvv , "%" , ACC , REG , REG )  \
   __(C,POWIV , powiv , "^" , ACC , IREF , REG ) \
   __(B,POWVI , powvi , "^" , ACC , REG , IREF ) \
   __(C,POWRV , powrv , "^" , ACC , RREF , REG ) \
   __(B,POWVR , powvr , "^" , ACC , REG , RREF ) \
-  __(E,POWVV , powvv , "^" , ACC , REG , REG) \
-  /* comparison */ \
+  __(E,POWVV , powvv , "^" , ACC , REG , REG)   \
+  /* comparison */                              \
   __(C,LTIV  , ltiv  , "lt", ACC , IREF , REG ) \
   __(B,LTVI  , ltvi  , "lt", ACC , REG , IREF ) \
   __(C,LTRV  , ltrv  , "lt", ACC , RREF, REG  ) \
   __(B,LTVR  , ltvr  , "lt", ACC , REG , RREF ) \
   __(C,LTSV  , ltsv  , "lt", ACC , SREF , REG ) \
   __(B,LTVS  , ltvs  , "lt", ACC , REG , SREF ) \
-  __(E,LTVV  , ltvv  , "lt", ACC , REG , REG) \
+  __(E,LTVV  , ltvv  , "lt", ACC , REG , REG)   \
   __(C,LEIV  , leiv  , "le", ACC , IREF , REG ) \
   __(B,LEVI  , levi  , "le", ACC , REG , IREF ) \
   __(C,LERV  , lerv  , "le", ACC , RREF , REG ) \
   __(B,LEVR  , levr  , "le", ACC , REG , RREF ) \
   __(C,LESV  , lesv  , "le", ACC , SREF , REG ) \
   __(B,LEVS  , levs  , "le", ACC , REG , SREF ) \
-  __(E,LEVV  , levv  , "le", ACC , REG , REG) \
+  __(E,LEVV  , levv  , "le", ACC , REG , REG)   \
   __(C,GTIV  , gtiv  , "gt", ACC , IREF , REG ) \
   __(B,GTVI  , gtvi  , "gt", ACC , REG , IREF ) \
   __(C,GTRV  , gtrv  , "gt", ACC , RREF , REG ) \
   __(B,GTVR  , gtvr  , "gt", ACC , REG , RREF ) \
   __(C,GTSV  , gtsv  , "gt", ACC , SREF , REG ) \
   __(B,GTVS  , gtvs  , "gt", ACC , REG , SREF ) \
-  __(E,GTVV  , gtvv  , "gt", ACC , REG , REG ) \
+  __(E,GTVV  , gtvv  , "gt", ACC , REG , REG )  \
   __(C,GEIV  , geiv  , "ge", ACC , IREF , REG ) \
   __(B,GEVI  , gevi  , "ge", ACC , REG , IREF ) \
   __(C,GERV  , gerv  , "ge", ACC , RREF , REG ) \
   __(B,GEVR  , gevr  , "ge", ACC , REG , RREF ) \
   __(C,GESV  , gesv  , "ge", ACC , SREF , REG ) \
   __(B,GEVS  , gevs  , "ge", ACC , REG , SREF ) \
-  __(E,GEVV  , gevv  , "ge", ACC , REG , REG ) \
+  __(E,GEVV  , gevv  , "ge", ACC , REG , REG )  \
   __(C,EQIV  , eqiv  , "eq", ACC , IREF , REG ) \
   __(B,EQVI  , eqvi  , "eq", ACC , IREF , REG ) \
   __(C,EQRV  , eqrv  , "eq", ACC , RREF , REG ) \
   __(B,EQVR  , eqvr  , "eq", ACC , REG  , RREF) \
   __(C,EQSV  , eqsv  , "eq", ACC , SREF , REG ) \
   __(B,EQVS  , eqvs  , "eq", ACC , REG , SREF ) \
-  __(E,EQVV  , eqvv  , "eq", ACC , REG  , REG) \
+  __(E,EQVV  , eqvv  , "eq", ACC , REG  , REG)  \
   __(C,NEIV  , neiv  , "ne", ACC , IREF , REG ) \
   __(B,NEVI  , nevi  , "ne", ACC , REG , IREF ) \
   __(C,NERV  , nerv  , "ne", ACC , RREF, REG  ) \
   __(B,NEVR  , nevr  , "ne", ACC , REG , RREF ) \
   __(C,NESV  , nesv  , "ne", ACC , SREF , REG ) \
   __(B,NEVS  , nevs  , "ne", ACC , REG , SREF ) \
-  __(E,NEVV  , nevv  , "ne", ACC , REG , REG) \
+  __(E,NEVV  , nevv  , "ne", ACC , REG , REG)   \
   /* unary */ \
   __(F,NEGATE, negate, "negate",REG,_,_) \
   __(F,NOT   , not   , "not"   ,REG,_,_) \
@@ -157,7 +165,7 @@ static const std::size_t kAllocatableBytecodeRegisterSize = 255;
   __(E,LOADOBJ1, loadobj1, "loadobj1", REG , REG , REG ) \
   __(E,NEWOBJ  , newobj , "newobj" , REG , NARG  , _  ) \
   __(D,ADDOBJ  , addobj , "addobj" , REG , REG , REG ) \
-  __(B,LOADCLS  , loadcls  , "loadcls" , REG , GARG , _  ) \
+  __(G,LOADCLS  , loadcls  , "loadcls" , GARG , _  , _ ) \
   /* subroutine */ \
   __(D,CALL , call , "call" , NARG , REG , BASE ) \
   __(D,TCALL, tcall, "tcall", NARG , REG , BASE ) \
@@ -359,6 +367,13 @@ class BytecodeBuilder {
 
  public:
   void Dump( DumpFlag flag , const char* file = NULL ) const;
+
+ public:
+  // This function will create a Closure object from the BytecodeBuilder
+  // object. After that we convert a builder's internal information to a
+  // managed heap based closure which can be used in the VM
+  static Handle<Prototype> New( GC* , const BytecodeBuilder& bb ,
+                                      const ::lavascript::parser::ast::Function& node );
 
  private:
   std::vector<std::uint32_t> code_buffer_;           // Code buffer

@@ -1,6 +1,7 @@
 #include "bytecode-generate.h"
 #include "bytecode.h"
 
+#include <src/objects.h>
 #include <src/common.h>
 #include <src/util.h>
 #include <src/script.h>
@@ -616,7 +617,8 @@ class Generator {
   /* -------------------------------------------
    * Function                                 |
    * -----------------------------------------*/
-  bool VisitFunction( const ast::Function& );
+  Handle<Function> VisitFunction( const ast::Function& );
+
   bool VisitNamedFunction( const ast::Function& );
   bool VisitAnonymousFunction( const ast::Function& , ExprResult* );
 
@@ -641,6 +643,7 @@ class Generator {
   enum ErrorCategory {
     ERR_REGISTER_OVERFLOW,
     ERR_TOO_MANY_LITERALS,
+    ERR_TOO_MANY_PROTOTYPES,
     ERR_FUNCTION_TOO_LONG,
     ERR_LOCAL_VARIABLE_NOT_EXISTED
   };
@@ -654,6 +657,7 @@ class Generator {
   FunctionScope* func_scope_;
   LexicalScope* lexical_scope_;
   RegisterAllocator ra_;
+  Script* script_;
   Context* context_;
 
   friend class LexicalScope;
@@ -737,9 +741,9 @@ inline void RegisterAllocator::Drop( const Register& reg ) {
   }
 
   lava_debug(NORMAL,
-      for( Node* c = free_register_ ; c ; c = c->next ) {
+    for( Node* c = free_register_ ; c ; c = c->next ) {
       lava_verify( c->next && c->reg.index() < c->next->reg.index() );
-      }
+    }
   );
 }
 
@@ -1256,7 +1260,7 @@ bool Generator::VisitPrefix( const ast::Prefix& node , std::size_t end ,
       case ast::Prefix::Component::DOT:
         {
           // Get the string reference
-          std::int32_t ref = func_scope()->bb_builder()->Add(
+          std::int32_t ref = func_scope()->bb()->Add(
               *c.var->name , context_ );
           if(ref<0) {
             Error(ERR_REGISTER_OVERFLOW,*c.var);
@@ -1278,7 +1282,7 @@ bool Generator::VisitPrefix( const ast::Prefix& node , std::size_t end ,
           // Okay it is a index looks like this : a[100]
           // so we gonna specialize this one with 100 be a direct ref
           // no register shuffling here
-          std::int32_t ref = func_scope()->bb_builder()->Add(
+          std::int32_t ref = func_scope()->bb()->Add(
               c.expr->AsLiteral()->int_value);
           if(ref<0) {
             ErrorTooComplicatedFunc(c.expr->sci(),result);
@@ -1724,12 +1728,24 @@ bool Generator::Visit( const ast::Var& node , Register* holder ) {
   lava_debug(NORMAL, lava_verify(lhs.Has()); );
 
   if(node.expr) {
-    Register rhs;
-    if(!VisitExpression(*node.expr,&rhs)) return false;
-    SEMIT(move(node.sci(),lhs.Get().index(),rhs.index()));
+    if(node.expr->IsLiteral()) {
+      AllocateLiteral(*node.expr->AsLiteral(),lhs.Get());
+    } else if(node.expr->IsList()) {
+      ExprResult res;
+      if(!Visit(*node.expr->AsList(),lhs.Get(),&res)) return false;
+      lava_debug(NORMAL,lava_verify(res.IsReg() && (res.reg() == lhs.Get())););
+    } else if(node.expr->IsObject()) {
+      ExprResutl res;
+      if(!Visit(*node.expr->AsObject(),lhs.Get(),&res)) return false;
+      lava_debug(NORMAL,lava_verify(res.IsReg() && (res.reg() == lhs.Get())););
+    } else {
+      ScopedRegister rhs;
+      if(!VisitExpression(*node.expr,&rhs)) return false;
+      SEMIT(move(node.sci(),lhs.Get().index(),rhs.Get().index()));
+    }
   } else {
     // put a null to that value as default value
-    SEMIT(loadnull(node.sci(),lhs.Get().index()));
+    SEMIT(loadnull(node.sci(),r.index()));
   }
   return true;
 }
@@ -1836,14 +1852,14 @@ bool Generator::Visit( const ast::If& node ) {
     // If we have a previous branch, then its condition should jump
     // to this place
     if(prev_jmp) {
-      prev_jmp.Patch(func_scope()->bb_builder()->CodePosition());
+      prev_jmp.Patch(func_scope()->bb()->CodePosition());
     }
 
     // Generate condition code if we need to
     if(br.cond) {
       ScopedRegister cond(this);
       if(!VisitExpression(*br.cond,&cond)) return false;
-      prev_jmp = func_scope()->bb_builder()->jmpf(br.cond->sci(),cond.Get().index());
+      prev_jmp = func_scope()->bb()->jmpf(br.cond->sci(),cond.Get().index());
       if(!prev_jmp) {
         Error(ERR_FUNCTION_TOO_LONG,br.cond->sci());
         return false;
@@ -1857,11 +1873,11 @@ bool Generator::Visit( const ast::If& node ) {
 
     // Generate the jump
     if(br.cond)
-      label_vec.push(func_scope()->bb_builder()->jmp(br.cond->sci()));
+      label_vec.push(func_scope()->bb()->jmp(br.cond->sci()));
   }
 
   for(auto &e : label_vec)
-    e.Patch(func_scope()->bb_builder()->CodePosition());
+    e.Patch(func_scope()->bb()->CodePosition());
   return true;
 }
 
@@ -2096,21 +2112,47 @@ bool Generator::VisitChunk( const ast::Chunk& node , bool scope ) {
   return VisitChunkNoLexicalScope(node);
 }
 
-bool Generator::VisitFunction( const Function& node ) {
+Handle<Prototype> Generator::VisitFunction( const Function& node ) {
   FunctionScope scope(this,node);
   {
     LexicalScope body_scope(this,false);
     body_scope.Init(node); // For argument
     if(!body_scope.Init(*node.body)) {
       Error(ERR_REGISTER_OVERFLOW,node.sci());
-      return false;
+      return Handle<Prototype>();
     }
-    return VisitChunk(*node.body,false);
+    if(!VisitChunk(*node.body,false))
+      return Handle<Prototype>();
   }
+  return BytecodeBuilder::New(context_->gc(),*scope.bb(),node);
 }
 
 bool Generator::VisitNamedFunction( const Function& node ) {
   lava_debug(NORMAL,lava_verify(node.name););
+  Handle<Prototype> proto(VisitFunction(node));
+  if(proto) {
+    std::int32_t idx = script_->AddPrototype(proto);
+    if(idx <0) {
+      Error(ERR_TOO_MANY_PROTOTYPES,node.sci());
+      return false;
+    }
+    return true;
+  }
+  return false;
+}
+
+bool Generator::VisitAnonymousFunction( const Function& node ) {
+  lava_debug(NORMAL,lava_verify(node.name););
+  Handle<Prototype> proto(VisitFunction(node));
+  if(proto) {
+    std::int32_t idx = script_->AddPrototype(proto,*node.name);
+    if(idx <0) {
+      Error(ERR_TOO_MANY_PROTOTYPES,node.sci());
+      return false;
+    }
+    EEMIT(loadcls(node.sci(),static_cast<std::uint16_t>(idx)));
+  }
+  return false;
 }
 
 

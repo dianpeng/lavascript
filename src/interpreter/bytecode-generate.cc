@@ -334,6 +334,7 @@ class LexicalScope : public Scope {
 class FunctionScope : public Scope {
  public:
   inline FunctionScope( Generator* , const ast::Function& node );
+  inline FunctionScope( Generator* , const ast::Chunk& node );
   inline ~FunctionScope();
 
  public:
@@ -343,8 +344,8 @@ class FunctionScope : public Scope {
   // register allocator
   RegisterAllocator* ra() { return &ra_; }
 
-  // function node
-  const ast::Function& func_node() const { return *func_node_; }
+  // body node
+  const ast::Chunk& body() const { return *body_; }
  public:
   /* --------------------------------
    * full lexical scope local var   |
@@ -395,7 +396,7 @@ class FunctionScope : public Scope {
   std::vector<LexicalScope*> lexical_scope_list_;
 
   // function node
-  const ast::Function* func_node_;
+  const ast::Chunk* body_;
 
   friend class LexicalScope;
 
@@ -496,7 +497,7 @@ class ExprResult {
   do {                                                       \
     auto _ret = func_scope()->bb()->XX;                      \
     if(!_ret) {                                              \
-      Error(ERR_FUNCTION_TOO_LONG,func_scope()->func_node());\
+      Error(ERR_FUNCTION_TOO_LONG,func_scope()->body());     \
       return false;                                          \
     }                                                        \
   } while(false)
@@ -505,7 +506,7 @@ class ExprResult {
   do {                                                       \
     auto _ret = func_scope()->bb()->XX;                      \
     if(!_ret) {                                              \
-      ERROR(ERR_FUNCTION_TOO_LONG,func_scope()->func_node());\
+      ERROR(ERR_FUNCTION_TOO_LONG,func_scope()->body());     \
       return false;                                          \
     }                                                        \
   } while(false)
@@ -528,12 +529,11 @@ class Generator {
   /* ------------------------------------------------
    * Generate expression                            |
    * -----------------------------------------------*/
-
- public:
   Generator( Context* , const ast::Root& , Script* , std::string* );
   FunctionScope* func_scope() const { return func_scope_; }
   LexicalScope*  lexical_scope() const { return lexical_scope_; }
 
+ public:
   bool Generate();
 
  private:
@@ -659,6 +659,7 @@ class Generator {
   RegisterAllocator ra_;
   Script* script_;
   Context* context_;
+  const ast::Root* root_;
 
   friend class LexicalScope;
   friend class FunctionScope;
@@ -1059,13 +1060,24 @@ inline FunctionScope::FunctionScope( Generator* gen , const ast::Function& node 
   ra_  (),
   upvalue_ (),
   lexical_scope_list_(),
-  func_node_(&node)
+  body_(node.body)
 {}
+
+inline FunctionScope::FunctionScope( Generator* gen , const ast::Chunk& node ):
+  Scope(gen),
+  bb_  (),
+  ra_  (),
+  upvalue_ (),
+  lexical_scope_list(),
+  body_(&node)
+{}
+
+inline FunctionScope::FunctionScope( Generator* gen , const 
 
 inline FunctionScope::~FunctionScope() {
   lava_debug(NORMAL,
       lava_verify( lexcial_scope_list.empty() );
-      );
+   );
 }
 
 std::uint8_t kBinSpecialOpLookupTable [][][] = {
@@ -1550,7 +1562,7 @@ bool Generator::VisitLogic( const ast::Binary& node , ExprResult* result ) {
     label = func_scope()->bb()->or(node.lhs->sci());
   }
   if(!label) {
-    Error(ERR_RUNCTION_TOO_LONG,func_scope()->func_node());
+    Error(ERR_FUNCTION_TOO_LONG,func_scope()->body());
     return false;
   }
 
@@ -1595,7 +1607,7 @@ bool Generator::Visit( const ast::Binary& node , ExprResult* result ) {
 
         if(!func_scope()->bb()->EmitC(
               node.sci(),lhs_expr.ref(),rhs_reg.Get().index())) {
-          Error(ERR_FUNCTION_TOO_LONG,func_scope()->func_node());
+          Error(ERR_FUNCTION_TOO_LONG,func_scope()->body());
           return false;
         }
 
@@ -1614,9 +1626,10 @@ bool Generator::Visit( const ast::Binary& node , ExprResult* result ) {
         }
       }
     } else {
-      // Well will have to use VV type instruction which is a slow path. This can be anything
-      // from using boolean and null for certain arithmetic and comparsion ( which is not allowed )
-      // to using variable as operand for above operands.
+      // Well will have to use VV type instruction which is a slow path.
+      // This can be anything from using boolean and null for certain
+      // arithmetic and comparsion ( which is not allowed ) to using
+      // variable as operand for above operands.
       ScopedRegister lhs(this);
       ScopedRegister rhs(this);
 
@@ -2155,6 +2168,17 @@ bool Generator::VisitAnonymousFunction( const Function& node ) {
   return false;
 }
 
+bool Generator::Generate() {
+  FunctionScope scope(this,root_->body);
+  if(!VisitChunk(*root_->body,true)) return false;
+
+  Handle<Prototype> main(
+      BytecodeBuilder::New(context_->gc(),*scope.bb()));
+  if(!main) return false;
+
+  script_->set_main(main);
+  return true;
+}
 
 } // namespace interpreter
 } // namespace lavascript

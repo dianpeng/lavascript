@@ -374,6 +374,7 @@ class BytecodeBuilder {
   // managed heap based closure which can be used in the VM
   static Handle<Prototype> New( GC* , const BytecodeBuilder& bb ,
                                       const ::lavascript::parser::ast::Function& node );
+  static Handle<Prototype> New( GC* , const BytecodeBuilder& bb );
 
  private:
   std::vector<std::uint32_t> code_buffer_;           // Code buffer

@@ -2,7 +2,9 @@
 #define TRACE_H_
 #include <cstdarg>
 #include <cstdint>
+#include <fstream>
 
+#include "common.h"
 #include "os.h"
 
 namespace lavascript {
@@ -175,6 +177,21 @@ class LexicalScopeBenchmark {
 #else
 #define lava_bench(MESSAGE) (void)(MESSAGE)
 #endif // LAVASCRIPT_BENCH
+
+/** ---------------------------------------------
+ * Helper class for dumpping internal states
+ * ---------------------------------------------*/
+
+class DumpWriter {
+ public:
+  DumpWriter( const char* filename );
+  void Write( const char* fmt , ... );
+ private:
+  std::fstream file_;
+  bool use_file_;
+  LAVA_DISALLOW_COPY_AND_ASSIGN(DumpWriter);
+};
+
 
 } // namespace lavascript
 

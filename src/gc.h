@@ -666,6 +666,18 @@ class GC : AllStatic {
   Map** NewMap( std::size_t capacity );
   Map** NewMap() { return NewMap(0); }
 
+  /**
+   * Specialized New for Prototype creation.
+   */
+  Prototype** NewPrototype( const Handle<String>& ,
+                            std::size_t,
+                            std::size_t,
+                            std::size_t,
+                            std::size_t,
+                            std::size_t,
+                            std::size_t,
+                            std::size_t rest );
+
 
  public:
   // Force a GC cycle to happen

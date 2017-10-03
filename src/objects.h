@@ -12,6 +12,9 @@
 #include "trace.h"
 #include "all-static.h"
 #include "heap-object-header.h"
+#include "source-code-info.h"
+
+#include "interpreter/upvalue.h"
 
 namespace lavascript {
 
@@ -32,6 +35,11 @@ class String;
 class Prototype;
 class Closure;
 class Extension;
+
+namespace interpreter {
+class BytecodeBuilder;
+enum UpValueState;
+} // namespace interpreter
 
 
 /*
@@ -773,23 +781,65 @@ class Prototype final : public HeapObject {
   std::size_t argument_size() const { return argument_size_; }
 
  public: // Mutator
-  // vm::Bytecode& bytecode() { return bytecode_; }
-  // vm::ConstantTable& constant_table() { return constant_table_; }
-  // vm::UpValueIndexArray& upvalue_array() { return upvalue_array_; }
   void set_proto_string( const Handle<String>& str ) { proto_string_ = str; }
-  void set_argument_size( std::size_t arg) { argument_size_ = arg;}
+  void set_argument_size( std::size_t arg) { argument_size_ = arg; }
+
+ public: // Constant table
+  inline std::int32_t GetInteger( std::size_t ) const;
+  inline double GetReal( std::size_t ) const;
+  inline Handle<String> GetString( std::size_t ) const;
+  std::uint16_t GetUpValue( std::size_t , interpreter::UpValueState* ) const;
 
   template< typename T >
   bool Visit( T* );
 
  private:
-  // vm::BytecodeArray code_;
-  // vm::ConstantTable const_table_;
-  // vm::UpValueIndexArray upvalue_array_;
+  char* base() const {
+    return reinterpret_cast<char*>(const_cast<Prototype*>(this)) + sizeof(Prototype);
+  }
+  std::size_t int_table_size_byte() const { return int_table_size_ * sizeof(std::uint32_t); }
+  std::size_t real_table_size_byte()const { return real_table_size_* sizeof(double); }
+  std::size_t string_table_size_byte() const { return string_table_size_ * sizeof(String**); }
+  std::size_t upvalue_size_byte() const { return upvalue_size_ * sizeof(std::uint32_t); }
+  std::size_t code_buffer_size_byte() const { return code_buffer_size_ * sizeof(std::uint32_t); }
+  std::size_t sci_size_byte() const { return code_buffer_size_ * sizeof(SourceCodeInfo); }
+
+  inline const std::int32_t* int_table() const;
+  inline const double* real_table() const;
+  inline String*** string_table() const;
+  inline const std::uint32_t* upvalue_table() const;
+  inline const std::uint32_t* code_buffer() const;
+  inline const SourceCodeInfo* sci_buffer() const;
+
+ private:
+  Prototype( const Handle<String>& pp , std::size_t argument_size ,
+                                        std::size_t int_table_size,
+                                        std::size_t real_table_size,
+                                        std::size_t string_table_size,
+                                        std::size_t upvalue_size,
+                                        std::size_t code_buffer_size );
   Handle<String> proto_string_;
+
   std::size_t argument_size_;
 
+  // Constant table size
+  std::size_t int_table_size_;
+  std::size_t real_table_size_;
+  std::size_t string_table_size_;
+
+  // Upvalue slot size
+  std::size_t upvalue_size_;
+
+  // Code buffer size
+  std::size_t code_buffer_size_;
+
+  /* -----------------------------------------------
+   * Layout:
+   * [ int_table ] [ real_table ] [ string_table ] [ upvalue_table ] [ code_buffer ] [ debug_buffer ]
+   * ----------------------------------------------*/
+
   friend class GC;
+  friend class interpreter::BytecodeBuilder;
 
   LAVA_DISALLOW_COPY_AND_ASSIGN(Prototype);
 };
@@ -2204,6 +2254,77 @@ template< typename T > bool Map::Visit( T* visitor ) {
         if(!visitor->VisitString( e->key.GetString() ) ||
            !visitor->VisitValue ( e->value ))
           return false;
+      }
+    }
+    return visitor->End(this);
+  }
+  return false;
+}
+
+/* --------------------------------------------------------------------
+ * Prototype
+ * ------------------------------------------------------------------*/
+
+inline const std::int32_t* Prototype::int_table() const {
+  return int_table_size_ ? reinterpret_cast<std::int32_t*>(base()): NULL;
+}
+
+inline const double* Prototype::real_table() const {
+  return real_table_size_ ? reinterpret_cast<double*>(base()+int_table_size_byte()) : NULL;
+}
+
+inline String*** Prototype::string_table() const {
+  return string_table_size_ ? reinterpret_cast<String***>(base()+int_table_size_byte()
+      +real_table_size_byte()) : NULL;
+}
+
+inline const std::uint32_t* Prototype::upvalue_table() const {
+  return upvalue_size_ ? reinterpret_cast<std::uint32_t*>(base() + int_table_size_byte()
+      + real_table_size_byte()
+      + string_table_size_byte()) : NULL;
+}
+
+inline const std::uint32_t* Prototype::code_buffer() const {
+  return code_buffer_size_ ? reinterpret_cast<std::uint32_t*>(base() + int_table_size_byte()
+      + real_table_size_byte()
+      + string_table_size_byte()
+      + upvalue_size_byte()) : NULL;
+}
+
+inline const SourceCodeInfo* Prototype::sci_buffer() const {
+  return code_buffer_size_ ? reinterpret_cast<SourceCodeInfo*>(base() + int_table_size_byte()
+      + real_table_size_byte()
+      + string_table_size_byte()
+      + upvalue_size_byte()
+      + code_buffer_size_byte()) : NULL;
+}
+
+inline std::int32_t Prototype::GetInteger( std::size_t index ) const {
+  const std::int32_t* arr = int_table();
+  lava_debug(NORMAL,lava_verify(arr && index < int_table_size_ ););
+  return arr[index];
+}
+
+inline double Prototype::GetReal( std::size_t index ) const {
+  const double* arr = real_table();
+  lava_debug(NORMAL,lava_verify(arr && index < real_table_size_ ););
+  return arr[index];
+}
+
+inline Handle<String> Prototype::GetString( std::size_t index ) const {
+  String*** arr = string_table();
+  lava_debug(NORMAL,lava_verify(arr && index < string_table_size_ ););
+  return Handle<String>(arr[index]);
+}
+
+template< typename T >
+bool Prototype::Visit( T* visitor ) {
+  if(visitor->Begin(this)) {
+    if(!visitor->VisitString(proto_string_)) return false;
+    {
+      String*** arr = string_table();
+      for( std::size_t i = 0 ; i < string_table_size_ ; ++i ) {
+        if(!visitor->VisitString(Handle<String>(arr[i]))) return false;
       }
     }
     return visitor->End(this);

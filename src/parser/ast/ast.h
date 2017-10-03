@@ -341,7 +341,7 @@ struct For : public Node {
 
   Chunk* body;
 
-  For( size_t sp  ,size_t ep , Node* first , Node* second ,
+  For( size_t sp  ,size_t ep , Var* first , Node* second ,
                                Node* third , Chunk* b ):
     Node( FOR , sp , ep ),
     _1st(first),
@@ -393,7 +393,7 @@ struct Chunk : public Node {
                                  bool hi ):
     Node(CHUNK,sp,ep),
     body(b),
-    local_vars(lv)
+    local_vars(lv),
     has_iterator(hi)
   {}
 };

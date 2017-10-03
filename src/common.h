@@ -3,8 +3,8 @@
 #include "config.h"
 
 #define LAVA_DISALLOW_COPY_AND_ASSIGN(X) \
-  void operator = (const X&); \
-  X(const X&)
+  void operator = (const X&) = delete;   \
+  X(const X&) = delete;
 
 
 #endif // COMMON_H_

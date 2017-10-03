@@ -1,5 +1,6 @@
 #include "objects.h"
 #include "gc.h"
+#include "interpreter/bytecode.h"
 
 namespace lavascript {
 
@@ -104,5 +105,34 @@ Handle<Map> Map::Rehash( GC* gc , const Handle<Map>& old_map ) {
   }
   return new_map;
 }
+
+/* ---------------------------------------------------------------
+ * Prototype
+ * --------------------------------------------------------------*/
+Prototype::Prototype( const Handle<String>& pp , std::size_t argument_size ,
+                                                 std::size_t int_table_size,
+                                                 std::size_t real_table_size,
+                                                 std::size_t string_table_size,
+                                                 std::size_t upvalue_size,
+                                                 std::size_t code_buffer_size ):
+  proto_string_(pp),
+  argument_size_(argument_size),
+  int_table_size_(int_table_size),
+  real_table_size_(real_table_size),
+  string_table_size_(string_table_size),
+  upvalue_size_(upvalue_size),
+  code_buffer_size_(code_buffer_size)
+{}
+
+std::uint16_t Prototype::GetUpValue( std::size_t index ,
+                                     interpreter::UpValueState* state ) const {
+  const std::uint32_t* upvalue = upvalue_table();
+  lava_debug(NORMAL,lava_verify(upvalue && index < upvalue_size_););
+  std::uint32_t v = upvalue[index];
+  std::uint16_t ret;
+  interpreter::BytecodeBuilder::DecodeUpValue(v,&ret,state);
+  return ret;
+}
+
 
 } // namespace lavascript

@@ -64,7 +64,7 @@ class Optional {
     lava_verify(has_);
     return *reinterpret_cast<const T*>(value_);
   }
-  bool has() const { return has_; }
+  bool Has() const { return has_; }
   operator bool () const { return has_; }
  private:
   void Copy( const T& value ) {
@@ -176,11 +176,12 @@ class RegisterAllocator {
   // This API is just an alias of EnterScope and user will not call
   // the corresponding leave_scope due to the function is terminated
   inline void ReserveFuncArg( std::size_t len ) {
+    std::uint8_t base;
     lava_verify(EnterScope(len,&base));
     lava_verify(base == 0);
   }
 
-  bool IsReserved( const Registe& reg ) const {
+  bool IsReserved( const Register& reg ) const {
     if(scope_base_.empty()) {
       return false;
     } else {
@@ -188,7 +189,7 @@ class RegisterAllocator {
     }
   }
  private:
-  static void* const kNotUsed = reinterpret_cast<void*>(0x1);
+  static void* kNotUsed;
 
   // Free registers for temporary/intermeidate usage
   struct Node {
@@ -205,6 +206,8 @@ class RegisterAllocator {
   // Reserved registers for local variables
   std::vector<std::uint8_t> scope_base_;
 };
+
+void* RegisterAllocator::kNotUsed = reinterpret_cast<void*>(0x1);
 
 /**
  * Scope is an object that is used to track all the information generated
@@ -228,11 +231,7 @@ class Scope {
  protected:
   // Get the nearest enclosed function scope
   static FunctionScope* GetEnclosedFunctionScope( Scope* );
-
-  Scope( Generator* gen ):
-    generator_(gen,gen->lexical_scope_),
-    parent_(p)
-  {}
+  inline Scope( Generator* , Scope* p );
 
  private:
   Generator* generator_;      // generator object
@@ -262,7 +261,7 @@ class LexicalScope : public Scope {
    * -----------------------------------*/
 
   // Define a local variable with the given Register
-  inline bool DefineLocalVar( const zone::String& , const Regiser& );
+  inline bool DefineLocalVar( const zone::String& , const Register& );
 
   // Get a local variable from current lexical scope
   inline Optional<Register> GetLocalVar( const zone::String& );
@@ -313,7 +312,7 @@ class LexicalScope : public Scope {
 
   // Whether this lexical scope is a scope that has been enclosed
   // by a loop body scope
-  bool is_in_loop;
+  bool is_in_loop_;
 
   // Break label
   std::vector<BytecodeBuilder::Label> break_list_;
@@ -328,7 +327,7 @@ class LexicalScope : public Scope {
   Optional<Register> iterator_;
 
 
-  LAVA_DISALLOW_COPY_AND_ASSIGN(FunctionScope);
+  LAVA_DISALLOW_COPY_AND_ASSIGN(LexicalScope);
 };
 
 class FunctionScope : public Scope {
@@ -373,6 +372,7 @@ class FunctionScope : public Scope {
 
  private:
   bool FindUpValue( const zone::String& , std::uint16_t* );
+  void AddUpValue ( const zone::String& , std::uint16_t  );
 
  private:
   // Bytecode builder for this Function
@@ -448,6 +448,7 @@ class ExprResult {
   bool IsRefType() const { return kind_ == KINT || kind_ == KREAL || kind_ == KSTR; }
   bool IsInteger() const { return kind_ == KINT; }
   bool IsReal()const { return kind_ == KREAL;}
+  bool IsString() const { return kind_ == KSTR; }
   bool IsReg() const { return kind_ == KREG; }
   bool IsAcc() const { return kind_ == KREG && reg_.IsAcc(); }
   bool IsTrue() const { return kind_ == KTRUE; }
@@ -502,7 +503,7 @@ class ExprResult {
     }                                                        \
   } while(false)
 
-#define SEMIT(RESULT,XX)                                     \
+#define SEMIT(XX)                                            \
   do {                                                       \
     auto _ret = func_scope()->bb()->XX;                      \
     if(!_ret) {                                              \
@@ -603,7 +604,7 @@ class Generator {
   bool Visit( const ast::If& );
   bool VisitForCondition( const ast::For& , const Register& var );
   bool Visit( const ast::For& );
-  bool Visit( const ast::Foreach& );
+  bool Visit( const ast::ForEach& );
   bool Visit( const ast::Break& );
   bool Visit( const ast::Continue& );
   bool CanBeTailCallOptimized( const ast::Node& node ) const;
@@ -617,7 +618,7 @@ class Generator {
   /* -------------------------------------------
    * Function                                 |
    * -----------------------------------------*/
-  Handle<Function> VisitFunction( const ast::Function& );
+  Handle<Prototype> VisitFunction( const ast::Function& );
 
   bool VisitNamedFunction( const ast::Function& );
   bool VisitAnonymousFunction( const ast::Function& , ExprResult* );
@@ -661,6 +662,7 @@ class Generator {
   Context* context_;
   const ast::Root* root_;
 
+  friend class Scope;
   friend class LexicalScope;
   friend class FunctionScope;
   LAVA_DISALLOW_COPY_AND_ASSIGN(Generator);
@@ -766,7 +768,7 @@ RegisterAllocator::RegisterToSlot( const Register& reg ) {
 }
 
 inline std::uint8_t RegisterAllocator::base() const {
-  return free_register_ ? free_register_->reg.index() : kAccIndex;
+  return free_register_ ? free_register_->reg.index() : Register::kAccIndex;
 }
 
 bool RegisterAllocator::EnterScope( std::size_t size , std::uint8_t* b ) {
@@ -807,7 +809,7 @@ void RegisterAllocator::LeaveScope() {
                   (free_register_->reg.index() == scope_base_.back()));
       );
   std::uint8_t end = scope_base_.back();
-  scope_base_.pop();
+  scope_base_.pop_back();
   std::uint8_t start = scope_base_.empty() ? 0 : scope_base_.back();
 
   if(end == kAllocatableBytecodeRegisterSize) {
@@ -862,6 +864,11 @@ inline ScopedRegister::~ScopedRegister() {
   if(!empty_) generator_->func_scope()->ra()->Drop(reg_);
 }
 
+inline Scope::Scope( Generator* gen , Scope* p ):
+  generator_(gen),
+  parent_(p)
+{}
+
 FunctionScope* Scope::GetEnclosedFunctionScope( Scope* scope ) {
   while(scope && !scope->IsFunctionScope()) {
     scope = scope->parent();
@@ -872,7 +879,7 @@ FunctionScope* Scope::GetEnclosedFunctionScope( Scope* scope ) {
 bool LexicalScope::Init( const ast::Chunk& node ) {
   std::uint8_t base;
   const std::size_t len = node.local_vars->size() + node.has_iterator;
-  if(!func_scope()->ra()->EnterScope(len,base))
+  if(!func_scope()->ra()->EnterScope(len,&base))
     return false;
 
   for( std::size_t i = 0; i < node.local_vars->size(); ++i ) {
@@ -891,11 +898,11 @@ bool LexicalScope::Init( const ast::Chunk& node ) {
 }
 
 void LexicalScope::Init( const ast::Function& node ) {
-  if(!node.proto->IsEmpty()) {
+  if(!node.proto->empty()) {
     const std::size_t len = node.proto->size();
     func_scope()->ra()->ReserveFuncArg(len);
     for( std::size_t i = 0 ; i < len ; ++i ) {
-      local_vars_.push_back(LocalVar(*(node->proto->Index(i)->name),
+      local_vars_.push_back(LocalVar((node.proto->Index(i)->name),
             static_cast<std::uint8_t>(i)));
     }
   }
@@ -942,10 +949,11 @@ void LexicalScope::PatchContinue( std::uint16_t pos ) {
 }
 
 LexicalScope::LexicalScope( Generator* gen , bool loop ):
-  Scope      (gen),
+  Scope      (gen,gen->lexical_scope_ ? static_cast<Scope*>(gen->lexical_scope_):
+                                        static_cast<Scope*>(gen->func_scope_)),
   local_vars_(),
   is_loop_   (loop),
-  is_in_loop_(gen->lexcial_scope()->IsLoop() || gen->lexcial_scope()->IsInLoop()),
+  is_in_loop_(gen->lexical_scope()->IsLoop() || gen->lexical_scope()->IsInLoop()),
   break_list_(),
   continue_list_(),
   func_scope_(gen->func_scope()),
@@ -958,7 +966,8 @@ LexicalScope::LexicalScope( Generator* gen , bool loop ):
       }
     );
 
-  func_scope()->lexcial_scope_list_.push_back(this);
+  func_scope()->lexical_scope_list_.push_back(this);
+  gen->lexical_scope_ = this;
 }
 
 LexicalScope::~LexicalScope() {
@@ -967,12 +976,14 @@ LexicalScope::~LexicalScope() {
       );
 
   if(!local_vars_.empty())
-    func_scope()->bb()->LeaveScope();
+    func_scope()->ra()->LeaveScope();
 
-  func_scope()->lexical_scope_List_.pop_back();
+  func_scope()->lexical_scope_list_.pop_back();
+  generator()->lexical_scope_ = parent()->IsFunctionScope() ? NULL :
+                                                              parent()->AsLexicalScope();
 }
 
-LexicalScope* LexicalScope::GetEnclosedLoopScope() const {
+LexicalScope* LexicalScope::GetEnclosedLoopScope() {
   Scope* scope = this;
   do {
     if(scope->IsLexicalScope() && scope->AsLexicalScope()->IsLoop())
@@ -996,15 +1007,15 @@ int FunctionScope::GetUpValue( const zone::String& name ,
 
     while(scope) {
       // find the name inside of upvalue slot
-      std::uint16_t index;
-      if(scope->FindUpValue(name,&indx)) {
+      if(scope->FindUpValue(name,index)) {
         // find the name/symbol as upvalue in the |scope|
         for( std::vector<Scope*>::reverse_iterator itr =
             scopes.rbegin() ; itr != scopes.rend() ; ++itr ) {
           std::uint16_t idx;
-          if(!scope->bb()->AddUpValue(UV_DETACH,rindex,&idx))
+          if(!scope->bb()->AddUpValue(UV_DETACH,*index,&idx))
             return UV_FAILED;
-          index = idx;
+          scope->AddUpValue(name,idx);
+          *index = idx;
         }
         return UV_SUCCESS;
       }
@@ -1013,15 +1024,17 @@ int FunctionScope::GetUpValue( const zone::String& name ,
       if(reg) {
         {
           FunctionScope* last = scopes.back();
-          if(!last->AddUpValue(UV_EMBED,reg.Get().index(),&index))
+          if(!last->bb()->AddUpValue(UV_EMBED,reg.Get().index(),index))
             return UV_FAILED;
+          last->AddUpValue(name,*index);
         }
         std::vector<Scope*>::reverse_iterator itr = ++scopes.rbegin();
         for( ; itr != scopes.rend() ; ++itr ) {
           std::uint16_t idx;
-          if(!scope->bb()->AddUpValue(UV_DETACH,index,&idx))
+          if(!scope->bb()->AddUpValue(UV_DETACH,*index,&idx))
             return UV_FAILED;
-          index = idx;
+          scope->AddUpValue(name,idx);
+          *index = idx;
         }
         return UV_SUCCESS;
       }
@@ -1046,8 +1059,13 @@ bool FunctionScope::FindUpValue( const zone::String& name ,
   return true;
 }
 
+void FunctionScope::AddUpValue ( const zone::String& name ,
+                                 std::uint16_t index ) {
+  upvalue_.push_back(UpValue(&name,index));
+}
+
 Optional<Register> FunctionScope::GetLocalVar( const zone::String& name ) {
-  for( auto &e : lexical_scope_ ) {
+  for( auto &e : lexical_scope_list_ ) {
     Optional<Register> r(e->GetLocalVar(name));
     if(r) return r;
   }
@@ -1055,32 +1073,44 @@ Optional<Register> FunctionScope::GetLocalVar( const zone::String& name ) {
 }
 
 inline FunctionScope::FunctionScope( Generator* gen , const ast::Function& node ):
-  Scope(gen),
+  Scope(gen,gen->lexical_scope_),
   bb_  (),
   ra_  (),
   upvalue_ (),
   lexical_scope_list_(),
   body_(node.body)
-{}
+{
+  gen->func_scope_ = this;
+  gen->lexical_scope_ = NULL;
+}
 
 inline FunctionScope::FunctionScope( Generator* gen , const ast::Chunk& node ):
-  Scope(gen),
+  Scope(gen,gen->lexical_scope_),
   bb_  (),
   ra_  (),
   upvalue_ (),
-  lexical_scope_list(),
+  lexical_scope_list_(),
   body_(&node)
-{}
-
-inline FunctionScope::FunctionScope( Generator* gen , const 
+{
+  gen->func_scope_ = this;
+  gen->lexical_scope_ = NULL;
+}
 
 inline FunctionScope::~FunctionScope() {
   lava_debug(NORMAL,
-      lava_verify( lexcial_scope_list.empty() );
+      lava_verify( lexical_scope_list.empty() );
+      lava_verify( parent() ? parent()->IsLexicalScope() : true );
    );
+  generator()->lexical_scope_ = parent() ? parent()->AsLexicalScope() : NULL;
+  if(parent()) {
+    lava_verify(parent()->IsLexicalScope());
+    generator()->func_scope_ = parent()->AsLexicalScope()->func_scope();
+  } else {
+    generator()->func_scope_ = NULL;
+  }
 }
 
-std::uint8_t kBinSpecialOpLookupTable [][][] = {
+std::uint8_t kBinSpecialOpLookupTable [][3][3] = {
   /* arithmetic operator */
   {
     {BC_HLT,BC_ADDIV,BC_ADDVI},
@@ -1130,7 +1160,7 @@ std::uint8_t kBinSpecialOpLookupTable [][][] = {
   {
     {BC_HLT,BC_EQIV,BC_EQVI},
     {BC_HLT,BC_EQRV,BC_EQVR},
-    {GC_HLT,BC_EQSV,BC_EQVS},
+    {BC_HLT,BC_EQSV,BC_EQVS},
   },
   {
     {BC_HLT,BC_NEIV,BC_NEVI},
@@ -1181,7 +1211,7 @@ inline bool Generator::GetBinBytecode( const Token& tk , BinOperandType type ,
       kBinSpecialOpLookupTable[opindex][static_cast<int>(type)][index]);
   if(bc == BC_HLT) {
     Error("binary operator %s cannot between type %s", tk.token_name(),
-                                                       GetTypeName(type));
+                                                       GetBinOperandTypeName(type));
     return false;
   }
 
@@ -1235,9 +1265,9 @@ bool Generator::Visit( const ast::Variable& var , ExprResult* result ) {
   Optional<Register> reg;
   std::uint16_t upindex;
 
-  if((reg=cur_scope_->GetLocalVar(*var.name))) {
+  if((reg=lexical_scope_->GetLocalVar(*var.name))) {
     result->SetRegister( reg.Get() );
-  } else if(cur_scope_->GetUpValue(*var.name,&upindex)) {
+  } else if(lexcial_scope_->GetUpValue(*var.name,&upindex)) {
     EEMIT(uvget(var.sci(),Register::kAccIndex,upindex));
     result->SetAcc();
   } else {
@@ -1279,7 +1309,7 @@ bool Generator::VisitPrefix( const ast::Prefix& node , std::size_t end ,
             return false;
           }
           // Use PROPGET instruction
-          EEMIT(NULL,propget(c.var->sci(),var_reg.index(),ref));
+          EEMIT(propget(c.var->sci(),var_reg.index(),ref));
 
           // Since PROPGET will put its value into the Acc so afterwards
           // the value will be held in scratch registers until we meet a
@@ -1303,7 +1333,7 @@ bool Generator::VisitPrefix( const ast::Prefix& node , std::size_t end ,
 
           // Use idxgeti bytecode to get the stuff and by default value
           // are stored in ACC register
-          EEMIT(NULL,idxgeti(c.expr->sci(),var_reg.index(),ref));
+          EEMIT(idxgeti(c.expr->sci(),var_reg.index(),ref));
 
           // Drop register if it is not Acc
           if(!var_reg.IsAcc()) { ra_.Drop(var_reg); var_reg.SetAcc(); }
@@ -1324,7 +1354,7 @@ bool Generator::VisitPrefix( const ast::Prefix& node , std::size_t end ,
 
           // EEMIT the code for getting the index and the value is stored
           // inside of the ACC register
-          EEMIT(NULL,idxget(c.expr->sci(),var_reg.index(),expr_reg.index()));
+          EEMIT(idxget(c.expr->sci(),var_reg.index(),expr_reg.index()));
 
           // Drop register if it is not in Acc
           if(!var_reg.IsAcc()) { SpillToAcc(var_reg); var_reg.SetAcc(); }
@@ -1374,15 +1404,15 @@ bool Generator::VisitPrefix( const ast::Prefix& node , std::size_t end ,
           // forsure generate a ret instruction afterwards
           const bool tc = tcall && (i == (len-1));
           if(tc) {
-            EEMIT(NULL,tcall(c.func->sci(),
+            EEMIT(tcall(c.func->sci(),
                              static_cast<std::uint8_t>(c.func->args->size()),
                              var_reg.index(),
                              base));
           } else {
-            EMIT(NULL,call(c.func->sci(),
-                           static_cast<std::uint8_t>(c.func->args->size()),
-                           var_reg.index(),
-                           base));
+            EEMIT(call(c.func->sci(),
+                       static_cast<std::uint8_t>(c.func->args->size()),
+                       var_reg.index(),
+                       base));
           }
 
           // 4. the result will be stored inside of Acc
@@ -1557,9 +1587,9 @@ bool Generator::VisitLogic( const ast::Binary& node , ExprResult* result ) {
   BytecodeBuilder::Label label;
 
   if(node.op == Token::kAnd) {
-    label = func_scope()->bb()->and(node.lhs->sci());
+    label = func_scope()->bb()->and_(node.lhs->sci());
   } else {
-    label = func_scope()->bb()->or(node.lhs->sci());
+    label = func_scope()->bb()->or_(node.lhs->sci());
   }
   if(!label) {
     Error(ERR_FUNCTION_TOO_LONG,func_scope()->body());
@@ -1734,10 +1764,10 @@ bool Generator::VisitExpression( const ast::Node& node , ScopedRegister* result 
  * --------------------------------*/
 bool Generator::Visit( const ast::Var& node , Register* holder ) {
   /**
-   * The local variable will be defined during we setup the lexcial scope
+   * The local variable will be defined during we setup the lexical scope
    * so here we just need to get the local variable and it *MUST* be existed
    */
-  Optional<Register> lhs(lexcial_scope()->GetLocalVar(*node.var->name));
+  Optional<Register> lhs(lexical_scope()->GetLocalVar(*node.var->name));
   lava_debug(NORMAL, lava_verify(lhs.Has()); );
 
   if(node.expr) {
@@ -1764,7 +1794,7 @@ bool Generator::Visit( const ast::Var& node , Register* holder ) {
 }
 
 bool Generator::VisitSimpleAssign( const ast::Assign& node ) {
-  Optional<Register> r(lexcial_scope()->GetLocalVar(*node.lhs_var->name));
+  Optional<Register> r(lexical_scope()->GetLocalVar(*node.lhs_var->name));
   if(!r) {
     Error(ERR_LOCAL_VARIABLE_NOT_EXISTED,"variable name: %s",
         node.lhs_var->name->data());
@@ -2029,7 +2059,7 @@ bool Generator::Visit( const ast::ForEach& node ) {
 }
 
 bool Generator::Visit( const ast::Continue& node ) {
-  if(!lexcial_scope()->AddContinue(node)) {
+  if(!lexical_scope()->AddContinue(node)) {
     Error(ERR_FUNCTION_TOO_LONG,node.sci());
     return false;
   }
@@ -2037,7 +2067,7 @@ bool Generator::Visit( const ast::Continue& node ) {
 }
 
 bool Generator::Visit( const ast::Break& node ) {
-  if(!lexcial_scope()->AddBreak(node)) {
+  if(!lexical_scope()->AddBreak(node)) {
     Error(ERR_FUNCTION_TOO_LONG,node.sci());
     return false;
   }

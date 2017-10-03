@@ -2,10 +2,13 @@
 #define BYTECODE_H_
 #include <cstdint>
 #include <vector>
+#include <algorithm>
 
-#include <src/objects.h>
-#include <src/flags.h>
 #include <src/source-code-info.h>
+#include <src/trace.h>
+#include <src/objects.h>
+
+#include <src/interpreter/upvalue.h>
 
 /**
  *
@@ -41,8 +44,9 @@
  */
 
 namespace lavascript {
-class Context;
+class GC;
 class String;
+class Prototype;
 
 namespace zone {
 class String;
@@ -135,12 +139,12 @@ static const std::size_t kAllocatableBytecodeRegisterSize = 255;
   __(E,NEVV  , nevv  , "ne", ACC , REG , REG)   \
   /* unary */ \
   __(F,NEGATE, negate, "negate",REG,_,_) \
-  __(F,NOT   , not   , "not"   ,REG,_,_) \
+  __(F,NOT   , not_  , "not"   ,REG,_,_) \
   /* branch */ \
   __(B,JMPT  , jmpt ,"jmpt" ,REG,PC,_   ) \
   __(B,JMPF  , jmpf ,"jmpf" ,REG,PC,_   ) \
-  __(B,AND , and ,"and"  ,REG,PC,_   ) \
-  __(B,OR  , or ,"or"  ,REG,PC,_   ) \
+  __(B,AND , and_ ,"and"  ,REG,PC,_   ) \
+  __(B,OR  , or_ ,"or"  ,REG,PC,_   ) \
   __(G,JMP  , jmp , "jmp" ,PC, _ , _  ) \
   /* register move */ \
   __(B,MOVE , move , "move" , REG, REG, _ ) \
@@ -153,7 +157,7 @@ static const std::size_t kAllocatableBytecodeRegisterSize = 255;
   __(B,LOADSTR,loadstr,"loadstr", REG , SREF , _   ) \
   __(F,LOADESTR,loadestr,"loadestr" , REG , _ , _ ) \
   __(B,LOADCSTR,loadcstr,"loadcstr" , REG , GARG , _ ) \
-  __(A,LOADTRUE,loadtrue,"loadtrue" , REG , _ , _ ) \
+  __(F,LOADTRUE,loadtrue,"loadtrue" , REG , _ , _ ) \
   __(F,LOADFALSE,loadfalse,"loadfalse",REG, _ , _ ) \
   __(F,LOADNULL , loadnull , "loadnull" , REG , _ , _ ) \
   __(F,LOADLIST0, loadlist0, "loadlist0", REG , _ , _ ) \
@@ -161,7 +165,7 @@ static const std::size_t kAllocatableBytecodeRegisterSize = 255;
   __(D,LOADLIST2, loadlist2, "loadlist2", REG , REG , REG ) \
   __(E,NEWLIST, newlist, "newlist" , REG , NARG  , _ ) \
   __(E,ADDLIST, addlist, "addlist" , REG , REG , _ )   \
-  __(F,LOADOBJ0 , loadobj0 , "loadobj0" , REG , _ , _ , _ ) \
+  __(F,LOADOBJ0 , loadobj0 , "loadobj0" , REG , _ , _  ) \
   __(E,LOADOBJ1, loadobj1, "loadobj1", REG , REG , REG ) \
   __(E,NEWOBJ  , newobj , "newobj" , REG , NARG  , _  ) \
   __(D,ADDOBJ  , addobj , "addobj" , REG , REG , REG ) \
@@ -192,7 +196,7 @@ static const std::size_t kAllocatableBytecodeRegisterSize = 255;
   __(G,BRK   ,brk,"brk",PC,_,_) \
   __(G,CONT  ,cont,"cont",PC,_,_) \
   /* always the last one */ \
-  __(X,BC_HLT,hlt,"hlt",_,_,_)
+  __(X,HLT,hlt,"hlt",_,_,_)
 
 
 /** bytecode **/
@@ -216,23 +220,6 @@ enum BytecodeType {
   TYPE_X
 };
 
-/**
- * UpValue management
- * UpValue is a value that is not inside of a function's lexical scope
- * but in its upper level enclosed function scope. We use a similar startegy
- * with Lua. Basically just collapse the value along with each closure's
- * upvalue slots
- *
- * UpValue has 2 states , if its state is *EMBED* , which means the UpValue
- * should be retrieved in register/stack slot ; other state is *DETACH* ,
- * which means the UpValue should be retrieved in its enclosed function's
- * upvalue slot
- */
-enum UpValueState {
-  UV_EMBED,
-  UV_DETACH
-};
-
 const char* GetUpValueStateName( UpValueState );
 
 /**
@@ -248,27 +235,54 @@ const char* GetUpValueStateName( UpValueState );
 class BytecodeBuilder {
  public:
   static const std::size_t kMaxCodeLength = 65536;
+  static const std::size_t kMaxLiteralSize= 65536;
+  static const std::size_t kMaxUpValueSize= 65536;
+  /* -------------------------------
+   * static functions for decoding |
+   * ------------------------------*/
+  inline static Bytecode DecodeOpcode( std::uint32_t );
+  inline static void DecodeB( std::uint32_t , std::uint8_t* , std::uint16_t* );
+  inline static void DecodeC( std::uint32_t , std::uint16_t*, std::uint8_t*  );
+  inline static void DecodeD( std::uint32_t , std::uint8_t* , std::uint8_t* ,
+                                                              std::uint8_t* );
+  inline static void DecodeE( std::uint32_t , std::uint8_t* , std::uint8_t* );
+  inline static void DecodeF( std::uint32_t , std::uint8_t* );
+  inline static void DecodeG( std::uint32_t , std::uint16_t* );
+  static void DecodeUpValue( std::uint32_t code , std::uint16_t* index ,
+                                                  UpValueState* state ) {
+    *index = static_cast<std::uint16_t>(code & 0x0000ffff);
+    *state = static_cast<UpValueState>( code >> 16 );
+  }
  public:
   inline BytecodeBuilder();
 
- public:
   inline bool AddUpValue( UpValueState , std::uint16_t , std::uint16_t* );
+  inline std::int32_t Add( std::int32_t );
+  inline std::int32_t Add( double );
+  std::int32_t Add( const ::lavascript::zone::String& , GC* );
 
-  std::int32_t Add( std::int32_t );
-  std::int32_t Add( double );
-  std::int32_t Add( const ::lavascript::zone::String& , Context* );
+  std::size_t int_table_size() const { return int_table_.size(); }
+  std::size_t real_table_size() const { return real_table_.size(); }
+  std::size_t string_table_size() const { return string_table_.size(); }
+  std::size_t upvalue_size() const { return upvalue_slot_.size(); }
+  std::size_t code_buffer_size() const { return code_buffer_.size(); }
+  std::size_t debug_info_size() const { return debug_info_.size(); }
 
- public:
   std::uint16_t CodePosition() const {
     return static_cast<uint16_t>(code_buffer_.size());
   }
 
-  inline const SourceCodeInfo& IndexSourceCodeInfo( std::size_t index ) const;
+  const SourceCodeInfo& IndexSourceCodeInfo( std::size_t index ) const {
+    return debug_info_[index];
+  }
+
+ public:
 
   class Label {
    public:
-    Label( BytecodeBuilder* , std::size_t , BytecodeType );
-    Label();
+    inline Label( BytecodeBuilder* , std::size_t , BytecodeType );
+    inline Label();
+    inline ~Label();
     bool IsOk() const { return builder_ != NULL; }
     operator bool () const { return IsOk(); }
     inline void Patch( std::uint16_t );
@@ -276,6 +290,7 @@ class BytecodeBuilder {
     BytecodeType type_;
     std::size_t index_;
     BytecodeBuilder* builder_;
+    bool patched_;
   };
 
   inline bool EmitB( const SourceCodeInfo& , Bytecode , std::uint8_t , std::uint16_t );
@@ -288,7 +303,7 @@ class BytecodeBuilder {
   inline bool EmitX( const SourceCodeInfo& , Bytecode );
 
   template< int BC , int TP , bool A1 = false , bool A2 = false , bool A3 = false >
-  inline Lable EmitAt( const SourceCodeInfo& , std::uint32_t a1 = 0 ,
+  inline Label EmitAt( const SourceCodeInfo& , std::uint32_t a1 = 0 ,
                                                std::uint32_t a2 = 0 ,
                                                std::uint32_t a3 = 0 );
 
@@ -314,18 +329,18 @@ class BytecodeBuilder {
   }
 
 #define IMPLE(INSTR,C)                                                    \
-  bool C(const SourceCodeInfo& si , std::uint8_t al , std::uint8_t a2 ) { \
-    return EmitE(so,INSTR,a1,a2);                                         \
+  bool C(const SourceCodeInfo& si , std::uint8_t a1 , std::uint8_t a2 ) { \
+    return EmitE(si,INSTR,a1,a2);                                         \
   }
 
 #define IMPLF(INSTR,C)                                                 \
   bool C(const SourceCodeInfo& si , std::uint8_t a1 ) {                \
-    return EmitF(so,INSTR,a1);                                         \
+    return EmitF(si,INSTR,a1);                                         \
   }
 
 #define IMPLG(INSTR,C)                                                 \
   bool C(const SourceCodeInfo& si , std::uint16_t a1 ) {               \
-    return EmitG(so,INSTR,a1);                                         \
+    return EmitG(si,INSTR,a1);                                         \
   }
 
 #define IMPLX(INSTR,C)                                                 \
@@ -350,16 +365,13 @@ class BytecodeBuilder {
    * ----------------------------------------------------*/
   inline Label jmpt   ( const SourceCodeInfo& si , const std::uint8_t r );
   inline Label jmpf   ( const SourceCodeInfo& si , const std::uint8_t r );
-  inline Label and    ( const SourceCodeInfo& si );
-  inline Label or     ( const SourceCodeInfo& si );
+  inline Label and_   ( const SourceCodeInfo& si );
+  inline Label or_    ( const SourceCodeInfo& si );
   inline Label jmp    ( const SourceCodeInfo& si );
   inline Label brk    ( const SourceCodeInfo& si );
   inline Label cont   ( const SourceCodeInfo& si );
   inline Label fstart ( const SourceCodeInfo& si , const std::uint8_t a1 );
   inline Label festart( const SourceCodeInfo& si , const std::uint8_t a1 );
-
- public:
-  void Dump( DumpFlag flag , const char* file = NULL ) const;
 
  public:
   // This function will create a Closure object from the BytecodeBuilder
@@ -370,16 +382,29 @@ class BytecodeBuilder {
   static Handle<Prototype> New( GC* , const BytecodeBuilder& bb );
 
  private:
+  static Handle<String> BuildFunctionPrototypeString( GC* ,
+                                                      const ::lavascript::parser::ast::Function& );
+
+ private:
   std::vector<std::uint32_t> code_buffer_;           // Code buffer
   std::vector<SourceCodeInfo> debug_info_;           // Debug info
   std::vector<std::int32_t> int_table_;              // Integer table
   std::vector<double> real_table_;                   // Real table
-  std::vector<String*> string_table_;                // String table
+  std::vector<Handle<String>> string_table_;                // String table
 
   struct UpValueSlot {
     std::uint16_t index;      // Can represent the register index or the slot
                               // index inside of the upvalue array slot
     UpValueState state;       // State of UpValue
+    UpValueSlot( UpValueState st , std::uint16_t idx ):
+      index(idx),
+      state(st)
+    {}
+
+    std::uint32_t Encode() const {
+      return ((static_cast<std::uint32_t>(state) << 16) |
+               static_cast<std::uint32_t>(index));
+    }
   };
   std::vector<UpValueSlot> upvalue_slot_;
 };
@@ -510,7 +535,7 @@ inline BytecodeBuilder::Label BytecodeBuilder::EmitAt( const SourceCodeInfo& sci
       break;
   }
 
-  debug_info_.push_back(encode);
+  debug_info_.push_back(sci);
   return Label(this,idx,static_cast<BytecodeType>(TP));
 }
 
@@ -524,11 +549,11 @@ inline BytecodeBuilder::Label BytecodeBuilder::jmpf( const SourceCodeInfo& sci,
   return EmitAt<BC_JMPF,TYPE_B,true,false,false>(sci,a1);
 }
 
-inline BytecodeBuilder::Label BytecodeBuilder::and ( const SourceCodeInfo& sci ) {
+inline BytecodeBuilder::Label BytecodeBuilder::and_( const SourceCodeInfo& sci ) {
   return EmitAt<BC_AND,TYPE_G,false,false,false>(sci);
 }
 
-inline BytecodeBuilder::Label BytecodeBuilder::or  ( const SourceCodeInfo& sci ) {
+inline BytecodeBuilder::Label BytecodeBuilder::or_ ( const SourceCodeInfo& sci ) {
   return EmitAt<BC_OR,TYPE_G,false,false,false>(sci);
 }
 
@@ -551,9 +576,93 @@ inline BytecodeBuilder::Label BytecodeBuilder::fstart( const SourceCodeInfo& sci
 
 inline BytecodeBuilder::Label BytecodeBuilder::festart( const SourceCodeInfo& sci ,
                                                         std::uint8_t a1 ) {
-  return EmitAt(BC_FSTART,TYPE_B,true,false,false>(sci,a1);
+  return EmitAt<BC_FSTART,TYPE_B,true,false,false>(sci,a1);
 }
 
+inline bool BytecodeBuilder::AddUpValue( UpValueState state , std::uint16_t idx ,
+                                                              std::uint16_t* output ) {
+  lava_debug(NORMAL,
+      if(state == UV_EMBED) {
+        lava_verify(idx >=0 && idx <= 255);
+      }
+    );
+
+  if(upvalue_slot_.size() == kMaxUpValueSize) {
+    return false;
+  }
+  upvalue_slot_.push_back(UpValueSlot(state,idx));
+  *output = static_cast<std::uint16_t>(upvalue_slot_.size()-1);
+  return true;
+}
+
+inline std::int32_t BytecodeBuilder::Add( std::int32_t ival ) {
+  auto ret = std::find(int_table_.begin(),int_table_.end(),ival);
+  if(ret == int_table_.end()) {
+    if(int_table_.size() == kMaxLiteralSize) {
+      return -1;
+    }
+    int_table_.push_back(ival);
+    return static_cast<std::int32_t>(int_table_.size()-1);
+  }
+  return static_cast<std::int32_t>(
+      std::distance(int_table_.begin(),ret));
+}
+
+inline std::int32_t BytecodeBuilder::Add( double rval ) {
+  auto ret = std::find(real_table_.begin(),real_table_.end(),rval);
+  if(ret == real_table_.end()) {
+    if(real_table_.size() == kMaxLiteralSize) {
+      return -1;
+    }
+    real_table_.push_back(rval);
+    return static_cast<std::int32_t>(int_table_.size()-1);
+  }
+  return static_cast<std::int32_t>(
+      std::distance(real_table_.begin(),ret));
+}
+
+inline BytecodeBuilder::Label::Label():
+  type_(),
+  index_(),
+  builder_(NULL),
+  patched_(false)
+{}
+
+inline BytecodeBuilder::Label::Label( BytecodeBuilder* bb , std::size_t idx ,
+                                                            BytecodeType bt ):
+  type_   (bt),
+  index_  (idx),
+  builder_(bb),
+  patched_(false)
+{}
+
+inline BytecodeBuilder::Label::~Label() {
+  if(builder_) lava_verify(patched_);
+}
+
+inline void BytecodeBuilder::Label::Patch( std::uint16_t pc ) {
+  std::uint32_t v = builder_->code_buffer_[index_];
+  switch(type_) {
+    case TYPE_B:
+      builder_->code_buffer_[index_] = (v | (static_cast<uint32_t>(pc) << 16));
+      break;
+    case TYPE_G:
+      builder_->code_buffer_[index_] = (v | (static_cast<uint32_t>(pc) << 8));
+      break;
+    default:
+      lava_unreach("not implemented bytecode type or broken type");
+  }
+  patched_ = true;
+}
+
+inline BytecodeBuilder::BytecodeBuilder():
+  code_buffer_(),
+  debug_info_ (),
+  int_table_  (),
+  real_table_ (),
+  string_table_(),
+  upvalue_slot_()
+{}
 
 } // namespace interpreter
 } // namespace lavascript

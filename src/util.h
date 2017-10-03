@@ -1,14 +1,17 @@
 #ifndef UTIL_H_
 #define UTIL_H_
 
+#include <cstdint>
 #include <cstdarg>
 #include <cstddef>
 #include <string>
+#include <string.h>
+#include <vector>
 #include <new>
 
 namespace lavascript {
 
-template< size_t N , typename T >
+template< std::size_t N , typename T >
 size_t ArraySize( const T (&arr)[N] ) { (void)arr; return N; }
 
 void FormatV( std::string* , const char*  , va_list );
@@ -29,8 +32,28 @@ inline void Format( std::string* buffer , const char* format , ... ) {
   FormatV(buffer,format,vl);
 }
 
-inline char* AsBuffer( std::string* output , size_t off )
+inline char* AsBuffer( std::string* output , std::size_t off )
 { return &(*output->begin()) + off; }
+
+template< typename T >
+inline T* AsBuffer( std::vector<T>* output , std::size_t off ) {
+  return &(*output->begin()) + off;
+}
+
+template< typename T >
+inline const T* AsBuffer( const std::vector<T>* output , std::size_t off ) {
+  return &(*output->begin()) + off;
+}
+
+template< typename T >
+inline T* MemCopy( T* dest , const T* from , std::size_t size ) {
+  return static_cast<T*>(memcpy(dest,from,size*sizeof(T)));
+}
+
+template< typename T >
+inline T* MemCopy( T* dest, const std::vector<T>& from ) {
+  return static_cast<T*>(memcpy(dest,AsBuffer(&from,0),from.size()*sizeof(T)));
+}
 
 bool StringToInt    ( const char* , int* );
 bool StringToReal   ( const char* , double* );

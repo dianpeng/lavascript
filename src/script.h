@@ -69,26 +69,6 @@ inline void Script::set_main( const Handle<Prototype>& main ) {
   lava_verify(!main.IsNull());
 #endif // LAVASCRIPT_CHECK_OBJECTS
   main_ = main;
-  function_table_.insert( function_table_.begin() , main );
-}
-
-inline std::int32_t AddPrototype( const Handle<Prototype>& function ) {
-#ifdef LAVASCRIPT_CHECK_OBJECTS
-  lava_verify(!function.IsNull());
-#endif // LAVASCRIPT_CHECK_OBJECTS
-  if(function_table_.size() == kMaxPrototypeCount)
-    return -1;
-  else {
-    function_table_.push_back(function);
-    return static_cast<std::int32_t>(function_table_.size()-1);
-  }
-}
-
-inline const Handle<Prototype>& Script::GetFunction( std::int32_t index ) const {
-#ifdef LAVASCRIPT_CHECK_OBJECTS
-  lava_verify(index >= 0 && static_cast<std::size_t>(index) < function_table_.size());
-#endif // LAVASCRIPT_CHECK_OBJECTS
-  return function_table_[index];
 }
 
 } // namespace lavascript

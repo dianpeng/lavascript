@@ -1,5 +1,6 @@
 #ifndef BYTECODE_GENERATOR_H_
 #define BYTECODE_GENERATOR_H_
+#include <string>
 
 namespace lavascript {
 class Context;

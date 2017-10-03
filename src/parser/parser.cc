@@ -706,7 +706,7 @@ ast::Chunk* Parser::ParseChunk() {
   bool has_iterator = false;
 
   if(lexer_.Next().token == Token::kRBra) {
-    return ast_factory_.NewChunk( expr_start , expr_end , ck , lv , 
+    return ast_factory_.NewChunk( expr_start , expr_end , ck , lv ,
                                                                has_iterator );
   } else {
     do {
@@ -725,7 +725,7 @@ ast::Chunk* Parser::ParseChunk() {
         ast::Var* v = stmt->AsFor()->_1st;
         if(v) lv->Add(zone_,v->var);
       } else if(stmt->IsForEach()) {
-        lv->Add(stmt->AsForEach()->var);
+        lv->Add(zone_,stmt->AsForEach()->var);
         has_iterator = true;
       }
 
@@ -754,7 +754,21 @@ ast::Chunk* Parser::ParseSingleStatementOrChunk() {
     ast::Node* stmt = ParseStatement();
     if(!stmt) return NULL;
     ck->Add(zone_,stmt);
-    return ast_factory_.NewChunk(stmt->start,stmt->end,ck);
+
+    // TODO:: Avoid copy and paste ??
+    Vector<ast::Variable*>* lv = Vector<ast::Variable*>::New(zone_);
+    bool has_iterator = false;
+    if(stmt->IsVar()) {
+      lv->Add(zone_,stmt->AsVar()->var);
+    } else if(stmt->IsFor()) {
+      ast::Var* v = stmt->AsFor()->_1st;
+      if(v) lv->Add(zone_,v->var);
+    } else if(stmt->IsForEach()) {
+      lv->Add(zone_,stmt->AsForEach()->var);
+      has_iterator = true;
+    }
+
+    return ast_factory_.NewChunk(stmt->start,stmt->end,ck,lv,has_iterator);
   }
 }
 
@@ -871,14 +885,28 @@ ast::Function* Parser::ParseAnonymousFunction() {
 ast::Root* Parser::Parse() {
   size_t expr_start = lexer_.lexeme().start;
   Vector<ast::Node*>* main_body = Vector<ast::Node*>::New(zone_);
+  Vector<ast::Variable*>* lv = Vector<ast::Variable*>::New(zone_);
+  bool has_iterator = false;
+
   while( lexer_.lexeme().token != Token::kEof ) {
     ast::Node* stmt = ParseStatement();
     if(!stmt) return NULL;
     main_body->Add(zone_,stmt);
+
+    // TODO:: Avoid copy and paste ?
+    if(stmt->IsVar()) {
+      lv->Add(zone_,stmt->AsVar()->var);
+    } else if(stmt->IsFor()) {
+      ast::Var* v = stmt->AsFor()->_1st;
+      if(v) lv->Add(zone_,v->var);
+    } else if(stmt->IsForEach()) {
+      lv->Add(zone_,stmt->AsForEach()->var);
+      has_iterator = true;
+    }
   }
 
   return ast_factory_.NewRoot(expr_start, lexer_.lexeme().start-1,
-      ast_factory_.NewChunk(expr_start, lexer_.lexeme().start-1,main_body));
+      ast_factory_.NewChunk(expr_start, lexer_.lexeme().start-1,main_body,lv,has_iterator));
 }
 
 } // namespace parser

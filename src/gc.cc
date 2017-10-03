@@ -268,41 +268,6 @@ bool SSOPool::Iterator::Move() {
   return false;
 }
 
-namespace {
-
-class DumpWriter {
- public:
-  DumpWriter( const char* filename ):
-    file_(),
-    use_file_(filename != NULL)
-  {
-    if(use_file_)
-      file_.open(filename,std::ios::in|std::ios::out|std::ios::trunc);
-    if(!file_) use_file_ = false;
-  }
-
-  void Write( const char* fmt , ... ) {
-    va_list vl;
-    va_start(vl,fmt);
-
-    if(use_file_) {
-      std::string buf(FormatV(fmt,vl));
-      buf.push_back('\n');
-      file_.write(buf.c_str(),buf.size());
-    } else {
-      lava_info("%s",FormatV(fmt,vl).c_str());
-    }
-  }
-
- private:
-  std::fstream file_;
-  bool use_file_;
-
-  LAVA_DISALLOW_COPY_AND_ASSIGN(DumpWriter);
-};
-
-} // namespace
-
 void Heap::Dump( int verbose , const char* filename ) {
   DumpWriter writer(filename);
 
@@ -429,6 +394,26 @@ Map** GC::NewMap( std::size_t capacity ) {
 
   *ref = map;
 
+  return ref;
+}
+
+Prototype** GC::NewPrototype( const Handle<String>& proto,
+                              std::size_t a1,
+                              std::size_t a2,
+                              std::size_t a3,
+                              std::size_t a4,
+                              std::size_t a5,
+                              std::size_t a6,
+                              std::size_t rest ) {
+
+  Prototype* proto = ConstructFromBuffer<Prototype>(
+      heap_.Grab( sizeof(Prototype) + rest ,
+                  TYPE_PROTOTYPE,
+                  GC_WHITE,
+                  false ) , proto , a1, a2, a3, a4, a5, a6);
+
+  Prototype** ref = reinterpret_cast<Prototype**>(ref_pool_.Grab());
+  *ref = proto;
   return ref;
 }
 

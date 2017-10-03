@@ -25,7 +25,7 @@ std::int32_t BytecodeBuilder::Add( const ::lavascript::zone::String& str ,
       std::distance(string_table_.begin(),ret));
 }
 
-Handle<String> BytecodeBuilder::BuildFunctionPrototypeString( GC* gc ,
+String** BytecodeBuilder::BuildFunctionPrototypeString( GC* gc ,
     const ::lavascript::parser::ast::Function& node ) {
   if(!node.proto->empty()) {
     std::string buffer;
@@ -36,9 +36,9 @@ Handle<String> BytecodeBuilder::BuildFunctionPrototypeString( GC* gc ,
       if(i < len-1) buffer.push_back(',');
     }
     buffer.push_back(')');
-    return String::New(gc,buffer);
+    return String::New(gc,buffer).ref();
   } else {
-    return String::New(gc,"()",2);
+    return String::New(gc,"()",2).ref();
   }
 }
 

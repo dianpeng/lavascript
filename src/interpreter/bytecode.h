@@ -382,8 +382,8 @@ class BytecodeBuilder {
   static Handle<Prototype> New( GC* , const BytecodeBuilder& bb );
 
  private:
-  static Handle<String> BuildFunctionPrototypeString( GC* ,
-                                                      const ::lavascript::parser::ast::Function& );
+  static String** BuildFunctionPrototypeString( GC* ,
+                                                const ::lavascript::parser::ast::Function& );
 
  private:
   std::vector<std::uint32_t> code_buffer_;           // Code buffer

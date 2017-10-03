@@ -669,7 +669,7 @@ class GC : AllStatic {
   /**
    * Specialized New for Prototype creation.
    */
-  Prototype** NewPrototype( const Handle<String>& ,
+  Prototype** NewPrototype( String** ,
                             std::size_t,
                             std::size_t,
                             std::size_t,

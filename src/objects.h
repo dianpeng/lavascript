@@ -793,6 +793,14 @@ class Prototype final : public HeapObject {
   template< typename T >
   bool Visit( T* );
 
+ public:
+  Prototype( const Handle<String>& pp , std::size_t argument_size ,
+                                        std::size_t int_table_size,
+                                        std::size_t real_table_size,
+                                        std::size_t string_table_size,
+                                        std::size_t upvalue_size,
+                                        std::size_t code_buffer_size );
+
  private:
   char* base() const {
     return reinterpret_cast<char*>(const_cast<Prototype*>(this)) + sizeof(Prototype);
@@ -812,12 +820,6 @@ class Prototype final : public HeapObject {
   inline const SourceCodeInfo* sci_buffer() const;
 
  private:
-  Prototype( const Handle<String>& pp , std::size_t argument_size ,
-                                        std::size_t int_table_size,
-                                        std::size_t real_table_size,
-                                        std::size_t string_table_size,
-                                        std::size_t upvalue_size,
-                                        std::size_t code_buffer_size );
   Handle<String> proto_string_;
 
   std::size_t argument_size_;

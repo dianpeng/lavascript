@@ -397,7 +397,7 @@ Map** GC::NewMap( std::size_t capacity ) {
   return ref;
 }
 
-Prototype** GC::NewPrototype( const Handle<String>& proto,
+Prototype** GC::NewPrototype( String** proto,
                               std::size_t a1,
                               std::size_t a2,
                               std::size_t a3,
@@ -406,14 +406,14 @@ Prototype** GC::NewPrototype( const Handle<String>& proto,
                               std::size_t a6,
                               std::size_t rest ) {
 
-  Prototype* proto = ConstructFromBuffer<Prototype>(
+  Prototype* p = ConstructFromBuffer<Prototype>(
       heap_.Grab( sizeof(Prototype) + rest ,
                   TYPE_PROTOTYPE,
                   GC_WHITE,
-                  false ) , proto , a1, a2, a3, a4, a5, a6);
+                  false ) , Handle<String>(proto) , a1, a2, a3, a4, a5, a6);
 
   Prototype** ref = reinterpret_cast<Prototype**>(ref_pool_.Grab());
-  *ref = proto;
+  *ref = p;
   return ref;
 }
 

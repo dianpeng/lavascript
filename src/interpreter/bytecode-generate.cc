@@ -1,6 +1,7 @@
 #include "bytecode-generate.h"
 #include "bytecode.h"
 
+#include <src/context.h>
 #include <src/objects.h>
 #include <src/common.h>
 #include <src/util.h>
@@ -481,6 +482,7 @@ class ExprResult {
     kind_ = KREG;
     reg_  = reg;
   }
+  void SetAcc() { kind_ = KREG; reg_ = Register::kAccReg; }
 
  private:
   ExprResultKind kind_;
@@ -1184,10 +1186,13 @@ static int kBinGeneralOpLookupTable [] = {
   BC_NEVV
 };
 
-inline BinOperandType Generator::GetBinOperandType( const ast::Literal& ) const {
+inline Generator::BinOperandType
+Generator::GetBinOperandType( const ast::Literal& node ) const {
   switch(node.literal_type) {
     case ast::Literal::LIT_INTEGER: return TINT;
     case ast::Literal::LIT_REAL: return TREAL;
+    case ast::Literal::LIT_STRING: return TSTR;
+    default: lava_unreach(""); return TINT;
   }
 }
 
@@ -1248,8 +1253,8 @@ bool Generator::Visit( const ast::Literal& lit , ExprResult* result ) {
         result->SetFalse();
       return true;
     case ast::Literal::LIT_STRING:
-      if((ref = func_scope()->bb()->Add(*lit.str_value,context_))<0) {
-        Error(ERR_REGISTER_OVERFLOW,lit());
+      if((ref = func_scope()->bb()->Add(*lit.str_value,context_->gc()))<0) {
+        Error(ERR_REGISTER_OVERFLOW,lit);
         return false;
       }
       result->SetSRef(ref);
@@ -1267,14 +1272,14 @@ bool Generator::Visit( const ast::Variable& var , ExprResult* result ) {
 
   if((reg=lexical_scope_->GetLocalVar(*var.name))) {
     result->SetRegister( reg.Get() );
-  } else if(lexcial_scope_->GetUpValue(*var.name,&upindex)) {
+  } else if(func_scope_->GetUpValue(*var.name,&upindex)) {
     EEMIT(uvget(var.sci(),Register::kAccIndex,upindex));
     result->SetAcc();
   } else {
     // It is a global variable so we need to EEMIT global variable stuff
-    std::int32_t ref = func_scope()->bb()->Add(*var.name,context_);
+    std::int32_t ref = func_scope()->bb()->Add(*var.name,context_->gc());
     if(ref<0) {
-      Error(ERR_REGISTER_OVERFLOW,var());
+      Error(ERR_REGISTER_OVERFLOW,var);
       return false;
     }
 
@@ -1290,7 +1295,7 @@ bool Generator::VisitPrefix( const ast::Prefix& node , std::size_t end ,
                                                        Register* result ) {
   // Allocate register for the *var* field in node
   Register var_reg;
-  if(!Visit(*node.var,&var_reg)) return false;
+  if(!VisitExpression(*node.var,&var_reg)) return false;
 
   // Handle the component part
   const std::size_t len = node.list->size();
@@ -1303,7 +1308,7 @@ bool Generator::VisitPrefix( const ast::Prefix& node , std::size_t end ,
         {
           // Get the string reference
           std::int32_t ref = func_scope()->bb()->Add(
-              *c.var->name , context_ );
+              *c.var->name , context_ ->gc() );
           if(ref<0) {
             Error(ERR_REGISTER_OVERFLOW,*c.var);
             return false;
@@ -1327,7 +1332,7 @@ bool Generator::VisitPrefix( const ast::Prefix& node , std::size_t end ,
           std::int32_t ref = func_scope()->bb()->Add(
               c.expr->AsLiteral()->int_value);
           if(ref<0) {
-            ErrorTooComplicatedFunc(c.expr->sci(),result);
+            Error(ERR_FUNCTION_TOO_LONG,*c.expr);
             return false;
           }
 
@@ -1354,7 +1359,7 @@ bool Generator::VisitPrefix( const ast::Prefix& node , std::size_t end ,
 
           // EEMIT the code for getting the index and the value is stored
           // inside of the ACC register
-          EEMIT(idxget(c.expr->sci(),var_reg.index(),expr_reg.index()));
+          EEMIT(idxget(c.expr->sci(),var_reg.index(),expr_reg.Get().index()));
 
           // Drop register if it is not in Acc
           if(!var_reg.IsAcc()) { SpillToAcc(var_reg); var_reg.SetAcc(); }
@@ -1374,12 +1379,12 @@ bool Generator::VisitPrefix( const ast::Prefix& node , std::size_t end ,
           }
 
           // 2. Visit each argument and get all its related registers
-          const std::size_t len = c.func->args->size();
+          const std::size_t len = c.fc->args->size();
           std::uint8_t base = 255;
 
           for( std::size_t i = 0; i < len; ++i ) {
             Register reg;
-            if(!VisitExpression(*c.func->args->Index(i),&reg)) return false;
+            if(!VisitExpression(*c.fc->args->Index(i),&reg)) return false;
             if(reg.IsAcc()) {
               Optional<Register> r(SpillFromAcc());
               if(!r) return false;
@@ -1392,7 +1397,7 @@ bool Generator::VisitPrefix( const ast::Prefix& node , std::size_t end ,
                 }
               );
 
-            if(base == 255) base = r.index();
+            if(base == 255) base = reg.index();
           }
 
           // 3. Generate call instruction based on the argument size for
@@ -1404,13 +1409,13 @@ bool Generator::VisitPrefix( const ast::Prefix& node , std::size_t end ,
           // forsure generate a ret instruction afterwards
           const bool tc = tcall && (i == (len-1));
           if(tc) {
-            EEMIT(tcall(c.func->sci(),
-                             static_cast<std::uint8_t>(c.func->args->size()),
-                             var_reg.index(),
-                             base));
+            EEMIT(tcall(c.fc->sci(),
+                        static_cast<std::uint8_t>(c.fc->args->size()),
+                        var_reg.index(),
+                        base));
           } else {
-            EEMIT(call(c.func->sci(),
-                       static_cast<std::uint8_t>(c.func->args->size()),
+            EEMIT(call(c.fc->sci(),
+                       static_cast<std::uint8_t>(c.fc->args->size()),
                        var_reg.index(),
                        base));
           }
@@ -1431,12 +1436,12 @@ bool Generator::VisitPrefix( const ast::Prefix& node , std::size_t end ,
   return true;
 }
 
-bool Generator::Visit( const ast::Prefix& node , std::size_t end ,
-                                                 bool tcall ,
-                                                 ScopedRegister* result ) {
-  Regiser reg;
-  if(!Visit(node,end,tcall,&reg)) return false;
-  result->SetRegister(ret);
+bool Generator::VisitPrefix( const ast::Prefix& node , std::size_t end ,
+                                                       bool tcall ,
+                                                       ScopedRegister* result ) {
+  Register reg;
+  if(!VisitPrefix(node,end,tcall,&reg)) return false;
+  result->SetRegister(reg);
   return true;
 }
 
@@ -1463,7 +1468,7 @@ bool Generator::Visit( const ast::List& node , const Register& reg ,
     ScopedRegister r1(this) , r2(this);
     if(!VisitExpression(*node.entry->Index(0),&r1)) return false;
     if(r1.Get().IsAcc()) {
-      if(!r1.Reset(SpillFromAcc(r1.Get()))) return false;
+      if(!r1.Reset(SpillFromAcc())) return false;
     }
     if(!VisitExpression(*node.entry->Index(1),&r2)) return false;
     EEMIT(loadlist2(node.sci(),reg.index(),r1.Get().index(),

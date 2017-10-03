@@ -170,9 +170,13 @@ struct Variable : public Node {
 
 struct FuncCall : zone::ZoneObject {
   zone::Vector<Node*>* args;
+  size_t start;
+  size_t end;
+  SourceCodeInfo sci() const { return SourceCodeInfo(start,end); }
   FuncCall( size_t sp , size_t ep , zone::Vector<Node*>* a ):
-    zone::ZoneObject(),
-    args(a)
+    args(a),
+    start(sp),
+    end(ep)
   {}
 };
 

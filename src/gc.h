@@ -666,9 +666,7 @@ class GC : AllStatic {
   Map** NewMap( std::size_t capacity );
   Map** NewMap() { return NewMap(0); }
 
-  /**
-   * Specialized New for Prototype creation.
-   */
+  // specialized new for Prototype object creation
   Prototype** NewPrototype( String** ,
                             std::size_t,
                             std::size_t,
@@ -677,6 +675,14 @@ class GC : AllStatic {
                             std::size_t,
                             std::size_t,
                             std::size_t rest );
+
+  // specialized new for Script object creation
+  Script** NewScript( Context* ,
+                      String**,
+                      String**,
+                      Prototype** ,
+                      std::size_t ,
+                      std::size_t reserve );
 
 
  public:

@@ -417,6 +417,27 @@ Prototype** GC::NewPrototype( String** proto,
   return ref;
 }
 
+Script** GC::NewScript( Context* context ,
+                        String** source ,
+                        String** filename,
+                        Prototype** proto,
+                        std::size_t function_table_size,
+                        std::size_t reserve ) {
+
+  Script* p = ConstructFromBuffer<Script>(
+      heap_.Grab( sizeof(Script) + reserve ,
+                  TYPE_SCRIPT,
+                  GC_WHITE,
+                  false ) , context , Handle<String>(source),
+                                      Handle<String>(filename),
+                                      Handle<Prototype>(proto),
+                                      function_table_size );
+
+  Script** ref = reinterpret_cast<Script**>(ref_pool_.Grab());
+  *ref = p;
+  return ref;
+}
+
 /**
  * Marking phase for our GC
  *

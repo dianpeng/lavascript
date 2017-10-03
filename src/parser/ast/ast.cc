@@ -278,6 +278,15 @@ void DumpAst( const Node& n , std::ostream& output ) {
   visitor.Start(n);
 }
 
+const char* GetAstTypeName( AstType at ) {
+#define __(A,B,C) case A: return C;
+  switch(at) {
+    LAVA_AST_LIST(__)
+    default: return "";
+  }
+#undef __ // __
+}
+
 } // namespace ast
 } // namespace parser
 } // namespace lavascript

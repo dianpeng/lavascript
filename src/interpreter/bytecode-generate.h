@@ -4,7 +4,7 @@
 
 namespace lavascript {
 class Context;
-class Script;
+class ScriptBuilder;
 
 namespace parser {
 namespace ast {
@@ -18,9 +18,8 @@ namespace interpreter {
  * Generate bytecode from a AST into an Script objects ; if failed then return
  * false and put the error description inside of the error buffer
  */
-bool GenerateBytecode( Context* , const ::lavascript::parser::ast::Root& ,
-                                  Script* ,
-                                  std::string* );
+bool GenerateBytecode( Context* ,const ::lavascript::parser::ast::Root& ,
+    ScriptBuilder* , std::string* );
 
 
 } // namespace interpreter

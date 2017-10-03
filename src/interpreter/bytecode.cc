@@ -43,7 +43,7 @@ String** BytecodeBuilder::BuildFunctionPrototypeString( GC* gc ,
 }
 
 Handle<Prototype> BytecodeBuilder::New( GC* gc , const BytecodeBuilder& bb ,
-                                                 const ::lavascript::parser::ast::Function& node ) {
+                                                 String** proto ) {
 
   const std::size_t rest = bb.int_table_.size() * sizeof(std::uint32_t) +
                            bb.real_table_.size() * sizeof(double) +
@@ -52,7 +52,7 @@ Handle<Prototype> BytecodeBuilder::New( GC* gc , const BytecodeBuilder& bb ,
                            bb.code_buffer_.size()  * sizeof(std::uint32_t) +
                            bb.debug_info_.size()   * sizeof(SourceCodeInfo);
 
-  Prototype** pp = gc->NewPrototype(BuildFunctionPrototypeString(gc,node),
+  Prototype** pp = gc->NewPrototype(proto ? proto : String::New(gc,"()",2).ref(),
                                     bb.int_table_.size(),
                                     bb.real_table_.size(),
                                     bb.string_table_.size(),
@@ -98,6 +98,15 @@ Handle<Prototype> BytecodeBuilder::New( GC* gc , const BytecodeBuilder& bb ,
   }
 
   return Handle<Prototype>(pp);
+}
+
+Handle<Prototype> BytecodeBuilder::New( GC* gc , const BytecodeBuilder& bb ) {
+  return New(gc,bb,NULL);
+}
+
+Handle<Prototype> BytecodeBuilder::New( GC* gc , const BytecodeBuilder& bb ,
+                                                 const ::lavascript::parser::ast::Function& node ) {
+  return New(gc,bb,BuildFunctionPrototypeString(gc,node));
 }
 
 } // namespace interpreter

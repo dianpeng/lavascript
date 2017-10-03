@@ -166,7 +166,7 @@ static const std::size_t kAllocatableBytecodeRegisterSize = 255;
   __(E,NEWLIST, newlist, "newlist" , REG , NARG  , _ ) \
   __(E,ADDLIST, addlist, "addlist" , REG , REG , _ )   \
   __(F,LOADOBJ0 , loadobj0 , "loadobj0" , REG , _ , _  ) \
-  __(E,LOADOBJ1, loadobj1, "loadobj1", REG , REG , REG ) \
+  __(D,LOADOBJ1, loadobj1, "loadobj1", REG , REG , REG ) \
   __(E,NEWOBJ  , newobj , "newobj" , REG , NARG  , _  ) \
   __(D,ADDOBJ  , addobj , "addobj" , REG , REG , REG ) \
   __(G,LOADCLS  , loadcls  , "loadcls" , GARG , _  , _ ) \
@@ -188,7 +188,7 @@ static const std::size_t kAllocatableBytecodeRegisterSize = 255;
   /* forloop tag */ \
   __(B,FSTART,fstart,"fstart",REG,PC,_) \
   __(G,FEND  ,fend  ,"fend"  ,PC,_,_) \
-  __(G,FEVRSTART,fevrstart,"fevrstart",PC,_,_) \
+  __(X,FEVRSTART,fevrstart,"fevrstart",_,_,_) \
   __(G,FEVREND,fevrend,"frvrend",PC,_,_ ) \
   __(B,FESTART,festart,"festart",REG,PC,_) \
   __(B,FEEND  ,feend  ,"feend"  ,REG,PC,_) \
@@ -384,6 +384,8 @@ class BytecodeBuilder {
  private:
   static String** BuildFunctionPrototypeString( GC* ,
                                                 const ::lavascript::parser::ast::Function& );
+  static Handle<Prototype> New( GC* , const BytecodeBuilder& bb ,
+                                      String** proto );
 
  private:
   std::vector<std::uint32_t> code_buffer_;           // Code buffer

@@ -29,7 +29,8 @@ const char* GetGCStateName( GCState );
   __( TYPE_STRING  ,  String  , "string"  )                           \
   __( TYPE_PROTOTYPE, Prototype,"prototype")                          \
   __( TYPE_CLOSURE ,  Closure , "closure" )                           \
-  __( TYPE_EXTENSION, Extension,"extension")
+  __( TYPE_EXTENSION, Extension,"extension")                          \
+  __( TYPE_SCRIPT  ,  Script , "script"   )
 
 #define LAVASCRIPT_PRIMITIVE_TYPE_LIST(__)                            \
   __( TYPE_REAL    , Real    , "real"    )                            \
@@ -162,6 +163,7 @@ class HeapObjectHeader : DoNotAllocateOnNormalHeap {
   bool IsPrototype() const { return type() == TYPE_PROTOTYPE; }
   bool IsClosure() const { return type() == TYPE_CLOSURE; }
   bool IsExtension() const { return type() == TYPE_EXTENSION; }
+  bool IsScript() const { return type() == TYPE_SCRIPT; }
 
   void set_type( ValueType type ) {
     high_ &= ~kHeapObjectTypeMask;

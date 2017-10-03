@@ -28,6 +28,8 @@ static const std::size_t kMaxListEntryCount = 65536;
 
 static const std::size_t kMaxObjectEntryCount = 65536;
 
+static const std::size_t kMaxPrototypeSize = 65536;
+
 } // namespace lavascript
 
 #endif // CONFIG_H_

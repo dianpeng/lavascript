@@ -1,5 +1,7 @@
 #include "objects.h"
 #include "gc.h"
+#include "script-builder.h"
+
 #include "interpreter/bytecode.h"
 
 namespace lavascript {
@@ -134,5 +136,24 @@ std::uint16_t Prototype::GetUpValue( std::size_t index ,
   return ret;
 }
 
+/* ---------------------------------------------------------------
+ * Script
+ * --------------------------------------------------------------*/
+Handle<Script> Script::New( GC* gc , Context* context , const ScriptBuilder& sb ) {
+  Handle<String> source = String::New(gc,sb.source());
+  Handle<String> filename = String::New(gc,sb.source());
+  const std::size_t reserve = sb.function_table_size() * sizeof(FunctionTableEntry);
+
+  Script** ref = gc->NewScript(context,source.ref(),
+                                       filename.ref(),
+                                       sb.main().ref(),
+                                       sb.function_table_size(),
+                                       reserve);
+  Script* script = *ref;
+  FunctionTableEntry* start = script->fte_array();
+  // Copy the function table in the script object
+  MemCopy(start,sb.function_table());
+  return Handle<Script>(ref);
+}
 
 } // namespace lavascript

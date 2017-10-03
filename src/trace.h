@@ -74,7 +74,7 @@ inline void Log ( LogSeverity severity , const char* file , int line ,
 
 inline void LogD( LogSeverity severity , const char* file ,
     int line , const char* format , ... ) {
-#ifdef LAVA_DEBUG_LOG
+#if LAVASCRIPT_DEBUG_LEVEL > 0
   va_list vl;
   va_start(vl,format);
   LogF(severity,file,line,format,vl);
@@ -119,17 +119,17 @@ inline void LogD( LogSeverity severity , const char* file ,
 #define _LAVA_DEBUG_VERBOSE(... ) (void)(NULL)
 #define _LAVA_DEBUG_CRAZY ( ... ) (void)(NULL)
 #elif LAVASCRIPT_DEBUG_LEVE == 1
-#define _LAVA_DEBUG_NORMAL( ... ) do { __VA_ARGS__ } while(false)
+#define _LAVA_DEBUG_NORMAL( ... )  do { __VA_ARGS__ } while(false)
 #define _LAVA_DEBUG_VERBOSE( ... ) (void)(NULL)
-#define _LAVA_DEBUG_CRAZY ( ... ) (void)(NULL)
+#define _LAVA_DEBUG_CRAZY ( ... )  (void)(NULL)
 #elif LAVASCRIPT_DEBUG_LEVEL == 2
-#define _LAVA_DEBUG_NORMAL( ... ) do { __VA_ARGS__ } while(false)
+#define _LAVA_DEBUG_NORMAL( ... )  do { __VA_ARGS__ } while(false)
 #define _LAVA_DEBUG_VERBOSE( ... ) do { __VA_ARGS__ } while(false)
-#define _LAVA_DEBUG_CRAZY ( ... ) (void)(NULL)
+#define _LAVA_DEBUG_CRAZY ( ... )  (void)(NULL)
 #elif LAVASCRIPT_DEBUG_LEVEL == 2
-#define _LAVA_DEBUG_NORMAL( ... ) do { __VA_ARGS__ } while(false)
+#define _LAVA_DEBUG_NORMAL( ... )  do { __VA_ARGS__ } while(false)
 #define _LAVA_DEBUG_VERBOSE( ... ) do { __VA_ARGS__ } while(false)
-#define _LAVA_DEBUG_CRAZY ( ... ) do ( __VA_ARGS__ } while(false)
+#define _LAVA_DEBUG_CRAZY ( ... )  do ( __VA_ARGS__ } while(false)
 #endif // LAVASCRIPT_DEBUG_LEVEL
 
 
@@ -179,9 +179,8 @@ class LexicalScopeBenchmark {
 #endif // LAVASCRIPT_BENCH
 
 /** ---------------------------------------------
- * Helper class for dumpping internal states
+ * Helper class for dumpping internal states    |
  * ---------------------------------------------*/
-
 class DumpWriter {
  public:
   DumpWriter( const char* filename );
@@ -191,7 +190,6 @@ class DumpWriter {
   bool use_file_;
   LAVA_DISALLOW_COPY_AND_ASSIGN(DumpWriter);
 };
-
 
 } // namespace lavascript
 

@@ -59,6 +59,10 @@ class ScriptBuilder {
     return function_table_[index].prototype;
   }
 
+ public:
+  // For debugging purpose
+  void Dump( const char* filename );
+
  private:
   std::string filename_;
   std::string source_;

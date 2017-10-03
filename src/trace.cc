@@ -1,4 +1,5 @@
 #include "trace.h"
+#include "util.h"
 #include "env-var.h"
 
 #include <cstdlib>
@@ -121,6 +122,24 @@ void LogV( LogSeverity severity , const char* file , int line , const char* form
       PrintLog(kContext.error,file,line,format,vl);
       fflush(kContext.error);
       break;
+  }
+}
+
+DumpWriter::DumpWriter( const char* filename ):
+  file_(filename,std::ios_base::in|std::ios_base::trunc),
+  use_file_(true)
+{
+  use_file_ = file_ ? true : false;
+}
+
+void DumpWriter::Write( const char* fmt , ... ) {
+  va_list vl;
+  va_start(vl,fmt);
+
+  if(use_file_) {
+    file_ << Format(fmt,vl);
+  } else {
+    LogV(kLogInfo,__FILE__,__LINE__,fmt,vl);
   }
 }
 

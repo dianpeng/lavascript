@@ -173,7 +173,8 @@ class LexicalScopeBenchmark {
  * }
  */
 #ifdef LAVASCRIPT_BENCH
-#define lava_bench(MESSAGE) ::lavascript::detail::LexicalScopeBenchmark(MESSAGE,__FILE__,__LINE__)
+#define lava_bench(MESSAGE) \
+  ::lavascript::detail::LexicalScopeBenchmark(MESSAGE,__FILE__,__LINE__)
 #else
 #define lava_bench(MESSAGE) (void)(MESSAGE)
 #endif // LAVASCRIPT_BENCH
@@ -184,7 +185,10 @@ class LexicalScopeBenchmark {
 class DumpWriter {
  public:
   DumpWriter( const char* filename );
-  void Write( const char* fmt , ... );
+
+  void Write ( const char* fmt , ... );
+  void WriteL( const char* fmt , ... );
+
  private:
   std::fstream file_;
   bool use_file_;

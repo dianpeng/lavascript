@@ -1,4 +1,5 @@
-#include "bytecode.h"
+#include "bytecode-builder.h"
+
 #include <src/zone/string.h>
 #include <src/parser/ast/ast.h>
 #include <src/util.h>
@@ -10,9 +11,11 @@ namespace interpreter{
 
 std::int32_t BytecodeBuilder::Add( const ::lavascript::zone::String& str ,
                                    GC* gc ) {
-  auto ret = std::find_if(string_table_.begin(),string_table_.end(),[=](const Handle<String> rhs) {
-      return *rhs == str.data();
-      });
+  auto ret = std::find_if(string_table_.begin(),string_table_.end(),
+  [=](const Handle<String> rhs) {
+    return *rhs == str.data();
+  });
+
   if(ret == string_table_.end()) {
     if(string_table_.size() == kMaxLiteralSize) {
       return -1;

@@ -143,4 +143,14 @@ void DumpWriter::Write( const char* fmt , ... ) {
   }
 }
 
+void DumpWriter::WriteL( const char* fmt , ... ) {
+  va_list vl;
+  va_start(vl,fmt);
+  if(use_file_) {
+    file_ << Format(fmt,vl) << '\n';
+  } else {
+    LogV(kLogInfo,__FILE__,__LINE__,fmt,vl);
+  }
+}
+
 } // namespace lavascript

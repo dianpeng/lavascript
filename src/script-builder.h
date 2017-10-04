@@ -61,7 +61,7 @@ class ScriptBuilder {
 
  public:
   // For debugging purpose
-  void Dump( const char* filename );
+  void Dump( DumpWriter* writer );
 
  private:
   std::string filename_;

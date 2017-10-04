@@ -1,8 +1,7 @@
 #include "objects.h"
 #include "gc.h"
 #include "script-builder.h"
-
-#include "interpreter/bytecode.h"
+#include "interpreter/bytecode-builder.h"
 
 namespace lavascript {
 
@@ -134,6 +133,15 @@ std::uint16_t Prototype::GetUpValue( std::size_t index ,
   std::uint16_t ret;
   interpreter::BytecodeBuilder::DecodeUpValue(v,&ret,state);
   return ret;
+}
+
+void Prototype::Dump( DumpWriter* writer ) {
+  writer->WriteL("-----------------------------------");
+  writer->WriteL("Prototype:%s",proto_string_->ToStdString().c_str());
+  writer->WriteL("-----------------------------------");
+
+  writer->WriteL("-----------------------------------");
+  writer->WriteL("      Integer Table                ");
 }
 
 /* ---------------------------------------------------------------

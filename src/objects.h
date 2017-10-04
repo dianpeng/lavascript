@@ -790,6 +790,13 @@ class Prototype final : public HeapObject {
   void set_proto_string( const Handle<String>& str ) { proto_string_ = str; }
   void set_argument_size( std::size_t arg) { argument_size_ = arg; }
 
+  std::size_t int_table_size() const { return int_table_size_; }
+  std::size_t real_table_size() const { return real_table_size_; }
+  std::size_t string_table_size() const { return string_table_size_; }
+  std::size_t upvalue_size() const { return upvalue_size_; }
+  std::size_t code_buffer_size() const { return code_buffer_size_; }
+  std::size_t sci_size() const { return code_buffer_size_; }
+
  public: // Constant table
   inline std::int32_t GetInteger( std::size_t ) const;
   inline double GetReal( std::size_t ) const;
@@ -798,6 +805,8 @@ class Prototype final : public HeapObject {
 
   template< typename T >
   bool Visit( T* );
+ public:
+  void Dump( DumpWriter* writer );
 
  public:
   Prototype( const Handle<String>& pp , std::size_t argument_size ,

@@ -224,7 +224,7 @@ class Heap final {
  public: // DEBUG related code , may not suitable for production
 
   // Dump the heap into a filename or use normal lava_info to dump
-  void Dump( int verbose , const char* filename = NULL ); // Debug
+  void Dump( int verbose , DumpWriter* writer );
 
  private:
   bool RefillChunk( size_t size );
@@ -611,8 +611,8 @@ class GC : AllStatic {
   double factor() const { return factor_; }
   Context* context() const { return context_; }
 
-  void Dump( int option , const char* filename = NULL ) { heap_.Dump(option,filename); }
-
+ public: // DEBUG
+  void Dump( int option , DumpWriter* writer ) { heap_.Dump(option,writer); }
  public:
   /**
    * Function to create a new object with type T , the input arguments are

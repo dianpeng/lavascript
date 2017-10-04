@@ -1,5 +1,5 @@
 #include "bytecode-generate.h"
-#include "bytecode.h"
+#include "bytecode-builder.h"
 
 #include <src/error-report.h>
 #include <src/context.h>

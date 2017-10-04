@@ -268,8 +268,8 @@ bool SSOPool::Iterator::Move() {
   return false;
 }
 
-void Heap::Dump( int verbose , const char* filename ) {
-  DumpWriter writer(filename);
+void Heap::Dump( int verbose , DumpWriter* dw ) {
+  DumpWriter& writer = *dw;
 
   writer.Write("********************* Heap Dump ****************************");
   writer.Write("AliveSize:%zu;ChunkSize:%zu;AllocatedBytes:%zu;"

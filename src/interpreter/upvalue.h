@@ -21,6 +21,12 @@ enum UpValueState {
   UV_DETACH
 };
 
+inline const char* GetUpValueStateName( UpValueState st ) {
+  if(st == UV_EMBED)
+    return "embed";
+  else
+    return "detach";
+}
 
 } // namespace interpreter
 } // namespace lavascript

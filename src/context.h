@@ -7,6 +7,7 @@ namespace lavascript {
 
 class Context {
  public:
+  Context( const GC::GCConfig& config ) : gc_(config,this) {}
   GC* gc() { return &gc_; }
  private:
   GC gc_;

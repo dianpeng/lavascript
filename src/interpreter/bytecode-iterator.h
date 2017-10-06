@@ -2,6 +2,7 @@
 #define BYTECODE_ITERATOR_H_
 #include "bytecode.h"
 
+#include <src/trace.h>
 #include <src/util.h>
 
 /** ----------------------------------------------
@@ -13,14 +14,13 @@
  * -----------------------------------------------*/
 
 namespace lavascript {
+class DumpWriter;
+
 namespace interpreter {
 
 class BytecodeIterator {
  public:
-  BytecodeIterator( const std::uint32_t* , std::size_t );
-  BytecodeIterator();
-  BytecodeIterator( const BytecodeIterator& );
-  BytecodeIterator& operator = ( const BytecodeIterator& );
+  inline BytecodeIterator( const std::uint32_t* , std::size_t );
 
  public:
   bool HasNext() const { return cursor_ < size_; }
@@ -29,19 +29,19 @@ class BytecodeIterator {
   // Get the opcode from current cursor
   inline Bytecode opcode() const;
   inline const char* opcode_name() const;
-  BytecodeType type() const { return type_; }
+  inline BytecodeType type() const;
 
-  inline void Decode( std::uint8_t* , std::uint8_t* , std::uint8_t* );
-  inline void Decode( std::uint8_t* , std::uint8_t* );
-  inline void Decode( std::uint8_t* );
-  inline void Decode( std::uint16_t* );
-  inline void Decode( std::uint16_t* , std::uint8_t* );
-  inline void Decode( std::uint8_t* , std::uint16_t* );
+  inline void GetOperand( std::uint8_t* , std::uint8_t* , std::uint8_t* );
+  inline void GetOperand( std::uint8_t* , std::uint8_t* );
+  inline void GetOperand( std::uint8_t* );
+  inline void GetOperand( std::uint16_t* );
+  inline void GetOperand( std::uint16_t* , std::uint8_t* );
+  inline void GetOperand( std::uint8_t* , std::uint16_t* );
+
  private:
   // Decode the stuff from current cursor's pointed position
   void Decode();
 
- private:
   const std::uint32_t* code_buffer_;
   std::size_t size_;
   std::size_t cursor_;
@@ -59,9 +59,98 @@ class BytecodeIterator {
   std::uint8_t a3_8_;
 };
 
+inline BytecodeIterator::BytecodeIterator( const std::uint32_t* code_buffer ,
+                                           std::size_t size ):
+  code_buffer_(code_buffer),
+  size_       (size),
+  cursor_     (0),
+  offset_     (0),
+  type_       (TYPE_X),
+  opcode_     (),
+  a3_8_       ()
+{
+  if(HasNext()) {
+    Decode();
+  }
+}
+
+inline bool BytecodeIterator::Next() {
+  lava_debug(NORMAL,
+      lava_verify( HasNext() );
+      );
+  cursor_ += offset_;
+  if(HasNext()) {
+    Decode();
+  }
+  return HasNext();
+}
+
 inline Bytecode BytecodeIterator::opcode() const {
   lava_debug(NORMAL,lava_verify(HasNext()););
-  return static_cast<Bytecode>(code_buffer_[cursor_] & 0xff);
+  return opcode_;
+}
+
+inline const char* BytecodeIterator::opcode_name() const {
+  return GetBytecodeName( opcode() );
+}
+
+inline BytecodeType BytecodeIterator::type() const {
+  lava_debug(NORMAL,lava_verify(HasNext()););
+  return type_;
+}
+
+inline void BytecodeIterator::GetOperand( std::uint8_t* a1 , std::uint8_t* a2 ,
+                                                             std::uint8_t* a3 ) {
+  lava_debug(NORMAL,
+      lava_verify(HasNext());
+      lava_verify(type_ == TYPE_D);
+    );
+  *a1 = a1_8_;
+  *a2 = a2_8_;
+  *a3 = a3_8_;
+}
+
+inline void BytecodeIterator::GetOperand( std::uint8_t* a1 , std::uint8_t* a2 ) {
+  lava_debug(NORMAL,
+      lava_verify(HasNext());
+      lava_verify(type_ == TYPE_E);
+    );
+  *a1 = a1_8_;
+  *a2 = a2_8_;
+}
+
+inline void BytecodeIterator::GetOperand( std::uint8_t* a1 ) {
+  lava_debug(NORMAL,
+      lava_verify(HasNext());
+      lava_verify(type_ == TYPE_F);
+    );
+  *a1 = a1_8_;
+}
+
+inline void BytecodeIterator::GetOperand( std::uint16_t* a1 ) {
+  lava_debug(NORMAL,
+      lava_verify(HasNext());
+      lava_verify(type_ == TYPE_G);
+    );
+  *a1 = a1_16_;
+}
+
+inline void BytecodeIterator::GetOperand( std::uint16_t* a1 , std::uint8_t* a2 ) {
+  lava_debug(NORMAL,
+      lava_verify(HasNext());
+      lava_verify(type_ == TYPE_C);
+    );
+  *a1 = a1_16_;
+  *a2 = a2_8_;
+}
+
+inline void BytecodeIterator::GetOperand( std::uint8_t* a1 , std::uint16_t* a2 ) {
+  lava_debug(NORMAL,
+      lava_verify(HasNext());
+      lava_verify(type_ == TYPE_B);
+    );
+  *a1 = a1_8_;
+  *a2 = a2_16_;
 }
 
 } // namespace interpreter

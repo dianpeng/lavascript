@@ -69,6 +69,11 @@ void PrintLog( FILE* output , const char* file , int line , const char* format ,
   fwrite("\n",1,1,output);
 }
 
+void PrintLog( FILE* output , const char* file , int line , const char* message ) {
+  fprintf(output,"[WHERE:(%s:%d)]:%s",file,line,message);
+  fwrite("\n",1,1,output);
+}
+
 } // namespace
 
 void InitTrace( const char* folder ) {
@@ -125,6 +130,14 @@ void LogV( LogSeverity severity , const char* file , int line , const char* form
   }
 }
 
+void LogV( LogSeverity severity , const char* file , int line , const char* message ) {
+  switch(severity) {
+    case kLogInfo: PrintLog(kContext.info,file,line,message); break;
+    case kLogWarn: PrintLog(kContext.warn,file,line,message); fflush(kContext.warn); break;
+    default: PrintLog(kContext.error,file,line,message); fflush(kContext.error); break;
+  }
+}
+
 DumpWriter::DumpWriter( const char* filename ):
   file_(filename,std::ios_base::in|std::ios_base::trunc),
   use_file_(true)
@@ -151,6 +164,25 @@ void DumpWriter::WriteL( const char* fmt , ... ) {
   } else {
     LogV(kLogInfo,__FILE__,__LINE__,fmt,vl);
   }
+}
+
+namespace {
+static const char* kSeparator = "------------------------------------------------";
+} // namespace
+
+DumpWriter::Section::Section(DumpWriter* writer) : writer_(writer) {
+  writer->WriteL(kSeparator);
+}
+
+DumpWriter::Section::Section(DumpWriter* writer, const char* format, ... ) : writer_(writer) {
+  writer->WriteL(kSeparator);
+  va_list vl;
+  va_start(vl,format);
+  LogV( kLogInfo , __FILE__ , __LINE__ , Format(format,vl).c_str() );
+}
+
+DumpWriter::Section::~Section() {
+  writer_->WriteL(kSeparator);
 }
 
 } // namespace lavascript

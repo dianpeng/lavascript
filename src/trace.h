@@ -179,15 +179,27 @@ class LexicalScopeBenchmark {
 #define lava_bench(MESSAGE) (void)(MESSAGE)
 #endif // LAVASCRIPT_BENCH
 
+
 /** ---------------------------------------------
  * Helper class for dumpping internal states    |
  * ---------------------------------------------*/
 class DumpWriter {
  public:
-  DumpWriter( const char* filename );
-
+  DumpWriter( const char* filename = NULL );
   void Write ( const char* fmt , ... );
   void WriteL( const char* fmt , ... );
+ public:
+  /* ------------------------------------------------
+   * Helper inner classes for doing some separation |
+   * -----------------------------------------------*/
+  class Section {
+   public:
+    Section(DumpWriter* writer);
+    Section(DumpWriter* writer , const char* fmt , ...);
+    ~Section();
+   private:
+    DumpWriter* writer_;
+  };
 
  private:
   std::fstream file_;

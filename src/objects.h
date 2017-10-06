@@ -15,6 +15,7 @@
 #include "source-code-info.h"
 
 #include "interpreter/upvalue.h"
+#include "interpreter/bytecode-iterator.h"
 
 namespace lavascript {
 
@@ -802,11 +803,15 @@ class Prototype final : public HeapObject {
   inline double GetReal( std::size_t ) const;
   inline Handle<String> GetString( std::size_t ) const;
   std::uint16_t GetUpValue( std::size_t , interpreter::UpValueState* ) const;
+  interpreter::BytecodeIterator GetBytecodeIterator() const {
+    return interpreter::BytecodeIterator( code_buffer(), code_buffer_size() );
+  }
+  inline const SourceCodeInfo& GetSci( std::size_t i ) const;
 
   template< typename T >
   bool Visit( T* );
  public:
-  void Dump( DumpWriter* writer );
+  void Dump( DumpWriter* writer ) const;
 
  public:
   Prototype( const Handle<String>& pp , std::size_t argument_size ,
@@ -2388,6 +2393,11 @@ inline Handle<String> Prototype::GetString( std::size_t index ) const {
   String*** arr = string_table();
   lava_debug(NORMAL,lava_verify(arr && index < string_table_size_ ););
   return Handle<String>(arr[index]);
+}
+
+inline const SourceCodeInfo& Prototype::GetSci( std::size_t index ) const {
+  lava_debug(NORMAL,lava_verify(index < sci_size()););
+  return sci_buffer()[index];
 }
 
 template< typename T >

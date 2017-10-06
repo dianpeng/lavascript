@@ -126,7 +126,7 @@ class BytecodeBuilder {
     return EmitX(si,INSTR);                                            \
   }
 
-#define __(A,B,C,D,E,F,G) IMPL##A(BC_##B,C)
+#define __(A,B,C,D,E,F) IMPL##A(BC_##B,C)
   LAVASCRIPT_BYTECODE_LIST(__)
 #undef __           // __
 #undef IMPLB        // IMPLB

@@ -135,13 +135,86 @@ std::uint16_t Prototype::GetUpValue( std::size_t index ,
   return ret;
 }
 
-void Prototype::Dump( DumpWriter* writer ) {
-  writer->WriteL("-----------------------------------");
-  writer->WriteL("Prototype:%s",proto_string_->ToStdString().c_str());
-  writer->WriteL("-----------------------------------");
+void Prototype::Dump( DumpWriter* writer ) const {
 
-  writer->WriteL("-----------------------------------");
-  writer->WriteL("      Integer Table                ");
+  { // prototype
+    DumpWriter::Section(writer,"Prototype:%s",proto_string_->ToStdString().c_str());
+  }
+
+  { // integer table
+    DumpWriter::Section section(writer,"Integer Table");
+    for( std::size_t i = 0 ; i < int_table_size() ; ++i ) {
+      writer->WriteL("%zu.     %d",i,GetInteger(i));
+    }
+  }
+
+  { // real table
+    DumpWriter::Section section(writer,"Real Table");
+    for( std::size_t i = 0 ; i < real_table_size(); ++i ) {
+      writer->WriteL("%zu.     %f",i,GetReal(i));
+    }
+  }
+
+  { // string table
+    DumpWriter::Section section(writer,"String Table");
+    for( std::size_t i = 0 ; i < string_table_size(); ++i ) {
+      writer->WriteL("%zu.     %s",i,GetString(i)->ToStdString().c_str());
+    }
+  }
+
+  { // upvalue table
+    DumpWriter::Section section(writer,"UpValue Table");
+    for( std::size_t i = 0 ; i < upvalue_size(); ++i ) {
+      interpreter::UpValueState st;
+      std::uint16_t idx = GetUpValue(i,&st);
+      writer->WriteL("%zu.     %d(%s)",i,idx,interpreter::GetUpValueStateName(st));
+    }
+  }
+
+  { // dump the bytecode area
+    DumpWriter::Section section(writer,"Bytecode");
+    auto bi = GetBytecodeIterator();
+    std::size_t count = 0;
+    std::uint8_t a1_8, a2_8, a3_8;
+    std::uint16_t a1_16 , a2_16;
+    for( ; bi.HasNext() ; bi.Next() ) {
+      const SourceCodeInfo& sci = GetSci(count);
+      switch(bi.type()) {
+        case interpreter::TYPE_B:
+          bi.GetOperand(&a1_8,&a2_16);
+          writer->WriteL("%zu. %s %d %d <%d,%d>",count,bi.opcode_name(),a1_8,a2_16,sci.start,
+                                                                                   sci.end);
+          break;
+        case interpreter::TYPE_C:
+          bi.GetOperand(&a1_16,&a2_8);
+          writer->WriteL("%zu. %s %d %d <%d,%d>",count,bi.opcode_name(),a1_16,a2_8,sci.start,
+                                                                                   sci.end);
+          break;
+        case interpreter::TYPE_D:
+          bi.GetOperand(&a1_8,&a2_8,&a3_8);
+          writer->WriteL("%zu. %s %d %d %d <%d,%d>",count,bi.opcode_name(),a1_8,a2_8,a3_8,sci.start,
+                                                                                          sci.end);
+          break;
+        case interpreter::TYPE_E:
+          bi.GetOperand(&a1_8,&a2_8);
+          writer->WriteL("%zu. %s %d %d <%d,%d>",count,bi.opcode_name(),a1_8,a2_8,sci.start,
+                                                                                  sci.end);
+          break;
+        case interpreter::TYPE_F:
+          bi.GetOperand(&a1_8);
+          writer->WriteL("%zu. %s %d <%d,%d>",count,bi.opcode_name(),a1_8,sci.start,sci.end);
+          break;
+        case interpreter::TYPE_G:
+          bi.GetOperand(&a1_16);
+          writer->WriteL("%zu. %s %d <%d,%d>",count,bi.opcode_name(),a1_16,sci.start,sci.end);
+          break;
+        default:
+          writer->WriteL("%zu. %s <%d,%d>",count,bi.opcode_name(),sci.start,sci.end);
+          break;
+      }
+      ++count;
+    }
+  }
 }
 
 /* ---------------------------------------------------------------

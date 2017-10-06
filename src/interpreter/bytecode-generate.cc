@@ -194,7 +194,7 @@ class RegisterAllocator {
     }
   }
  private:
-  static void* kNotUsed;
+  static void* kRegUsed;
 
   // Free registers for temporary/intermeidate usage
   struct Node {
@@ -212,7 +212,7 @@ class RegisterAllocator {
   std::vector<std::uint8_t> scope_base_;
 };
 
-void* RegisterAllocator::kNotUsed = reinterpret_cast<void*>(0x1);
+void* RegisterAllocator::kRegUsed = reinterpret_cast<void*>(0x1);
 
 /**
  * Scope is an object that is used to track all the information generated
@@ -289,7 +289,7 @@ class LexicalScope : public Scope {
   bool IsLoopScope() const { return IsLoop() || IsInLoop(); }
 
   // Find its nearest enclosed loop scope can return *this*
-  LexicalScope* GetEnclosedLoopScope();
+  LexicalScope* GetNearestLoopScope();
 
   // Helpers for Break and Continue's jump
   inline bool AddBreak( const ast::Break& );
@@ -697,6 +697,7 @@ RegisterAllocator::RegisterAllocator():
   size_(kAllocatableBytecodeRegisterSize),
   reg_buffer_()
 {
+  free_register_ = reinterpret_cast<Node*>(reg_buffer_);
   Node* n = reinterpret_cast<Node*>(reg_buffer_);
 
   for( std::size_t i = 0 ; i < kAllocatableBytecodeRegisterSize-1; ++i ) {
@@ -712,7 +713,7 @@ inline Optional<Register> RegisterAllocator::Grab() {
   if(free_register_) {
     Node* ret = free_register_;
     free_register_ = free_register_->next;
-    ret->next = static_cast<Node*>(kNotUsed);
+    ret->next = static_cast<Node*>(kRegUsed);
     --size_;
     return Optional<Register>(ret->reg);
   }
@@ -724,7 +725,7 @@ inline void RegisterAllocator::Drop( const Register& reg ) {
     Node* n = RegisterToSlot(reg);
 
     lava_debug(NORMAL,
-        lava_verify(n->next == static_cast<Node*>(kNotUsed));
+        lava_verify(n->next == static_cast<Node*>(kRegUsed));
         );
 
     /**
@@ -770,12 +771,12 @@ inline void RegisterAllocator::Drop( const Register& reg ) {
 
 inline bool RegisterAllocator::IsAvailable( const Register& reg ) {
   Node* n = RegisterToSlot(reg);
-  return n->next != static_cast<Node*>(kNotUsed);
+  return n->next != static_cast<Node*>(kRegUsed);
 }
 
 inline bool RegisterAllocator::IsUsed( const Register& reg ) {
   Node* n = RegisterToSlot(reg);
-  return n->next == static_cast<Node*>(kNotUsed);
+  return n->next == static_cast<Node*>(kRegUsed);
 }
 
 inline RegisterAllocator::Node*
@@ -810,13 +811,13 @@ bool RegisterAllocator::EnterScope( std::size_t size , std::uint8_t* b ) {
     for( cur = free_register_ ; cur ; cur = next ) {
       lava_debug(NORMAL,lava_verify(cur->reg.index() == start););
       next = cur->next;
-      cur->next = static_cast<Node*>(kNotUsed);
+      cur->next = static_cast<Node*>(kRegUsed);
       ++start;
       if(start == base()+size) break;
     }
 
     size_ -= size;
-    free_register_ = cur;
+    free_register_ = next;
 
     *b = base();
     scope_base_.push_back(base()+size);
@@ -902,10 +903,14 @@ inline LexicalScope*  Scope::AsLexicalScope () {
 }
 
 FunctionScope* Scope::GetEnclosedFunctionScope( Scope* scope ) {
-  while(scope && !scope->IsFunctionScope()) {
+  if(scope) {
     scope = scope->parent();
+    while(scope && !scope->IsFunctionScope()) {
+      scope = scope->parent();
+    }
+    return scope ? scope->AsFunctionScope() : NULL;
   }
-  return scope ? scope->AsFunctionScope() : NULL;
+  return NULL;
 }
 
 bool LexicalScope::Init( const ast::Chunk& node ) {
@@ -960,7 +965,7 @@ inline bool LexicalScope::AddBreak( const ast::Break& node ) {
   if(is_loop_)
     break_list_.push_back(l);
   else
-    GetEnclosedLoopScope()->break_list_.push_back(l);
+    GetNearestLoopScope()->break_list_.push_back(l);
   return true;
 }
 
@@ -970,7 +975,7 @@ inline bool LexicalScope::AddContinue( const ast::Continue& node ) {
   if(is_loop_)
     continue_list_.push_back(l);
   else
-    GetEnclosedLoopScope()->continue_list_.push_back(l);
+    GetNearestLoopScope()->continue_list_.push_back(l);
   return true;
 }
 
@@ -991,7 +996,8 @@ LexicalScope::LexicalScope( Generator* gen , bool loop ):
                                         static_cast<Scope*>(gen->func_scope_)),
   local_vars_(),
   is_loop_   (loop),
-  is_in_loop_(gen->lexical_scope()->IsLoop() || gen->lexical_scope()->IsInLoop()),
+  is_in_loop_(gen->lexical_scope_ ?
+              (gen->lexical_scope_->IsLoop() || gen->lexical_scope_->IsInLoop()) : false),
   break_list_(),
   continue_list_(),
   func_scope_(gen->func_scope()),
@@ -1021,7 +1027,7 @@ LexicalScope::~LexicalScope() {
                                                               parent()->AsLexicalScope();
 }
 
-LexicalScope* LexicalScope::GetEnclosedLoopScope() {
+LexicalScope* LexicalScope::GetNearestLoopScope() {
   Scope* scope = this;
   do {
     if(scope->IsLexicalScope() && scope->AsLexicalScope()->IsLoop())
@@ -1294,6 +1300,7 @@ bool Generator::SpillToAcc( const SourceCodeInfo& sci , ScopedRegister* reg ) {
   lava_debug(NORMAL,lava_verify(*reg););
   EEMIT(move(sci,Register::kAccIndex,reg->Get().index()));
   reg->Reset();
+  return true;
 }
 
 bool Generator::AllocateLiteral( const ast::Literal& lit , const Register& reg ) {
@@ -1431,7 +1438,6 @@ void Generator::Error( ErrorCategory ec , const ast::Node& node ,
   ReportError(error_,"[bytecode-compiler]",script_builder_->source().c_str(),
                                            node.sci().start,
                                            node.sci().end,
-                                           fmt,
                                            "%s:%s",
                                            GetErrorCategoryDescription(ec),
                                            FormatV(fmt,vl).c_str());
@@ -1495,7 +1501,7 @@ bool Generator::Visit( const ast::Literal& lit , ExprResult* result ) {
 bool Generator::Visit( const ast::Variable& var , ExprResult* result ) {
   // 1. Try to establish it as local variable
   Optional<Register> reg;
-  std::uint16_t upindex;
+  std::uint16_t upindex = 0;
 
   if((reg=lexical_scope_->GetLocalVar(*var.name))) {
     result->SetRegister( reg.Get() );
@@ -1931,6 +1937,8 @@ bool Generator::Visit( const ast::Binary& node , ExprResult* result ) {
         return false;
       }
     }
+
+    return true;
   } else {
     lava_debug(NORMAL, lava_verify(node.op.IsLogic()); );
     return VisitLogic(node,result);

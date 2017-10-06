@@ -13,6 +13,7 @@ TEST:=$(shell find unittest/ -type f -name "*-test.cc")
 TESTOBJECT:=${TEST:.cc=.t}
 CXX = g++
 
+all: release
 
 # -------------------------------------------------------------------------------
 #
@@ -24,7 +25,7 @@ RELEASE_LIBS  =
 
 TEST_DEF = -DLAVASCRIPT_DEBUG_LEVE=3
 
-TEST_FLAGS = -I$(PWD) -g3 -Wall -fsanitize=address,leak,undefined $(TEST_DEF) -Werror
+TEST_FLAGS = -I$(PWD) -g3 -Wall $(TEST_DEF) -Werror
 TEST_LIBS = -lgtest -lpthread
 
 
@@ -47,6 +48,7 @@ unittest/%.t : unittest/%.cc $(OBJECT) $(INCLUDE) $(SOURCE)
 test: CXXFLAGS += $(TEST_FLAGS)
 test: LDFLAGS  += $(TEST_LIBS)
 test: $(TESTOBJECT)
+
 
 # -------------------------------------------------------------------------------
 #

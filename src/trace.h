@@ -4,9 +4,6 @@
 #include <cstdint>
 #include <fstream>
 
-#include "common.h"
-#include "os.h"
-
 namespace lavascript {
 
 /**
@@ -47,7 +44,7 @@ inline bool Crash ( const char* expression , const char* file , int line ,
 
 #define lava_die() ::lavascript::Crash("die!!",__FILE__,__LINE__,"")
 
-#define lava_verify( EXPRESSION ) lava_assert( EXPRESSION , "" )
+#define lava_verify( EXPRESSION ) lava_assert( EXPRESSION , "verification failed!!" )
 
 /**
  * Logging routines. These logging helper functions are thread safe and context safe.
@@ -141,19 +138,8 @@ namespace detail {
 
 class LexicalScopeBenchmark {
  public:
-  LexicalScopeBenchmark( const char* message , const char* file , int line ) :
-    timestamp_ ( ::lavascript::OS::NowInMicroSeconds() ),
-    message_   ( message ) ,
-    file_      ( file )    ,
-    line_      ( line )
-  {}
-
-  ~LexicalScopeBenchmark() {
-    detail::Log(kLogInfo,file_,line_,"Benchmark(%lld):%s",
-        static_cast<std::uint64_t>(::lavascript::OS::NowInMicroSeconds() - timestamp_),
-        message_);
-  }
-
+  LexicalScopeBenchmark( const char* message , const char* file , int line );
+  ~LexicalScopeBenchmark();
  private:
   std::uint64_t timestamp_;
   const char* message_;
@@ -204,7 +190,10 @@ class DumpWriter {
  private:
   std::fstream file_;
   bool use_file_;
-  LAVA_DISALLOW_COPY_AND_ASSIGN(DumpWriter);
+
+  // We don't use LAVA_DISALLOW_COPY_AND_ASSIGN to avoid header dependency
+  DumpWriter( const DumpWriter& ) = delete;
+  DumpWriter& operator = ( const DumpWriter& ) = delete;
 };
 
 } // namespace lavascript

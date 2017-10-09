@@ -1,10 +1,10 @@
 #include "bytecode-builder.h"
 
-#include <src/zone/string.h>
-#include <src/parser/ast/ast.h>
-#include <src/util.h>
-#include <src/gc.h>
-#include <src/objects.h>
+#include "src/zone/string.h"
+#include "src/parser/ast/ast.h"
+#include "src/util.h"
+#include "src/gc.h"
+#include "src/objects.h"
 
 namespace lavascript {
 namespace interpreter{
@@ -46,6 +46,7 @@ String** BytecodeBuilder::BuildFunctionPrototypeString( GC* gc ,
 }
 
 Handle<Prototype> BytecodeBuilder::New( GC* gc , const BytecodeBuilder& bb ,
+                                                 std::size_t arg_size,
                                                  String** proto ) {
 
   const std::size_t rest = bb.int_table_.size() * sizeof(std::uint32_t) +
@@ -56,12 +57,12 @@ Handle<Prototype> BytecodeBuilder::New( GC* gc , const BytecodeBuilder& bb ,
                            bb.debug_info_.size()   * sizeof(SourceCodeInfo);
 
   Prototype** pp = gc->NewPrototype(proto ? proto : String::New(gc,"()",2).ref(),
+                                    arg_size,
                                     bb.int_table_.size(),
                                     bb.real_table_.size(),
                                     bb.string_table_.size(),
                                     bb.upvalue_slot_.size(),
                                     bb.code_buffer_.size(),
-                                    bb.debug_info_.size(),
                                     rest);
   Prototype* ret = *pp;
 
@@ -103,13 +104,13 @@ Handle<Prototype> BytecodeBuilder::New( GC* gc , const BytecodeBuilder& bb ,
   return Handle<Prototype>(pp);
 }
 
-Handle<Prototype> BytecodeBuilder::New( GC* gc , const BytecodeBuilder& bb ) {
-  return New(gc,bb,NULL);
+Handle<Prototype> BytecodeBuilder::NewMain( GC* gc , const BytecodeBuilder& bb ) {
+  return New(gc,bb,0,NULL);
 }
 
 Handle<Prototype> BytecodeBuilder::New( GC* gc , const BytecodeBuilder& bb ,
                                                  const ::lavascript::parser::ast::Function& node ) {
-  return New(gc,bb,BuildFunctionPrototypeString(gc,node));
+  return New(gc,bb,node.proto->size(),BuildFunctionPrototypeString(gc,node));
 }
 
 } // namespace interpreter

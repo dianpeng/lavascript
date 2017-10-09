@@ -100,9 +100,7 @@ template< typename T > T* FreeList<T>::Grab() {
   }
   FreeNode* ret = next_;
 
-#ifdef LAVASCRIPT_CHECK_OBJECTS
-  lava_verify(ret);
-#endif // LAVASCRIPT_CHECK_OBJECTS
+  lava_debug(NORMAL,lava_verify(ret););
 
   next_ = next_->next;
   ++size_;
@@ -110,9 +108,7 @@ template< typename T > T* FreeList<T>::Grab() {
 }
 
 template< typename T > void FreeList<T>::Drop( T* ptr ) {
-#ifdef LAVASCRIPT_CHECK_OBJECTS
-  lava_verify(size_ >0);
-#endif // LAVASCRIPT_CHECK_OBJECTS
+  lava_debug(NORMAL,lava_verify(size_>0););
 
   FreeNode* n = reinterpret_cast<FreeNode*>(ptr);
   n->next = next_;

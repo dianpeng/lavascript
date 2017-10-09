@@ -1,5 +1,5 @@
 #include "ast.h"
-#include <src/parser/lexer.h>
+#include "src/parser/lexer.h"
 
 namespace lavascript {
 namespace parser {

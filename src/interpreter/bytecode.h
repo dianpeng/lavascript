@@ -89,7 +89,7 @@ static const std::size_t kAllocatableBytecodeRegisterSize = 255;
   __(C,POWRV , powrv ,  _ , RREF , REG ) \
   __(B,POWVR , powvr ,  _ , REG , RREF ) \
   __(E,POWVV , powvv ,  _ , REG , REG)   \
-  /* comparison */                            \
+  /* comparison */                       \
   __(C,LTIV  , ltiv  , _ , IREF , REG ) \
   __(B,LTVI  , ltvi  , _ , REG , IREF ) \
   __(C,LTRV  , ltrv  , _ , RREF, REG  ) \
@@ -136,11 +136,11 @@ static const std::size_t kAllocatableBytecodeRegisterSize = 255;
   __(F,NEGATE, negate, REG,_,_) \
   __(F,NOT   , not_  , REG,_,_) \
   /* branch */ \
-  __(B,JMPT  , jmpt ,REG,PC,_   ) \
-  __(B,JMPF  , jmpf ,REG,PC,_   ) \
-  __(B,AND , and_ ,REG,PC,_   ) \
-  __(B,OR  , or_ ,REG,PC,_   ) \
-  __(G,JMP  , jmp , PC, _ , _  ) \
+  __(B,JMPT , jmpt ,REG,PC,_   ) \
+  __(B,JMPF , jmpf ,REG,PC,_   ) \
+  __(G,AND  , and_ ,PC,_,_  )    \
+  __(G,OR   , or_  ,PC,_,_  )    \
+  __(G,JMP  , jmp  ,PC,_,_  )    \
   /* register move */ \
   __(B,MOVE , move , REG, REG, _ ) \
   /* constant loading */ \

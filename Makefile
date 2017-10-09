@@ -49,7 +49,6 @@ test: CXXFLAGS += $(TEST_FLAGS)
 test: LDFLAGS  += $(TEST_LIBS)
 test: $(TESTOBJECT)
 
-
 # -------------------------------------------------------------------------------
 #
 #  Release

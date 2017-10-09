@@ -1,6 +1,7 @@
 #include "objects.h"
 #include "gc.h"
 #include "script-builder.h"
+#include "error-report.h"
 #include "interpreter/bytecode-builder.h"
 
 namespace lavascript {
@@ -92,9 +93,7 @@ Handle<Map> Map::Rehash( GC* gc , const Handle<Map>& old_map ) {
       Entry* new_entry = new_map->FindEntry(e->key.GetString(),
                                             e->hash,
                                             INSERT);
-#ifdef LAVASCRIPT_CHECK_OBJECTS
-      lava_verify(new_entry && !new_entry->use);
-#endif // LAVASCRIPT_CHECK_OBJECTS
+      lava_debug(NORMAL,lava_verify(new_entry && !new_entry->use););
 
       new_entry->use = 1;
       new_entry->value = e->value;
@@ -135,7 +134,7 @@ std::uint16_t Prototype::GetUpValue( std::size_t index ,
   return ret;
 }
 
-void Prototype::Dump( DumpWriter* writer ) const {
+void Prototype::Dump( DumpWriter* writer , const std::string& source ) const {
 
   { // prototype
     DumpWriter::Section(writer,"Prototype:%s",proto_string_->ToStdString().c_str());
@@ -182,34 +181,37 @@ void Prototype::Dump( DumpWriter* writer ) const {
       switch(bi.type()) {
         case interpreter::TYPE_B:
           bi.GetOperand(&a1_8,&a2_16);
-          writer->WriteL("%zu. %s %d %d <%d,%d>",count,bi.opcode_name(),a1_8,a2_16,sci.start,
-                                                                                   sci.end);
+          writer->WriteL("%zu. %s %d %d  | <%d,%d> %s",count,bi.opcode_name(),a1_8,a2_16,
+              sci.start, sci.end, GetSourceSnippetInOneLine(source,sci).c_str());
           break;
         case interpreter::TYPE_C:
           bi.GetOperand(&a1_16,&a2_8);
-          writer->WriteL("%zu. %s %d %d <%d,%d>",count,bi.opcode_name(),a1_16,a2_8,sci.start,
-                                                                                   sci.end);
+          writer->WriteL("%zu. %s %d %d  | <%d,%d> %s",count,bi.opcode_name(),a1_16,a2_8,sci.start,
+              sci.end, GetSourceSnippetInOneLine(source,sci).c_str());
           break;
         case interpreter::TYPE_D:
           bi.GetOperand(&a1_8,&a2_8,&a3_8);
-          writer->WriteL("%zu. %s %d %d %d <%d,%d>",count,bi.opcode_name(),a1_8,a2_8,a3_8,sci.start,
-                                                                                          sci.end);
+          writer->WriteL("%zu. %s %d %d %d  | <%d,%d> %s",count,bi.opcode_name(),a1_8,a2_8,a3_8,sci.start,
+              sci.end,GetSourceSnippetInOneLine(source,sci).c_str());
           break;
         case interpreter::TYPE_E:
           bi.GetOperand(&a1_8,&a2_8);
-          writer->WriteL("%zu. %s %d %d <%d,%d>",count,bi.opcode_name(),a1_8,a2_8,sci.start,
-                                                                                  sci.end);
+          writer->WriteL("%zu. %s %d %d  | <%d,%d> %s",count,bi.opcode_name(),a1_8,a2_8,sci.start,
+              sci.end,GetSourceSnippetInOneLine(source,sci).c_str());
           break;
         case interpreter::TYPE_F:
           bi.GetOperand(&a1_8);
-          writer->WriteL("%zu. %s %d <%d,%d>",count,bi.opcode_name(),a1_8,sci.start,sci.end);
+          writer->WriteL("%zu. %s %d  | <%d,%d> %s",count,bi.opcode_name(),a1_8,sci.start,
+              sci.end,GetSourceSnippetInOneLine(source,sci).c_str());
           break;
         case interpreter::TYPE_G:
           bi.GetOperand(&a1_16);
-          writer->WriteL("%zu. %s %d <%d,%d>",count,bi.opcode_name(),a1_16,sci.start,sci.end);
+          writer->WriteL("%zu. %s %d  | <%d,%d> %s",count,bi.opcode_name(),a1_16,sci.start,
+              sci.end,GetSourceSnippetInOneLine(source,sci).c_str());
           break;
         default:
-          writer->WriteL("%zu. %s <%d,%d>",count,bi.opcode_name(),sci.start,sci.end);
+          writer->WriteL("%zu. %s  | <%d,%d> %s",count,bi.opcode_name(),sci.start,sci.end,
+              GetSourceSnippetInOneLine(source,sci).c_str());
           break;
       }
       ++count;

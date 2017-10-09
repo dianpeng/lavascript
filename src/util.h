@@ -1,6 +1,5 @@
 #ifndef UTIL_H_
 #define UTIL_H_
-
 #include <cstdint>
 #include <cstdarg>
 #include <cstddef>
@@ -8,6 +7,8 @@
 #include <string.h>
 #include <vector>
 #include <new>
+
+#include "trace.h"
 
 namespace lavascript {
 
@@ -94,6 +95,55 @@ T* ConstructFromBuffer( void* buffer ) {
 template< typename T > void Destruct( T* object ) {
   object->~T();
 }
+
+template< typename T >
+class Optional {
+ public:
+  Optional():value_(),has_(false) {}
+  Optional( const T& value ):value_(),has_(false) { Set(value); }
+  Optional( const Optional& opt ):
+    value_(),
+    has_  (opt.has_) {
+    if(has_) Copy(opt.Get());
+  }
+  Optional& operator = ( const Optional& that ) {
+    if(this != &that) {
+      Clear();
+      if(that.Has()) Set(that.Get());
+    }
+    return *this;
+  }
+  ~Optional() { Clear(); }
+ public:
+  void Set( const T& value ) {
+    Clear();
+    Copy(value);
+    has_ = true;
+  }
+  void Clear() {
+    if(has_) {
+      Destruct( reinterpret_cast<T*>(value_) );
+      has_ = false;
+    }
+  }
+  T& Get() {
+    lava_verify(has_);
+    return *reinterpret_cast<T*>(value_);
+  }
+  const T& Get() const {
+    lava_verify(has_);
+    return *reinterpret_cast<const T*>(value_);
+  }
+  bool Has() const { return has_; }
+  operator bool () const { return has_; }
+ private:
+  void Copy( const T& value ) {
+    ConstructFromBuffer<T>(reinterpret_cast<T*>(value_),value);
+  }
+
+  std::uint8_t value_[sizeof(T)];
+  bool has_;
+};
 
 } // namespace lavascript
 

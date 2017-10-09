@@ -3,10 +3,12 @@
 
 #include "bytecode.h"
 
-#include <src/source-code-info.h>
-#include <src/trace.h>
-#include <src/objects.h>
-#include <src/interpreter/upvalue.h>
+#include "src/source-code-info.h"
+#include "src/util.h"
+#include "src/trace.h"
+#include "src/objects.h"
+#include "src/interpreter/upvalue.h"
+#include "src/interpreter/bytecode-iterator.h"
 
 namespace lavascript {
 namespace interpreter {
@@ -23,6 +25,7 @@ namespace interpreter {
 
 class BytecodeBuilder {
  public:
+  static const std::size_t kInitialCodeBufferSize = 1024;
   static const std::size_t kMaxCodeLength = 65536;
   static const std::size_t kMaxLiteralSize= 65536;
   static const std::size_t kMaxUpValueSize= 65536;
@@ -55,12 +58,17 @@ class BytecodeBuilder {
   }
 
  public:
+  // Use it as your own cautious, mainly for testing purpose
+  BytecodeIterator GetIterator() const {
+    return BytecodeIterator(AsBuffer(&code_buffer_,0),code_buffer_.size());
+  }
+
+ public:
 
   class Label {
    public:
     inline Label( BytecodeBuilder* , std::size_t , BytecodeType );
     inline Label();
-    inline ~Label();
     bool IsOk() const { return builder_ != NULL; }
     operator bool () const { return IsOk(); }
     inline void Patch( std::uint16_t );
@@ -68,7 +76,6 @@ class BytecodeBuilder {
     BytecodeType type_;
     std::size_t index_;
     BytecodeBuilder* builder_;
-    bool patched_;
   };
 
   inline bool EmitB( const SourceCodeInfo& , Bytecode , std::uint8_t , std::uint16_t );
@@ -157,12 +164,14 @@ class BytecodeBuilder {
   // managed heap based closure which can be used in the VM
   static Handle<Prototype> New( GC* , const BytecodeBuilder& bb ,
                                       const ::lavascript::parser::ast::Function& node );
-  static Handle<Prototype> New( GC* , const BytecodeBuilder& bb );
+
+  static Handle<Prototype> NewMain( GC* , const BytecodeBuilder& bb );
 
  private:
   static String** BuildFunctionPrototypeString( GC* ,
                                                 const ::lavascript::parser::ast::Function& );
   static Handle<Prototype> New( GC* , const BytecodeBuilder& bb ,
+                                      std::size_t arg_size,
                                       String** proto );
 
  private:
@@ -315,6 +324,7 @@ inline BytecodeBuilder::Label BytecodeBuilder::EmitAt( const SourceCodeInfo& sci
       break;
   }
 
+  code_buffer_.push_back(encode);
   debug_info_.push_back(sci);
   return Label(this,idx,static_cast<BytecodeType>(TP));
 }
@@ -338,7 +348,7 @@ inline BytecodeBuilder::Label BytecodeBuilder::or_ ( const SourceCodeInfo& sci )
 }
 
 inline BytecodeBuilder::Label BytecodeBuilder::jmp ( const SourceCodeInfo& sci ) {
-  return EmitAt<BC_OR,TYPE_G,false,false,false>(sci);
+  return EmitAt<BC_JMP,TYPE_G,false,false,false>(sci);
 }
 
 inline BytecodeBuilder::Label BytecodeBuilder::brk ( const SourceCodeInfo& sci ) {
@@ -356,7 +366,7 @@ inline BytecodeBuilder::Label BytecodeBuilder::fstart( const SourceCodeInfo& sci
 
 inline BytecodeBuilder::Label BytecodeBuilder::festart( const SourceCodeInfo& sci ,
                                                         std::uint8_t a1 ) {
-  return EmitAt<BC_FSTART,TYPE_B,true,false,false>(sci,a1);
+  return EmitAt<BC_FESTART,TYPE_B,true,false,false>(sci,a1);
 }
 
 inline bool BytecodeBuilder::AddUpValue( UpValueState state , std::uint16_t idx ,
@@ -404,21 +414,15 @@ inline std::int32_t BytecodeBuilder::Add( double rval ) {
 inline BytecodeBuilder::Label::Label():
   type_(),
   index_(),
-  builder_(NULL),
-  patched_(false)
+  builder_(NULL)
 {}
 
 inline BytecodeBuilder::Label::Label( BytecodeBuilder* bb , std::size_t idx ,
                                                             BytecodeType bt ):
   type_   (bt),
   index_  (idx),
-  builder_(bb),
-  patched_(false)
+  builder_(bb)
 {}
-
-inline BytecodeBuilder::Label::~Label() {
-  if(builder_) lava_verify(patched_);
-}
 
 inline void BytecodeBuilder::Label::Patch( std::uint16_t pc ) {
   std::uint32_t v = builder_->code_buffer_[index_];
@@ -432,7 +436,6 @@ inline void BytecodeBuilder::Label::Patch( std::uint16_t pc ) {
     default:
       lava_unreach("not implemented bytecode type or broken type");
   }
-  patched_ = true;
 }
 
 inline BytecodeBuilder::BytecodeBuilder():
@@ -442,7 +445,7 @@ inline BytecodeBuilder::BytecodeBuilder():
   real_table_ (),
   string_table_(),
   upvalue_slot_()
-{}
+{ code_buffer_.reserve(kInitialCodeBufferSize); }
 
 } // namespace interpreter
 } // namespace lavascript

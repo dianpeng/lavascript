@@ -1,10 +1,10 @@
 #include "lexer.h"
 
-#include <src/zone/zone.h>
-#include <src/zone/string.h>
+#include "src/zone/zone.h"
+#include "src/zone/string.h"
+#include "src/util.h"
+#include "src/trace.h"
 
-#include <src/util.h>
-#include <src/trace.h>
 #include <limits>
 
 namespace lavascript {

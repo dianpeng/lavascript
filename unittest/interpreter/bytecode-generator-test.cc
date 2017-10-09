@@ -8,6 +8,8 @@
 #include <gtest/gtest.h>
 #include <cassert>
 
+#define stringify(...) #__VA_ARGS__
+
 namespace lavascript {
 namespace interpreter{
 
@@ -52,8 +54,20 @@ TEST(BytecodeGenerate,Basic) {
   Context ctx(TestGCConfig());
   std::string error;
   {
-    ScriptBuilder sb("a","var a=b+c;");
-    ASSERT_TRUE(Compile(&ctx,"var a = b+c;",&sb,&error)) << error;
+    std::string script(stringify(
+          var a = 10;
+          var b = 20;
+          var c = 0;
+          var d = -1;
+          var e = 1;
+          var f = a + b;
+          var g = 10 * dd;
+          var g1 = g * ee - b + 100;
+          var g2 = g * ee - b + 100;
+          ));
+
+    ScriptBuilder sb("a",script);
+    ASSERT_TRUE(Compile(&ctx,script.c_str(),&sb,&error)) << error;
     DumpWriter dw;
     sb.Dump(&dw);
   }

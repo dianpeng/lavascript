@@ -811,7 +811,7 @@ class Prototype final : public HeapObject {
   template< typename T >
   bool Visit( T* );
  public:
-  void Dump( DumpWriter* writer ) const;
+  void Dump( DumpWriter* writer , const std::string& source ) const;
 
  public:
   Prototype( const Handle<String>& pp , std::size_t argument_size ,
@@ -984,10 +984,10 @@ template< typename T > inline Handle<T>::Handle():
 }
 template< typename T > inline Handle<T>::Handle( HeapObject** ref ) {
   static_assert( std::is_base_of<HeapObject,T>::value );
-#ifdef LAVASCRIPT_CHECK_OBJECTS
-  lava_verify(ref && *ref);
-  lava_verify((*ref)->IsType<T>());
-#endif // LAVASCRIPT_CHECK_OBJECTS
+  lava_debug(NORMAL,
+      lava_verify(ref && *ref);
+      lava_verify((*ref)->IsType<T>());
+    );
   ref_ = reinterpret_cast<T**>(ref);
 }
 
@@ -1008,57 +1008,43 @@ inline Handle<T>& Handle<T>::operator = ( const Handle<T>& that ) {
 
 template< typename T >
 inline T* Handle<T>::operator -> () {
-#ifdef LAVASCRIPT_CHECK_OBJECTS
-  lava_verify(!IsNull());
-#endif // LAVASCRIPT_CHECK_OBJECTS
+  lava_debug(NORMAL,lava_verify(!IsNull()););
   return *ref_;
 }
 
 template< typename T >
 inline const T* Handle<T>::operator -> () const {
-#ifdef LAVASCRIPT_CHECK_OBJECTS
-  lava_verify(!IsNull());
-#endif // LAVASCRIPT_CHECK_OBJECTS
+  lava_debug(NORMAL,lava_verify(!IsNull()););
   return *ref_;
 }
 
 template< typename T >
 inline T& Handle<T>::operator * () {
-#ifdef LAVASCRIPT_CHECK_OBJECTS
-  lava_verify(!IsNull());
-#endif // LAVASCRIPT_CHECK_OBJECTS
+  lava_debug(NORMAL,lava_verify(!IsNull()););
   return **ref_;
 }
 
 template< typename T >
 inline const T& Handle<T>::operator * () const {
-#ifdef LAVASCRIPT_CHECK_OBJECTS
-  lava_verify(!IsNull());
-#endif // LAVASCRIPT_CHECK_OBJECTS
+  lava_debug(NORMAL,lava_verify(!IsNull()););
   return **ref_;
 }
 
 template< typename T >
 inline HeapObject** Handle<T>::heap_object() const {
-#ifdef LAVASCRIPT_CHECK_OBJECTS
-  lava_verify(!IsNull());
-#endif // LAVASCRIPT_CHECK_OBJECTS
+  lava_debug(NORMAL,lava_verify(!IsNull()););
   return reinterpret_cast<HeapObject**>(ref_);
 }
 
 template< typename T >
 inline T** Handle<T>::ref() const {
-#ifdef LAVASCRIPT_CHECK_OBJECTS
-  lava_verify(!IsRefEmpty());
-#endif // LAVASCRIPT_CHECK_OBJECTS
+  lava_debug(NORMAL,lava_verify(!IsRefEmpty()););
   return ref_;
 }
 
 template< typename T >
 inline T* Handle<T>::ptr() const {
-#ifdef LAVASCRIPT_CHECK_OBJECTS
-  lava_verify(!IsNull());
-#endif // LAVASCRIPT_CHECK_OBJECTS
+  lava_debug(NORMAL,lava_verify(!IsNull()););
   return *ref_;
 }
 
@@ -1078,16 +1064,15 @@ inline HeapObject** Value::heap_object() const {
 }
 
 inline void Value::SetHeapObject( HeapObject** ptr ) {
-
-#ifdef LAVASCRIPT_CHECK_OBJECTS
   /**
    * Checking whether the input pointer is valid pointer
    * with our assumptions
    */
-  lava_assertF( (reinterpret_cast<std::uintptr_t>(ptr)&kPtrCheckMask) == 0 ,
-                "the pointer %x specified here is not a valid pointer,"
-                "upper 16 bits is not 0s", ptr );
-#endif // LAVASCRIPT_CHECK_OBJECTS
+  lava_debug(NORMAL,
+      lava_assertF( (reinterpret_cast<std::uintptr_t>(ptr)&kPtrCheckMask) == 0 ,
+                    "the pointer %x specified here is not a valid pointer,"
+                    "upper 16 bits is not 0s", ptr );
+    );
 
   raw_ = static_cast<std::uint64_t>(
       reinterpret_cast<std::uintptr_t>(ptr) | TAG_HEAP);
@@ -1158,9 +1143,7 @@ inline bool Value::IsIterator() const {
 }
 
 inline std::uint32_t Value::GetInteger() const {
-#ifdef LAVASCRIPT_CHECK_OBJECTS
-  lava_verify(IsInteger());
-#endif // LAVASCRIPT_CHECK_OBJECTS
+  lava_debug(NORMAL,lava_verify(IsInteger()););
 
   /**
    * This can be optimized out by defineing a structure which is
@@ -1181,86 +1164,62 @@ inline std::uint32_t Value::GetInteger() const {
 }
 
 inline bool Value::GetBoolean() const {
-#ifdef LAVASCRIPT_CHECK_OBJECTS
-  lava_verify(IsBoolean());
-#endif // LAVASCRIPT_CHECK_OBJECTS
+  lava_debug(NORMAL,lava_verify(IsBoolean()););
   return IsTagTrue();
 }
 
 inline double Value::GetReal() const {
-#ifdef LAVASCRIPT_CHECK_OBJECTS
-  lava_verify(IsReal());
-#endif // LAVASCRIPT_CHECK_OBJECTS
+  lava_debug(NORMAL,lava_verify(IsReal()););
   return real_;
 }
 
 inline HeapObject** Value::GetHeapObject() const {
-#ifdef LAVASCRIPT_CHECK_OBJECTS
-  lava_verify(IsHeapObject());
-#endif // LAVASCRIPT_CHECK_OBJECTS
+  lava_debug(NORMAL,lava_verify(IsHeapObject()););
   return heap_object();
 }
 
 inline Handle<String> Value::GetString() const {
-#ifdef LAVASCRIPT_CHECK_OBJECTS
-  lava_verify(IsHeapObject());
-#endif // LAVASCRIPT_CHECK_OBJECTS
+  lava_debug(NORMAL,lava_verify(IsHeapObject()););
   return Handle<String>(heap_object());
 }
 
 inline Handle<List> Value::GetList() const {
-#ifdef LAVASCRIPT_CHECK_OBJECTS
-  lava_verify(IsHeapObject());
-#endif // LAVASCRIPT_CHECK_OBJECTS
+  lava_debug(NORMAL,lava_verify(IsHeapObject()););
   return Handle<List>(heap_object());
 }
 
 inline Handle<Slice> Value::GetSlice() const {
-#ifdef LAVASCRIPT_CHECK_OBJECTS
-  lava_verify(IsHeapObject());
-#endif // LAVASCRIPT_CHECK_OBJECTS
+  lava_debug(NORMAL,lava_verify(IsHeapObject()););
   return Handle<Slice>(heap_object());
 }
 
 inline Handle<Object> Value::GetObject() const {
-#ifdef LAVASCRIPT_CHECK_OBJECTS
-  lava_verify(IsHeapObject());
-#endif // LAVASCRIPT_CHECK_OBJECTS
+  lava_debug(NORMAL,lava_verify(IsHeapObject()););
   return Handle<Object>(heap_object());
 }
 
 inline Handle<Map> Value::GetMap() const {
-#ifdef LAVASCRIPT_CHECK_OBJECTS
-  lava_verify(IsHeapObject());
-#endif // LAVASCRIPT_CHECK_OBJECTS
+  lava_debug(NORMAL,lava_verify(IsHeapObject()););
   return Handle<Map>(heap_object());
 }
 
 inline Handle<Prototype> Value::GetPrototype() const {
-#ifdef LAVASCRIPT_CHECK_OBJECTS
-  lava_verify(IsHeapObject());
-#endif // LAVASCRIPT_CHECK_OBJECTS
+  lava_debug(NORMAL,lava_verify(IsHeapObject()););
   return Handle<Prototype>(heap_object());
 }
 
 inline Handle<Closure> Value::GetClosure() const {
-#ifdef LAVASCRIPT_CHECK_OBJECTS
-  lava_verify(IsHeapObject());
-#endif // LAVASCRIPT_CHECK_OBJECTS
+  lava_debug(NORMAL,lava_verify(IsHeapObject()););
   return Handle<Closure>(heap_object());
 }
 
 inline Handle<Extension> Value::GetExtension() const {
-#ifdef LAVASCRIPT_CHECK_OBJECTS
-  lava_verify(IsHeapObject());
-#endif // LAVASCRIPT_CHECK_OBJECTS
+  lava_debug(NORMAL,lava_verify(IsHeapObject()););
   return Handle<Extension>(heap_object());
 }
 
 inline Handle<Iterator> Value::GetIterator() const {
-#ifdef LAVASCRIPT_CHECK_OBJECTS
-  lava_verify(IsHeapObject());
-#endif // LAVASCRIPT_CHECK_OBJECTS
+  lava_debug(NORMAL,lava_verify(IsHeapObject()););
   return Handle<Iterator>(heap_object());
 }
 
@@ -1572,9 +1531,7 @@ inline std::size_t String::size() const {
 }
 
 inline const SSO& String::sso() const {
-#ifdef LAVASCRIPT_CHECK_OBJECTS
-  lava_verify(IsSSO());
-#endif // LAVASCRIPT_CHECK_OBJECTS
+  lava_debug(NORMAL,lava_verify(IsSSO()););
 
   // The SSO are actually stored inside of SSOPool.
   // For a String object, it only stores a pointer
@@ -1583,9 +1540,7 @@ inline const SSO& String::sso() const {
 }
 
 inline const LongString& String::long_string() const {
-#ifdef LAVASCRIPT_CHECK_OBJECTS
-  lava_verify(IsLongString());
-#endif // LAVASCRIPT_CHECK_OBJECTS
+  lava_debug(NORMAL,lava_verify(IsLongString()););
   return *reinterpret_cast<const LongString*>(this);
 }
 
@@ -1769,30 +1724,22 @@ inline Value& List::Index( std::size_t index ) {
 }
 
 inline Value& List::Last() {
-#ifdef LAVASCRIPT_CHECK_OBJECTS
-  lava_verify(size() >0);
-#endif // LAVASCRIPT_CHECK_OBJECTS
+  lava_debug(NORMAL,lava_verify(size() >0););
   return slice()->Index( size() - 1 );
 }
 
 inline const Value& List::Last() const {
-#ifdef LAVASCRIPT_CHECK_OBJECTS
-  lava_verify(size() >0);
-#endif // LAVASCRIPT_CHECK_OBJECTS
+  lava_debug(NORMAL,lava_verify(size() >0););
   return slice()->Index( size() - 1 );
 }
 
 inline Value& List::First() {
-#ifdef LAVASCRIPT_CHECK_OBJECTS
-  lava_verify(size() >0);
-#endif // LAVASCRIPT_CHECK_OBJECTS
+  lava_debug(NORMAL,lava_verify(size() >0););
   return slice()->Index(0);
 }
 
 inline const Value& List::First() const {
-#ifdef LAVASCRIPT_CHECK_OBJECTS
-  lava_verify(size() >0);
-#endif // LAVASCRIPT_CHECK_OBJECTS
+  lava_debug(NORMAL,lava_verify(size() >0););
   return slice()->Index(0);
 }
 
@@ -1811,9 +1758,7 @@ inline bool List::Push( GC* gc , const Value& value ) {
 }
 
 inline void List::Pop() {
-#ifdef LAVASCRIPT_CHECK_OBJECTS
-  lava_verify(size_ > 0);
-#endif // LAVASCRIPT_CHECK_OBJECTS
+  lava_debug(NORMAL,lava_verify(size_ > 0););
   --size_;
 }
 
@@ -1844,16 +1789,12 @@ inline const Value* Slice::data() const {
 }
 
 inline const Value& Slice::Index( std::size_t index ) const {
-#ifdef LAVASCRIPT_CHECK_OBJECTS
-  lava_verify(index < capacity());
-#endif // LAVASCRIPT_CHECK_OBJECTS
+  lava_debug(NORMAL,lava_verify(index < capacity()););
   return data()[index];
 }
 
 inline Value& Slice::Index( std::size_t index ) {
-#ifdef LAVASCRIPT_CHECK_OBJECTS
-  lava_verify(index < capacity());
-#endif // LAVASCRIPT_CHECK_OBJECTS
+  lava_debug(NORMAL,lava_verify(index < capacity()););
   return data()[index];
 }
 
@@ -2017,9 +1958,9 @@ inline std::uint32_t Map::Hash( const std::string& key ) {
 template< typename T >
 Map::Entry* Map::FindEntry( const T& key , std::uint32_t fullhash ,
                                            Option opt ) const {
-#ifdef LAVASCRIPT_CHECK_OBJECTS
-  lava_verify(capacity() && bits::NextPowerOf2(capacity()) == capacity());
-#endif // LAVASCRIPT_CHECK_OBJECTS
+  lava_debug(NORMAL,
+      lava_verify(capacity() && bits::NextPowerOf2(capacity()) == capacity());
+    );
 
   Map* self = const_cast<Map*>(this);
   int main_position = fullhash & (capacity()-1);
@@ -2033,9 +1974,7 @@ Map::Entry* Map::FindEntry( const T& key , std::uint32_t fullhash ,
     if(!cur->del) {
       // The current entry is not deleted, so we can try check wether it is a
       // matched key or not
-#ifdef LAVASCRIPT_CHECK_OBJECTS
-      lava_verify( cur->key.IsString() );
-#endif // LAVASCRIPT_CHECK_OBJECTS
+      lava_debug(NORMAL,lava_verify( cur->key.IsString() ););
 
       if(cur->hash == fullhash && Equal(cur->key.GetString(),key)) {
         return opt == INSERT ? NULL : cur;
@@ -2110,16 +2049,12 @@ inline bool Map::Get( const std::string& key , Value* output ) const {
 inline bool Map::Set( GC* gc , const Handle<String>& key , const Value& value ) {
   (void)gc;
 
-#ifdef LAVASCRIPT_CHECK_OBJECTS
-  lava_verify(!NeedRehash());
-#endif // LAVASCRIPT_CHECK_OBJECTS
+  lava_debug(NORMAL,lava_verify(!NeedRehash()););
 
   std::uint32_t f = Hash(key);
   Entry* entry = FindEntry(key,f,INSERT);
   if(entry) {
-#ifdef LAVASCRIPT_CHECK_OBJECTS
-    lava_verify(!entry->use);
-#endif // LAVASCRIPT_CHECK_OBJECTS
+    lava_debug(NORMAL,lava_verify(!entry->use););
     entry->use = 1;
     entry->value = value;
     entry->key.SetHandle(key);
@@ -2132,17 +2067,12 @@ inline bool Map::Set( GC* gc , const Handle<String>& key , const Value& value ) 
 }
 
 inline bool Map::Set( GC* gc , const char* key , const Value& value ) {
-
-#ifdef LAVASCRIPT_CHECK_OBJECTS
-  lava_verify(!NeedRehash());
-#endif // LAVASCRIPT_CHECK_OBJECTS
+  lava_debug(NORMAL,lava_verify(!NeedRehash()););
 
   std::uint32_t f = Hash(key);
   Entry* entry = FindEntry(key,f,INSERT);
   if(entry) {
-#ifdef LAVASCRIPT_CHECK_OBJECTS
-    lava_verify(!entry->use);
-#endif // LAVASCRIPT_CHECK_OBJECTS
+    lava_debug(NORMAL,lava_verify(!entry->use););
     entry->use = 1;
     entry->value = value;
     entry->key.SetString( String::New(gc,key) );
@@ -2155,17 +2085,12 @@ inline bool Map::Set( GC* gc , const char* key , const Value& value ) {
 }
 
 inline bool Map::Set( GC* gc , const std::string& key , const Value& value ) {
-
-#ifdef LAVASCRIPT_CHECK_OBJECTS
-  lava_verify(!NeedRehash());
-#endif // LAVASCRIPT_CHECK_OBJECTS
+  lava_debug(NORMAL,lava_verify(!NeedRehash()););
 
   std::uint32_t f = Hash(key);
   Entry* entry = FindEntry(key,f,INSERT);
   if(entry) {
-#ifdef LAVASCRIPT_CHECK_OBJECTS
-    lava_verify(!entry->use);
-#endif // LAVASCRIPT_CHECK_OBJECTS
+    lava_debug(NORMAL,lava_verify(!entry->use););
     entry->use = 1;
     entry->value = value;
     entry->key.SetString( String::New(gc,key) );
@@ -2178,10 +2103,7 @@ inline bool Map::Set( GC* gc , const std::string& key , const Value& value ) {
 }
 
 inline void Map::Put( GC* gc , const Handle<String>& key , const Value& value ) {
-
-#ifdef LAVASCRIPT_CHECK_OBJECTS
-  lava_verify(!NeedRehash());
-#endif // LAVASCRIPT_CHECK_OBJECTS
+  lava_debug(NORMAL,lava_verify(!NeedRehash()););
 
   std::uint32_t f = Hash(key);
   Entry* entry = FindEntry(key,f,UPDATE);
@@ -2198,10 +2120,7 @@ inline void Map::Put( GC* gc , const Handle<String>& key , const Value& value ) 
 }
 
 inline void Map::Put( GC* gc , const char* key , const Value& value ) {
-
-#ifdef LAVASCRIPT_CHECK_OBJECTS
-  lava_verify(!NeedRehash());
-#endif // LAVASCRIPT_CHECK_OBJECTS
+  lava_debug(NORMAL,lava_verify(!NeedRehash()););
 
   std::uint32_t f = Hash(key);
   Entry* entry = FindEntry(key,f,UPDATE);
@@ -2218,10 +2137,7 @@ inline void Map::Put( GC* gc , const char* key , const Value& value ) {
 }
 
 inline void Map::Put( GC* gc , const std::string& key , const Value& value ) {
-
-#ifdef LAVASCRIPT_CHECK_OBJECTS
-  lava_verify(!NeedRehash());
-#endif // LAVASCRIPT_CHECK_OBJECTS
+  lava_debug(NORMAL,lava_verify(!NeedRehash()););
 
   std::uint32_t f = Hash(key);
   Entry* entry = FindEntry(key,f,UPDATE);
@@ -2245,10 +2161,10 @@ inline bool Map::Update( GC* gc , const Handle<String>& key , const Value& value
 
   if(entry) {
     entry->value = value;
-#ifdef LAVASCRIPT_CHECK_OBJECTS
-    lava_verify( entry->hash == f  );
-    lava_verify( *key == (*entry->key.GetString()) );
-#endif // LAVASCRIPT_CHECK_OBJECTS
+    lava_debug(NORMAL,
+        lava_verify( entry->hash == f  );
+        lava_verify( *key == (*entry->key.GetString()) );
+      );
     return true;
   }
   return false;
@@ -2262,10 +2178,10 @@ inline bool Map::Update( GC* gc , const char* key , const Value& value ) {
 
   if(entry) {
     entry->value = value;
-#ifdef LAVASCRIPT_CHECK_OBJECTS
-    lava_verify( entry->hash == f  );
-    lava_verify( (*entry->key.GetString()) == key );
-#endif // LAVASCRIPT_CHECK_OBJECTS
+    lava_debug(NORMAL,
+        lava_verify( entry->hash == f  );
+        lava_verify( (*entry->key.GetString()) == key );
+      );
     return true;
   }
   return false;
@@ -2279,10 +2195,10 @@ inline bool Map::Update( GC* gc , const std::string& key , const Value& value ) 
 
   if(entry) {
     entry->value = value;
-#ifdef LAVASCRIPT_CHECK_OBJECTS
-    lava_verify( entry->hash == f  );
-    lava_verify( (*entry->key.GetString()) == key );
-#endif // LAVASCRIPT_CHECK_OBJECTS
+    lava_debug(NORMAL,
+        lava_verify( entry->hash == f  );
+        lava_verify( (*entry->key.GetString()) == key );
+      );
     return true;
   }
   return false;

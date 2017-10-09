@@ -19,9 +19,7 @@ void BumpAllocator::RefillPool( std::size_t size ) {
 }
 
 void* BumpAllocator::Grab( std::size_t size ) {
-#ifdef LAVASCRIPT_CHECK_OBJECTS
-  lava_verify(size);
-#endif // LAVASCRIPT_CHECK_OBJECTS
+  lava_debug(NORMAL,lava_verify(size););
 
   if( used_ + size > current_capacity_ ) {
     size_t new_cap = current_capacity_ * 2;
@@ -30,9 +28,10 @@ void* BumpAllocator::Grab( std::size_t size ) {
     RefillPool(new_cap);
   }
 
-#ifdef LAVASCRIPT_CHECK_OBJECTS
-  lava_verify( current_capacity_ - used_ >= size );
-#endif // LAVASCRIPT_CHECK_OBJECTS
+  lava_debug(NORMAL,
+      lava_verify( current_capacity_ - used_ >= size );
+      );
+
 
   void* ret = pool_;
   pool_ = reinterpret_cast<void*>(static_cast<char*>(pool_) + size);

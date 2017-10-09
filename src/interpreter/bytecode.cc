@@ -1,5 +1,5 @@
 #include "bytecode.h"
-#include <src/trace.h>
+#include "src/trace.h"
 
 namespace lavascript {
 namespace interpreter{

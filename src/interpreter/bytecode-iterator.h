@@ -2,8 +2,8 @@
 #define BYTECODE_ITERATOR_H_
 #include "bytecode.h"
 
-#include <src/trace.h>
-#include <src/util.h>
+#include "src/trace.h"
+#include "src/util.h"
 
 /** ----------------------------------------------
  * Bytecode iterator. Used to decode bytecode in a

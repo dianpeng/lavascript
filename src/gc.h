@@ -339,16 +339,14 @@ inline HeapObject** GCRefPool::Grab() {
 }
 
 inline GCRefPool::Ref* GCRefPool::Delete( Ref* prev , Ref* target ) {
-#ifdef LAVASCRIPT_CHECK_OBJECTS
-  lava_verify( !prev || prev->next == target );
-#endif // LAVASCRIPT_CHECK_OBJECTS
+  lava_debug(NORMAL,
+      lava_verify( !prev || prev->next == target );
+    );
   Ref* ret = target->next;
   if(prev)
     prev->next = target->next;
   else {
-#ifdef LAVASCRIPT_CHECK_OBJECTS
-    lava_verify( front_ == target );
-#endif // LAVASCRIPT_CHECK_OBJECTS
+    lava_debug(NORMAL,lava_verify( front_ == target ););
     front_ = ret;
   }
 
@@ -452,26 +450,20 @@ inline bool Heap::Iterator::HasNext() const {
 }
 
 inline HeapObject* Heap::Iterator::heap_object() const {
-#ifdef LAVASCRIPT_CHECK_OBJECTS
-  lava_verify(HasNext());
-#endif // LAVASCRIPT_CHECK_OBJECTS
+  lava_debug(NORMAL,lava_verify(HasNext()););
   return reinterpret_cast<HeapObject*>(
       static_cast<char*>(current_chunk_->start()) + current_cursor_ +
                                                     HeapObjectHeader::kHeapObjectHeaderSize);
 }
 
 inline HeapObjectHeader Heap::Iterator::hoh() const {
-#ifdef LAVASCRIPT_CHECK_OBJECTS
-  lava_verify(HasNext());
-#endif // LAVASCRIPT_CHECK_OBJECTS
+  lava_debug(NORMAL,lava_verify(HasNext()););
   return HeapObjectHeader(static_cast<char*>(current_chunk_->start()) + current_cursor_);
 }
 
 inline void Heap::Iterator::set_hoh(
     const HeapObjectHeader& hdr ) const {
-#ifdef LAVASCRIPT_CHECK_OBJECTS
-  lava_verify(HasNext());
-#endif // LAVASCRIPT_CHECK_OBJECTS
+  lava_debug(NORMAL,lava_verify(HasNext()););
   HeapObjectHeader::SetHeader(
       static_cast<char*>(current_chunk_->start()) + current_cursor_,hdr);
 }
@@ -544,10 +536,10 @@ inline bool SSOPool::Iterator::HasNext() const {
 }
 
 inline SSO* SSOPool::Iterator::sso() const {
-#ifdef LAVASCRIPT_CHECK_OBJECTS
-  lava_verify( HasNext() );
-  lava_verify( entry_->at(index_).sso );
-#endif // LAVASCRIPT_CHECK_OBJECTS
+  lava_debug(NORMAL,
+      lava_verify( HasNext() );
+      lava_verify( entry_->at(index_).sso );
+    );
   return entry_->at(index_).sso;
 }
 

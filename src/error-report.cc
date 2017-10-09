@@ -61,4 +61,23 @@ void ReportErrorV( std::string* buffer , const char* where , const char* source 
                                                                 message.c_str());
 }
 
+std::string GetSourceSnippetInOneLine( const std::string& source , size_t start, size_t end ) {
+  // NOTES: the source code coordinate is [start,end]
+  end = RemoveTailingSpaces(source.c_str(),start,end);
+
+  std::string source_code(source.substr(start,(end-start+1)));
+  std::string ret; ret.reserve(source_code.size());
+  for( auto &e : source_code ) {
+    switch(e) {
+      case '\n': ret.append("\\n"); break;
+      case '\t': ret.append("\\t"); break;
+      case '\v': ret.append("\\v"); break;
+      case '\r': ret.append("\\r"); break;
+      case '\b': ret.append("\\b"); break;
+      default: ret.push_back(e); break;
+    }
+  }
+  return ret;
+}
+
 } // lavascript

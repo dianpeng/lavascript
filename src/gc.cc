@@ -24,9 +24,7 @@ Heap::Heap( size_t chunk_capacity , size_t init_size ,
 }
 
 bool Heap::Iterator::Move() {
-#ifdef LAVASCRIPT_CHECK_OBJECTS
-  lava_verify(HasNext());
-#endif // LAVASCRIPT_CHECK_OBJECTS
+  lava_debug(NORMAL,lava_verify(HasNext()););
 
   HeapObjectHeader hdr(
       static_cast<char*>(current_chunk_->start()) + current_cursor_ );
@@ -49,10 +47,7 @@ bool Heap::Iterator::Move() {
     current_cursor_ += hdr.total_size();
     return true;
   }
-
-#ifdef LAVASCRIPT_CHECK_OBJECTS
-  lava_verify(current_chunk_ == NULL);
-#endif // LAVASCRIPT_CHECK_OBJECTS
+  lava_debug(NORMAL,lava_verify(current_chunk_ == NULL););
 
   return false;
 }
@@ -100,11 +95,7 @@ void* Heap::Grab( size_t object_size , ValueType type, GCState gc_state ,
     buf = FindInChunk(size);
     if(!buf) {
       if(!RefillChunk(size)) return NULL;
-
-#ifdef LAVASCRIPT_CHECK_OBJECTS
-  lava_verify(chunk_current_->bytes_left() >= size);
-#endif // LAVASCRIPT_CHECK_OBJECTS
-
+      lava_debug(NORMAL,lava_verify(chunk_current_->bytes_left() >= size););
       buf = chunk_current_->Bump(size);
     }
   } else {
@@ -112,9 +103,7 @@ void* Heap::Grab( size_t object_size , ValueType type, GCState gc_state ,
   }
 
   // Now try to allocate it from the newly created chunk
-#ifdef LAVASCRIPT_CHECK_OBJECTS
-  lava_verify( is_long_str ? type == TYPE_STRING : true );
-#endif // LAVASCRIPT_CHECK_OBJECTS
+  lava_debug(NORMAL,lava_verify( is_long_str ? type == TYPE_STRING : true ););
 
   allocated_bytes_ += size;
   alive_size_++;
@@ -123,20 +112,17 @@ void* Heap::Grab( size_t object_size , ValueType type, GCState gc_state ,
 }
 
 void* Heap::CopyObject( const void* ptr , std::size_t length ) {
-#ifdef LAVASCRIPT_CHECK_OBJECTS
-  lava_verify(!length);
-  lava_verify( Align(length,kAlignment) == length );
-#endif // LAVASCRIPT_CHECK_OBJECTS
+  lava_debug(NORMAL,
+      lava_verify(!length);
+      lava_verify( Align(length,kAlignment) == length );
+    );
 
   void* buf = NULL;
   if(chunk_current_->bytes_left() < length) {
     buf = FindInChunk(length);
     if(!buf) {
       if(!RefillChunk(length)) return NULL;
-
-#ifdef LAVASCRIPT_CHECK_OBJECTS
-  lava_verify(chunk_current_->bytes_left() >= length);
-#endif // LAVASCRIPT_CHECK_OBJECTS
+      lava_debug(NORMAL,lava_verify(chunk_current_->bytes_left() >= length););
 
       buf = chunk_current_->Bump(length);
     }
@@ -188,10 +174,10 @@ void SSOPool::Rehash() {
                                    static_cast<const char*>(e.sso->data()),
                                    e.sso->size(),
                                    e.sso->hash());
-#ifdef LAVASCRIPT_CHECK_OBJECTS
-      lava_verify(entry->sso == NULL);
-      lava_verify(entry->next== NULL);
-#endif // LAVASCRIPT_CHECK_OBJECTS
+      lava_debug(NORMAL,
+          lava_verify(entry->sso == NULL);
+          lava_verify(entry->next== NULL);
+        );
 
       entry->sso = e.sso;
     }
@@ -315,9 +301,7 @@ void Heap::Dump( int verbose , DumpWriter* dw ) {
 } // namespace gc
 
 String** GC::NewString( const void* str , std::size_t length ) {
-#ifdef LAVASCRIPT_CHECK_OBJECTS
-  lava_verify(str);
-#endif // LAVASCRIPT_CHECK_OBJECTS
+  lava_debug(NORMAL,lava_verify(str););
   /**
    * String is an object without any data member all it needs
    * to do is to place correct object at the pointer of String.
@@ -464,11 +448,10 @@ void GC::PhaseSwap( std::size_t new_heap_size ) {
 
   while(itr.HasNext()) {
     HeapObject** ref = itr.heap_object();
-
-#ifdef LAVASCRIPT_CHECK_OBJECTS
-    lava_verify(*ref);
-    lava_verify(!((*ref)->hoh().IsGCGray()));
-#endif // LAVASCRIPT_CHECK_OBJECTS
+    lava_debug(NORMAL,
+        lava_verify(*ref);
+        lava_verify(!((*ref)->hoh().IsGCGray()));
+      );
 
     if((*ref)->hoh().IsGCWhite()) {
       // This object is alive , move to the new_heap

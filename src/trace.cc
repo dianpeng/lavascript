@@ -1,6 +1,8 @@
 #include "trace.h"
 #include "util.h"
 #include "env-var.h"
+#include "os.h"
+#include "common.h"
 
 #include <cstdlib>
 #include <string>
@@ -170,6 +172,26 @@ namespace {
 static const char* kSeparator = "------------------------------------------------";
 } // namespace
 
+namespace detail {
+
+LexicalScopeBenchmark::LexicalScopeBenchmark( const char* message ,
+                                              const char* file ,
+                                              int line ) :
+  timestamp_ ( ::lavascript::OS::NowInMicroSeconds() ),
+  message_   ( message ) ,
+  file_      ( file )    ,
+  line_      ( line )
+{}
+
+LexicalScopeBenchmark::~LexicalScopeBenchmark() {
+  detail::Log(kLogInfo,file_,line_,"Benchmark(%lld):%s",
+      static_cast<std::uint64_t>(::lavascript::OS::NowInMicroSeconds() - timestamp_),
+      message_);
+}
+
+} // namespace detail
+
+
 DumpWriter::Section::Section(DumpWriter* writer) : writer_(writer) {
   writer->WriteL(kSeparator);
 }
@@ -178,7 +200,7 @@ DumpWriter::Section::Section(DumpWriter* writer, const char* format, ... ) : wri
   writer->WriteL(kSeparator);
   va_list vl;
   va_start(vl,format);
-  LogV( kLogInfo , __FILE__ , __LINE__ , Format(format,vl).c_str() );
+  LogV( kLogInfo , __FILE__ , __LINE__ , FormatV(format,vl).c_str() );
 }
 
 DumpWriter::Section::~Section() {

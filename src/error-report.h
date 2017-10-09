@@ -4,6 +4,8 @@
 #include <cstdarg>
 #include <string>
 
+#include "source-code-info.h"
+
 /**
  * Report error while processing (lexing,parsing,interepting,jitting) the script.
  * It should show 1) where the error happened ; 2) code snippets if needed.
@@ -47,6 +49,12 @@ std::string ReportError( const char* where, const char* source, size_t start,
   va_list vl;
   va_start(vl,format);
   return ReportErrorV(where,source,start,end,format,vl);
+}
+
+std::string GetSourceSnippetInOneLine( const std::string& source , size_t start, size_t end );
+
+inline std::string GetSourceSnippetInOneLine( const std::string& source , const SourceCodeInfo& sci ) {
+  return GetSourceSnippetInOneLine(source,sci.start,sci.end);
 }
 
 } // namespace lavascript

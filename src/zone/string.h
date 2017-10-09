@@ -2,7 +2,7 @@
 #define ZONE_STRING_H_
 
 #include "zone.h"
-#include <src/trace.h>
+#include "src/trace.h"
 
 #include <string>
 #include <cstring>

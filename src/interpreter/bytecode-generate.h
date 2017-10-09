@@ -797,7 +797,7 @@ inline FunctionScope::FunctionScope( Generator* gen , const ast::Chunk& node ):
 
 inline FunctionScope::~FunctionScope() {
   lava_debug(NORMAL,
-      lava_verify( lexical_scope_list.empty() );
+      lava_verify( lexical_scope_list_.empty() );
       lava_verify( parent() ? parent()->IsLexicalScope() : true );
    );
   generator()->lexical_scope_ = parent() ? parent()->AsLexicalScope() : NULL;

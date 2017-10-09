@@ -74,7 +74,7 @@ inline void LogD( LogSeverity severity , const char* file ,
 #if LAVASCRIPT_DEBUG_LEVEL > 0
   va_list vl;
   va_start(vl,format);
-  LogF(severity,file,line,format,vl);
+  LogV(severity,file,line,format,vl);
 #else
   (void)severity;
   (void)file;
@@ -111,22 +111,22 @@ inline void LogD( LogSeverity severity , const char* file ,
 #define lava_debug( LEVEL , ... ) \
   _LAVA_DEBUG_##LEVEL( __VA_ARGS__ )
 
-#if LAVASCRIPT_DEBUG_LEVEL == 0
-#define _LAVA_DEBUG_NORMAL( ... ) (void)(NULL)
-#define _LAVA_DEBUG_VERBOSE(... ) (void)(NULL)
-#define _LAVA_DEBUG_CRAZY ( ... ) (void)(NULL)
-#elif LAVASCRIPT_DEBUG_LEVE == 1
+#if LAVASCRIPT_DEBUG_LEVEL == 1
 #define _LAVA_DEBUG_NORMAL( ... )  do { __VA_ARGS__ } while(false)
 #define _LAVA_DEBUG_VERBOSE( ... ) (void)(NULL)
-#define _LAVA_DEBUG_CRAZY ( ... )  (void)(NULL)
+#define _LAVA_DEBUG_CRAZY( ... )  (void)(NULL)
 #elif LAVASCRIPT_DEBUG_LEVEL == 2
 #define _LAVA_DEBUG_NORMAL( ... )  do { __VA_ARGS__ } while(false)
 #define _LAVA_DEBUG_VERBOSE( ... ) do { __VA_ARGS__ } while(false)
-#define _LAVA_DEBUG_CRAZY ( ... )  (void)(NULL)
-#elif LAVASCRIPT_DEBUG_LEVEL == 2
+#define _LAVA_DEBUG_CRAZY( ... )  (void)(NULL)
+#elif LAVASCRIPT_DEBUG_LEVEL == 3
 #define _LAVA_DEBUG_NORMAL( ... )  do { __VA_ARGS__ } while(false)
 #define _LAVA_DEBUG_VERBOSE( ... ) do { __VA_ARGS__ } while(false)
-#define _LAVA_DEBUG_CRAZY ( ... )  do ( __VA_ARGS__ } while(false)
+#define _LAVA_DEBUG_CRAZY( ... )  do { __VA_ARGS__ } while(false)
+#else
+#define _LAVA_DEBUG_NORMAL( ... ) (void)(NULL)
+#define _LAVA_DEBUG_VERBOSE(... ) (void)(NULL)
+#define _LAVA_DEBUG_CRAZY( ... ) (void)(NULL)
 #endif // LAVASCRIPT_DEBUG_LEVEL
 
 

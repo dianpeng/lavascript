@@ -23,7 +23,7 @@ all: release
 RELEASE_FLAGS = -I$(PWD) -g3 -O3 -Wall
 RELEASE_LIBS  =
 
-TEST_DEF = -DLAVASCRIPT_DEBUG_LEVE=3
+TEST_DEF = -DLAVASCRIPT_DEBUG_LEVEL=3
 
 TEST_FLAGS = -I$(PWD) -g3 -Wall $(TEST_DEF) -Werror
 TEST_LIBS = -lgtest -lpthread

@@ -60,9 +60,9 @@ template< typename T > class Handle {
   inline Handle( const Handle& );
   inline Handle& operator = ( const Handle& );
 
-  bool IsEmpty() const { return *ref_ != NULL; }
-  bool IsRefEmpty() const { return ref_ != NULL; }
-  bool IsNull() const { return !IsRefEmpty() && !IsEmpty(); }
+  bool IsEmpty() const { return *ref_ == NULL; }
+  bool IsRefEmpty() const { return ref_ == NULL; }
+  bool IsNull() const { return IsRefEmpty() || IsEmpty(); }
   operator bool () const { return !IsNull(); }
 
  public:

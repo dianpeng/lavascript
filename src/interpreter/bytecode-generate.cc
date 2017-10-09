@@ -105,9 +105,9 @@ void RegisterAllocator::Drop( const Register& reg ) {
     ++size_;
   }
 
-  lava_debug(NORMAL,
+  lava_debug(CRAZY,
     for( Node* c = free_register_ ; c ; c = c->next ) {
-      lava_verify( c->next && c->reg.index() < c->next->reg.index() );
+      lava_verify( !c->next || c->reg.index() < c->next->reg.index() );
     }
   );
 }
@@ -115,7 +115,7 @@ void RegisterAllocator::Drop( const Register& reg ) {
 bool RegisterAllocator::EnterScope( std::size_t size , std::uint8_t* b ) {
   lava_debug(NORMAL,
       if(free_register_)
-        lava_verify(free_register->reg.index() == base()+1);
+        lava_verify(free_register_->reg.index() == base());
       );
 
   if((base() + size) > kAllocatableBytecodeRegisterSize) {
@@ -159,13 +159,26 @@ void RegisterAllocator::LeaveScope() {
   }
 
   for( --end ; end > start ; --end ) {
-    Node* to = RegisterToSlot(Register(end));
-    Node* from = RegisterToSlot(end-1);
+    Node* to = RegisterToSlot(Register(end+1));
+    Node* from = RegisterToSlot(end);
     from->next = to;
   }
 
-  free_register_ = RegisterToSlot(start);
+  /** avoid underflow of unsigned integer **/
+  {
+    Node* to = RegisterToSlot(Register(end+1));
+    Node* from = RegisterToSlot(end);
+    from->next = to;
+    free_register_ = from;
+  }
+
   size_ += (end-start);
+
+  lava_debug(CRAZY,
+    for( Node* c = free_register_ ; c ; c = c->next ) {
+      lava_verify( !c->next || c->reg.index() < c->next->reg.index() );
+    }
+  );
 }
 
 FunctionScope* Scope::GetEnclosedFunctionScope( Scope* scope ) {
@@ -237,7 +250,7 @@ LexicalScope::LexicalScope( Generator* gen , bool loop ):
 
   lava_debug(NORMAL,
       if(!func_scope()->lexical_scope_list_.empty()) {
-        LelxicalScope* back = func_scope()->lexical_scope_list_.back();
+        LexicalScope* back = func_scope()->lexical_scope_list_.back();
         lava_verify(back == parent());
       }
     );
@@ -248,7 +261,7 @@ LexicalScope::LexicalScope( Generator* gen , bool loop ):
 
 LexicalScope::~LexicalScope() {
   lava_debug(NORMAL,
-      lava_verify(func_scope()->lexical_scope_list.back() == this);
+      lava_verify(func_scope()->lexical_scope_list_.back() == this);
       );
 
   if(!local_vars_.empty())
@@ -742,6 +755,12 @@ bool Generator::VisitPrefix( const ast::Prefix& node , std::size_t end ,
           const std::size_t len = c.fc->args->size();
           std::uint8_t base = 255;
 
+#if LAVASCRIPT_DEBUG_LEVEL == 3
+          // Cannot use lava_debug since we need to inject this code
+          // in the correct lexical scope
+          std::vector<std::uint8_t> rset;
+#endif // LAVASCRIPT_DEBUG_LEVEL
+
           for( std::size_t i = 0; i < len; ++i ) {
             Register reg;
             if(!VisitExpression(*c.fc->args->Index(i),&reg)) return false;
@@ -750,15 +769,19 @@ bool Generator::VisitPrefix( const ast::Prefix& node , std::size_t end ,
               if(!r) return false;
               reg = r.Get();
             }
-
-            lava_debug(NORMAL,
-                if(base != 255) {
-                lava_verify(prev_index+1 == reg.index());
-                }
-              );
-
+            lava_debug(CRAZY,rset.push_back(reg.index()););
             if(base == 255) base = reg.index();
           }
+
+          lava_debug(CRAZY,
+              if(!rset.empty()) {
+                std::uint8_t p = rset.front();
+                for( std::size_t i = 1 ; i < rset.size() ; ++i ) {
+                  lava_verify(rset[i] == p + 1);
+                  p = rset[i];
+                }
+              }
+            );
 
           // 3. Generate call instruction based on the argument size for
           //    sepcialization , this save us some decoding time when function

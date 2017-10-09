@@ -91,7 +91,6 @@ inline void ScriptBuilder::set_main( const Handle<Prototype>& main ) {
 inline std::int32_t ScriptBuilder::AddPrototype( const Handle<Prototype>& handle ) {
   if(function_table_.size() == kMaxPrototypeSize)
     return -1;
-  lava_debug(NORMAL,lava_verify(!HasPrototype(name)););
   function_table_.push_back( Script::FunctionTableEntry(Handle<String>(),handle) );
   return static_cast<std::int32_t>(function_table_.size()-1);
 }

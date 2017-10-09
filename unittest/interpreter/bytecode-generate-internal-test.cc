@@ -1,7 +1,9 @@
 #include <gtest/gtest.h>
+#include <src/interpreter/bytecode-generate.h>
 
 namespace lavascript {
 namespace interpreter{
+namespace detail {
 
 TEST(Interpreter,Register) {
   /* -----------------------
@@ -51,6 +53,7 @@ TEST(Interpreter,Register) {
   }
 }
 
+} // namespace detail
 } // namespace interpreter
 } // namespace lavascript
 

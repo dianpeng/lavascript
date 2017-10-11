@@ -42,7 +42,6 @@ class ScriptBuilder;
 
 namespace interpreter {
 class BytecodeBuilder;
-enum UpValueState;
 } // namespace interpreter
 
 
@@ -819,25 +818,20 @@ class Prototype final : public HeapObject {
                                         std::size_t real_table_size,
                                         std::size_t string_table_size,
                                         std::size_t upvalue_size,
-                                        std::size_t code_buffer_size );
-
+                                        std::size_t code_buffer_size,
+                                        std::int32_t* itable ,
+                                        double* rtable,
+                                        String*** stable,
+                                        std::uint32_t* utable,
+                                        std::uint32_t* cb,
+                                        SourceCodeInfo* sci );
  private:
-  char* base() const {
-    return reinterpret_cast<char*>(const_cast<Prototype*>(this)) + sizeof(Prototype);
-  }
-  std::size_t int_table_size_byte() const { return int_table_size_ * sizeof(std::uint32_t); }
-  std::size_t real_table_size_byte()const { return real_table_size_* sizeof(double); }
-  std::size_t string_table_size_byte() const { return string_table_size_ * sizeof(String**); }
-  std::size_t upvalue_size_byte() const { return upvalue_size_ * sizeof(std::uint32_t); }
-  std::size_t code_buffer_size_byte() const { return code_buffer_size_ * sizeof(std::uint32_t); }
-  std::size_t sci_size_byte() const { return code_buffer_size_ * sizeof(SourceCodeInfo); }
-
-  inline const std::int32_t* int_table() const;
-  inline const double* real_table() const;
-  inline String*** string_table() const;
-  inline const std::uint32_t* upvalue_table() const;
-  inline const std::uint32_t* code_buffer() const;
-  inline const SourceCodeInfo* sci_buffer() const;
+  const std::int32_t* int_table() const { return int_table_; }
+  const double* real_table() const { return real_table_; }
+  String*** string_table() const { return string_table_; }
+  const std::uint32_t* upvalue_table() const { return upvalue_table_; }
+  const std::uint32_t* code_buffer() const { return code_buffer_; }
+  const SourceCodeInfo* sci_buffer() const { return sci_buffer_; }
 
  private:
   Handle<String> proto_string_;
@@ -855,10 +849,19 @@ class Prototype final : public HeapObject {
   // Code buffer size
   std::size_t code_buffer_size_;
 
-  /* -----------------------------------------------
-   * Layout:
-   * [ int_table ] [ real_table ] [ string_table ] [ upvalue_table ] [ code_buffer ] [ debug_buffer ]
-   * ----------------------------------------------*/
+  /**
+   * For prototype, we don't use implicit layout since there are
+   * too many members here and also it is hard to maintain this
+   * kind of code when the member is too many. We need to adjust
+   * alignment in between
+   */
+
+  std::int32_t* int_table_;
+  double*  real_table_;
+  String*** string_table_;
+  std::uint32_t* upvalue_table_;
+  std::uint32_t* code_buffer_;
+  SourceCodeInfo* sci_buffer_;
 
   friend class GC;
   friend class interpreter::BytecodeBuilder;
@@ -2258,41 +2261,6 @@ template< typename T > bool Map::Visit( T* visitor ) {
 /* --------------------------------------------------------------------
  * Prototype
  * ------------------------------------------------------------------*/
-
-inline const std::int32_t* Prototype::int_table() const {
-  return int_table_size_ ? reinterpret_cast<std::int32_t*>(base()): NULL;
-}
-
-inline const double* Prototype::real_table() const {
-  return real_table_size_ ? reinterpret_cast<double*>(base()+int_table_size_byte()) : NULL;
-}
-
-inline String*** Prototype::string_table() const {
-  return string_table_size_ ? reinterpret_cast<String***>(base()+int_table_size_byte()
-      +real_table_size_byte()) : NULL;
-}
-
-inline const std::uint32_t* Prototype::upvalue_table() const {
-  return upvalue_size_ ? reinterpret_cast<std::uint32_t*>(base() + int_table_size_byte()
-      + real_table_size_byte()
-      + string_table_size_byte()) : NULL;
-}
-
-inline const std::uint32_t* Prototype::code_buffer() const {
-  return code_buffer_size_ ? reinterpret_cast<std::uint32_t*>(base() + int_table_size_byte()
-      + real_table_size_byte()
-      + string_table_size_byte()
-      + upvalue_size_byte()) : NULL;
-}
-
-inline const SourceCodeInfo* Prototype::sci_buffer() const {
-  return code_buffer_size_ ? reinterpret_cast<SourceCodeInfo*>(base() + int_table_size_byte()
-      + real_table_size_byte()
-      + string_table_size_byte()
-      + upvalue_size_byte()
-      + code_buffer_size_byte()) : NULL;
-}
-
 inline std::int32_t Prototype::GetInteger( std::size_t index ) const {
   const std::int32_t* arr = int_table();
   lava_debug(NORMAL,lava_verify(arr && index < int_table_size_ ););

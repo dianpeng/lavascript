@@ -112,7 +112,7 @@ inline Literal* AstFactory::NewLiteral( size_t start , size_t end , std::int32_t
 }
 
 inline Literal* AstFactory::NewLiteral( const Lexer& l , std::int32_t ival ) {
-  return NewLiteral( l.lexeme().start , l.lexeme().end , ival );
+  return NewLiteral( l.lexeme().start , l.lexeme().end + 1, ival );
 }
 
 inline Literal* AstFactory::NewLiteral( size_t start , size_t end , double rval ) {
@@ -120,7 +120,7 @@ inline Literal* AstFactory::NewLiteral( size_t start , size_t end , double rval 
 }
 
 inline Literal* AstFactory::NewLiteral( const Lexer& l , double rval ) {
-  return NewLiteral( l.lexeme().start , l.lexeme().end , rval );
+  return NewLiteral( l.lexeme().start , l.lexeme().end + 1, rval );
 }
 
 inline Literal* AstFactory::NewLiteral( size_t start , size_t end , bool bval ) {
@@ -128,7 +128,7 @@ inline Literal* AstFactory::NewLiteral( size_t start , size_t end , bool bval ) 
 }
 
 inline Literal* AstFactory::NewLiteral( const Lexer& l , bool bval ) {
-  return NewLiteral( l.lexeme().start, l.lexeme().end,bval);
+  return NewLiteral( l.lexeme().start, l.lexeme().end+1,bval);
 }
 
 inline Literal* AstFactory::NewLiteral( size_t start , size_t end ) {
@@ -136,7 +136,7 @@ inline Literal* AstFactory::NewLiteral( size_t start , size_t end ) {
 }
 
 inline Literal* AstFactory::NewLiteral( const Lexer& l ) {
-  return NewLiteral( l.lexeme().start , l.lexeme().end );
+  return NewLiteral( l.lexeme().start , l.lexeme().end+1 );
 }
 
 inline Literal* AstFactory::NewLiteral( size_t start , size_t end ,
@@ -145,7 +145,7 @@ inline Literal* AstFactory::NewLiteral( size_t start , size_t end ,
 }
 
 inline Literal* AstFactory::NewLiteral( const Lexer& l , ::lavascript::zone::String* str ) {
-  return NewLiteral( l.lexeme().start , l.lexeme().end , str );
+  return NewLiteral( l.lexeme().start , l.lexeme().end+1, str );
 }
 
 inline Variable* AstFactory::NewVariable( size_t start , size_t end ,
@@ -154,7 +154,7 @@ inline Variable* AstFactory::NewVariable( size_t start , size_t end ,
 }
 
 inline Variable* AstFactory::NewVariable( const Lexer& l , ::lavascript::zone::String* v ) {
-  return NewVariable(l.lexeme().start,l.lexeme().end,v);
+  return NewVariable(l.lexeme().start,l.lexeme().end+1,v);
 }
 
 inline FuncCall* AstFactory::NewFuncCall( size_t start , size_t end ,

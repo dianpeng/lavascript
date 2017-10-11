@@ -38,11 +38,13 @@ inline char* AsBuffer( std::string* output , std::size_t off )
 
 template< typename T >
 inline T* AsBuffer( std::vector<T>* output , std::size_t off ) {
+  lava_verify(!output->empty());
   return &(*output->begin()) + off;
 }
 
 template< typename T >
 inline const T* AsBuffer( const std::vector<T>* output , std::size_t off ) {
+  lava_verify(!output->empty());
   return &(*output->begin()) + off;
 }
 
@@ -54,6 +56,12 @@ inline T* MemCopy( T* dest , const T* from , std::size_t size ) {
 template< typename T >
 inline T* MemCopy( T* dest, const std::vector<T>& from ) {
   return static_cast<T*>(memcpy(dest,AsBuffer(&from,0),from.size()*sizeof(T)));
+}
+
+template< typename T >
+inline void* BufferOffset( void* buffer , std::size_t offset ) {
+  return reinterpret_cast<void*>(
+      static_cast<T*>(buffer) + offset);
 }
 
 bool StringToInt    ( const char* , int* );

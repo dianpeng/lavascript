@@ -226,6 +226,12 @@ TEST(Parser,Expression) {
   positive(a = d * (1+2*3););
   positive(a = d / (1+2+c););
   positive(a = d +  1+2+3 ;);
+
+  /* ----------------------------------
+   * Prefix
+   * ---------------------------------*/
+  positive(a = d[100];);
+  positive(a = d.a;);
 }
 
 } // namespace parser

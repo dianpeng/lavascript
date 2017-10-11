@@ -30,13 +30,14 @@ class BytecodeIterator {
   inline Bytecode opcode() const;
   inline const char* opcode_name() const;
   inline BytecodeType type() const;
-
+  inline std::size_t offset() const { return offset_; }
   inline void GetOperand( std::uint8_t* , std::uint8_t* , std::uint8_t* );
   inline void GetOperand( std::uint8_t* , std::uint8_t* );
   inline void GetOperand( std::uint8_t* );
   inline void GetOperand( std::uint16_t* );
   inline void GetOperand( std::uint16_t* , std::uint8_t* );
   inline void GetOperand( std::uint8_t* , std::uint16_t* );
+  void GetNArg   ( std::vector<std::uint8_t>* arg );
 
  private:
   // Decode the stuff from current cursor's pointed position
@@ -58,6 +59,12 @@ class BytecodeIterator {
   };
   std::uint8_t a3_8_;
 };
+
+/* ---------------------------------------------
+ *
+ * Inline Function Definitions
+ *
+ * -------------------------------------------*/
 
 inline BytecodeIterator::BytecodeIterator( const std::uint32_t* code_buffer ,
                                            std::size_t size ):
@@ -113,7 +120,7 @@ inline void BytecodeIterator::GetOperand( std::uint8_t* a1 , std::uint8_t* a2 ,
 inline void BytecodeIterator::GetOperand( std::uint8_t* a1 , std::uint8_t* a2 ) {
   lava_debug(NORMAL,
       lava_verify(HasNext());
-      lava_verify(type_ == TYPE_E);
+      lava_verify(type_ == TYPE_E || type_ == TYPE_N);
     );
   *a1 = a1_8_;
   *a2 = a2_8_;

@@ -102,7 +102,7 @@ ast::List* Parser::ParseList() {
   lava_verify( lexer_.lexeme().token == Token::kLSqr );
   size_t start = lexer_.lexeme().start;
   if( lexer_.Next().token == Token::kRSqr ) {
-    size_t end = lexer_.lexeme().end;
+    size_t end = lexer_.lexeme().end + 1;
     lexer_.Next();
     return ast_factory_.NewList(start,end,Vector<ast::Node*>::New(zone_));
   } else {
@@ -126,7 +126,7 @@ ast::List* Parser::ParseList() {
         return NULL;
       }
     } while(true);
-    return ast_factory_.NewList(start,lexer_.lexeme().start-1,entry);
+    return ast_factory_.NewList(start,lexer_.lexeme().start,entry);
   }
 }
 
@@ -134,7 +134,7 @@ ast::Object* Parser::ParseObject() {
   lava_verify( lexer_.lexeme().token == Token::kLBra );
   size_t start = lexer_.lexeme().start;
   if( lexer_.Next().token == Token::kRBra ) {
-    size_t end = lexer_.lexeme().end;
+    size_t end = lexer_.lexeme().end + 1;
     lexer_.Next();
     return ast_factory_.NewObject(start,end,Vector<ast::Object::Entry>::New(zone_));
   } else {
@@ -190,7 +190,7 @@ ast::Object* Parser::ParseObject() {
 
     } while(true);
 
-    return ast_factory_.NewObject(start,lexer_.lexeme().start-1,entry);
+    return ast_factory_.NewObject(start,lexer_.lexeme().start,entry);
   }
 }
 
@@ -261,8 +261,13 @@ ast::Node* Parser::ParsePrefix( ast::Node* prefix ) {
         break;
       case Token::TK_LSQR:
         {
+          lexer_.Next();
           ast::Node* expr = ParseExpression();
           if(!expr) return NULL;
+          if(!lexer_.Expect(Token::kRSqr)) {
+            Error("Expect an \"]\" to close the index operator");
+            return NULL;
+          }
           list->Add(zone_,ast::Prefix::Component(expr));
           break;
         }
@@ -274,7 +279,7 @@ ast::Node* Parser::ParsePrefix( ast::Node* prefix ) {
           break;
         }
       default:
-        return ast_factory_.NewPrefix(expr_start,lexer_.lexeme().start-1,
+        return ast_factory_.NewPrefix(expr_start,lexer_.lexeme().start,
                                       list,
                                       prefix);
     }
@@ -295,7 +300,7 @@ ast::Node* Parser::ParseUnary() {
     if(!expr) return NULL;
 
     return ast_factory_.NewUnary(expr_start,
-                                 lexer_.lexeme().start-1,
+                                 lexer_.lexeme().start,
                                  tk,
                                  expr);
   } else {
@@ -349,7 +354,7 @@ ast::Node* Parser::ParsePrimary( int precedence ) {
         Token op = lexer_.lexeme().token;
         lexer_.Next();
         if(!(rhs = ParsePrimary(precedence-1))) return NULL;
-        lhs = ast_factory_.NewBinary(expr_start,lexer_.lexeme().start-1,op,lhs,rhs);
+        lhs = ast_factory_.NewBinary(expr_start,lexer_.lexeme().start,op,lhs,rhs);
       } else {
         /**
          * Here the current precedence is larger than the input prcedence
@@ -384,7 +389,7 @@ ast::Node* Parser::ParseTernary( ast::Node* input ) {
   ast::Node* _3rd = ParseExpression();
   if(!_3rd) return NULL;
 
-  return ast_factory_.NewTernary(input->start,lexer_.lexeme().start-1,
+  return ast_factory_.NewTernary(input->start,lexer_.lexeme().start,
                                  input, _2nd, _3rd);
 }
 
@@ -418,7 +423,7 @@ ast::Var* Parser::ParseVar() {
     if(!(val = ParseExpression())) return NULL;
   }
 
-  return ast_factory_.NewVar(stmt_start, lexer_.lexeme().start-1, name, val);
+  return ast_factory_.NewVar(stmt_start, lexer_.lexeme().start, name, val);
 }
 
 ast::Assign* Parser::ParseAssign( ast::Node* v ) {
@@ -592,7 +597,7 @@ ast::For* Parser::ParseStepFor( size_t expr_start , ast::Var* expr ) {
   --nested_loop_;
 
   return ast_factory_.NewFor( expr_start ,
-                              lexer_.lexeme().start - 1,
+                              lexer_.lexeme().start ,
                               expr,
                               cond,
                               step,
@@ -617,7 +622,7 @@ ast::ForEach* Parser::ParseForEach( size_t expr_start , ast::Variable* var ) {
   --nested_loop_;
 
   return ast_factory_.NewForEach( expr_start ,
-                                  lexer_.lexeme().start - 1,
+                                  lexer_.lexeme().start ,
                                   var,
                                   itr,
                                   body );
@@ -660,7 +665,7 @@ ast::Return* Parser::ParseReturn() {
   } else {
     ast::Node* expr = ParseExpression();
     if(!expr) return NULL;
-    return ast_factory_.NewReturn(expr_start,lexer_.lexeme().start-1,expr);
+    return ast_factory_.NewReturn(expr_start,lexer_.lexeme().start,expr);
   }
 }
 
@@ -853,7 +858,7 @@ ast::Function* Parser::ParseFunction() {
   if(!body) return NULL;
 
   return ast_factory_.NewFunction(expr_start,
-                                  lexer_.lexeme().start - 1,
+                                  lexer_.lexeme().start ,
                                   fname,
                                   arg_list,
                                   body);
@@ -905,8 +910,8 @@ ast::Root* Parser::Parse() {
     }
   }
 
-  return ast_factory_.NewRoot(expr_start, lexer_.lexeme().start-1,
-      ast_factory_.NewChunk(expr_start, lexer_.lexeme().start-1,main_body,lv,has_iterator));
+  return ast_factory_.NewRoot(expr_start, lexer_.lexeme().start,
+      ast_factory_.NewChunk(expr_start, lexer_.lexeme().start,main_body,lv,has_iterator));
 }
 
 } // namespace parser

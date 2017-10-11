@@ -10,6 +10,8 @@
 #include "src/interpreter/upvalue.h"
 #include "src/interpreter/bytecode-iterator.h"
 
+#include <vector>
+
 namespace lavascript {
 namespace interpreter {
 
@@ -80,12 +82,13 @@ class BytecodeBuilder {
 
   inline bool EmitB( const SourceCodeInfo& , Bytecode , std::uint8_t , std::uint16_t );
   inline bool EmitC( const SourceCodeInfo& , Bytecode , std::uint16_t, std::uint8_t  );
-  inline bool EmitD( const SourceCodeInfo& , Bytecode , std::uint8_t , std::uint8_t ,
-                                                                       std::uint8_t );
+  inline bool EmitD( const SourceCodeInfo& , Bytecode , std::uint8_t , std::uint8_t , std::uint8_t );
   inline bool EmitE( const SourceCodeInfo& , Bytecode , std::uint8_t , std::uint8_t );
   inline bool EmitF( const SourceCodeInfo& , Bytecode , std::uint8_t );
   inline bool EmitG( const SourceCodeInfo& , Bytecode , std::uint16_t );
   inline bool EmitX( const SourceCodeInfo& , Bytecode );
+  bool EmitN( const SourceCodeInfo& , Bytecode , std::uint8_t N , std::uint8_t REG ,
+                                                                  const std::vector<std::uint8_t>& nargs );
 
   template< int BC , int TP , bool A1 = false , bool A2 = false , bool A3 = false >
   inline Label EmitAt( const SourceCodeInfo& , std::uint32_t a1 = 0 ,
@@ -133,6 +136,12 @@ class BytecodeBuilder {
     return EmitX(si,INSTR);                                            \
   }
 
+#define IMPLN(INSTR,C)                                                                          \
+  bool C(const SourceCodeInfo& si, std::uint8_t narg , std::uint8_t reg ,                       \
+                                                       const std::vector<std::uint8_t>& vec ) { \
+    return EmitN(si,INSTR,narg,reg,vec);                                                        \
+  }
+
 #define __(A,B,C,D,E,F) IMPL##A(BC_##B,C)
   LAVASCRIPT_BYTECODE_LIST(__)
 #undef __           // __
@@ -143,6 +152,7 @@ class BytecodeBuilder {
 #undef IMPLF        // IMPLF
 #undef IMPLG        // IMPLG
 #undef IMPLX        // IMPLX
+#undef IMPLN        // IMPLN
 
  public:
   /* -----------------------------------------------------

@@ -23,7 +23,10 @@ inline void* Malloc( HeapAllocator* allocator , std::size_t size ) {
 }
 
 inline void Free( HeapAllocator* allocator , void* ptr ) {
-  allocator ? allocator->Free(ptr) : ::free(ptr);
+  if(allocator)
+    allocator->Free(ptr);
+  else
+    ::free(ptr);
 }
 
 } // namespace lavascript

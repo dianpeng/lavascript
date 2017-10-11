@@ -68,12 +68,14 @@ class ScopedRegister {
 
   ScopedRegister( Generator* generator , const Register& reg ):
     generator_(generator),
-    reg_(reg)
+    reg_(reg),
+    empty_(false)
   {}
 
   ScopedRegister( Generator* generator ):
     generator_(generator),
-    reg_()
+    reg_(),
+    empty_(true)
   {}
 
   ~ScopedRegister();
@@ -501,13 +503,14 @@ class Generator {
   bool Visit( const ast::Binary& , ExprResult* );
   bool VisitLogic( const ast::Binary& , ExprResult* );
   bool Visit( const ast::Ternary&, ExprResult* );
-  bool Visit( const ast::List&   , const Register& , ExprResult* );
-  bool Visit( const ast::Object& , const Register& , ExprResult* );
+  bool Visit( const ast::List&   , const Register& , const SourceCodeInfo& sci , ExprResult* );
+  bool Visit( const ast::Object& , const Register& , const SourceCodeInfo& sci , ExprResult* );
+
   bool Visit( const ast::List&  node , ExprResult* result ) {
-    return Visit(node,Register::kAccReg,result);
+    return Visit(node,Register::kAccReg,node.sci(),result);
   }
   bool Visit( const ast::Object& node , ExprResult* result ) {
-    return Visit(node,Register::kAccReg,result);
+    return Visit(node,Register::kAccReg,node.sci(),result);
   }
 
   bool VisitExpression( const ast::Node&   , ExprResult* );
@@ -683,6 +686,7 @@ inline void ScopedRegister::Reset( const Register& reg ) {
     generator_->func_scope()->ra()->Drop(reg_);
   }
   reg_ = reg;
+  empty_= false;
 }
 
 inline void ScopedRegister::Reset() {
@@ -698,6 +702,7 @@ inline bool ScopedRegister::Reset( const Optional<Register>& reg ) {
   }
   if(reg.Has()) {
     reg_ = reg.Get();
+    empty_ = false;
     return true;
   } else {
     empty_ = true;

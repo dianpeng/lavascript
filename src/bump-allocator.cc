@@ -9,6 +9,8 @@ void BumpAllocator::RefillPool( std::size_t size ) {
 
   Segment* segment = reinterpret_cast<Segment*>(ptr);
   segment->next = segment_;
+  segment_ = segment;
+
   pool_ = reinterpret_cast<void*>(
       static_cast<char*>(ptr) + sizeof(Segment));
 
@@ -43,7 +45,7 @@ void* BumpAllocator::Grab( std::size_t size ) {
 BumpAllocator::~BumpAllocator() {
   while(segment_) {
     Segment* n = segment_->next;
-    Free(allocator_,n);
+    Free(allocator_,segment_);
     segment_ = n;
   }
 }

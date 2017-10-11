@@ -26,6 +26,12 @@
  * ----------------------------
  * | OP | xxxxxxxxxxxxxxxxxxxx|             type X
  * ----------------------------
+ * | OP | A    |  B    |      |             type N
+ * ----------------------------
+ * | A1 | A2   | A3    | A4   |
+ * ----------------------------
+ * |   .....................  |
+ * ----------------------------
  *
  * The bytecode are register based bytecode , it has 256 registers to be used. These
  * registers are shared with local variable slots and also intermiediate expression.
@@ -166,8 +172,8 @@ static const std::size_t kAllocatableBytecodeRegisterSize = 255;
   __(D,ADDOBJ  , addobj , REG , REG , REG ) \
   __(G,LOADCLS  , loadcls  , GARG , _  , _ ) \
   /* subroutine */ \
-  __(D,CALL , call , NARG , REG , BASE ) \
-  __(D,TCALL, tcall, NARG , REG , BASE ) \
+  __(N,CALL , call , NARG , REG , _ ) \
+  __(N,TCALL, tcall, NARG , REG , _ ) \
   __(X,RET0 , ret0 , _ , _ , _ ) \
   __(X,RET  , ret  , _ , _ , _ ) \
   /* property/upvalue/global value */ \
@@ -212,7 +218,8 @@ enum BytecodeType {
   TYPE_E,
   TYPE_F,
   TYPE_G,
-  TYPE_X
+  TYPE_X,
+  TYPE_N
 };
 
 const char* GetBytecodeName( Bytecode );

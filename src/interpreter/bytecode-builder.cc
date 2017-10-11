@@ -9,6 +9,60 @@
 namespace lavascript {
 namespace interpreter{
 
+bool BytecodeBuilder::EmitN( const SourceCodeInfo& sci , Bytecode bc ,
+    std::uint8_t narg , std::uint8_t reg , const std::vector<std::uint8_t>& vec ) {
+  std::uint32_t encode = static_cast<std::uint32_t>(bc);
+  std::size_t before = code_buffer_.size();
+
+  encode |= static_cast<std::uint32_t>(narg) << 8;
+  encode |= static_cast<std::uint32_t>(reg)  <<16;
+  code_buffer_.push_back(encode);
+
+  // now pushing the rest *ARGUMENT* into the following slots of code buffer
+  std::size_t i;
+  std::size_t len = vec.size();
+
+  for( i = 0 ; (i+3) < len ; i += 4 ) {
+    code_buffer_.push_back(
+        (static_cast<std::uint32_t>(vec[i]))        |
+        (static_cast<std::uint32_t>(vec[i+1]) << 8) |
+        (static_cast<std::uint32_t>(vec[i+2]) <<16) |
+        (static_cast<std::uint32_t>(vec[i+3]) <<24));
+  }
+
+  lava_debug(NORMAL,lava_verify(i <= len););
+  std::size_t left = len - i;
+  switch(left) {
+    case 1:
+      code_buffer_.push_back(vec[i]);
+      break;
+    case 2:
+      code_buffer_.push_back((static_cast<std::uint32_t>(vec[i]))     |
+                             (static_cast<std::uint32_t>(vec[i+1])<<8));
+      break;
+    case 3:
+      code_buffer_.push_back((static_cast<std::uint32_t>(vec[i]))     |
+                             (static_cast<std::uint32_t>(vec[i+1])<<8)|
+                             (static_cast<std::uint32_t>(vec[i+2])<<16));
+      break;
+    default:
+      lava_debug(NORMAL,lava_verify(i == len););
+      break;
+  }
+
+  // now pushing debug information to the debug_info_ buffer
+  // since emitN will occupy more than one slot inside of the
+  // code buffer, we generate same debug information inside of
+  // each slot.
+  {
+    std::size_t len = code_buffer_.size() - before;
+    for( std::size_t i = 0 ; i < len ; ++i ) {
+      debug_info_.push_back(sci);
+    }
+  }
+  return true;
+}
+
 std::int32_t BytecodeBuilder::Add( const ::lavascript::zone::String& str ,
                                    GC* gc ) {
   auto ret = std::find_if(string_table_.begin(),string_table_.end(),
@@ -49,21 +103,13 @@ Handle<Prototype> BytecodeBuilder::New( GC* gc , const BytecodeBuilder& bb ,
                                                  std::size_t arg_size,
                                                  String** proto ) {
 
-  const std::size_t rest = bb.int_table_.size() * sizeof(std::uint32_t) +
-                           bb.real_table_.size() * sizeof(double) +
-                           bb.string_table_.size() * sizeof(String**) +
-                           bb.upvalue_slot_.size() * sizeof(std::uint32_t) +
-                           bb.code_buffer_.size()  * sizeof(std::uint32_t) +
-                           bb.debug_info_.size()   * sizeof(SourceCodeInfo);
-
   Prototype** pp = gc->NewPrototype(proto ? proto : String::New(gc,"()",2).ref(),
                                     arg_size,
                                     bb.int_table_.size(),
                                     bb.real_table_.size(),
                                     bb.string_table_.size(),
                                     bb.upvalue_slot_.size(),
-                                    bb.code_buffer_.size(),
-                                    rest);
+                                    bb.code_buffer_.size());
   Prototype* ret = *pp;
 
   // initialize each field

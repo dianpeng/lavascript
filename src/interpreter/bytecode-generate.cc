@@ -80,11 +80,7 @@ void RegisterAllocator::Drop( const Register& reg ) {
         free_register_ = n;
       } else {
         for( Node* c = free_register_ ; c ; c = c->next ) {
-
-          lava_debug(NORMAL,
-              lava_verify(c->reg.index()<reg.index());
-              );
-
+          lava_debug(NORMAL,lava_verify(c->reg.index()<reg.index()););
           Node* next = c->next;
           if(next) {
             if(next->reg.index() > reg.index()) {
@@ -94,6 +90,7 @@ void RegisterAllocator::Drop( const Register& reg ) {
             }
           } else {
             c->next = n;
+            n->next = NULL;
             break;
           }
         }
@@ -740,11 +737,13 @@ bool Generator::VisitPrefix( const ast::Prefix& node , std::size_t end ,
         break;
       default:
         {
-          // now for function call here
-          // 1. Move the acc register to antoher temporary register due to the
-          //    fact that acc will be *scratched* when evaluating the argument
-          //    expression
-          if(var_reg.IsAcc()) {
+          const std::size_t len = c.fc->args->size();
+          std::vector<std::uint8_t> argset;
+
+          // if we have to spill the function itself then we spill it from Acc since
+          // it is possible that it is held inside of Acc. We may not need to spill
+          // it when the function doesn't have any argument.
+          if(var_reg.IsAcc() && len >0) {
             Optional<Register> reg = SpillFromAcc(c.fc->sci());
             if(!reg) return false;
             // hold the new register
@@ -752,15 +751,6 @@ bool Generator::VisitPrefix( const ast::Prefix& node , std::size_t end ,
           }
 
           // 2. Visit each argument and get all its related registers
-          const std::size_t len = c.fc->args->size();
-          std::uint8_t base = 255;
-
-#if LAVASCRIPT_DEBUG_LEVEL == 3
-          // Cannot use lava_debug since we need to inject this code
-          // in the correct lexical scope
-          std::vector<std::uint8_t> rset;
-#endif // LAVASCRIPT_DEBUG_LEVEL
-
           for( std::size_t i = 0; i < len; ++i ) {
             Register reg;
             if(!VisitExpression(*c.fc->args->Index(i),&reg)) return false;
@@ -769,16 +759,16 @@ bool Generator::VisitPrefix( const ast::Prefix& node , std::size_t end ,
               if(!r) return false;
               reg = r.Get();
             }
-            lava_debug(CRAZY,rset.push_back(reg.index()););
-            if(base == 255) base = reg.index();
+            argset.push_back(reg.index());
           }
 
           lava_debug(CRAZY,
-              if(!rset.empty()) {
-                std::uint8_t p = rset.front();
-                for( std::size_t i = 1 ; i < rset.size() ; ++i ) {
-                  lava_verify(rset[i] == p + 1);
-                  p = rset[i];
+              if(!argset.empty()) {
+                std::uint8_t p = argset.front();
+                for( std::size_t i = 1 ; i < argset.size() ; ++i ) {
+                  lava_info("%d:%d",argset[i],p);
+                  lava_verify(argset[i] > p);
+                  p = argset[i];
                 }
               }
             );
@@ -795,25 +785,22 @@ bool Generator::VisitPrefix( const ast::Prefix& node , std::size_t end ,
             EEMIT(tcall(c.fc->sci(),
                         static_cast<std::uint8_t>(c.fc->args->size()),
                         var_reg.index(),
-                        base));
+                        argset));
           } else {
             EEMIT(call(c.fc->sci(),
                        static_cast<std::uint8_t>(c.fc->args->size()),
                        var_reg.index(),
-                       base));
+                       argset));
           }
 
           // 4. the result will be stored inside of Acc
           if(!var_reg.IsAcc()) {
-            EEMIT(move(c.var->sci(),Register::kAccIndex,var_reg.index()));
             func_scope()->ra()->Drop(var_reg);
             var_reg.SetAcc();
           }
 
           // 5. free all temporary register used by the func-call
-          for( std::size_t i = 0 ; i < len ; ++i ) {
-            func_scope()->ra()->Drop(Register(static_cast<std::uint8_t>(base+i)));
-          }
+          for( auto &e : argset ) func_scope()->ra()->Drop(Register(e));
         }
         break;
     }
@@ -840,16 +827,17 @@ bool Generator::Visit( const ast::Prefix& node , ExprResult* result ) {
 }
 
 bool Generator::Visit( const ast::List& node , const Register& reg ,
+                                               const SourceCodeInfo& sci,
                                                ExprResult* result ) {
   const std::size_t entry_size = node.entry->size();
 
   if(entry_size == 0) {
-    EEMIT(loadlist0(node.sci(),reg.index()));
+    EEMIT(loadlist0(sci,reg.index()));
     result->SetRegister(reg);
   } else if(entry_size == 1) {
     ScopedRegister r1(this);
     if(!VisitExpression(*node.entry->Index(0),&r1)) return false;
-    EEMIT(loadlist1(node.sci(),reg.index(),r1.Get().index()));
+    EEMIT(loadlist1(sci,reg.index(),r1.Get().index()));
     result->SetRegister(reg);
   } else if(entry_size == 2) {
     ScopedRegister r1(this) , r2(this);
@@ -858,7 +846,7 @@ bool Generator::Visit( const ast::List& node , const Register& reg ,
       if(!r1.Reset(SpillFromAcc(node.sci()))) return false;
     }
     if(!VisitExpression(*node.entry->Index(1),&r2)) return false;
-    EEMIT(loadlist2(node.sci(),reg.index(),r1.Get().index(),
+    EEMIT(loadlist2(sci,reg.index(),r1.Get().index(),
                                            r2.Get().index()));
     result->SetRegister(reg);
   } else {
@@ -885,7 +873,7 @@ bool Generator::Visit( const ast::List& node , const Register& reg ,
      * allows us to use two set of instructions to perform this job. This is
      * not ideal but this allow better flexibility
      */
-    EEMIT(newlist(node.sci(),r.index(),static_cast<std::uint16_t>(entry_size)));
+    EEMIT(newlist(sci,r.index(),static_cast<std::uint16_t>(entry_size)));
 
     // Go through each list entry/element
     for( std::size_t i = 0 ; i < entry_size ; ++i ) {
@@ -900,10 +888,11 @@ bool Generator::Visit( const ast::List& node , const Register& reg ,
 }
 
 bool Generator::Visit( const ast::Object& node , const Register& reg ,
+                                                 const SourceCodeInfo& sci,
                                                  ExprResult* result ) {
   const std::size_t entry_size = node.entry->size();
   if(entry_size == 0) {
-    EEMIT(loadobj0(node.sci(),reg));
+    EEMIT(loadobj0(sci,reg));
     result->SetRegister(reg);
   } else if(entry_size == 1) {
     ScopedRegister k(this);
@@ -914,7 +903,7 @@ bool Generator::Visit( const ast::Object& node , const Register& reg ,
       if(!k.Reset(SpillFromAcc(node.sci()))) return false;
     }
     if(!VisitExpression(*e.val,&v)) return false;
-    EEMIT(loadobj1(node.sci(),reg.index(),k.Get().index(),v.Get().index()));
+    EEMIT(loadobj1(sci,reg.index(),k.Get().index(),v.Get().index()));
     result->SetRegister(reg);
   } else {
     Register r;
@@ -928,8 +917,7 @@ bool Generator::Visit( const ast::Object& node , const Register& reg ,
     } else
       r = reg;
 
-    EEMIT(newobj(node.sci(),reg.index(),
-          static_cast<std::uint16_t>(entry_size)));
+    EEMIT(newobj(sci,reg.index(),static_cast<std::uint16_t>(entry_size)));
 
     for( std::size_t i = 0 ; i < entry_size ; ++i ) {
       const ast::Object::Entry& e = node.entry->Index(i);
@@ -1060,15 +1048,12 @@ bool Generator::Visit( const ast::Binary& node , ExprResult* result ) {
       ScopedRegister lhs(this);
       ScopedRegister rhs(this);
 
-      // Due to the fact our parser generate right hand side recursive AST.
-      // We visit right hand side first since this will save us on the fly
-      // register and avoid needless register overflow in certain cases
-      if(!VisitExpression(*node.rhs,&rhs)) return false;
-      if(rhs.Get().IsAcc()) {
-        if(!rhs.Reset(SpillFromAcc(node.rhs->sci()))) return false;
+      if(!VisitExpression(*node.lhs,&lhs)) return false;
+      if(lhs.Get().IsAcc()) {
+        if(!lhs.Reset(SpillFromAcc(node.lhs->sci()))) return false;
       }
 
-      if(!VisitExpression(*node.lhs,&lhs)) return false;
+      if(!VisitExpression(*node.rhs,&rhs)) return false;
 
       if(!func_scope()->bb()->EmitE(
           node.sci(),
@@ -1158,7 +1143,7 @@ bool Generator::VisitExpression( const ast::Node& node , Register* result ) {
   if(!VisitExpression(node,&r)) return false;
   ScopedRegister reg(this,ExprResultToRegister(node.sci(),r));
   if(!reg) return false;
-  *result = reg.Get();
+  *result = reg.Release();
   return true;
 }
 
@@ -1185,11 +1170,11 @@ bool Generator::Visit( const ast::Var& node , Register* holder ) {
       if(!AllocateLiteral(node.sci(),*node.expr->AsLiteral(),lhs.Get())) return false;
     } else if(node.expr->IsList()) {
       ExprResult res;
-      if(!Visit(*node.expr->AsList(),lhs.Get(),&res)) return false;
+      if(!Visit(*node.expr->AsList(),lhs.Get(),node.sci(),&res)) return false;
       lava_debug(NORMAL,lava_verify(res.IsReg() && (res.reg() == lhs.Get())););
     } else if(node.expr->IsObject()) {
       ExprResult res;
-      if(!Visit(*node.expr->AsObject(),lhs.Get(),&res)) return false;
+      if(!Visit(*node.expr->AsObject(),lhs.Get(),node.sci(),&res)) return false;
       lava_debug(NORMAL,lava_verify(res.IsReg() && (res.reg() == lhs.Get())););
     } else {
       ScopedRegister rhs(this);
@@ -1215,19 +1200,20 @@ bool Generator::VisitSimpleAssign( const ast::Assign& node ) {
    * register on demand , this may requires an extra move to move the
    * intermediate register used to hold rhs to lhs's register
    */
-  if(node.IsLiteral()) {
-    if(!AllocateLiteral(node.sci(),*node.AsLiteral(),r.Get())) return false;
-  } else if(node.IsList()) {
+  ast::Node* rhs_node = node.rhs;
+  if(rhs_node->IsLiteral()) {
+    if(!AllocateLiteral(node.sci(),*rhs_node->AsLiteral(),r.Get())) return false;
+  } else if(rhs_node->IsList()) {
     ExprResult res;
-    if(!Visit(*node.AsList(),r.Get(),&res)) return false;
+    if(!Visit(*rhs_node->AsList(),r.Get(),node.sci(),&res)) return false;
     lava_debug(NORMAL,lava_verify(res.IsReg() && (res.reg() == r.Get())););
-  } else if(node.IsObject()) {
+  } else if(rhs_node->IsObject()) {
     ExprResult res;
-    if(!Visit(*node.AsObject(),r.Get(),&res)) return false;
+    if(!Visit(*rhs_node->AsObject(),r.Get(),node.sci(),&res)) return false;
     lava_debug(NORMAL,lava_verify(res.IsReg() && (res.reg() == r.Get())););
   } else {
     ScopedRegister rhs(this);
-    if(!VisitExpression(*node.lhs_var,&rhs)) return false;
+    if(!VisitExpression(*rhs_node,&rhs)) return false;
     SEMIT(move(node.sci(),r.Get().index(),rhs.Get().index()));
   }
   return true;

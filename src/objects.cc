@@ -4,6 +4,8 @@
 #include "error-report.h"
 #include "interpreter/bytecode-builder.h"
 
+#include <sstream>
+
 namespace lavascript {
 
 /* ---------------------------------------------------------------
@@ -114,14 +116,26 @@ Prototype::Prototype( const Handle<String>& pp , std::size_t argument_size ,
                                                  std::size_t real_table_size,
                                                  std::size_t string_table_size,
                                                  std::size_t upvalue_size,
-                                                 std::size_t code_buffer_size ):
+                                                 std::size_t code_buffer_size ,
+                                                 std::int32_t* itable ,
+                                                 double* rtable,
+                                                 String*** stable,
+                                                 std::uint32_t* utable,
+                                                 std::uint32_t* cb,
+                                                 SourceCodeInfo* sci ):
   proto_string_(pp),
   argument_size_(argument_size),
   int_table_size_(int_table_size),
   real_table_size_(real_table_size),
   string_table_size_(string_table_size),
   upvalue_size_(upvalue_size),
-  code_buffer_size_(code_buffer_size)
+  code_buffer_size_(code_buffer_size),
+  int_table_(itable),
+  real_table_(rtable),
+  string_table_(stable),
+  upvalue_table_(utable),
+  code_buffer_(cb),
+  sci_buffer_(sci)
 {}
 
 std::uint16_t Prototype::GetUpValue( std::size_t index ,
@@ -209,12 +223,31 @@ void Prototype::Dump( DumpWriter* writer , const std::string& source ) const {
           writer->WriteL("%zu. %s %d  | <%d,%d> %s",count,bi.opcode_name(),a1_16,sci.start,
               sci.end,GetSourceSnippetInOneLine(source,sci).c_str());
           break;
+        case interpreter::TYPE_N:
+          {
+            // need to format it here since writer doesn't support dumpping the vector type
+            // maybe a better formatter designed specifically for C++ constructs ??
+            std::stringstream formatter;
+            std::vector<std::uint8_t> vec;
+            bi.GetOperand(&a1_8,&a2_8);
+            bi.GetNArg(&vec);
+
+            formatter<<count<<". "<<bi.opcode_name()<<' '<<static_cast<int>(a1_8)<<' '
+                                                         <<static_cast<int>(a2_8)<<" ( ";
+            for( auto &e : vec )
+              formatter<< static_cast<int>(e) <<' ';
+
+            formatter<<") | <"<<sci.start<<','<<sci.end<<"> "<<GetSourceSnippetInOneLine(source,sci);
+
+            writer->WriteL(formatter.str().c_str());
+          }
+          break;
         default:
           writer->WriteL("%zu. %s  | <%d,%d> %s",count,bi.opcode_name(),sci.start,sci.end,
               GetSourceSnippetInOneLine(source,sci).c_str());
           break;
       }
-      ++count;
+      count += bi.offset();
     }
   }
 }

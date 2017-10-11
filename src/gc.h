@@ -33,6 +33,9 @@ namespace gc {
 
 static const std::size_t kAlignment = 8;
 
+// check the alignment at least must be aligned to 8
+static_assert( ((kAlignment +7) & ~7) == kAlignment );
+
 /**
  * GCRefPool is a pool to track *ALL* the places that we store a heap pointer,
  * managed pointer. It is basically just a free list wrapper . We will walk
@@ -665,8 +668,7 @@ class GC : AllStatic {
                             std::size_t,
                             std::size_t,
                             std::size_t,
-                            std::size_t,
-                            std::size_t rest );
+                            std::size_t );
 
   // specialized new for Script object creation
   Script** NewScript( Context* ,

@@ -12,6 +12,7 @@ OBJECT:=${SOURCE:.cc=.o}
 TEST:=$(shell find unittest/ -type f -name "*-test.cc")
 TESTOBJECT:=${TEST:.cc=.t}
 CXX = g++
+#SANITIZER=-fsanitize=leak
 
 all: release
 
@@ -24,8 +25,7 @@ RELEASE_FLAGS = -I$(PWD) -g3 -O3 -Wall
 RELEASE_LIBS  =
 
 TEST_DEF = -DLAVASCRIPT_DEBUG_LEVEL=3
-
-TEST_FLAGS = -I$(PWD) -g3 -Wall $(TEST_DEF) -Werror
+TEST_FLAGS = -I$(PWD) -g3 -Wall $(TEST_DEF) -Werror $(SANITIZER)
 TEST_LIBS = -lgtest -lpthread
 
 

@@ -382,19 +382,55 @@ Map** GC::NewMap( std::size_t capacity ) {
 }
 
 Prototype** GC::NewPrototype( String** proto,
-                              std::size_t a1,
-                              std::size_t a2,
-                              std::size_t a3,
-                              std::size_t a4,
-                              std::size_t a5,
-                              std::size_t a6,
-                              std::size_t rest ) {
+                              std::size_t argument_size ,
+                              std::size_t int_table_size,
+                              std::size_t real_table_size,
+                              std::size_t string_table_size,
+                              std::size_t upvalue_size,
+                              std::size_t code_buffer_size ) {
+  /*
+   * We need to figure out the correct layout and also do proper *alignment*
+   * of each array. We just perform alignment *against* 8 for each array
+   * component inside of the Prototype object
+   */
+  std::size_t itable_bytes = Align(int_table_size*sizeof(std::int32_t),gc::kAlignment);
+  std::size_t rtable_bytes = Align(real_table_size*sizeof(double),gc::kAlignment);
+  std::size_t stable_bytes = Align(string_table_size*sizeof(String**),gc::kAlignment);
+  std::size_t utable_bytes = Align(upvalue_size*sizeof(std::uint32_t),gc::kAlignment);
+  std::size_t cb_bytes     = Align(code_buffer_size*sizeof(std::uint32_t),gc::kAlignment);
+  std::size_t sci_bytes    = Align(code_buffer_size*sizeof(SourceCodeInfo),gc::kAlignment);
 
-  Prototype* p = ConstructFromBuffer<Prototype>(
-      heap_.Grab( sizeof(Prototype) + rest ,
-                  TYPE_PROTOTYPE,
-                  GC_WHITE,
-                  false ) , Handle<String>(proto) , a1, a2, a3, a4, a5, a6);
+  void* proto_buffer = heap_.Grab( sizeof(Prototype) + itable_bytes +
+                                                       rtable_bytes +
+                                                       stable_bytes +
+                                                       utable_bytes +
+                                                       cb_bytes     +
+                                                       sci_bytes, TYPE_PROTOTYPE, GC_WHITE, false );
+
+  // now , figure out each buffer's starting address
+  std::size_t acc = 0;
+  void* base = BufferOffset<Prototype>(proto_buffer,1);
+  void* itable = itable_bytes ? base : NULL; acc += itable_bytes;
+  void* rtable = rtable_bytes ? BufferOffset<char>(base,acc) : NULL; acc += rtable_bytes;
+  void* stable = stable_bytes ? BufferOffset<char>(base,acc) : NULL; acc += stable_bytes;
+  void* utable = utable_bytes ? BufferOffset<char>(base,acc) : NULL; acc += utable_bytes;
+  void* cb     = cb_bytes     ? BufferOffset<char>(base,acc) : NULL; acc += cb_bytes;
+  void* sci    = sci_bytes    ? BufferOffset<char>(base,acc) : NULL; acc += sci_bytes;
+
+  // construct the Prototype object right on the buffer
+  Prototype* p = ConstructFromBuffer<Prototype>(proto_buffer, Handle<String>(proto),
+                                                              argument_size,
+                                                              int_table_size,
+                                                              real_table_size,
+                                                              string_table_size,
+                                                              upvalue_size,
+                                                              code_buffer_size,
+                                                              static_cast<std::int32_t*>(itable),
+                                                              static_cast<double*>(rtable),
+                                                              static_cast<String***>(stable),
+                                                              static_cast<std::uint32_t*>(utable),
+                                                              static_cast<std::uint32_t*>(cb),
+                                                              static_cast<SourceCodeInfo*>(sci));
 
   Prototype** ref = reinterpret_cast<Prototype**>(ref_pool_.Grab());
   *ref = p;

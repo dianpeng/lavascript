@@ -7,10 +7,12 @@ namespace lavascript {
 namespace {
 
 size_t RemoveTailingSpaces( const char* source , size_t start , size_t end ) {
-  for( ; end > start ; --end ) {
-    if(!std::isspace(source[end])) break;
+  for( --end ; end > start ; --end ) {
+    if(!std::isspace(source[end])) {
+      return end + 1;
+    }
   }
-  return end + 1;
+  return end+1;
 }
 
 void GetCoordinate( const char* source , size_t pos , size_t* line ,
@@ -64,9 +66,10 @@ void ReportErrorV( std::string* buffer , const char* where , const char* source 
 std::string GetSourceSnippetInOneLine( const std::string& source , size_t start, size_t end ) {
   // NOTES: the source code coordinate is [start,end]
   end = RemoveTailingSpaces(source.c_str(),start,end);
-
-  std::string source_code(source.substr(start,(end-start+1)));
+  std::string source_code(source.substr(start,(end-start)));
+  lava_verify(end >start);
   std::string ret; ret.reserve(source_code.size());
+
   for( auto &e : source_code ) {
     switch(e) {
       case '\n': ret.append("\\n"); break;

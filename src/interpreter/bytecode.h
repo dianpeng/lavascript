@@ -218,8 +218,10 @@ enum BytecodeType {
   TYPE_E,
   TYPE_F,
   TYPE_G,
+  TYPE_N,
   TYPE_X,
-  TYPE_N
+
+  SIZE_OF_BYTECODE_TYPE
 };
 
 const char* GetBytecodeName( Bytecode );

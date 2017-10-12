@@ -67,7 +67,6 @@ std::string GetSourceSnippetInOneLine( const std::string& source , size_t start,
   // NOTES: the source code coordinate is [start,end]
   end = RemoveTailingSpaces(source.c_str(),start,end);
   std::string source_code(source.substr(start,(end-start)));
-  lava_verify(end >start);
   std::string ret; ret.reserve(source_code.size());
 
   for( auto &e : source_code ) {

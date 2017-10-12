@@ -51,6 +51,46 @@ TEST(Interpreter,Register) {
       ASSERT_EQ(0,ra.base());
     }
   }
+
+  /* ----------------------------------------------------------
+   * Testing EnterScope and LeaveScope
+   *
+   * EnterScope/LeaveScope needs to correctly handle cases that
+   * the input argument is 0
+   */
+  {
+    RegisterAllocator ra;
+    {
+      std::uint8_t base;
+      ASSERT_TRUE(ra.EnterScope(0,&base));
+      ASSERT_EQ(0,base);
+      ra.LeaveScope();
+    }
+    {
+      std::uint8_t base;
+      ASSERT_TRUE(ra.EnterScope(1,&base));
+      ASSERT_EQ(0,base);
+      ASSERT_TRUE(ra.IsReserved(Register(0)));
+      ASSERT_EQ(254,ra.size());
+      {
+        std::uint8_t base;
+        ASSERT_TRUE(ra.EnterScope(10,&base));
+        ASSERT_EQ(1,base);
+        for( std::size_t i = 1; i < 11; ++i ) {
+          ASSERT_TRUE(ra.IsReserved(Register(static_cast<std::uint8_t>(i))));
+        }
+        ASSERT_EQ(255-1-10,ra.size());
+        {
+          std::uint8_t base;
+          ASSERT_FALSE(ra.EnterScope(255,&base));
+        }
+        ASSERT_EQ(255-1-10,ra.size());
+        ra.LeaveScope();
+      }
+      ASSERT_EQ(254,ra.size());
+      ra.LeaveScope();
+    }
+  }
 }
 
 } // namespace detail

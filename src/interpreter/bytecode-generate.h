@@ -215,7 +215,6 @@ class LexicalScope : public Scope {
   // Define a local variable with the given Register
   inline bool DefineLocalVar( const zone::String& , const Register& );
 
-  // Get a local variable from current lexical scope
   inline Optional<Register> GetLocalVar( const zone::String& );
 
   // Get a loop variable in current scope and it *must* be in this loop.
@@ -246,6 +245,9 @@ class LexicalScope : public Scope {
   void PatchContinue( std::uint16_t );
 
  private:
+  // Get a local variable from current lexical scope
+  inline Optional<Register> GetLocalVarInPlace( const zone::String& );
+
   // Local variables related to this lexical scope
   struct LocalVar {
     const zone::String* name;
@@ -278,6 +280,7 @@ class LexicalScope : public Scope {
   // Iterator that is used for the loops right inside of this loops
   Optional<Register> iterator_;
 
+  friend class FunctionScope;
 
   LAVA_DISALLOW_COPY_AND_ASSIGN(LexicalScope);
 };
@@ -730,16 +733,20 @@ inline LexicalScope*  Scope::AsLexicalScope () {
 
 inline bool LexicalScope::DefineLocalVar( const zone::String& name ,
                                           const Register& reg ) {
-  lava_debug( NORMAL , lava_verify(GetLocalVar(name).Has()); );
+  lava_debug( NORMAL , lava_verify(GetLocalVarInPlace(name).Has()); );
   local_vars_.push_back( LocalVar( &name , reg ) );
   return true;
 }
 
-inline Optional<Register> LexicalScope::GetLocalVar( const zone::String& name ) {
+inline Optional<Register> LexicalScope::GetLocalVarInPlace( const zone::String& name ) {
   std::vector<LocalVar>::iterator itr =
     std::find( local_vars_.begin() , local_vars_.end() , name );
   return itr  == local_vars_.end() ? Optional<Register>() :
                                      Optional<Register>( itr->reg );
+}
+
+inline Optional<Register> LexicalScope::GetLocalVar( const zone::String& name ) {
+  return func_scope()->GetLocalVar(name);
 }
 
 inline bool LexicalScope::AddBreak( const ast::Break& node ) {

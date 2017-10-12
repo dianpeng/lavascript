@@ -118,25 +118,29 @@ bool RegisterAllocator::EnterScope( std::size_t size , std::uint8_t* b ) {
   if((base() + size) > kAllocatableBytecodeRegisterSize) {
     return false; // Too many registers so we cannot handle it
   } else {
-    std::size_t start = base();
-    Node* cur;
-    Node* next = NULL;
+    if(size >0) {
+      std::size_t start = base();
+      Node* cur;
+      Node* next = NULL;
+      *b = start; // record the original base
 
-    *b = start; // record the original base
+      lava_debug(NORMAL,lava_verify(free_register_););
 
-    lava_debug(NORMAL,lava_verify(free_register_););
+      for( cur = free_register_ ; cur ; cur = next ) {
+        lava_debug(NORMAL,lava_verify(cur->reg.index() == start););
+        next = cur->next;
+        cur->next = static_cast<Node*>(kRegUsed);
+        ++start;
+        if(start == base()+size) break;
+      }
 
-    for( cur = free_register_ ; cur ; cur = next ) {
-      lava_debug(NORMAL,lava_verify(cur->reg.index() == start););
-      next = cur->next;
-      cur->next = static_cast<Node*>(kRegUsed);
-      ++start;
-      if(start == base()+size) break;
+      size_ -= size;
+      free_register_ = next;
+      scope_base_.push_back(*b + size);
+    } else {
+      *b = base();
+      scope_base_.push_back(base()); // duplicate the scope_base_ since LeaveScope will pop it
     }
-
-    size_ -= size;
-    free_register_ = next;
-    scope_base_.push_back(*b + size);
     return true;
   }
 }
@@ -151,25 +155,26 @@ void RegisterAllocator::LeaveScope() {
   scope_base_.pop_back();
   std::uint8_t start = scope_base_.empty() ? 0 : scope_base_.back();
 
-  if(end == kAllocatableBytecodeRegisterSize) {
-    RegisterToSlot(end)->next = NULL;
-  }
+  if(end > start) {
+    if(end == kAllocatableBytecodeRegisterSize) {
+      RegisterToSlot(end)->next = NULL;
+    }
 
-  for( --end ; end > start ; --end ) {
-    Node* to = RegisterToSlot(Register(end+1));
-    Node* from = RegisterToSlot(end);
-    from->next = to;
+    std::size_t index = end - 1;
+    for( ; index > start ; --index ) {
+      Node* to = RegisterToSlot(Register(index+1));
+      Node* from = RegisterToSlot(index);
+      from->next = to;
+    }
+    /** avoid underflow of unsigned integer **/
+    {
+      Node* to = RegisterToSlot(Register(index+1));
+      Node* from = RegisterToSlot(index);
+      from->next = to;
+      free_register_ = from;
+    }
+    size_ += (end-start);
   }
-
-  /** avoid underflow of unsigned integer **/
-  {
-    Node* to = RegisterToSlot(Register(end+1));
-    Node* from = RegisterToSlot(end);
-    from->next = to;
-    free_register_ = from;
-  }
-
-  size_ += (end-start);
 
   lava_debug(CRAZY,
     for( Node* c = free_register_ ; c ; c = c->next ) {
@@ -338,7 +343,7 @@ int FunctionScope::GetUpValue( const zone::String& name ,
 
 Optional<Register> FunctionScope::GetLocalVar( const zone::String& name ) {
   for( auto &e : lexical_scope_list_ ) {
-    Optional<Register> r(e->GetLocalVar(name));
+    Optional<Register> r(e->GetLocalVarInPlace(name));
     if(r) return r;
   }
   return Optional<Register>();
@@ -1609,6 +1614,8 @@ bool Generator::VisitAnonymousFunction( const ast::Function& node ) {
 bool Generator::Generate() {
   FunctionScope scope(this,*root_->body);
   if(!VisitChunk(*root_->body,true)) return false;
+
+  EEMIT(ret0(SourceCodeInfo()));
 
   Handle<Prototype> main(
       BytecodeBuilder::NewMain(context_->gc(),*scope.bb()));

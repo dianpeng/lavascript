@@ -701,6 +701,26 @@ ast::Node* Parser::ParseStatement() {
   return ret;
 }
 
+bool Parser::AddChunkStmt( ast::Node* stmt , Vector<ast::Variable*>* lv ) {
+  /**
+   * Sort out all the local variable declaration and put them
+   * into the local_vars list. The code generator will first
+   * reserve the needed register for those local variable to
+   * maintain register allocation in order
+   */
+  bool has_iterator = false;
+  if(stmt->IsVar()) {
+    lv->Add(zone_,stmt->AsVar()->var);
+  } else if(stmt->IsFor()) {
+    ast::Var* v = stmt->AsFor()->_1st;
+    if(v) lv->Add(zone_,v->var);
+  } else if(stmt->IsForEach()) {
+    lv->Add(zone_,stmt->AsForEach()->var);
+    has_iterator = true;
+  }
+  return has_iterator;
+}
+
 ast::Chunk* Parser::ParseChunk() {
   lava_verify( lexer_.lexeme().token == Token::kLBra );
   size_t expr_start = lexer_.lexeme().start;
@@ -711,29 +731,16 @@ ast::Chunk* Parser::ParseChunk() {
   bool has_iterator = false;
 
   if(lexer_.Next().token == Token::kRBra) {
-    return ast_factory_.NewChunk( expr_start , expr_end , ck , lv ,
+    lexer_.Next(); // Eat '}'
+    return ast_factory_.NewChunk( expr_start , lexer_.lexeme().end ,
+                                                               ck ,
+                                                               lv ,
                                                                has_iterator );
   } else {
     do {
       ast::Node* stmt = ParseStatement();
       if(!stmt) return NULL;
-
-      /**
-       * Sort out all the local variable declaration and put them
-       * into the local_vars list. The code generator will first
-       * reserve the needed register for those local variable to
-       * maintain register allocation in order
-       */
-      if(stmt->IsVar()) {
-        lv->Add(zone_,stmt->AsVar()->var);
-      } else if(stmt->IsFor()) {
-        ast::Var* v = stmt->AsFor()->_1st;
-        if(v) lv->Add(zone_,v->var);
-      } else if(stmt->IsForEach()) {
-        lv->Add(zone_,stmt->AsForEach()->var);
-        has_iterator = true;
-      }
-
+      has_iterator = AddChunkStmt(stmt,lv);
       ck->Add(zone_,stmt);
 
     } while( lexer_.lexeme().token != Token::kEof &&
@@ -758,20 +765,9 @@ ast::Chunk* Parser::ParseSingleStatementOrChunk() {
     Vector<ast::Node*>* ck = Vector<ast::Node*>::New(zone_);
     ast::Node* stmt = ParseStatement();
     if(!stmt) return NULL;
-    ck->Add(zone_,stmt);
-
-    // TODO:: Avoid copy and paste ??
     Vector<ast::Variable*>* lv = Vector<ast::Variable*>::New(zone_);
-    bool has_iterator = false;
-    if(stmt->IsVar()) {
-      lv->Add(zone_,stmt->AsVar()->var);
-    } else if(stmt->IsFor()) {
-      ast::Var* v = stmt->AsFor()->_1st;
-      if(v) lv->Add(zone_,v->var);
-    } else if(stmt->IsForEach()) {
-      lv->Add(zone_,stmt->AsForEach()->var);
-      has_iterator = true;
-    }
+    bool has_iterator = AddChunkStmt(stmt,lv);
+    ck->Add(zone_,stmt);
 
     return ast_factory_.NewChunk(stmt->start,stmt->end,ck,lv,has_iterator);
   }
@@ -897,21 +893,13 @@ ast::Root* Parser::Parse() {
     ast::Node* stmt = ParseStatement();
     if(!stmt) return NULL;
     main_body->Add(zone_,stmt);
-
-    // TODO:: Avoid copy and paste ?
-    if(stmt->IsVar()) {
-      lv->Add(zone_,stmt->AsVar()->var);
-    } else if(stmt->IsFor()) {
-      ast::Var* v = stmt->AsFor()->_1st;
-      if(v) lv->Add(zone_,v->var);
-    } else if(stmt->IsForEach()) {
-      lv->Add(zone_,stmt->AsForEach()->var);
-      has_iterator = true;
-    }
+    has_iterator = AddChunkStmt(stmt,lv);
   }
 
   return ast_factory_.NewRoot(expr_start, lexer_.lexeme().start,
-      ast_factory_.NewChunk(expr_start, lexer_.lexeme().start,main_body,lv,has_iterator));
+      ast_factory_.NewChunk(expr_start, lexer_.lexeme().start,main_body,
+                                                              lv,
+                                                              has_iterator));
 }
 
 } // namespace parser

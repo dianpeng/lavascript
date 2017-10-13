@@ -12,7 +12,7 @@ OBJECT:=${SOURCE:.cc=.o}
 TEST:=$(shell find unittest/ -type f -name "*-test.cc")
 TESTOBJECT:=${TEST:.cc=.t}
 CXX = g++
-#SANITIZER=-fsanitize=leak
+SANITIZER=-fsanitize=address,undefined
 
 all: release
 

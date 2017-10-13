@@ -798,6 +798,7 @@ bool ExpressionOptimizer::Optimize( ast::Node* node , Expression* expr ) {
     case ast::LIST: return Optimize(node->AsList(),expr);
     case ast::OBJECT: return Optimize(node->AsObject(),expr);
     case ast::VARIABLE:
+    case ast::FUNCTION:
       expr->node = node; expr->ekind = ECOMPLEX; return true;
     default: lava_die(); return false;
   }

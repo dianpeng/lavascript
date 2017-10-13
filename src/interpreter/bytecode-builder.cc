@@ -10,12 +10,14 @@ namespace lavascript {
 namespace interpreter{
 
 bool BytecodeBuilder::EmitN( const SourceCodeInfo& sci , Bytecode bc ,
-    std::uint8_t narg , std::uint8_t reg , const std::vector<std::uint8_t>& vec ) {
+    std::uint8_t narg , std::uint8_t reg , std::uint8_t base ,
+    const std::vector<std::uint8_t>& vec ) {
   std::uint32_t encode = static_cast<std::uint32_t>(bc);
   std::size_t before = code_buffer_.size();
 
   encode |= static_cast<std::uint32_t>(narg) << 8;
   encode |= static_cast<std::uint32_t>(reg)  <<16;
+  encode |= static_cast<std::uint32_t>(base) <<24;
   code_buffer_.push_back(encode);
 
   // now pushing the rest *ARGUMENT* into the following slots of code buffer

@@ -40,6 +40,7 @@ void BytecodeIterator::Decode() {
     case TYPE_N:
       a1_8_ = static_cast<std::uint8_t>((raw>>8) & 0xff);
       a2_8_ = static_cast<std::uint8_t>((raw>>16)& 0xff);
+      a3_8_ = static_cast<std::uint8_t>((raw>>24)& 0xff);
       offset_ = 1 + Align(a1_8_,static_cast<std::uint8_t>(4)) / 4;
       break;
     default:

@@ -87,8 +87,9 @@ class BytecodeBuilder {
   inline bool EmitF( const SourceCodeInfo& , Bytecode , std::uint8_t );
   inline bool EmitG( const SourceCodeInfo& , Bytecode , std::uint16_t );
   inline bool EmitX( const SourceCodeInfo& , Bytecode );
-  bool EmitN( const SourceCodeInfo& , Bytecode , std::uint8_t N , std::uint8_t REG ,
-                                                                  const std::vector<std::uint8_t>& nargs );
+  bool EmitN( const SourceCodeInfo& , Bytecode , std::uint8_t , std::uint8_t ,
+                                                                std::uint8_t ,
+                                                                const std::vector<std::uint8_t>& nargs );
 
   template< int BC , int TP , bool A1 = false , bool A2 = false , bool A3 = false >
   inline Label EmitAt( const SourceCodeInfo& , std::uint32_t a1 = 0 ,
@@ -137,9 +138,9 @@ class BytecodeBuilder {
   }
 
 #define IMPLN(INSTR,C)                                                                          \
-  bool C(const SourceCodeInfo& si, std::uint8_t narg , std::uint8_t reg ,                       \
+  bool C(const SourceCodeInfo& si, std::uint8_t narg , std::uint8_t reg , std::uint8_t base ,   \
                                                        const std::vector<std::uint8_t>& vec ) { \
-    return EmitN(si,INSTR,narg,reg,vec);                                                        \
+    return EmitN(si,INSTR,narg,reg,base,vec);                                                        \
   }
 
 #define __(A,B,C,D,E,F) IMPL##A(BC_##B,C)

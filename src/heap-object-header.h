@@ -70,8 +70,8 @@ const char* GetValueTypeName( ValueType );
 template< typename T > struct GetObjectType {};
 
 #define __(A,B,C) \
-  class B; template<> struct GetObjectType<B> {        \
-    static const ValueType value = A;                      \
+  class B; template<> struct GetObjectType<B> { \
+    static const ValueType value = A;           \
   };
 
 LAVASCRIPT_HEAP_OBJECT_LIST(__)

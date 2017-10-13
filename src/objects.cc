@@ -229,11 +229,12 @@ void Prototype::Dump( DumpWriter* writer , const std::string& source ) const {
             // maybe a better formatter designed specifically for C++ constructs ??
             std::stringstream formatter;
             std::vector<std::uint8_t> vec;
-            bi.GetOperand(&a1_8,&a2_8);
+            bi.GetOperand(&a1_8,&a2_8,&a3_8);
             bi.GetNArg(&vec);
 
             formatter<<count<<". "<<bi.opcode_name()<<' '<<static_cast<int>(a1_8)<<' '
-                                                         <<static_cast<int>(a2_8)<<" ( ";
+                                                         <<static_cast<int>(a2_8)<<' '
+                                                         <<static_cast<int>(a3_8)<<" ( ";
             for( auto &e : vec )
               formatter<< static_cast<int>(e) <<' ';
 

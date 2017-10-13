@@ -55,11 +55,14 @@ TEST(BytecodeGenerate,Basic) {
   std::string error;
   {
     std::string script(stringify(
-          var b;
-          if(a)
-            b = 20;
-          else
-            b = false;
+          var a = 10;
+          if(b) {
+            var b = 20;
+            if(c) {
+              var d = 20;
+              return ff();
+            }
+          }
           ));
 
     ScriptBuilder sb("a",script);

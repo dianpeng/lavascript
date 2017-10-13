@@ -107,7 +107,7 @@ TEST(BytecodeBuilder,Coverage) {
 #define GE_F(FUNC) bb.FUNC(SourceCodeInfo(),1)
 #define GE_G(FUNC) bb.FUNC(SourceCodeInfo(),65535)
 #define GE_X(FUNC) bb.FUNC(SourceCodeInfo())
-#define GE_N(FUNC) bb.FUNC(SourceCodeInfo(),4,255,{{1,2,3,4}})
+#define GE_N(FUNC) bb.FUNC(SourceCodeInfo(),4,255,254,{{1,2,3,4}})
 
   BytecodeBuilder bb;
   LAVASCRIPT_BYTECODE_LIST(__);
@@ -183,9 +183,9 @@ TEST(BytecodeBuilder,Coverage) {
 
 #define BCTEST_N() \
   do {                                      \
-    std::uint8_t a1,a2;                     \
+    std::uint8_t a1,a2,a3;                  \
     std::vector<std::uint8_t> vec;          \
-    itr.GetOperand(&a1,&a2);                \
+    itr.GetOperand(&a1,&a2,&a3);            \
     itr.GetNArg(&vec);                      \
     ASSERT_EQ(1,vec[0]);                    \
     ASSERT_EQ(2,vec[1]);                    \
@@ -194,6 +194,7 @@ TEST(BytecodeBuilder,Coverage) {
     ASSERT_EQ(4,vec.size());                \
     ASSERT_EQ(4,a1);                        \
     ASSERT_EQ(255,a2);                      \
+    ASSERT_EQ(254,a3);                      \
   } while(false)
 
 

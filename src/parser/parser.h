@@ -55,6 +55,7 @@ class Parser {
   /** Chunk and Statement **/
   ast::Chunk* ParseSingleStatementOrChunk();
   ast::Chunk* ParseChunk();
+  bool AddChunkStmt( ast::Node* , ::lavascript::zone::Vector<ast::Variable*>* );
 
   /** Function definition */
   ast::Function* ParseFunction();

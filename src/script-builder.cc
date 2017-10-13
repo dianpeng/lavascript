@@ -10,7 +10,7 @@ void ScriptBuilder::Dump( DumpWriter* writer ) const {
   }
 
   for( auto &e : function_table_ ) {
-    DumpWriter::Section section(writer,e.name ? e.name->ToStdString().c_str() : "");
+    DumpWriter::Section section(writer,e.name ? e.name->ToStdString().c_str() : "<anonymous>");
     e.prototype->Dump(writer,source_);
   }
 }

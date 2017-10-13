@@ -130,7 +130,6 @@ bool ExprCheckLiteral( const char* source , const ID& id ,
     ASSERT_TRUE(ExprCheckLiteral(#__VA_ARGS__,VAL,&zone,&error))<<error; \
   } while(false)
 
-
 TEST(Parser,ConstantFolding) {
   /* --------------------------------------
    * Constant folding
@@ -232,6 +231,15 @@ TEST(Parser,Expression) {
    * ---------------------------------*/
   positive(a = d[100];);
   positive(a = d.a;);
+  positive(a = d.f.c.d.e().f.g.h(1,2,3).ff[10][a+b+c];);
+  positive(
+      for( ;; ) {}
+     );
+  positive(
+      for( var a = 100 ; ; ) {}
+      for( var a = 100 ; ; 1 ) {}
+      for( var a = 100 ; 200 ; ) {}
+     );
 }
 
 } // namespace parser

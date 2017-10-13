@@ -5,13 +5,15 @@
 #include "src/trace.h"
 #include "src/util.h"
 
-/** ----------------------------------------------
+/** ---------------------------------------------------------------------
+ *
  * Bytecode iterator. Used to decode bytecode in a
  * bytecode stream. This is mainly used for dumpping
  * and debugging purpose. The main interpreter will
  * not use this iterator but directly write assembly
  * to decode.
- * -----------------------------------------------*/
+ *
+ * ----------------------------------------------------------------------*/
 
 namespace lavascript {
 class DumpWriter;
@@ -110,7 +112,7 @@ inline void BytecodeIterator::GetOperand( std::uint8_t* a1 , std::uint8_t* a2 ,
                                                              std::uint8_t* a3 ) {
   lava_debug(NORMAL,
       lava_verify(HasNext());
-      lava_verify(type_ == TYPE_D);
+      lava_verify(type_ == TYPE_D || type_ == TYPE_N);
     );
   *a1 = a1_8_;
   *a2 = a2_8_;
@@ -120,7 +122,7 @@ inline void BytecodeIterator::GetOperand( std::uint8_t* a1 , std::uint8_t* a2 ,
 inline void BytecodeIterator::GetOperand( std::uint8_t* a1 , std::uint8_t* a2 ) {
   lava_debug(NORMAL,
       lava_verify(HasNext());
-      lava_verify(type_ == TYPE_E || type_ == TYPE_N);
+      lava_verify(type_ == TYPE_E);
     );
   *a1 = a1_8_;
   *a2 = a2_8_;

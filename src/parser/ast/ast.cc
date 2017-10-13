@@ -26,52 +26,54 @@ class PrinterVisitor : public AstVisitor<PrinterVisitor> {
   }
 
   void Visit( const Prefix& node ) {
+    output_ << "(prefix ";
     VisitNode(*node.var);
     for( size_t i = 0 ; i < node.list->size() ; ++i ) {
       const Prefix::Component& comp = node.list->Index(i);
       switch(comp.t) {
         case Prefix::Component::DOT:
-          output_ << '.' ; Visit( *comp.var ); break;
+          output_ <<'.'; Visit(*comp.var); break;
         case Prefix::Component::INDEX:
-          output_ << '[' ; VisitNode( *comp.expr ); output_ << ']'; break;
+          output_ <<'['; VisitNode(*comp.expr); output_<<']'; break;
         case Prefix::Component::CALL:
           {
             size_t len = comp.fc->args->size();
-            output_ << '(';
+            output_ <<'(';
             for( size_t i = 0 ; i < len ; ++i ) {
               VisitNode( *comp.fc->args->Index(i) );
               if( i < len - 1 ) output_ << ',';
             }
-            output_ << " )";
+            output_ <<')';
           }
           break;
         default: lava_die(); break;
       }
     }
+    output_ << ')';
   }
 
   void Visit( const Binary& node ) {
-    output_ << "( binary " << node.op.token_name() << ' ';
+    output_ << '(' << node.op.token_name() << ' ';
     VisitNode(*node.lhs);
     output_ << ' ';
     VisitNode(*node.rhs);
-    output_ << " )";
+    output_ << ')';
   }
 
   void Visit( const Unary& node ) {
-    output_ << "( unary " << node.op.token_name() << ' ';
+    output_ << "(unary " << node.op.token_name() << ' ';
     VisitNode(*node.opr);
-    output_ << " )";
+    output_ << ')';
   }
 
   void Visit( const Ternary& node ) {
-    output_ << "( ternary ";
+    output_ << "(ternary ";
     VisitNode(*node._1st);
     output_ << ' ';
     VisitNode(*node._2nd);
     output_ << ' ';
     VisitNode(*node._3rd);
-    output_ << " )";
+    output_ << ')';
   }
 
   void Visit( const List& node ) {
@@ -94,16 +96,20 @@ class PrinterVisitor : public AstVisitor<PrinterVisitor> {
   }
 
   /** Statement **/
-  void Visit( const Var& node ) {
-    Indent() << "( var ";
+  void VisitVar( const Var& node ) {
+    output_ << "(var ";
     Visit( *node.var );
     output_ << ' ';
     if(node.has_initialization()) VisitNode( *node.expr );
-    output_ << " )\n";
+    output_ << ')';
+  }
+
+  void Visit( const Var& node ) {
+    Indent(); VisitVar(node); output_ << '\n';
   }
 
   void Visit( const Assign& node ) {
-    Indent() << "( assign ";
+    Indent() << "(= ";
     switch( node.lhs_type() ) {
       case Assign::LHS_VAR: Visit( *node.lhs_var ); break;
       case Assign::LHS_PREFIX: Visit( *node.lhs_pref ); break;
@@ -115,14 +121,14 @@ class PrinterVisitor : public AstVisitor<PrinterVisitor> {
   }
 
   void Visit( const Call& node ) {
-    Indent() << '('; Visit(*node.call); output_ << " )\n";
+    Indent() << '('; Visit(*node.call); output_ << ")\n";
   }
 
   void Visit( const If& node ) {
-    Indent() << "( if \n";
+    Indent() << "(if \n";
     ++indent_;
     for( size_t i = 0 ; i < node.br_list->size() ; ++i ) {
-      Indent() << "( branch ";
+      Indent() << "(branch ";
       const If::Branch& br = node.br_list->Index(i);
       if(br.cond) VisitNode(*br.cond);
       output_ << '\n';
@@ -138,27 +144,23 @@ class PrinterVisitor : public AstVisitor<PrinterVisitor> {
   }
 
   void Visit( const For& node ) {
-    Indent() << "( for\n";
+    Indent() << "(for\n";
     ++indent_;
 
     if(node.has_1st()) {
-      Indent()<< "( _1st\n";
-
-      ++indent_;
-      VisitNode(*node._1st);
-      --indent_;
-
-      Indent()<< ")\n";
+      Indent()<< "(init ";
+      VisitVar(*node._1st);
+      output_ << ")\n";
     }
 
     if(node.has_2nd()) {
-      Indent()<< "( _2nd ";
+      Indent()<< "(cond ";
       VisitNode(*node._2nd);
       output_ << ")\n";
     }
 
     if(node.has_3rd()) {
-      Indent()<< "( _3rd ";
+      Indent()<< "(step ";
       VisitNode(*node._3rd);
       output_ << ")\n";
     }
@@ -170,7 +172,7 @@ class PrinterVisitor : public AstVisitor<PrinterVisitor> {
   }
 
   void Visit( const ForEach& node ) {
-    Indent() << "( foreach\n";
+    Indent() << "(foreach\n";
     ++indent_;
 
     VisitNode(*node.var);
@@ -182,28 +184,28 @@ class PrinterVisitor : public AstVisitor<PrinterVisitor> {
     Visit(*node.body);
 
     --indent_;
-    Indent() << " )\n";
+    Indent() << ")\n";
   }
 
   void Visit( const Break& node ) {
     (void)node;
-    Indent() << "( break )\n";
+    Indent() << "(break)\n";
   }
 
   void Visit( const Continue& node ) {
     (void)node;
-    Indent() << "( continue )\n";
+    Indent() << "(continue)\n";
   }
 
   void Visit( const Return& node ) {
-    Indent() << "( return ";
+    Indent() << "(return ";
     if(node.expr) VisitNode(*node.expr);
     else output_ << " void";
-    output_ << " )\n";
+    output_ << ")\n";
   }
 
   void Visit( const Chunk& node ) {
-    Indent() << "(\n";
+    Indent() << "(scope\n";
     ++indent_;
     for( size_t i = 0 ; i < node.body->size() ; ++i ) {
       VisitNode( *node.body->Index(i) );
@@ -218,7 +220,7 @@ class PrinterVisitor : public AstVisitor<PrinterVisitor> {
       ++indent_;
     }
 
-    Indent() << "( function ";
+    Indent() << "(function ";
     if( node.name ) {
       Visit(*node.name);
     } else {

@@ -26,7 +26,7 @@
  * ----------------------------
  * | OP | xxxxxxxxxxxxxxxxxxxx|             type X
  * ----------------------------
- * | OP | A    |  B    |      |             type N
+ * | OP | A    |  B    |  C   |             type N
  * ----------------------------
  * | A1 | A2   | A3    | A4   |
  * ----------------------------
@@ -148,55 +148,57 @@ static const std::size_t kAllocatableBytecodeRegisterSize = 255;
   __(G,OR   , or_  ,PC,_,_  )    \
   __(G,JMP  , jmp  ,PC,_,_  )    \
   /* register move */ \
-  __(B,MOVE , move , REG, REG, _ ) \
-  /* constant loading */ \
-  __(B,LOADI , loadi , REG , IREF , _    ) \
-  __(F,LOAD0 , load0 , REG , _ , _    ) \
-  __(F,LOAD1 , load1 , REG , _ , _    ) \
-  __(F,LOADN1, loadn1, REG , _ , _   ) \
-  __(B,LOADR , loadr , REG , RREF , _    ) \
-  __(B,LOADSTR,loadstr,REG , SREF , _   ) \
-  __(F,LOADESTR,loadestr,REG , _ , _ ) \
-  __(B,LOADCSTR,loadcstr,REG , GARG , _ ) \
-  __(F,LOADTRUE,loadtrue,REG , _ , _ ) \
-  __(F,LOADFALSE,loadfalse,  REG, _ , _ ) \
-  __(F,LOADNULL , loadnull , REG , _ , _ ) \
-  __(F,LOADLIST0, loadlist0, REG , _ , _ ) \
-  __(E,LOADLIST1, loadlist1, REG , REG , _ ) \
-  __(D,LOADLIST2, loadlist2, REG , REG , REG ) \
-  __(E,NEWLIST, newlist, REG , NARG  , _ ) \
-  __(E,ADDLIST, addlist, REG , REG , _ )   \
-  __(F,LOADOBJ0 , loadobj0 , REG , _ , _  ) \
-  __(D,LOADOBJ1, loadobj1, REG , REG , REG ) \
-  __(E,NEWOBJ  , newobj , REG , NARG  , _  ) \
-  __(D,ADDOBJ  , addobj , REG , REG , REG ) \
-  __(G,LOADCLS  , loadcls  , GARG , _  , _ ) \
+  __(B,MOVE , move , REG, REG, _ )              \
+  /* constant loading */                        \
+  __(B,LOADI , loadi , REG , IREF , _    )      \
+  __(F,LOAD0 , load0 , REG , _ , _    )         \
+  __(F,LOAD1 , load1 , REG , _ , _    )         \
+  __(F,LOADN1, loadn1, REG , _ , _   )          \
+  __(B,LOADR , loadr , REG , RREF , _    )      \
+  __(B,LOADSTR,loadstr,REG , SREF , _   )       \
+  __(F,LOADESTR,loadestr,REG , _ , _ )          \
+  __(B,LOADCSTR,loadcstr,REG , GARG , _ )       \
+  __(F,LOADTRUE,loadtrue,REG , _ , _ )          \
+  __(F,LOADFALSE,loadfalse,  REG, _ , _ )       \
+  __(F,LOADNULL , loadnull , REG , _ , _ )      \
+  __(F,LOADLIST0, loadlist0, REG , _ , _ )      \
+  __(E,LOADLIST1, loadlist1, REG , REG , _ )    \
+  __(D,LOADLIST2, loadlist2, REG , REG , REG )  \
+  __(E,NEWLIST, newlist, REG , NARG  , _ )      \
+  __(E,ADDLIST, addlist, REG , REG , _ )        \
+  __(F,LOADOBJ0 , loadobj0 , REG , _ , _  )     \
+  __(D,LOADOBJ1, loadobj1, REG , REG , REG )    \
+  __(E,NEWOBJ  , newobj , REG , NARG  , _  )    \
+  __(D,ADDOBJ  , addobj , REG , REG , REG )     \
+  __(G,LOADCLS  , loadcls  , GARG , _  , _ )    \
   /* subroutine */ \
-  __(N,CALL , call , NARG , REG , _ ) \
-  __(N,TCALL, tcall, NARG , REG , _ ) \
-  __(X,RET0 , ret0 , _ , _ , _ ) \
-  __(X,RET  , ret  , _ , _ , _ ) \
-  /* property/upvalue/global value */ \
+  __(N,CALL, call , NARG , REG , BASE )         \
+  __(N,TCALL, tcall, NARG , REG , BASE )        \
+  __(X,RETNULL, retnull , _ , _ , _ )           \
+  __(X,RET  , ret  , _ , _ , _ )                \
+  /* property/upvalue/global value */           \
   __(B,PROPGET,propget,REG,SREF,_) \
   __(B,PROPSET,propset,REG,SREF,_) \
-  __(E,IDXGET ,idxget,REG,REG,_) \
+  __(E,IDXGET ,idxget,REG,REG,_)   \
   __(D,IDXSET ,idxset,REG,REG,REG) \
   __(B,IDXGETI,idxgeti,REG,IREF,_) \
-  __(B,UVGET  ,uvget ,REG,GARG,_) \
-  __(C,UVSET  ,uvset ,GARG,REG,_) \
-  __(C,GSET   ,gset  ,GARG,REG,_) \
-  __(B,GGET   ,gget  ,REG,GARG,_) \
+  __(B,UVGET  ,uvget ,REG,GARG,_)  \
+  __(C,UVSET  ,uvset ,GARG,REG,_)  \
+  __(C,GSET   ,gset  ,GARG,REG,_)  \
+  __(B,GGET   ,gget  ,REG,GARG,_)  \
   /* forloop tag */ \
-  __(B,FSTART,fstart,REG,PC,_) \
-  __(G,FEND  ,fend  ,PC,_,_) \
-  __(X,FEVRSTART,fevrstart,_,_,_) \
-  __(G,FEVREND,fevrend,PC,_,_ ) \
-  __(B,FESTART,festart,REG,PC,_) \
-  __(B,FEEND  ,feend  ,REG,PC,_) \
-  __(E,IDREF  ,idref  ,REG,REG,_) \
-  __(G,BRK   ,brk,PC,_,_) \
-  __(G,CONT  ,cont,PC,_,_) \
-  /* always the last one */ \
+  __(B,FSTART,fstart,REG,PC,_)     \
+  __(G,FEND  ,fend  ,PC,_,_)       \
+  __(E,FORINC ,forinc ,REG,REG,_)  \
+  __(X,FEVRSTART,fevrstart,_,_,_)  \
+  __(G,FEVREND,fevrend,PC,_,_ )    \
+  __(E,INEW,inew,REG,REG,_)        \
+  __(B,FESTART,festart,REG,PC,_)   \
+  __(B,FEEND  ,feend  ,REG,PC,_)   \
+  __(E,IDREF  ,idref  ,REG,REG,_)  \
+  __(G,BRK   ,brk,PC,_,_)          \
+  __(G,CONT  ,cont,PC,_,_)         \
+  /* always the last one */        \
   __(X,HLT,hlt,_,_,_)
 
 

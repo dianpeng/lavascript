@@ -1,0 +1,122 @@
+#include "bytecode-interpreter.h"
+#include "dep/dynasm/dasm_proto.h"
+#include "dep/dynasm/dasm_x86.h"
+
+namespace lavascript {
+namespace interpreter{
+namespace {
+
+// A frame object that is used to record the function's runtime
+// information
+struct Frame {
+  void* caller;
+  std::int32_t offset;
+};
+
+struct Context {
+  dasm_State* dstate;
+};
+
+|.arch x64
+|.actionlist actions
+
+/* ---------------------------------------------------------------
+ * summary of register usage
+ * --------------------------------------------------------------*/
+// Sandbox object pointer
+|.define SBOX rdx
+
+// Top stack's pointer
+|.define STACK rdi
+
+// Dispatch table pointer
+|.define DISPATCH r15
+
+// Bytecode array
+|.define PC rsi
+
+// Hold the decoded unit
+|.define INSTR eax
+|.define INSTR_OP al
+|.define INSTR_A8 ah
+|.define INSTR_A16 ax
+|.define OP ebx
+
+// Instruction's argument
+|.define ARG1_8 bl
+|.define ARG1_16 bx
+
+|.define ARG2_8 al
+|.define ARG2_16 ax
+
+|.define ARG3_8 cl
+|.define ARG3_16 cx
+
+
+/* ---------------------------------------------------------------
+ * dispatch table
+ * --------------------------------------------------------------*/
+|.macro NextInstr
+|  mov INSTR,[PC]
+|  movzx OP,INSTR_OP
+|  add PC,4
+|  jmp aword [DISPATCH+OP*8]
+|.endmacro
+
+/* ---------------------------------------------------------------
+ * decode each instruction's argument based on blablabla
+ * --------------------------------------------------------------*/
+|.macro Instr_TypeB
+|  movzx ARG1_8,INSTR_A8
+|  shl INSTR,16
+|.endmacro
+
+|.macro Instr_TypeC
+|  shl INSTR,8
+|  movzx ARG1_16,INSTR_A16
+|  shl INSTR,16
+|.endmacro
+
+|.macro Instr_TypeD
+|  movzx ARG1_8,INSTR_A8
+|  shl PC,16
+|  movzx ARG3_8,INSTR_A8
+|.endmacro
+
+|.macro Instr_TypeE
+|  movzx ARG1_8,INSTR_A8
+|  shl PC,16
+|.endmacro
+
+|.macro Instr_TypeF
+|  movzx ARG1_8,INSTR_A8
+|.endmacro
+
+|.macro Instr_TypeG
+|  shl PC,8
+|  movzx ARG1_16,INSTR_A16
+|.endmacro
+
+|.macro Instr_TypeX
+|.endmacro
+
+|.macro Instr_TypeN
+|  Instr_TypeD
+|.endmacro
+
+
+// rdi ---> hold *Sandbox* object
+// rsi ---> hold *starting* point of the stack object
+void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
+  switch(bc) {
+    case BC_ADDIV:
+      |=> bc:
+      | Instr_TypeC
+      | 
+  }
+}
+
+
+} // namespace
+} // namespace lavascript
+} // namespace interpreter

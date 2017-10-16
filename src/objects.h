@@ -40,6 +40,17 @@ class Extension;
 class Script;
 class ScriptBuilder;
 
+struct IteratorLayout;
+struct ListLayout;
+struct SliceLayout;
+struct ObjectLayout;
+struct MapLayout;
+struct StringLayout;
+struct PrototypeLayout;
+struct ClosureLayout;
+struct ExtensionLayout;
+struct ScriptLayout;
+
 namespace interpreter {
 class BytecodeBuilder;
 } // namespace interpreter
@@ -99,6 +110,7 @@ class Value final {
     double real_;
   };
 
+ public:
   // For primitive type , we can tell it directly from *raw* value due to the
   // double never use the lower 53 bits.
   // For pointer type , since it only uses 48 bits on x64 platform, we can
@@ -117,6 +129,7 @@ class Value final {
     TAG_HEAP   = 0xfffc000000000000                         // Heap
   };
 
+ private:
   // Masks
   static const std::uint64_t kIntMask = 0x00000000ffffffff;
   static const std::uint64_t kPtrMask = 0x0000ffffffffffff;
@@ -351,6 +364,8 @@ class SSO final {
   LAVA_DISALLOW_COPY_AND_ASSIGN(SSO);
 };
 
+static_assert( std::is_standard_layout<SSO>::value );
+
 /**
  * Long string representation inside of VM
  *
@@ -367,6 +382,8 @@ struct LongString final {
 
   LongString( std::size_t sz ) : size(sz) {}
 };
+
+static_assert( std::is_standard_layout<LongString>::value );
 
 
 /**
@@ -446,9 +463,12 @@ class String final : public HeapObject {
 
  private:
 
+  friend class StringLayout;
   friend class GC;
   LAVA_DISALLOW_COPY_AND_ASSIGN(String);
 };
+
+static_assert( std::is_standard_layout<String>::value );
 
 /**
  * Represents a *list* of objects .
@@ -502,8 +522,16 @@ class List final : public HeapObject {
   std::size_t size_;
   Handle<Slice> slice_;
 
+  friend struct ListLayout;
   friend class GC;
   LAVA_DISALLOW_COPY_AND_ASSIGN(List);
+};
+
+static_assert( std::is_standard_layout<List>::value );
+
+struct ListLayout {
+  static const std::size_t kSizeOffset = offsetof(List,size_);
+  static const std::size_t kSliceOffset= offsetof(List,slice_);
 };
 
 /**
@@ -543,8 +571,16 @@ class Slice final : public HeapObject {
 
   std::size_t capacity_;
 
+  friend struct SliceLayout;
   friend class GC;
   LAVA_DISALLOW_COPY_AND_ASSIGN(Slice);
+};
+
+static_assert( std::is_standard_layout<Slice>::value );
+
+struct SliceLayout {
+  static const std::size_t kCapacityOffset = offsetof(Slice,capacity_);
+  static const std::size_t kArrayOffset    = sizeof(Slice);
 };
 
 /**
@@ -601,8 +637,15 @@ class Object final : public HeapObject {
 
   Handle<Map> map_;
 
+  friend struct ObjectLayout;
   friend class GC;
   LAVA_DISALLOW_COPY_AND_ASSIGN(Object);
+};
+
+static_assert( std::is_standard_layout<Object>::value );
+
+struct ObjectLayout {
+  static const std::size_t kMapOffset = offsetof(Object,map_);
 };
 
 
@@ -728,8 +771,18 @@ class Map final : public HeapObject {
   std::size_t size_;
   std::size_t slot_size_;
 
+  friend struct MapLayout;
   friend class GC;
   LAVA_DISALLOW_COPY_AND_ASSIGN(Map);
+};
+
+static_assert( std::is_standard_layout<Map>::value );
+
+struct MapLayout {
+  static const std::size_t kCapacityOffset = offsetof(Map,capacity_);
+  static const std::size_t kSizeOffset     = offsetof(Map,size_);
+  static const std::size_t kSlotSize       = offsetof(Map,slot_size_);
+  static const std::size_t kArrayOffset    = sizeof(Map);
 };
 
 /**
@@ -768,6 +821,7 @@ class Iterator : public HeapObject {
 
   LAVA_DISALLOW_COPY_AND_ASSIGN(Iterator);
 };
+
 
 /**
  * Prototype represents a meta data structure for script side function unit
@@ -863,10 +917,29 @@ class Prototype final : public HeapObject {
   std::uint32_t* code_buffer_;
   SourceCodeInfo* sci_buffer_;
 
+  friend struct PrototypeLayout;
   friend class GC;
   friend class interpreter::BytecodeBuilder;
 
   LAVA_DISALLOW_COPY_AND_ASSIGN(Prototype);
+};
+
+static_assert( std::is_standard_layout<Prototype>::value );
+
+struct PrototypeLayout {
+  static const std::size_t kProtoStringOffset = offsetof(Prototype,proto_string_);
+  static const std::size_t kArgumentSizeOffset= offsetof(Prototype,argument_size_);
+  static const std::size_t kIntTableSizeOffset = offsetof(Prototype,int_table_size_);
+  static const std::size_t kRealTableSizeOffset = offsetof(Prototype,real_table_size_);
+  static const std::size_t kStringTableSizeOffset = offsetof(Prototype,string_table_size_);
+  static const std::size_t kUpValueSizeOffset  = offsetof(Prototype,upvalue_size_);
+  static const std::size_t kCodeBufferSizeOffset = offsetof(Prototype,code_buffer_size_);
+  static const std::size_t kIntTableOffset = offsetof(Prototype,int_table_);
+  static const std::size_t kRealTableOffset= offsetof(Prototype,real_table_);
+  static const std::size_t kStringTableOffset = offsetof(Prototype,string_table_);
+  static const std::size_t kUpValueTableOffset= offsetof(Prototype,upvalue_table_);
+  static const std::size_t kCodeBufferOffset = offsetof (Prototype,code_buffer_);
+  static const std::size_t kSciBufferOffset  = offsetof (Prototype,sci_buffer_);
 };
 
 /**

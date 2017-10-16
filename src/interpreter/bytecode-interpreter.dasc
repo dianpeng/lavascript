@@ -4,6 +4,19 @@
 
 namespace lavascript {
 namespace interpreter{
+
+/* ----------------------------------------------
+ *
+ * Helper functions for interpreter
+ *
+ * ---------------------------------------------*/
+
+Value InterpreterDoArithmetic( Sandbox* sandbox ,
+                               Value left ,
+                               Value right ,
+                               Bytecode bc ) {
+}
+
 namespace {
 
 // A frame object that is used to record the function's runtime
@@ -13,7 +26,7 @@ struct Frame {
   std::int32_t offset;
 };
 
-struct Context {
+struct BuildContext {
   dasm_State* dstate;
 };
 
@@ -23,24 +36,27 @@ struct Context {
 /* ---------------------------------------------------------------
  * summary of register usage
  * --------------------------------------------------------------*/
-// Sandbox object pointer
-|.define SBOX rdx
+// Sandbox pointer
+|.define SANDBOX r12
+
+// Current prototype's GCRef pointer
+|.define PROTO r13   // callee saved
 
 // Top stack's pointer
-|.define STACK rdi
+|.define STACK r14   // callee saved
 
 // Dispatch table pointer
-|.define DISPATCH r15
+|.define DISPATCH r15  // callee saved
 
 // Bytecode array
-|.define PC rsi
+|.define PC rbx      // callee saved
 
 // Hold the decoded unit
 |.define INSTR eax
 |.define INSTR_OP al
 |.define INSTR_A8 ah
 |.define INSTR_A16 ax
-|.define OP ebx
+|.define OP bl
 
 // Instruction's argument
 |.define ARG1_8 bl
@@ -52,6 +68,34 @@ struct Context {
 |.define ARG3_8 cl
 |.define ARG3_16 cx
 
+// temporary register are r10 and r11
+|.define LREG rsi
+|.define LREGL esi
+
+|.define RREG rdx
+|.define RREGL edx
+
+// registers for normal C function calling ABI
+|.define CARG1 rdi
+|.define CARG2 rsi
+|.define CARG3 rdx
+|.define CARG4 rcx
+|.define CARG5 r8
+|.define CARG6 r9
+
+|.define CARG1L edi
+|.define CARG2L esi
+|.define CARG3L edx
+|.define CARG4L ecx
+|.define CARG5L r8d
+|.define CARG6L r9d
+
+|.define CARG1LL dil
+|.define CARG2LL sil
+|.define CARG3LL dl
+|.define CARG4LL cl
+|.define CARG5LL r8b
+|.define CARG6LL r9b
 
 /* ---------------------------------------------------------------
  * dispatch table
@@ -105,6 +149,72 @@ struct Context {
 |.endmacro
 
 
+/* -----------------------------------------------------------
+ * constant loading
+ * ----------------------------------------------------------*/
+
+|.macro LdInt,reg,index
+|  mov reg,[PROTO]
+|  mov reg,[reg+index*4+PrototypeLayout::IntTableOffset]
+|.endmacro
+
+|.macro LdReal,temp,reg,index
+|  mov temp [PROTO]
+|  cvtsi2sd reg,dword [reg+index*4+PrototypeLayout::IntTableOffset]
+|.endmacro
+
+|.macro check_num,where,real_label,int_label
+|  cmp where,Value::TAG_REAL
+|  jb > real_label
+|  cmp where,Value::TAG_INTEGER
+|  je > int_label
+|.endmacro
+
+
+/* -----------------------------------------------------------
+ * helper functions/routines generation
+ * ----------------------------------------------------------*/
+void GenerateHelper( BuildContext* bctx ) {
+  /* ----------------------------------------
+   * InterpArithXXX                         |
+   * ---------------------------------------*/
+  |->InterpArithIntL
+  | mov CARG1,SANDBOX
+  | LdInt CARG2,ARG1_16
+  | call extern InterpreterDoArithmetic
+  | cmp rax,Value::TAG_NULL
+  | je ->InterpFail
+  | Dispatch
+
+  |->InterpArithIntR
+  | mov CARG1,SANDBOX
+  | LdInt CARG3,ARG2_16
+  | call extern InterpreterDoArithmetic
+  | cmp rax,Value::TAG_NULL
+  | je ->InterpFail
+  | Dispatch
+
+  |->InterpArithRealL
+  | mov CARG1,SANDBOX
+  | LdReal CARG2,xmm0,ARG1_16
+  | movd CARG2,xmm0
+  | call extern InterpreterDoArithmetic
+  | cmp rax,Value::TAG_NULL
+  | je ->InterpFail
+  | Dispatch
+
+  |->InterpArithRealR
+  | mov CARG1,SANDBOX
+  | LdReal CARG3,xmm0,ARG2_16
+  | movd CARG3,xmm0
+  | call extern InterpreterDoArithmetic
+  | cmp rax,Value::TAG_NULL
+  | je ->InterpFail
+  | Dispatch
+
+}
+
+
 // rdi ---> hold *Sandbox* object
 // rsi ---> hold *starting* point of the stack object
 void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
@@ -112,7 +222,29 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
     case BC_ADDIV:
       |=> bc:
       | Instr_TypeC
-      | 
+      | mov RREG,[STACK+ARG2_8*8]
+      | check_num,RREG,1,2
+
+      // slow path
+      | mov CARG4LL,BC_ADDIV
+      | jmp ->InterpArithL
+
+      // the value is a real number here
+      |1:
+      | LdReal,LREG,xmm0,ARG1_16
+      | movd xmm1,RREG
+      | addsd xmm0,xmm1
+      | movd [ACC],xmm0
+      | Dispatch
+
+      // the value is an integer here
+      |2:
+      | LdInt,LREG,ARG1_16
+      | movzx,RREG,RREGL
+      | add LREG,RREG
+      | mov [ACC],LREG
+      | Dispatch
+      break;
   }
 }
 

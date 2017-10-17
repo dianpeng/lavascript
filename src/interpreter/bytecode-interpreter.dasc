@@ -2,20 +2,21 @@
 #include "dep/dynasm/dasm_proto.h"
 #include "dep/dynasm/dasm_x86.h"
 
+#include <math.h> // We want C function symbol , I am not sure how the dynasm handles none C symbol
+
 namespace lavascript {
 namespace interpreter{
 
-/* ----------------------------------------------
- *
- * Helper functions for interpreter
- *
- * ---------------------------------------------*/
 
+/**
+ * The protocol of this function is carefully arranged and have dependency
+ * of how we orgnize our assembly code. So do not modify the protocol unless
+ * you know what is going on
+ */
 Value InterpreterDoArithmetic( Sandbox* sandbox ,
-                               Value left ,
-                               Value right ,
-                               Bytecode bc ) {
-}
+                               Value left ,  // rsi
+                               Value right , // rdx
+                               Bytecode bc );
 
 namespace {
 
@@ -33,112 +34,132 @@ struct BuildContext {
 |.arch x64
 |.actionlist actions
 
+|.macro rcall,addr
+|   mov64 rax,addr
+|   call qword [rax]
+|.endmacro
+
 /* ---------------------------------------------------------------
  * summary of register usage
  * --------------------------------------------------------------*/
 // Sandbox pointer
-|.define SANDBOX r12
+|.define SANDBOX,               r12
 
 // Current prototype's GCRef pointer
-|.define PROTO r13   // callee saved
+|.define PROTO,                 r13   // callee saved
 
 // Top stack's pointer
-|.define STACK r14   // callee saved
+|.define STACK,                 r14   // callee saved
+|.define ACCIDX,                1020
+|.define ACCFIDX,               1024
+|.define ACC,                   STACK+ACCIDX
 
 // Dispatch table pointer
-|.define DISPATCH r15  // callee saved
+|.define DISPATCH,              r15  // callee saved
 
 // Bytecode array
-|.define PC rbx      // callee saved
+|.define PC,                    rbx  // callee saved
 
 // Hold the decoded unit
-|.define INSTR eax
-|.define INSTR_OP al
-|.define INSTR_A8 ah
-|.define INSTR_A16 ax
-|.define OP bl
+|.define INSTR,                 eax
+|.define INSTR_OP,              al
+|.define INSTR_A8,              ah
+|.define INSTR_A16,             ax
+|.define OP,                    rbx
 
 // Instruction's argument
-|.define ARG1_8 bl
-|.define ARG1_16 bx
+|.define ARG1_8,                bl
+|.define ARG1_16,               bx
+|.define ARG1,                  rbx
 
-|.define ARG2_8 al
-|.define ARG2_16 ax
+|.define ARG2_8,                al
+|.define ARG2_16,               ax
+|.define ARG2,                  rax
 
-|.define ARG3_8 cl
-|.define ARG3_16 cx
+|.define ARG3_8,                cl
+|.define ARG3_16,               cx
+|.define ARG3,                  rcx
 
 // temporary register are r10 and r11
-|.define LREG rsi
-|.define LREGL esi
+|.define LREG,                  rsi
+|.define LREGL,                 esi
+|.define RREG,                  rdx
+|.define RREGL,                 edx
 
-|.define RREG rdx
-|.define RREGL edx
+|.define T1,                    r11
+|.define T1L,                   r11d
 
 // registers for normal C function calling ABI
-|.define CARG1 rdi
-|.define CARG2 rsi
-|.define CARG3 rdx
-|.define CARG4 rcx
-|.define CARG5 r8
-|.define CARG6 r9
+|.define CARG1,                 rdi
+|.define CARG2,                 rsi
+|.define CARG3,                 rdx
+|.define CARG4,                 rcx
+|.define CARG5,                 r8
+|.define CARG6,                 r9
 
-|.define CARG1L edi
-|.define CARG2L esi
-|.define CARG3L edx
-|.define CARG4L ecx
-|.define CARG5L r8d
-|.define CARG6L r9d
+|.define CARG1L,                edi
+|.define CARG2L,                esi
+|.define CARG3L,                edx
+|.define CARG4L,                ecx
+|.define CARG5L,                r8d
+|.define CARG6L,                r9d
 
-|.define CARG1LL dil
-|.define CARG2LL sil
-|.define CARG3LL dl
-|.define CARG4LL cl
-|.define CARG5LL r8b
-|.define CARG6LL r9b
+|.define CARG1LL,               dil
+|.define CARG2LL,               sil
+|.define CARG3LL,               dl
+|.define CARG4LL,               cl
+|.define CARG5LL,               r8b
+|.define CARG6LL,               r9b
+
+/* --------------------------------------------------------------
+ * debug helper
+ * -------------------------------------------------------------*/
+|.macro Break
+|  int 3
+|.endmacro
 
 /* ---------------------------------------------------------------
  * dispatch table
  * --------------------------------------------------------------*/
-|.macro NextInstr
-|  mov INSTR,[PC]
+|.macro Dispatch
+|  mov INSTR,dword [PC]
 |  movzx OP,INSTR_OP
 |  add PC,4
 |  jmp aword [DISPATCH+OP*8]
 |.endmacro
 
 /* ---------------------------------------------------------------
- * decode each instruction's argument based on blablabla
+ * decode each instruction's argument/operand
  * --------------------------------------------------------------*/
 |.macro Instr_TypeB
-|  movzx ARG1_8,INSTR_A8
-|  shl INSTR,16
+|  movzx ARG1,INSTR_A8
+|  shr INSTR,16
 |.endmacro
 
 |.macro Instr_TypeC
-|  shl INSTR,8
-|  movzx ARG1_16,INSTR_A16
-|  shl INSTR,16
+|  shr INSTR,8
+|  movzx ARG1,INSTR_A16
+|  shr INSTR,16
 |.endmacro
 
 |.macro Instr_TypeD
-|  movzx ARG1_8,INSTR_A8
-|  shl PC,16
-|  movzx ARG3_8,INSTR_A8
+|  movzx ARG1,INSTR_A8
+|  shr PC,16
+|  movzx ARG3,INSTR_A8
 |.endmacro
 
 |.macro Instr_TypeE
-|  movzx ARG1_8,INSTR_A8
-|  shl PC,16
+|  movzx ARG1,INSTR_A8
+|  shr PC,16
 |.endmacro
 
 |.macro Instr_TypeF
-|  movzx ARG1_8,INSTR_A8
+|  movzx ARG1,INSTR_A8
 |.endmacro
 
 |.macro Instr_TypeG
-|  shl PC,8
-|  movzx ARG1_16,INSTR_A16
+|  shr PC,8
+|  movzx ARG1,INSTR_A16
 |.endmacro
 
 |.macro Instr_TypeX
@@ -153,98 +174,439 @@ struct BuildContext {
  * constant loading
  * ----------------------------------------------------------*/
 
+// Currently our constant loading is *slow* due to the design of our GC
+// and also the layout of each constant array. I think we have a way to
+// optimize away one memory move. LuaJIT's constant loading is just one
+// single instruction since they only get one constant array and they don't
+// need to worry about GC move the reference
 |.macro LdInt,reg,index
-|  mov reg,[PROTO]
-|  mov reg,[reg+index*4+PrototypeLayout::IntTableOffset]
+|  mov64 T1,qword [PROTO]  // potentially a cache miss due to GC compaction
+|  mov64 T1,qword [reg+PrototypeLayout::IntTableOffset]
+|  mov reg, [T1+index*4]
 |.endmacro
 
-|.macro LdReal,temp,reg,index
-|  mov temp [PROTO]
-|  cvtsi2sd reg,dword [reg+index*4+PrototypeLayout::IntTableOffset]
+|.macro LdReal,reg,index
+|  mov64 T1,qword [PROTO]
+|  mov64 T1,qword [temp+PrototypeLayout::RealTableOffset]
+|  movsd reg,qword[T1+index*8]
 |.endmacro
 
-|.macro check_num,where,real_label,int_label
-|  cmp where,Value::TAG_REAL
-|  jb > real_label
-|  cmp where,Value::TAG_INTEGER
-|  je > int_label
+|.macro LdInt2Real,reg,index
+|  mov64 T1,qword [PROTO]
+|  mov64 T1,qword [T1+PrototypeLayout::IntTableOffset]
+|  cvtsi2sd reg, dword [T1+index*4]
 |.endmacro
 
+|.macro StIntACC,reg
+|  mov dword [STACK+ACCIDX],reg
+|  mov dword [STACK+ACCFIDX],Value::FLAG_INTEGER
+|.endmacro
+
+|.macro StRealACC,reg
+|  movsd qword [ACC],reg
+|.endmacro
+
+|.macro CheckNum,index,val,real_label,int_label
+|  cmp val,Value::TAG_REAL
+|  real_label
+
+// not sure whether the following is *faster*
+|.if 0
+|  mov T1,val
+|  shr T1,32
+|  cmp T1,Value::TAG_INTEGER
+|.else
+|  cmp dword [STACK+index*8+4],Value::TAG_INTEGER
+|.endif
+
+|  int_label
+|.endmacro
 
 /* -----------------------------------------------------------
  * helper functions/routines generation
  * ----------------------------------------------------------*/
+
 void GenerateHelper( BuildContext* bctx ) {
+
   /* ----------------------------------------
    * InterpArithXXX                         |
    * ---------------------------------------*/
-  |->InterpArithIntL
+  |->InterpArithIntL:
   | mov CARG1,SANDBOX
-  | LdInt CARG2,ARG1_16
+  | LdInt CARG2L,ARG1
   | call extern InterpreterDoArithmetic
   | cmp rax,Value::TAG_NULL
   | je ->InterpFail
   | Dispatch
 
-  |->InterpArithIntR
+  |->InterpArithIntR:
   | mov CARG1,SANDBOX
-  | LdInt CARG3,ARG2_16
+  | LdInt CARG3L,ARG2
   | call extern InterpreterDoArithmetic
   | cmp rax,Value::TAG_NULL
   | je ->InterpFail
   | Dispatch
 
-  |->InterpArithRealL
+  |->InterpArithRealL:
   | mov CARG1,SANDBOX
-  | LdReal CARG2,xmm0,ARG1_16
+  | LdReal xmm0,ARG1
   | movd CARG2,xmm0
   | call extern InterpreterDoArithmetic
   | cmp rax,Value::TAG_NULL
   | je ->InterpFail
   | Dispatch
 
-  |->InterpArithRealR
+  |->InterpArithRealR:
   | mov CARG1,SANDBOX
-  | LdReal CARG3,xmm0,ARG2_16
+  | LdReal xmm0,ARG2
   | movd CARG3,xmm0
   | call extern InterpreterDoArithmetic
   | cmp rax,Value::TAG_NULL
   | je ->InterpFail
   | Dispatch
 
+  |->DivByZero:
+  | mov CARG1,SANDBOX
+  | mov CARG2,[PC-4]
+  | call extern InterpreterDivByZero
+  | jmp ->InterpFail
+
+  |->ModByReal:
+  | mov CARG1,SANDBOX
+  | mov CARG2,[PC-4]
+  | call extern InterpreterModByReal
+  | jmp ->InterpFail
+
+
+  /* ------------------------------------
+   * Interpreter exit handler           |
+   * -----------------------------------*/
+  |->InterpFail:
+  | mov rsp,rbp
+  | pop rbp
+  | xor rax,rax
+  | ret
 }
 
-
-// rdi ---> hold *Sandbox* object
-// rsi ---> hold *starting* point of the stack object
 void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
+  // hack around idiv operator which are used to implement the
+  // BC_MODXX and BC_DIVXX instruction. It has a different format
+  // and different result/output
+  bool arith_div = false;
+  bool arith_mod = false;
+
   switch(bc) {
+    /** =====================================================
+     *  Arith XV                                            |
+     *  ====================================================*/
+    |.macro Arith_XV_Prolog,BC,SlowPath
+    |  Instr_TypeC
+    |  mov64 RREG,qword [STACK+ARG2*8]
+    |  CheckNum ARG2,RREG,jb >1,je >2
+    |  mov CARG4LL,BC
+    |  jmp ->SlowPath
+    |.endmacro
+
+    |.macro Arith_IV_RealPart,instr
+    |  LdInt2Real xmm0,ARG1
+    |  movd xmm1,RREG
+    |  instr xmm0,xmm1
+    |  StRealACC xmm0
+    |  Dispatch
+    |.endmacro
+
+    |.macro Arith_RV_RealPart,instr
+    |  LdReal xmm0,ARG1
+    |  movd xmm1,RREG
+    |  instr xmm0,xmm1
+    |  StRealACC xmm0
+    |  Dispatch
+    |.endmacro
+
+    |.macro Arith_IV_IntPart,instr
+    |  LdInt LREGL,ARG1
+    || if( arith_div ) {
+    |    mov eax,LREGL
+
+    |.if 1
+    |    test RREGL,RREGL
+    |    je ->DivByZero
+    |.endif
+
+    |    idiv RREGL
+    |    StIntACC eax
+    || } else if( arith_mod ) {
+    |    mov eax,LREGL
+    |.if 1
+    |    test RREGL,RREGL
+    |    je ->DivByZero
+    |.endif
+    |    idiv RREGL
+    |    StIntACC edx
+    || } else {
+    |    instr LREGL,RREGL
+    |    StIntACC LREAL
+    || }
+    |  Dispatch
+    |.endmacro
+
+    |.macro Arith_RV_IntPart,instr
+    |  LdReal xmm0,ARG1
+    |  cvtsi2sd xmm1, RREGL
+    |  instr xmm0,xmm1
+    |  StRealACC xmm0
+    |  Dispatch
+    |.endmacro
+
     case BC_ADDIV:
       |=> bc:
-      | Instr_TypeC
-      | mov RREG,[STACK+ARG2_8*8]
-      | check_num,RREG,1,2
-
-      // slow path
-      | mov CARG4LL,BC_ADDIV
-      | jmp ->InterpArithL
-
-      // the value is a real number here
+      | Arith_XV_Prolog BC_ADDIV,InterpArithIntL
       |1:
-      | LdReal,LREG,xmm0,ARG1_16
-      | movd xmm1,RREG
-      | addsd xmm0,xmm1
-      | movd [ACC],xmm0
-      | Dispatch
-
-      // the value is an integer here
+      | Arith_IV_RealPart,addsd
       |2:
-      | LdInt,LREG,ARG1_16
-      | movzx,RREG,RREGL
-      | add LREG,RREG
-      | mov [ACC],LREG
-      | Dispatch
+      | Arith_IV_IntPart,add
       break;
+
+    case BC_ADDRV:
+      |=>bc:
+      | Arith_XV_Prolog BC_ADDRV,InterpArithRealL
+      |1:
+      | Arith_RV_RealPart,addsd
+      |2:
+      | Arith_RV_IntPart,addsd
+      break;
+
+    case BC_SUBIV:
+      |=>bc:
+      | Arith_XV_Prolog BC_SUBIV,InterpArithIntL
+      |1:
+      | Arith_IV_RealPart,subsd
+      |2:
+      | Arith_IV_IntPart ,sub
+      break;
+
+    case BC_SUBRV:
+      |=>bc:
+      | Arith_XV_Prolog BC_SUBRV,InterpArithRealL
+      |1:
+      | Arith_RV_RealPart,subsd
+      |2:
+      | Arith_RV_IntPart ,subsd
+      break;
+
+    case BC_MULIV:
+      |=>bc:
+      | Arith_XV_Prolog BC_MULIV,InterpArithIntL
+      |1:
+      | Arith_IV_RealPart,mulsd
+      |2:
+      | Arith_IV_IntPart,imul
+      break;
+
+    case BC_MULRV:
+      |=>bc:
+      | Arith_XV_Prolog BC_MULRV,InterpArithRealL
+      |1:
+      | Arith_RV_RealPart,mulsd
+      |2:
+      | Arith_RV_IntPart,mulsd
+      break;
+
+    case BC_DIVIV:
+      arith_div = true;
+      |=>bc:
+      | Arith_XV_Prolog BC_DIVIV,InterpArithIntL
+      |1:
+      | Arith_IV_RealPart,mulsd
+      |2:
+      | Arith_IV_IntPart,imul
+      break;
+
+    case BC_DIVRV:
+      arith_div = true;
+      |=>bc:
+      | Arith_XV_Prolog BC_DIVRV,InterpArithRealL
+      |1:
+      | Arith_RV_RealPart,divsd
+      |2:
+      | Arith_RV_IntPart,divsd
+      break;
+
+    case BC_MODIV:
+      arith_mod = true;
+      |=>bc:
+      | Arith_XV_Prolog BC_MODIV,InterpArithIntL
+      |1:
+      | jmp ->ModByReal
+      |2:
+      | Arith_IV_IntPart,imul
+      break;
+
+    case BC_MODRV:
+      // we should not see this type of bytecode since we cannot have
+      // mod between real numbers
+      |=>bc:
+      | jmp ->ModByReal
+      break;
+
+    /* =========================================================
+     * Arith VX                                                |
+     * =========================================================*/
+    |.macro Arith_VX_Prolog,BC,SlowPath
+    |  Instr_TypeB
+    |  mov64 LREG,qword [STACK+ARG1*8]
+    |  CheckNum ARG1,LREG,jb >1,je >2
+    |  mov CARG4LL,BC
+    |  jmp ->SlowPath
+    |.endmacro
+
+    |.macro Arith_VI_RealPart,instr
+    |  LdInt2Real xmm1,ARG2
+    |  movd xmm0,LREG
+    |  instr xmm0,xmm1
+    |  StRealACC xmm0
+    |  Dispatch
+    |.endmacro
+
+    |.macro Arith_VI_IntPart,instr
+    |  LdInt RREGL,ARG2
+    || if( arith_div ) {
+    |    mov edx,LREGL
+
+    |.if 1
+    |    test RREGL,RREGL
+    |    jmp ->DivByZero
+    |.endif
+
+    |    idiv RREGL
+    |    StIntACC eax
+    || } else if(arith_mod) {
+    |    mov edx,LREGL
+
+    |.if 1
+    |    test RREGL,RREGL
+    |    jmp ->DivByZero
+    |.endif
+
+    |    idiv RREGL
+    |    StIntACC edx
+    || } else {
+    |    instr LREGL,RREGL
+    |    StIntACC LREGL
+    || }
+    |  Dispatch
+    |.endmacro
+
+    |.macro Arith_VR_RealPart,instr
+    |  LdReal xmm1, ARG2
+    |  movd xmm0,LREG
+    |  instr xmm0,xmm1
+    |  StRealACC xmm0
+    |  Dispatch
+    |.endmacro
+
+    |.macro Arith_VR_IntPart,instr
+    |  LdReal xmm1,ARG2
+    |  cvtsi2sd xmm0, LREGL
+    |  instr xmm0,xmm1
+    |  StRealACC xmm0
+    |  Dispatch
+    |.endmacro
+
+    case BC_ADDVI:
+      |  Arith_VX_Prolog BC_ADDVI,InterpArithIntR
+      |1:
+      |  Arith_VI_RealPart addsd
+      |2:
+      |  Arith_VI_IntPart  add
+      break;
+
+    case BC_ADDVR:
+      |  Arith_VX_Prolog BC_ADDVR,InterpArithRealR
+      |1:
+      |  Arith_VR_RealPart addsd
+      |2:
+      |  Arith_VR_IntPart addsd
+      break;
+
+    case BC_SUBVI:
+      |  Arith_VX_Prolog BC_SUBVI,InterpArithIntR
+      |1:
+      |  Arith_VI_RealPart subsd
+      |2:
+      |  Arith_VI_IntPart sub
+      break;
+    case BC_SUBVR:
+      |  Arith_VX_Prolog BC_SUBVR,InterpArithRealR
+      |1:
+      |  Arith_VR_RealPart subsd
+      |2:
+      |  Arith_VR_IntPart subsd
+      break;
+
+    case BC_MULVI:
+      |  Arith_VX_Prolog BC_MULVI,InterpArithIntR
+      |1:
+      |  Arith_VI_RealPart mulsd
+      |2:
+      |  Arith_VI_IntPart imul
+      break;
+    case BC_MULVR:
+      |  Arith_VX_Prolog BC_MULVR,InterpArithRealR
+      |1:
+      |  Arith_VR_RealPart mulsd
+      |2:
+      |  Arith_VR_RealPart mulsd
+      break;
+
+    case BC_DIVVI:
+      arith_div = true;
+      |  Arith_VX_Prolog BC_DIVVI,InterpArithIntR
+      |1:
+      |  Arith_VI_RealPart divsd
+      |2:
+      |  Arith_VI_IntPart sub
+      break;
+
+    case BC_DIVVR:
+      |  Arith_VX_Prolog BC_DIVVR,InterpArithRealR
+      |1:
+      |  Arith_VR_RealPart divsd
+      |2:
+      |  Arith_VR_IntPart divsd
+      break;
+
+    case BC_MODVI:
+      arith_mod = true;
+      |  Arith_VX_Prolog BC_MODVI,InterpArithIntR
+      |1:
+      |  jmp ->ModByReal
+      |2:
+      |  Arith_VI_IntPart imul
+      break;
+
+    case BC_MODVR:
+      | Instr_TypeB
+      | jmp ->ModByReal
+      break;
+
+    /* ===================================================
+     * ArithVV
+     *
+     * The arithVV is also optimized for common path here.
+     * We inline int & int and real & real cases. For other
+     * cases that needs promotion or other types, they all
+     * gets pushed back to the slow path which is written in
+     * C++
+     * ===================================================*/
+
+    // perform VV calaculation based on instruction
+    |.macro Arith_VV,instr
+    |  instr LREGL,RREGL
+    |  SetIntACC LREGL
+    |  Dispatch
+    |.endmacro
+
   }
 }
 

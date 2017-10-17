@@ -38,4 +38,5 @@ Interpret GenerateInterpreter();
 } // namespace interpreter
 } // namespace lavascript
 
+
 #endif // BYTECODE_INTERPRETER_H_

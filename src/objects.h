@@ -129,6 +129,16 @@ class Value final {
     TAG_HEAP   = 0xfffc000000000000                         // Heap
   };
 
+  // The flag that avoids the lower 32 bits . It is mainly used in
+  // assembly to set and test flag
+  enum {
+    FLAG_INTEGER= 0xfff90000,
+    FLAG_TRUE   = 0xfffa0000,
+    FLAG_FALSE  = 0xfffa1000,
+    FLAG_NULL   = 0xfffb0000,
+    FLAG_HEAP   = 0xfffc0000
+  };
+
  private:
   // Masks
   static const std::uint64_t kIntMask = 0x00000000ffffffff;

@@ -3,7 +3,12 @@
 
 int main() {
   lavascript::InitTrace("-");
-  lavascript::interpreter::Interpreter interp;
-  lavascript::interpreter::GenerateInterpreter(&interp);
+  std::shared_ptr<lavascript::interpreter::AssemblyInterpreter>
+    interp( lavascript::interpreter::AssemblyInterpreter::Generate() );
+  lava_verify(interp);
+  {
+    lavascript::DumpWriter writer(NULL);
+    interp->Dump(&writer);
+  }
   return 0;
 }

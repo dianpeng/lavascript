@@ -80,8 +80,8 @@ std::int32_t BytecodeBuilder::Add( const ::lavascript::zone::String& str ,
     string_table_.push_back(hstr);
     return static_cast<std::int32_t>(string_table_.size()-1);
   }
-  return static_cast<std::int32_t>(
-      std::distance(string_table_.begin(),ret));
+  return (static_cast<std::int32_t>(
+      std::distance(string_table_.begin(),ret)));
 }
 
 String** BytecodeBuilder::BuildFunctionPrototypeString( GC* gc ,

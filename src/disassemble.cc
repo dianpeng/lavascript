@@ -1,5 +1,6 @@
 #include "disassemble.h"
 #include "trace.h"
+#include "util.h"
 #include <Zydis/Zydis.h>
 
 namespace lavascript {
@@ -21,10 +22,10 @@ void Disassemble( void* buffer , std::size_t length , DumpWriter* writer ) {
   ZydisDecodedInstruction instr;
   while(ZYDIS_SUCCESS(
         ZydisDecoderDecodeBuffer(&decoder,rp,size,pc,&instr))) {
-    char buffer[256];
+    char b[256];
     ZydisFormatterFormatInstruction(
-        &formatter,&instr,buffer,sizeof(buffer));
-    writer->WriteL("%016" PRIX64 " " "%s",pc,buffer);
+        &formatter,&instr,b,sizeof(b));
+    writer->WriteL("%016" LAVA_FMTU64 " (%d) %s",pc,instr.length,b);
     rp += instr.length;
     size -= instr.length;
     pc += instr.length;

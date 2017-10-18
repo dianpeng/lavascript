@@ -2,7 +2,12 @@
 #include "src/trace.h"
 #include "src/os.h"
 
-#include <math.h>
+#include <algorithm>
+#include <cmath>
+#include <map>
+#include <cassert>
+#include <climits>
+
 #include <Zydis/Zydis.h>
 
 namespace lavascript {
@@ -17,12 +22,64 @@ int ResolveExternAddress( void**,unsigned char*,int,int );
 #define DASM_EXTERN_FUNC(a,b,c,d) ResolveExternAddress((void**)a,b,c,d)
 #include "dep/dynasm/dasm_x86.h"
 
+// -------------------------------------------------------------
+// BuildContext
+//
+// Build phase context, used to *generate* templated interpreter
+// -------------------------------------------------------------
+struct BuildContext {
+  dasm_State* dasm_ctx;
+  int tag;
 
-/**
- * The protocol of this function is carefully arranged and have dependency
- * of how we orgnize our assembly code. So do not modify the protocol unless
- * you know what is going on
- */
+  BuildContext():
+    dasm_ctx(NULL),
+    tag(0)
+  {}
+
+  ~BuildContext() {
+    if(dasm_ctx) dasm_free(&dasm_ctx);
+  }
+};
+
+// Make GCC bitch less
+template< typename T >
+int HorribleCast( T* ptr ) {
+  std::uint64_t iptr = reinterpret_cast<std::uint64_t>(ptr);
+  int ret = static_cast<int>(iptr);
+  lava_verify(reinterpret_cast<T*>(ret) == ptr);
+  return ret;
+}
+
+// --------------------------------------------------------------
+// Sandbox
+//
+// Used in the interpretation phase for the interpreter
+// --------------------------------------------------------------
+struct Sandbox {};
+
+// ------------------------------------------------------------------
+// Helper function/macros to register its literal name into a global
+// table to help resolve the function's address during assembly link
+// phase
+// ------------------------------------------------------------------
+
+typedef std::map<std::string,void*> ExternSymbolTable;
+
+ExternSymbolTable* GetExternSymbolTable() {
+  static ExternSymbolTable kTable;
+  return &kTable;
+}
+
+// Macro to register a external function's symbol name into global table
+#define INTERPRETER_REGISTER_EXTERN_SYMBOL(XX)                               \
+  struct XX##_Registry {                                                     \
+    XX##_Registry() {                                                        \
+      ExternSymbolTable* table = GetExternSymbolTable();                     \
+      table->insert(std::make_pair(#XX,reinterpret_cast<void*>(&XX)));       \
+    }                                                                        \
+  };                                                                         \
+  static XX##_Registry k##XX##_Registry;
+
 Value InterpreterDoArithmetic( Sandbox* sandbox ,
                                Value left ,  // rsi
                                Value right , // rdx
@@ -33,6 +90,7 @@ Value InterpreterDoArithmetic( Sandbox* sandbox ,
   (void)bc;
   return Value();
 }
+INTERPRETER_REGISTER_EXTERN_SYMBOL(InterpreterDoArithmetic)
 
 Value InterpreterPow         ( Sandbox* sandbox ,
                                Value left,
@@ -44,31 +102,24 @@ Value InterpreterPow         ( Sandbox* sandbox ,
   (void)bc;
   return Value();
 }
+INTERPRETER_REGISTER_EXTERN_SYMBOL(InterpreterPow)
 
 void InterpreterModByReal    ( Sandbox* sandbox , std::uint32_t* pc ) {
   (void)sandbox;
   (void)pc;
 }
+INTERPRETER_REGISTER_EXTERN_SYMBOL(InterpreterModByReal)
 
 void InterpreterDivByZero    ( Sandbox* sandbox , std::uint32_t* pc ) {
   (void)sandbox;
   (void)pc;
 }
+INTERPRETER_REGISTER_EXTERN_SYMBOL(InterpreterDivByZero)
 
 double Pow( double a , double b ) {
-  return pow(a,b);
+  return std::pow(a,b);
 }
-
-// A frame object that is used to record the function's runtime information
-struct Frame {
-  void* caller;
-  std::int32_t offset;
-};
-
-struct BuildContext {
-  dasm_State* dasm_ctx;
-  int tag;
-};
+INTERPRETER_REGISTER_EXTERN_SYMBOL(Pow)
 
 |.arch x64
 |.actionlist actions
@@ -112,7 +163,7 @@ inline bool CheckAddress( std::uintptr_t addr ) {
 || if(CheckAddress(reinterpret_cast<std::uintptr_t>(FUNC))) {
 |    call extern FUNC
 || } else {
-||   lava_info("%s","Function FUNC address is not in 0-2GB");
+||   lava_warn("%s","Function FUNC address is not in 0-2GB");
 |.if 0
 // I don't know whether this is faster than use rax , need profile. I see
 // this one is used in MoarVM. It uses memory address to workaraoud the
@@ -156,18 +207,48 @@ inline bool CheckAddress( std::uintptr_t addr ) {
 |.define INSTR_A16,             ax
 |.define OP,                    rbx
 
+/** ------------------------------------------------------------
+ *
+ * NOTES: A notes on movzx/movsx instruction.
+ *
+ *        Based on documentation, when move 32bits register
+ *        to 64 bits register, it *automatically* zero out
+ *        the upper 32 bits , but if you directly move 16/8 bits
+ *        register to 32/64 it won't zero out the rest bits. So
+ *        you need to use movzx/movsx instruction.
+ *
+ *        But code like this :
+ *           movzx eax,al
+ *           mov rbx,[rcx+rax*8+disp]
+ *
+ *        will work. We assume that movzx's dest is 32 bits register,
+ *        so it will only zero out its upper 24 bits. However
+ *        this movzx actually gonna zero out *every* bits for
+ *        the whole 64 bits register.
+ *
+ *        This is the actual behavior and *most* compiler will
+ *        assume such behavior even documentation doesn't say so.
+ *        I will rely on this behavior since it will save us
+ *        one instruction during encoding.
+ *
+ *        The operand for each instruction will always be a
+ *        32 bits register and whenever decode happened , we
+ *        will use movzx to clear the *whole* register
+ *        out.
+ * --------------------------------------------------------------*/
+
 // Instruction's argument
 |.define ARG1_8,                bl
 |.define ARG1_16,               bx
-|.define ARG1,                  rbx
+|.define ARG1,                  ebx  // must *not* be 64 bits due to we use ah
 
 |.define ARG2_8,                al
 |.define ARG2_16,               ax
-|.define ARG2,                  rax
+|.define ARG2,                  eax
 
 |.define ARG3_8,                cl
 |.define ARG3_16,               cx
-|.define ARG3,                  rcx
+|.define ARG3,                  ecx
 
 // temporary register are r10 and r11
 |.define LREG,                  rsi
@@ -340,6 +421,42 @@ inline bool CheckAddress( std::uintptr_t addr ) {
 |.endif
 |.endmacro
 
+#define INTERP_HELPER_LIST(__) \
+  __(INTERP_START,InterpStart)               \
+  __(INTERP_FAIL ,InterpFail)                \
+  __(INTERP_RETURN,InterpReturn)             \
+  __(INTERP_ARITH_INTL,InterpArithIntL)      \
+  __(INTERP_ARITH_INTR,InterpArithIntR)      \
+  __(INTERP_ARITH_REALL,InterpArithRealL)    \
+  __(INTERP_ARITH_REALR,InterpArithRealR)    \
+  __(INTERP_ARITH_VV,InterpArithVV)          \
+  __(INTERP_POW_FAST,InterpPowFast)          \
+  __(INTERP_POW_SLOW,InterpPowSlow)          \
+  __(DIV_BY_ZERO,DivByZero)                  \
+  __(MOD_BY_REAL,ModByReal)
+
+enum {
+  INTERP_HELPER_DUMMY = SIZE_OF_BYTECODE,
+
+#define __(A,B) A,
+  INTERP_HELPER_LIST(__)
+#undef __
+
+  DASM_GROWABLE_PC_SIZE
+};
+
+#define INTERP_HELPER_START (INTERP_HELPER_DUMMY+1)
+#define INTERP_HELPER_SIZE (DASM_GROWABLE_PC_SIZE-INTERP_HELPER_ROUTINE_ENUM-1)
+
+const char* GetInterpHelperName( int idx ) {
+  switch(idx) {
+#define __(A,B) case A: return #B;
+    INTERP_HELPER_LIST(__)
+    default: lava_unreachF("unknown helper with index:%d",idx); return NULL;
+#undef __ // __
+  }
+}
+
 /* -----------------------------------------------------------
  * Macro Interfaces for Dynasm                               |
  * ----------------------------------------------------------*/
@@ -348,15 +465,37 @@ inline bool CheckAddress( std::uintptr_t addr ) {
 /* -----------------------------------------------------------
  * Interpreter Prolog                                        |
  * ----------------------------------------------------------*/
-void GenerateProlog( BuildContext* bctx ) {
-  (void)bctx;
+void GenerateMisc( BuildContext* bctx ) {
+  /* -------------------------------------------
+   * Interpreter Prolog                        |
+   * ------------------------------------------*/
+
+  |=> INTERP_START:
+  |->InterpStart:
+  |  mov SANDBOX,CARG1
+
+  /* -------------------------------------------
+   * Interpreter exit handler                  |
+   * ------------------------------------------*/
+  |=> INTERP_FAIL:
+  |->InterpFail:
+  |  xor rax,rax
+  |  epilog
+  |  ret
+
+  |=> INTERP_RETURN:
+  |->InterpReturn:
+  |  mov rax, qword [ACC]
+  |  mov rax,1
+  |  epilog
+  |  ret
 }
 
-/* -----------------------------------------------------------
- * helper functions/routines generation                      |
- * ----------------------------------------------------------*/
-void GenerateHelper( BuildContext* bctx ) {
+/* ------------------------------------------
+ * helper functions/routines generation     |
+ * -----------------------------------------*/
 
+void GenerateHelper( BuildContext* bctx ) {
   /* ----------------------------------------
    * InterpArithXXX                         |
    * ---------------------------------------*/
@@ -369,18 +508,21 @@ void GenerateHelper( BuildContext* bctx ) {
   |  Dispatch
   |.endmacro
 
+  |=> INTERP_ARITH_INTL:
   |->InterpArithIntL:
   |  mov CARG1,SANDBOX
   |  LdInt CARG2L,ARG1
   |  fcall InterpreterDoArithmetic
   |  arith_handle_ret
 
+  |=> INTERP_ARITH_INTR:
   |->InterpArithIntR:
   |  mov CARG1,SANDBOX
   |  LdInt CARG3L,ARG2
   |  fcall InterpreterDoArithmetic
   |  arith_handle_ret
 
+  |=> INTERP_ARITH_REALL:
   |->InterpArithRealL:
   |  mov CARG1,SANDBOX
   |  LdReal xmm0,ARG1
@@ -388,6 +530,7 @@ void GenerateHelper( BuildContext* bctx ) {
   |  fcall InterpreterDoArithmetic
   |  arith_handle_ret
 
+  |=> INTERP_ARITH_REALR:
   |->InterpArithRealR:
   |  mov CARG1,SANDBOX
   |  LdReal xmm0,ARG2
@@ -395,6 +538,7 @@ void GenerateHelper( BuildContext* bctx ) {
   |  fcall InterpreterDoArithmetic
   |  arith_handle_ret
 
+  |=> INTERP_ARITH_VV:
   |->InterpArithVV:
   |  mov CARG1, SANDBOX
   |  mov CARG2, qword [STK+ARG1*8]
@@ -402,11 +546,13 @@ void GenerateHelper( BuildContext* bctx ) {
   |  fcall InterpreterDoArithmetic
   |  arith_handle_ret
 
+  |=> INTERP_POW_FAST:
   |->InterpPowFast:
-  |  fcall Pow 
+  |  fcall Pow
   |  movsd qword [ACC],xmm0
   |  Dispatch
 
+  |=> INTERP_POW_SLOW:
   |->InterpPowSlow:
   |  mov CARG1, SANDBOX
   |  fcall InterpreterPow
@@ -415,33 +561,20 @@ void GenerateHelper( BuildContext* bctx ) {
   /* -------------------------------------------
    * Interp Arithmetic Exception               |
    * ------------------------------------------*/
+  |=> DIV_BY_ZERO:
   |->DivByZero:
   |  mov CARG1,SANDBOX
   |  mov CARG2,[PC-4]
   |  fcall InterpreterDivByZero
   |  jmp ->InterpFail
 
+  |=> MOD_BY_REAL:
   |->ModByReal:
   |  mov CARG1,SANDBOX
   |  mov CARG2,[PC-4]
   |  fcall InterpreterModByReal
   |  jmp ->InterpFail
 
-
-  /* -------------------------------------------
-   * Interpreter exit handler                  |
-   * ------------------------------------------*/
-  |->InterpFail:
-  |  xor rax,rax
-  |  epilog
-  |  ret
-
-  |->InterpReturn:
-  |  mov rax, qword [ACC]
-  |  mov qword [SANDBOX+SandboxLayout::kRetOffset],rax
-  |  mov rax,1
-  |  epilog
-  |  ret
 }
 
 void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
@@ -864,6 +997,7 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
     |  jb >5  // real && real
     |  cmp RREGL,Value::FLAG_INTEGER
     |  jne >6 // cannot handle
+
     // promoting RHS->real
     |  cvtsi2sd xmm1,dword [STK+ARG2*8]
     |  movsd xmm0,qword [STK+ARG1*8]
@@ -1011,7 +1145,7 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
       break;
     default:
       |=> bc:
-      |  nop
+      |  Break
       break;
   }
 }
@@ -1021,75 +1155,55 @@ int ResolveExternAddress( void** ctx , unsigned char* addr ,
                                        int idx,
                                        int type ) {
   (void)ctx;
-  void* ptr;
-  if(strcmp(extnames[idx],"Pow")==0) {
-    ptr = reinterpret_cast<void*>(&Pow);
-  } else if(strcmp(extnames[idx],"InterpreterModByReal")==0) {
-    ptr = reinterpret_cast<void*>(&InterpreterModByReal);
-  } else if(strcmp(extnames[idx],"InterpreterDivByZero")==0) {
-    ptr = reinterpret_cast<void*>(&InterpreterDivByZero);
-  } else if(strcmp(extnames[idx],"InterpreterPow")==0) {
-    ptr = reinterpret_cast<void*>(&InterpreterPow);
-  } else if(strcmp(extnames[idx],"InterpreterDoArithmetic")==0) {
-    ptr = reinterpret_cast<void*>(&InterpreterDoArithmetic);
-  } else {
-    lava_unreach("WHY!");
-  }
-
+  ExternSymbolTable* t = GetExternSymbolTable();
+  ExternSymbolTable::iterator itr = t->find(extnames[idx]);
+  lava_verify( itr != t->end() );
+  void* ptr = itr->second;
   lava_verify(CheckAddress(reinterpret_cast<std::uintptr_t>(ptr)));
+  int iptr = HorribleCast(ptr);
+  lava_verify(reinterpret_cast<void*>(iptr) == ptr);
 
   if(type) {
-    return (int)((reinterpret_cast<unsigned char*>(ptr) - (addr+4)));
+    int end = HorribleCast(addr+4);
+
+    // Check whether the address is overflowed or not. I think this is
+    // not needed but just in cases we have a bug so we don't end up
+    // calling into some wired places into our code
+    std::int64_t ptr64 = static_cast<std::int64_t>(iptr);
+    std::int64_t end64 = static_cast<std::int64_t>(end);
+
+    lava_verify( (ptr64-end64) >= std::numeric_limits<int>::min() &&
+                 (ptr64-end64) <= std::numeric_limits<int>::max() );
+
+    return iptr - HorribleCast(addr+4);
   } else {
-    return (int)(reinterpret_cast<std::uintptr_t>(ptr));
+    return iptr;
   }
 }
 
-void Disassemble( Interpreter* interp ) {
-  DumpWriter writer;
-  std::size_t length = interp->code_size;
-  void* buffer = reinterpret_cast<void*>(interp->entry);
+} // namespace
 
-  ZydisDecoder decoder;
-  ZydisDecoderInit(
-      &decoder,
-      ZYDIS_MACHINE_MODE_LONG_64,
-      ZYDIS_ADDRESS_WIDTH_64);
+AssemblyInterpreter::AssemblyInterpreter():
+  dispatch_interp_(),
+  dispatch_record_(),
+  dispatch_jit_   (),
+  interp_helper_  (),
+  interp_entry_   (),
+  code_size_      (),
+  buffer_size_    ()
+{}
 
-  ZydisFormatter formatter;
-  ZydisFormatterInit(&formatter,ZYDIS_FORMATTER_STYLE_INTEL);
-
-  std::uint64_t pc = reinterpret_cast<std::uint64_t>(buffer);
-  std::uint8_t* rp = static_cast<std::uint8_t*>(buffer);
-  std::size_t size = length;
-
-  ZydisDecodedInstruction instr;
-  while(ZYDIS_SUCCESS(
-        ZydisDecoderDecodeBuffer(&decoder,rp,size,pc,&instr))) {
-    char buffer[256];
-    ZydisFormatterFormatInstruction(
-        &formatter,&instr,buffer,sizeof(buffer));
-
-    for( std::size_t i = 0 ; i < SIZE_OF_BYTECODE ; ++i ) {
-      void* p = reinterpret_cast<void*>(pc);
-      if(p == interp->dispatch_interp[i]) {
-        writer.WriteL("===> Bytecode : %s",GetBytecodeName(
-              static_cast<Bytecode>(i)));
-        break;
-      }
-    }
-
-    writer.WriteL("%016" PRIX64 " " "%s",pc,buffer);
-    rp += instr.length;
-    size -= instr.length;
-    pc += instr.length;
-  }
-
+AssemblyInterpreter::~AssemblyInterpreter() {
+  if(interp_entry_) OS::FreeCodePage(interp_entry_,buffer_size_);
 }
 
 // We directly allocate a chunk of memory and *let it leak*
-void BuildInterpreter( Interpreter* interp ) {
+std::shared_ptr<AssemblyInterpreter> AssemblyInterpreter::Generate() {
+  std::shared_ptr<AssemblyInterpreter> interp( new AssemblyInterpreter() );
+
+  // create a build context
   BuildContext bctx;
+
   // initialize dasm_State object
   dasm_init(&(bctx.dasm_ctx),1);
 
@@ -1101,10 +1215,11 @@ void BuildInterpreter( Interpreter* interp ) {
   dasm_setup(&(bctx.dasm_ctx),actions);
 
   // initialize the tag value needed , at least for each BC we need one
-  dasm_growpc(&(bctx.dasm_ctx), SIZE_OF_BYTECODE);
+  bctx.tag = DASM_GROWABLE_PC_SIZE;
+  dasm_growpc(&(bctx.dasm_ctx), DASM_GROWABLE_PC_SIZE );
 
   // build the prolog
-  GenerateProlog(&bctx);
+  GenerateMisc(&bctx);
 
   // build the helper
   GenerateHelper(&bctx);
@@ -1115,41 +1230,100 @@ void BuildInterpreter( Interpreter* interp ) {
   }
 
   std::size_t code_size;
+
+  // we should never fail at *linking* if our code is *correct*
   lava_verify(dasm_link(&(bctx.dasm_ctx),&code_size) ==0);
 
   // generate a buffer and set the proper protection field for that piece of
   // memory to make our code *work*
   std::size_t new_size;
+
   void* buffer = OS::CreateCodePage(code_size,&new_size);
-  lava_verify(buffer);
+  if(!buffer) {
+    return std::shared_ptr<AssemblyInterpreter>();
+  }
 
   // encode the assembly code into the buffer
   dasm_encode(&(bctx.dasm_ctx),buffer);
 
   // get all pc labels for entry of bytecode routine
   for( int i = static_cast<int>(BC_ADDIV) ; i < SIZE_OF_BYTECODE ; ++i ) {
-    int off = dasm_getpclabel(&(bctx.dasm_ctx),static_cast<Bytecode>(i));
-    interp->dispatch_interp[i] =
+    int off = dasm_getpclabel(&(bctx.dasm_ctx),i);
+    interp->dispatch_interp_[i] =
       reinterpret_cast<void*>(static_cast<char*>(buffer) + off);
   }
 
-  interp->entry = reinterpret_cast<Interpret>(buffer);
-  interp->buffer_size = new_size;
-  interp->code_size   = code_size;
-
-  // now we try a disassemble to see whether our shit actually looks Okay
-  {
-    DumpWriter writer(NULL);
-    Disassemble(interp);
+  // get all pc labels for helper routines
+  for( int i = INTERP_HELPER_START ; i < DASM_GROWABLE_PC_SIZE ; ++i ) {
+    int off = dasm_getpclabel(&(bctx.dasm_ctx),i);
+    interp->interp_helper_.push_back(
+        reinterpret_cast<void*>(static_cast<char*>(buffer)+off));
   }
 
-  dasm_free(&(bctx.dasm_ctx));
+  interp->interp_entry_ = buffer;
+  interp->buffer_size_  = new_size;
+  interp->code_size_    = code_size;
+  return interp;
 }
 
-} // namespace
+Bytecode AssemblyInterpreter::CheckBytecodeRoutine( void* pc ) const {
+  for( int i = 0 ; i < SIZE_OF_BYTECODE ; ++i ) {
+    void* p = reinterpret_cast<void*>(pc);
+    if(p == dispatch_interp_[i]) {
+      return static_cast<Bytecode>(i);
+    }
+  }
+  return SIZE_OF_BYTECODE;
+}
 
-void GenerateInterpreter( Interpreter* interp ) {
-  BuildInterpreter(interp);
+int AssemblyInterpreter::CheckHelperRoutine( void* pc ) const {
+  std::vector<void*>::const_iterator itr =
+    std::find( interp_helper_.begin() , interp_helper_.end() , pc );
+  if(itr != interp_helper_.end()) {
+    return (static_cast<int>(std::distance(interp_helper_.begin(),itr))+INTERP_HELPER_START);
+  } else {
+    return -1;
+  }
+}
+
+void AssemblyInterpreter::Dump( DumpWriter* writer ) const {
+  ZydisDecoder decoder;
+  ZydisDecoderInit(
+      &decoder,
+      ZYDIS_MACHINE_MODE_LONG_64,
+      ZYDIS_ADDRESS_WIDTH_64);
+
+  ZydisFormatter formatter;
+  ZydisFormatterInit(&formatter,ZYDIS_FORMATTER_STYLE_INTEL);
+
+  std::uint64_t pc = reinterpret_cast<std::uint64_t>(interp_entry_);
+  std::uint8_t* rp = static_cast<std::uint8_t*>(interp_entry_);
+  std::size_t size = code_size_;
+
+  ZydisDecodedInstruction instr;
+  while(ZYDIS_SUCCESS(
+        ZydisDecoderDecodeBuffer(&decoder,rp,size,pc,&instr))) {
+
+    char buffer[256];
+    ZydisFormatterFormatInstruction(
+        &formatter,&instr,buffer,sizeof(buffer));
+    // check labels
+    {
+      Bytecode bc = CheckBytecodeRoutine(reinterpret_cast<void*>(pc));
+      if(bc != SIZE_OF_BYTECODE) {
+        writer->WriteL("Bytecode ===========> %s:",GetBytecodeName(bc));
+      } else {
+        int idx = CheckHelperRoutine(reinterpret_cast<void*>(pc));
+        if(idx >= 0) {
+          writer->WriteL("Helper ===========> %s:",GetInterpHelperName(idx));
+        }
+      }
+    }
+    writer->WriteL("%016" PRIX64 " (%d) %s",pc,instr.length,buffer);
+    rp += instr.length;
+    size -= instr.length;
+    pc += instr.length;
+  }
 }
 
 } // namespace lavascript

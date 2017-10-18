@@ -10,6 +10,9 @@
 
 #include "trace.h"
 
+#define LAVA_FMTI64 PRId64
+#define LAVA_FMTU64 PRIu64
+
 namespace lavascript {
 
 template< std::size_t N , typename T >

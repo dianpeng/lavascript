@@ -24,7 +24,7 @@ void* OS::CreateCodePage( std::size_t size , std::size_t* adjusted_size ) {
 
 void OS::FreeCodePage( void* ptr , std::size_t size ) {
   lava_verify( Align(size,GetPageSize()) == size );
-  lava_verify( munmap(ptr,size) );
+  lava_verify( munmap(ptr,size) == 0 );
 }
 
 } // namespace lavascript

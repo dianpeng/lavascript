@@ -405,8 +405,8 @@ inline std::int32_t BytecodeBuilder::Add( std::int32_t ival ) {
     int_table_.push_back(ival);
     return static_cast<std::int32_t>(int_table_.size()-1);
   }
-  return static_cast<std::int32_t>(
-      std::distance(int_table_.begin(),ret));
+  return (static_cast<std::int32_t>(
+      std::distance(int_table_.begin(),ret)));
 }
 
 inline std::int32_t BytecodeBuilder::Add( double rval ) {
@@ -418,8 +418,8 @@ inline std::int32_t BytecodeBuilder::Add( double rval ) {
     real_table_.push_back(rval);
     return static_cast<std::int32_t>(int_table_.size()-1);
   }
-  return static_cast<std::int32_t>(
-      std::distance(real_table_.begin(),ret));
+  return (static_cast<std::int32_t>(
+      std::distance(real_table_.begin(),ret)));
 }
 
 inline BytecodeBuilder::Label::Label():

@@ -40,6 +40,17 @@ class Extension;
 class Script;
 class ScriptBuilder;
 
+// Used in Assembly to modify field in an object. Based on C++ standard, offsetof
+// must be used in class that is standard_layout due to sick C++ object modle. We
+// must be sure that we can maintain this shitty concept. Another thing is the offset
+// of certain field will be stored inside of std::uin32_t not std::size_t due to the
+// fact that std::size_t is 64 bits which most of instruction cannot use 64 bits immediate.
+// The common case for using offset is via [reg+reg*(1/2/4/8/0)+offset] addressing mode,
+// this freaking addressing mode accepts a 32 bits offset. So *DO NOT STORE* in 64 bits.
+//
+// In another word, any code that will be used by assembly , please use explicit storage.
+// Do not use type like std::size_t or int , which based on standard has variable length
+// platform to platform
 struct IteratorLayout;
 struct ListLayout;
 struct SliceLayout;
@@ -130,8 +141,9 @@ class Value final {
   };
 
   // The flag that avoids the lower 32 bits . It is mainly used in
-  // assembly to set and test flag
+  // assembly to set and test flag.
   enum {
+    FLAG_REAL   = 0xfff80000,
     FLAG_INTEGER= 0xfff90000,
     FLAG_TRUE   = 0xfffa0000,
     FLAG_FALSE  = 0xfffa1000,
@@ -540,8 +552,8 @@ class List final : public HeapObject {
 static_assert( std::is_standard_layout<List>::value );
 
 struct ListLayout {
-  static const std::size_t kSizeOffset = offsetof(List,size_);
-  static const std::size_t kSliceOffset= offsetof(List,slice_);
+  static const std::uint32_t kSizeOffset = offsetof(List,size_);
+  static const std::uint32_t kSliceOffset= offsetof(List,slice_);
 };
 
 /**
@@ -589,8 +601,8 @@ class Slice final : public HeapObject {
 static_assert( std::is_standard_layout<Slice>::value );
 
 struct SliceLayout {
-  static const std::size_t kCapacityOffset = offsetof(Slice,capacity_);
-  static const std::size_t kArrayOffset    = sizeof(Slice);
+  static const std::uint32_t kCapacityOffset = offsetof(Slice,capacity_);
+  static const std::uint32_t kArrayOffset    = sizeof(Slice);
 };
 
 /**
@@ -655,7 +667,7 @@ class Object final : public HeapObject {
 static_assert( std::is_standard_layout<Object>::value );
 
 struct ObjectLayout {
-  static const std::size_t kMapOffset = offsetof(Object,map_);
+  static const std::uint32_t kMapOffset = offsetof(Object,map_);
 };
 
 
@@ -789,10 +801,10 @@ class Map final : public HeapObject {
 static_assert( std::is_standard_layout<Map>::value );
 
 struct MapLayout {
-  static const std::size_t kCapacityOffset = offsetof(Map,capacity_);
-  static const std::size_t kSizeOffset     = offsetof(Map,size_);
-  static const std::size_t kSlotSize       = offsetof(Map,slot_size_);
-  static const std::size_t kArrayOffset    = sizeof(Map);
+  static const std::uint32_t kCapacityOffset = offsetof(Map,capacity_);
+  static const std::uint32_t kSizeOffset     = offsetof(Map,size_);
+  static const std::uint32_t kSlotSize       = offsetof(Map,slot_size_);
+  static const std::uint32_t kArrayOffset    = sizeof(Map);
 };
 
 /**
@@ -937,19 +949,19 @@ class Prototype final : public HeapObject {
 static_assert( std::is_standard_layout<Prototype>::value );
 
 struct PrototypeLayout {
-  static const std::size_t kProtoStringOffset = offsetof(Prototype,proto_string_);
-  static const std::size_t kArgumentSizeOffset= offsetof(Prototype,argument_size_);
-  static const std::size_t kIntTableSizeOffset = offsetof(Prototype,int_table_size_);
-  static const std::size_t kRealTableSizeOffset = offsetof(Prototype,real_table_size_);
-  static const std::size_t kStringTableSizeOffset = offsetof(Prototype,string_table_size_);
-  static const std::size_t kUpValueSizeOffset  = offsetof(Prototype,upvalue_size_);
-  static const std::size_t kCodeBufferSizeOffset = offsetof(Prototype,code_buffer_size_);
-  static const std::size_t kIntTableOffset = offsetof(Prototype,int_table_);
-  static const std::size_t kRealTableOffset= offsetof(Prototype,real_table_);
-  static const std::size_t kStringTableOffset = offsetof(Prototype,string_table_);
-  static const std::size_t kUpValueTableOffset= offsetof(Prototype,upvalue_table_);
-  static const std::size_t kCodeBufferOffset = offsetof (Prototype,code_buffer_);
-  static const std::size_t kSciBufferOffset  = offsetof (Prototype,sci_buffer_);
+  static const std::uint32_t kProtoStringOffset = offsetof(Prototype,proto_string_);
+  static const std::uint32_t kArgumentSizeOffset= offsetof(Prototype,argument_size_);
+  static const std::uint32_t kIntTableSizeOffset = offsetof(Prototype,int_table_size_);
+  static const std::uint32_t kRealTableSizeOffset = offsetof(Prototype,real_table_size_);
+  static const std::uint32_t kStringTableSizeOffset = offsetof(Prototype,string_table_size_);
+  static const std::uint32_t kUpValueSizeOffset  = offsetof(Prototype,upvalue_size_);
+  static const std::uint32_t kCodeBufferSizeOffset = offsetof(Prototype,code_buffer_size_);
+  static const std::uint32_t kIntTableOffset = offsetof(Prototype,int_table_);
+  static const std::uint32_t kRealTableOffset= offsetof(Prototype,real_table_);
+  static const std::uint32_t kStringTableOffset = offsetof(Prototype,string_table_);
+  static const std::uint32_t kUpValueTableOffset= offsetof(Prototype,upvalue_table_);
+  static const std::uint32_t kCodeBufferOffset = offsetof (Prototype,code_buffer_);
+  static const std::uint32_t kSciBufferOffset  = offsetof (Prototype,sci_buffer_);
 };
 
 /**

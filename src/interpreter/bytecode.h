@@ -148,7 +148,7 @@ static const std::size_t kAllocatableBytecodeRegisterSize = 255;
   __(G,OR   , or_  ,PC,_,_  )    \
   __(G,JMP  , jmp  ,PC,_,_  )    \
   /* register move */ \
-  __(B,MOVE , move , REG, REG, _ )              \
+  __(E,MOVE , move , REG, REG, _ )              \
   /* constant loading */                        \
   __(B,LOADI , loadi , REG , IREF , _    )      \
   __(F,LOAD0 , load0 , REG , _ , _    )         \

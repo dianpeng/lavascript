@@ -56,13 +56,7 @@ TEST(BytecodeGenerate,Basic) {
   {
     std::string script(stringify(
           var a = 10;
-          if(b) {
-            var b = 20;
-            if(c) {
-              var d = 20;
-              return ff();
-            }
-          }
+          var b = a + 10;
           ));
 
     ScriptBuilder sb("a",script);

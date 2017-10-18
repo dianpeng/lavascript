@@ -9,20 +9,21 @@
 #include "bytecode-interpreter.h"
 #include "src/trace.h"
 #include "src/os.h"
-#include "src/disassemble.h"
-
-// Workaround for ODR
-namespace {
-
-#include "dep/dynasm/dasm_proto.h"
-#include "dep/dynasm/dasm_x86.h"
-
-} // namespace
 
 #include <math.h>
+#include <Zydis/Zydis.h>
 
 namespace lavascript {
 namespace interpreter{
+namespace {
+
+// Used in dynasm library
+int ResolveExternAddress( void**,unsigned char*,int,int );
+
+// Workaround for ODR
+#include "dep/dynasm/dasm_proto.h"
+#define DASM_EXTERN_FUNC(a,b,c,d) ResolveExternAddress((void**)a,b,c,d)
+#include "dep/dynasm/dasm_x86.h"
 
 
 /**
@@ -41,10 +42,32 @@ Value InterpreterDoArithmetic( Sandbox* sandbox ,
   return Value();
 }
 
-namespace {
+Value InterpreterPow         ( Sandbox* sandbox ,
+                               Value left,
+                               Value right,
+                               Bytecode bc ) {
+  (void)sandbox;
+  (void)left;
+  (void)right;
+  (void)bc;
+  return Value();
+}
 
-// A frame object that is used to record the function's runtime
-// information
+void InterpreterModByReal    ( Sandbox* sandbox , std::uint32_t* pc ) {
+  (void)sandbox;
+  (void)pc;
+}
+
+void InterpreterDivByZero    ( Sandbox* sandbox , std::uint32_t* pc ) {
+  (void)sandbox;
+  (void)pc;
+}
+
+double Pow( double a , double b ) {
+  return pow(a,b);
+}
+
+// A frame object that is used to record the function's runtime information
 struct Frame {
   void* caller;
   std::int32_t offset;
@@ -59,9 +82,9 @@ struct BuildContext {
 #if DASM_VERSION != 10300
 #error "Version mismatch between DynASM and included encoding engine"
 #endif
-#line 51 "src/interpreter/bytecode-interpreter.dasc"
+#line 74 "src/interpreter/bytecode-interpreter.dasc"
 //|.actionlist actions
-static const unsigned char actions[4063] = {
+static const unsigned char actions[3990] = {
   248,10,76,137,231,77,139,93,0,77,139,155,233,65,139,52,155,255,232,251,1,
   0,255,72,184,237,237,252,255,208,255,73,137,195,73,193,252,235,32,73,129,
   252,251,239,15,132,244,11,73,137,134,252,252,3,0,0,139,3,72,15,182,216,72,
@@ -95,165 +118,162 @@ static const unsigned char actions[4063] = {
   255,36,223,248,2,77,139,93,0,77,139,155,233,65,139,52,155,255,137,252,240,
   133,210,15,132,244,18,252,247,252,250,65,137,134,252,252,3,0,0,65,199,134,
   0,4,0,0,237,255,137,252,240,133,210,15,132,244,18,252,247,252,250,65,137,
-  150,252,252,3,0,0,65,199,134,0,4,0,0,237,255,1,214,65,199,134,252,252,3,0,
-  0,237,65,199,134,0,4,0,0,237,255,249,193,232,8,72,15,183,216,193,232,16,73,
-  139,20,198,65,129,124,253,198,4,239,15,130,244,247,65,129,124,253,198,4,239,
-  15,132,244,248,185,237,252,233,244,13,248,1,77,139,93,0,77,139,155,233,252,
-  242,65,15,16,4,219,102,72,15,110,202,252,242,15,88,193,252,242,65,15,17,134,
-  252,252,3,0,0,139,3,72,15,182,216,72,131,195,4,65,252,255,36,223,248,2,77,
-  139,93,0,77,139,155,233,252,242,65,15,16,4,219,252,242,15,42,202,252,242,
-  15,88,193,252,242,65,15,17,134,252,252,3,0,0,139,3,72,15,182,216,72,131,195,
-  4,65,252,255,36,223,255,249,193,232,8,72,15,183,216,193,232,16,73,139,20,
-  198,65,129,124,253,198,4,239,15,130,244,247,65,129,124,253,198,4,239,15,132,
-  244,248,185,237,252,233,244,10,248,1,77,139,93,0,77,139,155,233,252,242,65,
-  15,42,4,155,102,72,15,110,202,252,242,15,92,193,252,242,65,15,17,134,252,
-  252,3,0,0,139,3,72,15,182,216,72,131,195,4,65,252,255,36,223,248,2,77,139,
-  93,0,77,139,155,233,65,139,52,155,255,41,214,65,199,134,252,252,3,0,0,237,
-  65,199,134,0,4,0,0,237,255,249,193,232,8,72,15,183,216,193,232,16,73,139,
+  150,252,252,3,0,0,65,199,134,0,4,0,0,237,255,1,214,65,137,182,252,252,3,0,
+  0,65,199,134,0,4,0,0,237,255,249,193,232,8,72,15,183,216,193,232,16,73,139,
   20,198,65,129,124,253,198,4,239,15,130,244,247,65,129,124,253,198,4,239,15,
   132,244,248,185,237,252,233,244,13,248,1,77,139,93,0,77,139,155,233,252,242,
-  65,15,16,4,219,102,72,15,110,202,252,242,15,92,193,252,242,65,15,17,134,252,
+  65,15,16,4,219,102,72,15,110,202,252,242,15,88,193,252,242,65,15,17,134,252,
   252,3,0,0,139,3,72,15,182,216,72,131,195,4,65,252,255,36,223,248,2,77,139,
-  93,0,77,139,155,233,252,242,65,15,16,4,219,252,242,15,42,202,252,242,15,92,
+  93,0,77,139,155,233,252,242,65,15,16,4,219,252,242,15,42,202,252,242,15,88,
   193,252,242,65,15,17,134,252,252,3,0,0,139,3,72,15,182,216,72,131,195,4,65,
   252,255,36,223,255,249,193,232,8,72,15,183,216,193,232,16,73,139,20,198,65,
   129,124,253,198,4,239,15,130,244,247,65,129,124,253,198,4,239,15,132,244,
   248,185,237,252,233,244,10,248,1,77,139,93,0,77,139,155,233,252,242,65,15,
-  42,4,155,102,72,15,110,202,252,242,15,89,193,252,242,65,15,17,134,252,252,
+  42,4,155,102,72,15,110,202,252,242,15,92,193,252,242,65,15,17,134,252,252,
   3,0,0,139,3,72,15,182,216,72,131,195,4,65,252,255,36,223,248,2,77,139,93,
-  0,77,139,155,233,65,139,52,155,255,15,175,252,242,65,199,134,252,252,3,0,
-  0,237,65,199,134,0,4,0,0,237,255,249,193,232,8,72,15,183,216,193,232,16,73,
-  139,20,198,65,129,124,253,198,4,239,15,130,244,247,65,129,124,253,198,4,239,
-  15,132,244,248,185,237,252,233,244,13,248,1,77,139,93,0,77,139,155,233,252,
-  242,65,15,16,4,219,102,72,15,110,202,252,242,15,89,193,252,242,65,15,17,134,
-  252,252,3,0,0,139,3,72,15,182,216,72,131,195,4,65,252,255,36,223,248,2,77,
-  139,93,0,77,139,155,233,252,242,65,15,16,4,219,252,242,15,42,202,252,242,
-  15,89,193,252,242,65,15,17,134,252,252,3,0,0,139,3,72,15,182,216,72,131,195,
-  4,65,252,255,36,223,255,249,193,232,8,72,15,183,216,193,232,16,73,139,20,
-  198,65,129,124,253,198,4,239,15,130,244,247,65,129,124,253,198,4,239,15,132,
-  244,248,185,237,252,233,244,13,248,1,77,139,93,0,77,139,155,233,252,242,65,
-  15,16,4,219,102,72,15,110,202,252,242,15,94,193,252,242,65,15,17,134,252,
+  0,77,139,155,233,65,139,52,155,255,41,214,65,137,182,252,252,3,0,0,65,199,
+  134,0,4,0,0,237,255,249,193,232,8,72,15,183,216,193,232,16,73,139,20,198,
+  65,129,124,253,198,4,239,15,130,244,247,65,129,124,253,198,4,239,15,132,244,
+  248,185,237,252,233,244,13,248,1,77,139,93,0,77,139,155,233,252,242,65,15,
+  16,4,219,102,72,15,110,202,252,242,15,92,193,252,242,65,15,17,134,252,252,
+  3,0,0,139,3,72,15,182,216,72,131,195,4,65,252,255,36,223,248,2,77,139,93,
+  0,77,139,155,233,252,242,65,15,16,4,219,252,242,15,42,202,252,242,15,92,193,
+  252,242,65,15,17,134,252,252,3,0,0,139,3,72,15,182,216,72,131,195,4,65,252,
+  255,36,223,255,249,193,232,8,72,15,183,216,193,232,16,73,139,20,198,65,129,
+  124,253,198,4,239,15,130,244,247,65,129,124,253,198,4,239,15,132,244,248,
+  185,237,252,233,244,10,248,1,77,139,93,0,77,139,155,233,252,242,65,15,42,
+  4,155,102,72,15,110,202,252,242,15,89,193,252,242,65,15,17,134,252,252,3,
+  0,0,139,3,72,15,182,216,72,131,195,4,65,252,255,36,223,248,2,77,139,93,0,
+  77,139,155,233,65,139,52,155,255,15,175,252,242,65,137,182,252,252,3,0,0,
+  65,199,134,0,4,0,0,237,255,249,193,232,8,72,15,183,216,193,232,16,73,139,
+  20,198,65,129,124,253,198,4,239,15,130,244,247,65,129,124,253,198,4,239,15,
+  132,244,248,185,237,252,233,244,13,248,1,77,139,93,0,77,139,155,233,252,242,
+  65,15,16,4,219,102,72,15,110,202,252,242,15,89,193,252,242,65,15,17,134,252,
   252,3,0,0,139,3,72,15,182,216,72,131,195,4,65,252,255,36,223,248,2,77,139,
-  93,0,77,139,155,233,252,242,65,15,16,4,219,252,242,15,42,202,252,242,15,94,
+  93,0,77,139,155,233,252,242,65,15,16,4,219,252,242,15,42,202,252,242,15,89,
   193,252,242,65,15,17,134,252,252,3,0,0,139,3,72,15,182,216,72,131,195,4,65,
   252,255,36,223,255,249,193,232,8,72,15,183,216,193,232,16,73,139,20,198,65,
   129,124,253,198,4,239,15,130,244,247,65,129,124,253,198,4,239,15,132,244,
-  248,185,237,252,233,244,10,248,1,252,233,244,19,248,2,77,139,93,0,77,139,
-  155,233,65,139,52,155,255,249,252,233,244,19,255,249,72,15,182,220,193,232,
+  248,185,237,252,233,244,13,248,1,77,139,93,0,77,139,155,233,252,242,65,15,
+  16,4,219,102,72,15,110,202,252,242,15,94,193,252,242,65,15,17,134,252,252,
+  3,0,0,139,3,72,15,182,216,72,131,195,4,65,252,255,36,223,248,2,77,139,93,
+  0,77,139,155,233,252,242,65,15,16,4,219,252,242,15,42,202,252,242,15,94,193,
+  252,242,65,15,17,134,252,252,3,0,0,139,3,72,15,182,216,72,131,195,4,65,252,
+  255,36,223,255,249,193,232,8,72,15,183,216,193,232,16,73,139,20,198,65,129,
+  124,253,198,4,239,15,130,244,247,65,129,124,253,198,4,239,15,132,244,248,
+  185,237,252,233,244,10,248,1,252,233,244,19,248,2,77,139,93,0,77,139,155,
+  233,65,139,52,155,255,249,72,15,182,220,193,232,16,73,139,52,222,65,129,124,
+  253,222,4,239,15,130,244,247,65,129,124,253,222,4,239,15,132,244,248,185,
+  237,252,233,244,12,248,1,77,139,93,0,77,139,155,233,252,242,65,15,42,12,131,
+  102,72,15,110,198,252,242,15,88,193,252,242,65,15,17,134,252,252,3,0,0,139,
+  3,72,15,182,216,72,131,195,4,65,252,255,36,223,248,2,77,139,93,0,77,139,155,
+  233,65,139,20,131,255,137,252,242,133,210,252,233,244,18,252,247,252,250,
+  65,137,134,252,252,3,0,0,65,199,134,0,4,0,0,237,255,137,252,242,133,210,252,
+  233,244,18,252,247,252,250,65,137,150,252,252,3,0,0,65,199,134,0,4,0,0,237,
+  255,249,72,15,182,220,193,232,16,73,139,52,222,65,129,124,253,222,4,239,15,
+  130,244,247,65,129,124,253,222,4,239,15,132,244,248,185,237,252,233,244,14,
+  248,1,77,139,93,0,77,139,155,233,252,242,65,15,16,12,195,102,72,15,110,198,
+  252,242,15,88,193,252,242,65,15,17,134,252,252,3,0,0,139,3,72,15,182,216,
+  72,131,195,4,65,252,255,36,223,248,2,77,139,93,0,77,139,155,233,252,242,65,
+  15,16,12,195,252,242,15,42,198,252,242,15,88,193,252,242,65,15,17,134,252,
+  252,3,0,0,139,3,72,15,182,216,72,131,195,4,65,252,255,36,223,255,249,72,15,
+  182,220,193,232,16,73,139,52,222,65,129,124,253,222,4,239,15,130,244,247,
+  65,129,124,253,222,4,239,15,132,244,248,185,237,252,233,244,12,248,1,77,139,
+  93,0,77,139,155,233,252,242,65,15,42,12,131,102,72,15,110,198,252,242,15,
+  92,193,252,242,65,15,17,134,252,252,3,0,0,139,3,72,15,182,216,72,131,195,
+  4,65,252,255,36,223,248,2,77,139,93,0,77,139,155,233,65,139,20,131,255,249,
+  72,15,182,220,193,232,16,73,139,52,222,65,129,124,253,222,4,239,15,130,244,
+  247,65,129,124,253,222,4,239,15,132,244,248,185,237,252,233,244,14,248,1,
+  77,139,93,0,77,139,155,233,252,242,65,15,16,12,195,102,72,15,110,198,252,
+  242,15,92,193,252,242,65,15,17,134,252,252,3,0,0,139,3,72,15,182,216,72,131,
+  195,4,65,252,255,36,223,248,2,77,139,93,0,77,139,155,233,252,242,65,15,16,
+  12,195,252,242,15,42,198,252,242,15,92,193,252,242,65,15,17,134,252,252,3,
+  0,0,139,3,72,15,182,216,72,131,195,4,65,252,255,36,223,255,249,72,15,182,
+  220,193,232,16,73,139,52,222,65,129,124,253,222,4,239,15,130,244,247,65,129,
+  124,253,222,4,239,15,132,244,248,185,237,252,233,244,12,248,1,77,139,93,0,
+  77,139,155,233,252,242,65,15,42,12,131,102,72,15,110,198,252,242,15,89,193,
+  252,242,65,15,17,134,252,252,3,0,0,139,3,72,15,182,216,72,131,195,4,65,252,
+  255,36,223,248,2,77,139,93,0,77,139,155,233,65,139,20,131,255,249,72,15,182,
+  220,193,232,16,73,139,52,222,65,129,124,253,222,4,239,15,130,244,247,65,129,
+  124,253,222,4,239,15,132,244,248,185,237,252,233,244,14,248,1,77,139,93,0,
+  77,139,155,233,252,242,65,15,16,12,195,102,72,15,110,198,252,242,15,89,193,
+  252,242,65,15,17,134,252,252,3,0,0,139,3,72,15,182,216,72,131,195,4,65,252,
+  255,36,223,248,2,77,139,93,0,77,139,155,233,252,242,65,15,16,12,195,102,72,
+  15,110,198,252,242,15,89,193,252,242,65,15,17,134,252,252,3,0,0,139,3,72,
+  15,182,216,72,131,195,4,65,252,255,36,223,255,249,255,72,15,182,220,193,232,
   16,73,139,52,222,65,129,124,253,222,4,239,15,130,244,247,65,129,124,253,222,
   4,239,15,132,244,248,185,237,252,233,244,12,248,1,77,139,93,0,77,139,155,
-  233,252,242,65,15,42,12,131,102,72,15,110,198,252,242,15,88,193,252,242,65,
+  233,252,242,65,15,42,12,131,102,72,15,110,198,252,242,15,94,193,252,242,65,
   15,17,134,252,252,3,0,0,139,3,72,15,182,216,72,131,195,4,65,252,255,36,223,
-  248,2,77,139,93,0,77,139,155,233,65,139,20,131,255,137,252,242,133,210,252,
-  233,244,18,252,247,252,250,65,137,134,252,252,3,0,0,65,199,134,0,4,0,0,237,
-  255,137,252,242,133,210,252,233,244,18,252,247,252,250,65,137,150,252,252,
-  3,0,0,65,199,134,0,4,0,0,237,255,1,214,65,137,182,252,252,3,0,0,65,199,134,
-  0,4,0,0,237,255,249,72,15,182,220,193,232,16,73,139,52,222,65,129,124,253,
-  222,4,239,15,130,244,247,65,129,124,253,222,4,239,15,132,244,248,185,237,
-  252,233,244,14,248,1,77,139,93,0,77,139,155,233,252,242,65,15,16,12,195,102,
-  72,15,110,198,252,242,15,88,193,252,242,65,15,17,134,252,252,3,0,0,139,3,
-  72,15,182,216,72,131,195,4,65,252,255,36,223,248,2,77,139,93,0,77,139,155,
-  233,252,242,65,15,16,12,195,252,242,15,42,198,252,242,15,88,193,252,242,65,
-  15,17,134,252,252,3,0,0,139,3,72,15,182,216,72,131,195,4,65,252,255,36,223,
-  255,249,72,15,182,220,193,232,16,73,139,52,222,65,129,124,253,222,4,239,15,
-  130,244,247,65,129,124,253,222,4,239,15,132,244,248,185,237,252,233,244,12,
-  248,1,77,139,93,0,77,139,155,233,252,242,65,15,42,12,131,102,72,15,110,198,
-  252,242,15,92,193,252,242,65,15,17,134,252,252,3,0,0,139,3,72,15,182,216,
-  72,131,195,4,65,252,255,36,223,248,2,77,139,93,0,77,139,155,233,65,139,20,
-  131,255,41,214,65,137,182,252,252,3,0,0,65,199,134,0,4,0,0,237,255,249,72,
-  15,182,220,193,232,16,73,139,52,222,65,129,124,253,222,4,239,15,130,244,247,
-  65,129,124,253,222,4,239,15,132,244,248,185,237,252,233,244,14,248,1,77,139,
-  93,0,77,139,155,233,252,242,65,15,16,12,195,102,72,15,110,198,252,242,15,
-  92,193,252,242,65,15,17,134,252,252,3,0,0,139,3,72,15,182,216,72,131,195,
-  4,65,252,255,36,223,248,2,77,139,93,0,77,139,155,233,252,242,65,15,16,12,
-  195,252,242,15,42,198,252,242,15,92,193,252,242,65,15,17,134,252,252,3,0,
-  0,139,3,72,15,182,216,72,131,195,4,65,252,255,36,223,255,249,72,15,182,220,
-  193,232,16,73,139,52,222,65,129,124,253,222,4,239,15,130,244,247,65,129,124,
-  253,222,4,239,15,132,244,248,185,237,252,233,244,12,248,1,77,139,93,0,77,
-  139,155,233,252,242,65,15,42,12,131,102,72,15,110,198,252,242,15,89,193,252,
-  242,65,15,17,134,252,252,3,0,0,139,3,72,15,182,216,72,131,195,4,65,252,255,
-  36,223,248,2,77,139,93,0,77,139,155,233,65,139,20,131,255,15,175,252,242,
-  65,137,182,252,252,3,0,0,65,199,134,0,4,0,0,237,255,249,72,15,182,220,193,
+  248,2,77,139,93,0,77,139,155,233,65,139,20,131,255,249,72,15,182,220,193,
   232,16,73,139,52,222,65,129,124,253,222,4,239,15,130,244,247,65,129,124,253,
   222,4,239,15,132,244,248,185,237,252,233,244,14,248,1,77,139,93,0,77,139,
-  155,233,252,242,65,15,16,12,195,102,72,15,110,198,252,242,15,89,193,252,242,
+  155,233,252,242,65,15,16,12,195,102,72,15,110,198,252,242,15,94,193,252,242,
   65,15,17,134,252,252,3,0,0,139,3,72,15,182,216,72,131,195,4,65,252,255,36,
-  223,248,2,77,139,93,0,77,139,155,233,252,242,65,15,16,12,195,102,72,15,110,
-  198,252,242,15,89,193,252,242,65,15,17,134,252,252,3,0,0,139,3,72,15,182,
-  216,72,131,195,4,65,252,255,36,223,255,249,255,72,15,182,220,193,232,16,73,
-  139,52,222,65,129,124,253,222,4,239,15,130,244,247,65,129,124,253,222,4,239,
-  15,132,244,248,185,237,252,233,244,12,248,1,77,139,93,0,77,139,155,233,252,
-  242,65,15,42,12,131,102,72,15,110,198,252,242,15,94,193,252,242,65,15,17,
-  134,252,252,3,0,0,139,3,72,15,182,216,72,131,195,4,65,252,255,36,223,248,
-  2,77,139,93,0,77,139,155,233,65,139,20,131,255,249,72,15,182,220,193,232,
-  16,73,139,52,222,65,129,124,253,222,4,239,15,130,244,247,65,129,124,253,222,
-  4,239,15,132,244,248,185,237,252,233,244,14,248,1,77,139,93,0,77,139,155,
-  233,252,242,65,15,16,12,195,102,72,15,110,198,252,242,15,94,193,252,242,65,
-  15,17,134,252,252,3,0,0,139,3,72,15,182,216,72,131,195,4,65,252,255,36,223,
-  248,2,77,139,93,0,77,139,155,233,252,242,65,15,16,12,195,252,242,15,42,198,
-  252,242,15,94,193,252,242,65,15,17,134,252,252,3,0,0,139,3,72,15,182,216,
-  72,131,195,4,65,252,255,36,223,255,249,72,15,182,220,193,232,16,73,139,52,
-  222,65,129,124,253,222,4,239,15,130,244,247,65,129,124,253,222,4,239,15,132,
-  244,248,185,237,252,233,244,12,248,1,252,233,244,19,248,2,77,139,93,0,77,
-  139,155,233,65,139,20,131,255,249,72,15,182,220,193,232,16,252,233,244,19,
-  255,249,72,15,182,220,193,232,16,72,15,182,204,193,232,8,65,139,116,222,4,
-  65,139,84,198,4,129,252,254,239,15,132,244,247,129,252,250,239,15,130,244,
-  248,252,233,244,252,248,1,129,252,250,239,15,132,244,250,129,252,250,239,
-  15,131,244,252,252,242,65,15,42,4,222,252,242,65,15,88,4,198,252,242,65,15,
-  17,134,252,252,3,0,0,139,3,72,15,182,216,72,131,195,4,65,252,255,36,223,248,
-  2,129,252,250,239,15,130,244,251,255,129,252,250,239,15,133,244,252,252,242,
-  65,15,42,12,198,252,242,65,15,16,4,222,252,242,65,15,17,134,252,252,3,0,0,
-  139,3,72,15,182,216,72,131,195,4,65,252,255,36,223,248,4,255,65,139,20,222,
-  65,252,247,60,198,65,137,134,252,252,3,0,0,65,199,134,0,4,0,0,237,255,65,
-  139,20,222,65,252,247,60,198,65,137,150,252,252,3,0,0,65,199,134,0,4,0,0,
-  237,255,65,139,52,222,65,3,52,198,65,137,182,252,252,3,0,0,65,199,134,0,4,
-  0,0,237,255,139,3,72,15,182,216,72,131,195,4,65,252,255,36,223,248,5,255,
-  252,242,65,15,16,4,222,252,242,65,15,88,4,198,252,242,65,15,17,134,252,252,
-  3,0,0,255,139,3,72,15,182,216,72,131,195,4,65,252,255,36,223,248,6,185,237,
-  252,233,244,15,255,249,72,15,182,220,193,232,16,72,15,182,204,193,232,8,65,
-  139,116,222,4,65,139,84,198,4,129,252,254,239,15,132,244,247,129,252,250,
-  239,15,130,244,248,252,233,244,252,248,1,129,252,250,239,15,132,244,250,129,
-  252,250,239,15,131,244,252,252,242,65,15,42,4,222,252,242,65,15,92,4,198,
-  252,242,65,15,17,134,252,252,3,0,0,139,3,72,15,182,216,72,131,195,4,65,252,
-  255,36,223,248,2,129,252,250,239,15,130,244,251,255,65,139,52,222,65,43,52,
-  198,65,137,182,252,252,3,0,0,65,199,134,0,4,0,0,237,255,252,242,65,15,16,
-  4,222,252,242,65,15,92,4,198,252,242,65,15,17,134,252,252,3,0,0,255,249,72,
+  223,248,2,77,139,93,0,77,139,155,233,252,242,65,15,16,12,195,252,242,15,42,
+  198,252,242,15,94,193,252,242,65,15,17,134,252,252,3,0,0,139,3,72,15,182,
+  216,72,131,195,4,65,252,255,36,223,255,249,72,15,182,220,193,232,16,73,139,
+  52,222,65,129,124,253,222,4,239,15,130,244,247,65,129,124,253,222,4,239,15,
+  132,244,248,185,237,252,233,244,12,248,1,252,233,244,19,248,2,77,139,93,0,
+  77,139,155,233,65,139,20,131,255,249,72,15,182,220,193,232,16,72,15,182,204,
+  193,232,8,65,139,116,222,4,65,139,84,198,4,129,252,254,239,15,132,244,247,
+  129,252,250,239,15,130,244,248,252,233,244,252,248,1,129,252,250,239,15,132,
+  244,250,129,252,250,239,15,131,244,252,252,242,65,15,42,4,222,252,242,65,
+  15,88,4,198,252,242,65,15,17,134,252,252,3,0,0,139,3,72,15,182,216,72,131,
+  195,4,65,252,255,36,223,248,2,129,252,250,239,15,130,244,251,255,129,252,
+  250,239,15,133,244,252,252,242,65,15,42,12,198,252,242,65,15,16,4,222,252,
+  242,65,15,17,134,252,252,3,0,0,139,3,72,15,182,216,72,131,195,4,65,252,255,
+  36,223,248,4,255,65,139,20,222,65,252,247,60,198,65,137,134,252,252,3,0,0,
+  65,199,134,0,4,0,0,237,255,65,139,20,222,65,252,247,60,198,65,137,150,252,
+  252,3,0,0,65,199,134,0,4,0,0,237,255,65,139,52,222,65,3,52,198,65,137,182,
+  252,252,3,0,0,65,199,134,0,4,0,0,237,255,139,3,72,15,182,216,72,131,195,4,
+  65,252,255,36,223,248,5,255,252,233,244,19,255,252,242,65,15,16,4,222,252,
+  242,65,15,88,4,198,252,242,65,15,17,134,252,252,3,0,0,255,139,3,72,15,182,
+  216,72,131,195,4,65,252,255,36,223,248,6,185,237,252,233,244,15,255,249,72,
   15,182,220,193,232,16,72,15,182,204,193,232,8,65,139,116,222,4,65,139,84,
   198,4,129,252,254,239,15,132,244,247,129,252,250,239,15,130,244,248,252,233,
   244,252,248,1,129,252,250,239,15,132,244,250,129,252,250,239,15,131,244,252,
-  252,242,65,15,42,4,222,252,242,65,15,89,4,198,252,242,65,15,17,134,252,252,
+  252,242,65,15,42,4,222,252,242,65,15,92,4,198,252,242,65,15,17,134,252,252,
   3,0,0,139,3,72,15,182,216,72,131,195,4,65,252,255,36,223,248,2,129,252,250,
-  239,15,130,244,251,255,65,139,52,222,65,15,175,52,198,65,137,182,252,252,
-  3,0,0,65,199,134,0,4,0,0,237,255,252,242,65,15,16,4,222,252,242,65,15,89,
-  4,198,252,242,65,15,17,134,252,252,3,0,0,255,249,72,15,182,220,193,232,16,
-  72,15,182,204,193,232,8,65,139,116,222,4,65,139,84,198,4,129,252,254,239,
-  15,132,244,247,129,252,250,239,15,130,244,248,252,233,244,252,248,1,129,252,
-  250,239,15,132,244,250,129,252,250,239,15,131,244,252,252,242,65,15,42,4,
-  222,252,242,65,15,94,4,198,252,242,65,15,17,134,252,252,3,0,0,139,3,72,15,
-  182,216,72,131,195,4,65,252,255,36,223,248,2,129,252,250,239,15,130,244,251,
-  255,252,242,65,15,16,4,222,252,242,65,15,94,4,198,252,242,65,15,17,134,252,
-  252,3,0,0,255,249,193,232,8,72,15,183,216,193,232,16,77,139,93,0,77,139,155,
-  233,252,242,65,15,42,4,155,65,139,84,198,4,129,252,250,239,15,130,244,247,
-  129,252,250,239,15,133,244,248,252,242,73,15,42,12,198,248,1,252,233,244,
-  16,248,2,77,139,93,0,77,139,155,233,72,199,198,237,72,193,230,32,65,11,52,
-  155,73,139,20,198,72,199,193,237,252,233,244,17,255,249,72,15,182,220,193,
-  232,16,77,139,93,0,77,139,155,233,252,242,65,15,42,12,131,65,139,116,222,
-  4,129,252,254,239,15,130,244,247,129,252,254,239,15,133,244,248,252,242,73,
-  15,42,4,222,248,1,252,233,244,16,248,2,73,139,52,222,77,139,93,0,77,139,155,
-  233,72,199,194,237,72,193,226,32,65,11,20,131,72,199,193,237,252,233,244,
-  17,255,249,193,232,8,72,15,183,216,193,232,16,77,139,93,0,77,139,155,233,
-  252,242,65,15,16,4,219,65,139,84,198,4,129,252,250,239,15,130,244,247,129,
-  252,250,239,15,133,244,248,252,242,73,15,42,12,198,248,1,252,233,244,16,248,
-  2,77,139,93,0,77,139,155,233,73,139,52,219,73,139,20,198,72,199,193,237,252,
-  233,244,17,255,249,193,232,8,72,15,183,216,193,232,16,77,139,93,0,77,139,
-  155,233,252,242,65,15,16,12,195,65,139,116,222,4,129,252,254,239,15,130,244,
+  239,15,130,244,251,255,65,139,52,222,65,43,52,198,65,137,182,252,252,3,0,
+  0,65,199,134,0,4,0,0,237,255,252,242,65,15,16,4,222,252,242,65,15,92,4,198,
+  252,242,65,15,17,134,252,252,3,0,0,255,249,72,15,182,220,193,232,16,72,15,
+  182,204,193,232,8,65,139,116,222,4,65,139,84,198,4,129,252,254,239,15,132,
+  244,247,129,252,250,239,15,130,244,248,252,233,244,252,248,1,129,252,250,
+  239,15,132,244,250,129,252,250,239,15,131,244,252,252,242,65,15,42,4,222,
+  252,242,65,15,89,4,198,252,242,65,15,17,134,252,252,3,0,0,139,3,72,15,182,
+  216,72,131,195,4,65,252,255,36,223,248,2,129,252,250,239,15,130,244,251,255,
+  65,139,52,222,65,15,175,52,198,65,137,182,252,252,3,0,0,65,199,134,0,4,0,
+  0,237,255,252,242,65,15,16,4,222,252,242,65,15,89,4,198,252,242,65,15,17,
+  134,252,252,3,0,0,255,249,72,15,182,220,193,232,16,72,15,182,204,193,232,
+  8,65,139,116,222,4,65,139,84,198,4,129,252,254,239,15,132,244,247,129,252,
+  250,239,15,130,244,248,252,233,244,252,248,1,129,252,250,239,15,132,244,250,
+  129,252,250,239,15,131,244,252,252,242,65,15,42,4,222,252,242,65,15,94,4,
+  198,252,242,65,15,17,134,252,252,3,0,0,139,3,72,15,182,216,72,131,195,4,65,
+  252,255,36,223,248,2,129,252,250,239,15,130,244,251,255,252,242,65,15,16,
+  4,222,252,242,65,15,94,4,198,252,242,65,15,17,134,252,252,3,0,0,255,249,193,
+  232,8,72,15,183,216,193,232,16,77,139,93,0,77,139,155,233,252,242,65,15,42,
+  4,155,65,139,84,198,4,129,252,250,239,15,130,244,247,129,252,250,239,15,133,
+  244,248,252,242,73,15,42,12,198,248,1,252,233,244,16,248,2,77,139,93,0,77,
+  139,155,233,72,199,198,237,72,193,230,32,65,11,52,155,73,139,20,198,72,199,
+  193,237,252,233,244,17,255,249,72,15,182,220,193,232,16,77,139,93,0,77,139,
+  155,233,252,242,65,15,42,12,131,65,139,116,222,4,129,252,254,239,15,130,244,
   247,129,252,254,239,15,133,244,248,252,242,73,15,42,4,222,248,1,252,233,244,
-  16,248,2,77,139,93,0,77,139,155,233,73,139,20,195,73,139,52,222,72,199,193,
-  237,252,233,244,17,255,249,193,232,8,72,15,183,216,193,232,16,73,139,52,222,
-  73,139,20,198,72,199,193,237,252,233,244,17,255
+  16,248,2,73,139,52,222,77,139,93,0,77,139,155,233,72,199,194,237,72,193,226,
+  32,65,11,20,131,72,199,193,237,252,233,244,17,255,249,193,232,8,72,15,183,
+  216,193,232,16,77,139,93,0,77,139,155,233,252,242,65,15,16,4,219,65,139,84,
+  198,4,129,252,250,239,15,130,244,247,129,252,250,239,15,133,244,248,252,242,
+  73,15,42,12,198,248,1,252,233,244,16,248,2,77,139,93,0,77,139,155,233,73,
+  139,52,219,73,139,20,198,72,199,193,237,252,233,244,17,255,249,193,232,8,
+  72,15,183,216,193,232,16,77,139,93,0,77,139,155,233,252,242,65,15,16,12,195,
+  65,139,116,222,4,129,252,254,239,15,130,244,247,129,252,254,239,15,133,244,
+  248,252,242,73,15,42,4,222,248,1,252,233,244,16,248,2,77,139,93,0,77,139,
+  155,233,73,139,20,195,73,139,52,222,72,199,193,237,252,233,244,17,255,249,
+  193,232,8,72,15,183,216,193,232,16,73,139,52,222,73,139,20,198,72,199,193,
+  237,252,233,244,17,255,249,144,255
 };
 
-#line 52 "src/interpreter/bytecode-interpreter.dasc"
+#line 75 "src/interpreter/bytecode-interpreter.dasc"
 //|.globals GLBNAME_
 enum {
   GLBNAME_InterpArithIntL,
@@ -269,7 +289,7 @@ enum {
   GLBNAME_InterpReturn,
   GLBNAME__MAX
 };
-#line 53 "src/interpreter/bytecode-interpreter.dasc"
+#line 76 "src/interpreter/bytecode-interpreter.dasc"
 //|.globalnames glbnames
 static const char *const glbnames[] = {
   "InterpArithIntL",
@@ -285,17 +305,17 @@ static const char *const glbnames[] = {
   "InterpReturn",
   (const char *)0
 };
-#line 54 "src/interpreter/bytecode-interpreter.dasc"
+#line 77 "src/interpreter/bytecode-interpreter.dasc"
 //|.externnames extnames
 static const char *const extnames[] = {
   "InterpreterDoArithmetic",
-  "pow",
+  "Pow",
   "InterpreterPow",
   "InterpreterDivByZero",
   "InterpreterModByReal",
   (const char *)0
 };
-#line 55 "src/interpreter/bytecode-interpreter.dasc"
+#line 78 "src/interpreter/bytecode-interpreter.dasc"
 
 //|.macro prolog,reserve
 //|.if 0
@@ -330,20 +350,20 @@ inline bool CheckAddress( std::uintptr_t addr ) {
 }
 
 //|.macro fcall,FUNC
-//|| if(CheckAddress(reinterpret_cast<std::uintptr_t>(&FUNC))) {
+//|| if(CheckAddress(reinterpret_cast<std::uintptr_t>(FUNC))) {
 //|    call extern FUNC
 //|| } else {
-//||   lava_debug(NORMAL,lava_warn("Function %s's addr %p doesn't have address located in 0-2GB","FUNC",&FUNC););
+//||   lava_info("%s","Function FUNC address is not in 0-2GB");
 //|.if 0
 // I don't know whether this is faster than use rax , need profile. I see
 // this one is used in MoarVM. It uses memory address to workaraoud the
 // address space problem. But I am kind of unsure about it since it maybe
 // because MoarVM already allocate rax for other things
 //|9:
-//|.dword (std::uint32_t)((std::uintptr_t)(&FUNC)),(std::uint32_t)((std::uintptr_t)(&FUNC))
+//|.dword (std::uint32_t)((std::uintptr_t)(FUNC)),(std::uint32_t)((std::uintptr_t)((FUNC)>>32))
 //|    call qword[<9]
 //|.else
-//|    mov64 rax,&FUNC
+//|    mov64 rax, reinterpret_cast<std::uintptr_t>(FUNC)
 //|    call rax
 //|.endif
 //|| }
@@ -492,14 +512,14 @@ inline bool CheckAddress( std::uintptr_t addr ) {
 // need to worry about GC move the reference
 //|.macro LdInt,reg,index
 //|  mov T1,qword [PROTO]
-//|  mov T1,qword [T1+PrototypeLayout::IntTableOffset]
+//|  mov T1,qword [T1+PrototypeLayout::kIntTableOffset]
 //|  mov reg, [T1+index*4]
 //|.endmacro
 
 // TODO:: Optimize this piece of shit
 //|.macro LdIntV,reg,regL,index
 //|  mov T1,qword [PROTO]
-//|  mov T1,qword [T1+Prototype::IntTableOffset]
+//|  mov T1,qword [T1+PrototypeLayout::kIntTableOffset]
 
 //|.if 1
 //|  mov reg, Value::FLAG_INTEGER
@@ -514,20 +534,20 @@ inline bool CheckAddress( std::uintptr_t addr ) {
 
 //|.macro LdReal,reg,index
 //|  mov T1,qword [PROTO]
-//|  mov T1,qword [T1+PrototypeLayout::RealTableOffset]
+//|  mov T1,qword [T1+PrototypeLayout::kRealTableOffset]
 //|  movsd reg,qword[T1+index*8]
 //|.endmacro
 
 //|.macro LdRealV,reg,index
 //|  mov T1,qword [PROTO]
-//|  mov T1,qword [T1+PrototypeLayout::RealTableOffset]
+//|  mov T1,qword [T1+PrototypeLayout::kRealTableOffset]
 // not a xmm register
 //|  mov reg,qword[T1+index*8]
 //|.endmacro
 
 //|.macro LdInt2Real,reg,index
 //|  mov T1,qword [PROTO]
-//|  mov T1,qword [T1+PrototypeLayout::IntTableOffset]
+//|  mov T1,qword [T1+PrototypeLayout::kIntTableOffset]
 //|  cvtsi2sd reg, dword [T1+index*4]
 //|.endmacro
 
@@ -594,67 +614,67 @@ void GenerateHelper( BuildContext* bctx ) {
   //|  mov CARG1,SANDBOX
   //|  LdInt CARG2L,ARG1
   //|  fcall InterpreterDoArithmetic
-  dasm_put(Dst, 0, PrototypeLayout::IntTableOffset);
-   if(CheckAddress(reinterpret_cast<std::uintptr_t>(&InterpreterDoArithmetic))) {
+  dasm_put(Dst, 0, PrototypeLayout::kIntTableOffset);
+   if(CheckAddress(reinterpret_cast<std::uintptr_t>(InterpreterDoArithmetic))) {
   dasm_put(Dst, 18);
    } else {
-     lava_debug(NORMAL,lava_warn("Function %s's addr %p doesn't have address located in 0-2GB","InterpreterDoArithmetic",&InterpreterDoArithmetic););
-  dasm_put(Dst, 23, (unsigned int)(&InterpreterDoArithmetic), (unsigned int)((&InterpreterDoArithmetic)>>32));
+     lava_info("%s","Function InterpreterDoArithmetic address is not in 0-2GB");
+  dasm_put(Dst, 23, (unsigned int)(reinterpret_cast<std::uintptr_t>(InterpreterDoArithmetic)), (unsigned int)((reinterpret_cast<std::uintptr_t>(InterpreterDoArithmetic))>>32));
    }
-#line 353 "src/interpreter/bytecode-interpreter.dasc"
+#line 376 "src/interpreter/bytecode-interpreter.dasc"
   //|  arith_handle_ret
   dasm_put(Dst, 31, Value::TAG_NULL);
-#line 354 "src/interpreter/bytecode-interpreter.dasc"
+#line 377 "src/interpreter/bytecode-interpreter.dasc"
 
   //|->InterpArithIntR:
   //|  mov CARG1,SANDBOX
   //|  LdInt CARG3L,ARG2
   //|  fcall InterpreterDoArithmetic
-  dasm_put(Dst, 72, PrototypeLayout::IntTableOffset);
-   if(CheckAddress(reinterpret_cast<std::uintptr_t>(&InterpreterDoArithmetic))) {
+  dasm_put(Dst, 72, PrototypeLayout::kIntTableOffset);
+   if(CheckAddress(reinterpret_cast<std::uintptr_t>(InterpreterDoArithmetic))) {
   dasm_put(Dst, 18);
    } else {
-     lava_debug(NORMAL,lava_warn("Function %s's addr %p doesn't have address located in 0-2GB","InterpreterDoArithmetic",&InterpreterDoArithmetic););
-  dasm_put(Dst, 23, (unsigned int)(&InterpreterDoArithmetic), (unsigned int)((&InterpreterDoArithmetic)>>32));
+     lava_info("%s","Function InterpreterDoArithmetic address is not in 0-2GB");
+  dasm_put(Dst, 23, (unsigned int)(reinterpret_cast<std::uintptr_t>(InterpreterDoArithmetic)), (unsigned int)((reinterpret_cast<std::uintptr_t>(InterpreterDoArithmetic))>>32));
    }
-#line 359 "src/interpreter/bytecode-interpreter.dasc"
+#line 382 "src/interpreter/bytecode-interpreter.dasc"
   //|  arith_handle_ret
   dasm_put(Dst, 31, Value::TAG_NULL);
-#line 360 "src/interpreter/bytecode-interpreter.dasc"
+#line 383 "src/interpreter/bytecode-interpreter.dasc"
 
   //|->InterpArithRealL:
   //|  mov CARG1,SANDBOX
   //|  LdReal xmm0,ARG1
   //|  movd CARG2,xmm0
   //|  fcall InterpreterDoArithmetic
-  dasm_put(Dst, 90, PrototypeLayout::RealTableOffset);
-   if(CheckAddress(reinterpret_cast<std::uintptr_t>(&InterpreterDoArithmetic))) {
+  dasm_put(Dst, 90, PrototypeLayout::kRealTableOffset);
+   if(CheckAddress(reinterpret_cast<std::uintptr_t>(InterpreterDoArithmetic))) {
   dasm_put(Dst, 18);
    } else {
-     lava_debug(NORMAL,lava_warn("Function %s's addr %p doesn't have address located in 0-2GB","InterpreterDoArithmetic",&InterpreterDoArithmetic););
-  dasm_put(Dst, 23, (unsigned int)(&InterpreterDoArithmetic), (unsigned int)((&InterpreterDoArithmetic)>>32));
+     lava_info("%s","Function InterpreterDoArithmetic address is not in 0-2GB");
+  dasm_put(Dst, 23, (unsigned int)(reinterpret_cast<std::uintptr_t>(InterpreterDoArithmetic)), (unsigned int)((reinterpret_cast<std::uintptr_t>(InterpreterDoArithmetic))>>32));
    }
-#line 366 "src/interpreter/bytecode-interpreter.dasc"
+#line 389 "src/interpreter/bytecode-interpreter.dasc"
   //|  arith_handle_ret
   dasm_put(Dst, 31, Value::TAG_NULL);
-#line 367 "src/interpreter/bytecode-interpreter.dasc"
+#line 390 "src/interpreter/bytecode-interpreter.dasc"
 
   //|->InterpArithRealR:
   //|  mov CARG1,SANDBOX
   //|  LdReal xmm0,ARG2
   //|  movd CARG3,xmm0
   //|  fcall InterpreterDoArithmetic
-  dasm_put(Dst, 116, PrototypeLayout::RealTableOffset);
-   if(CheckAddress(reinterpret_cast<std::uintptr_t>(&InterpreterDoArithmetic))) {
+  dasm_put(Dst, 116, PrototypeLayout::kRealTableOffset);
+   if(CheckAddress(reinterpret_cast<std::uintptr_t>(InterpreterDoArithmetic))) {
   dasm_put(Dst, 18);
    } else {
-     lava_debug(NORMAL,lava_warn("Function %s's addr %p doesn't have address located in 0-2GB","InterpreterDoArithmetic",&InterpreterDoArithmetic););
-  dasm_put(Dst, 23, (unsigned int)(&InterpreterDoArithmetic), (unsigned int)((&InterpreterDoArithmetic)>>32));
+     lava_info("%s","Function InterpreterDoArithmetic address is not in 0-2GB");
+  dasm_put(Dst, 23, (unsigned int)(reinterpret_cast<std::uintptr_t>(InterpreterDoArithmetic)), (unsigned int)((reinterpret_cast<std::uintptr_t>(InterpreterDoArithmetic))>>32));
    }
-#line 373 "src/interpreter/bytecode-interpreter.dasc"
+#line 396 "src/interpreter/bytecode-interpreter.dasc"
   //|  arith_handle_ret
   dasm_put(Dst, 31, Value::TAG_NULL);
-#line 374 "src/interpreter/bytecode-interpreter.dasc"
+#line 397 "src/interpreter/bytecode-interpreter.dasc"
 
   //|->InterpArithVV:
   //|  mov CARG1, SANDBOX
@@ -662,46 +682,46 @@ void GenerateHelper( BuildContext* bctx ) {
   //|  mov CARG3, qword [STK+ARG2*8]
   //|  fcall InterpreterDoArithmetic
   dasm_put(Dst, 142);
-   if(CheckAddress(reinterpret_cast<std::uintptr_t>(&InterpreterDoArithmetic))) {
+   if(CheckAddress(reinterpret_cast<std::uintptr_t>(InterpreterDoArithmetic))) {
   dasm_put(Dst, 18);
    } else {
-     lava_debug(NORMAL,lava_warn("Function %s's addr %p doesn't have address located in 0-2GB","InterpreterDoArithmetic",&InterpreterDoArithmetic););
-  dasm_put(Dst, 23, (unsigned int)(&InterpreterDoArithmetic), (unsigned int)((&InterpreterDoArithmetic)>>32));
+     lava_info("%s","Function InterpreterDoArithmetic address is not in 0-2GB");
+  dasm_put(Dst, 23, (unsigned int)(reinterpret_cast<std::uintptr_t>(InterpreterDoArithmetic)), (unsigned int)((reinterpret_cast<std::uintptr_t>(InterpreterDoArithmetic))>>32));
    }
-#line 380 "src/interpreter/bytecode-interpreter.dasc"
+#line 403 "src/interpreter/bytecode-interpreter.dasc"
   //|  arith_handle_ret
   dasm_put(Dst, 31, Value::TAG_NULL);
-#line 381 "src/interpreter/bytecode-interpreter.dasc"
+#line 404 "src/interpreter/bytecode-interpreter.dasc"
 
   //|->InterpPowFast:
-  //|  fcall pow
+  //|  fcall Pow 
   dasm_put(Dst, 156);
-   if(CheckAddress(reinterpret_cast<std::uintptr_t>(&pow))) {
+   if(CheckAddress(reinterpret_cast<std::uintptr_t>(Pow))) {
   dasm_put(Dst, 159);
    } else {
-     lava_debug(NORMAL,lava_warn("Function %s's addr %p doesn't have address located in 0-2GB","pow",&pow););
-  dasm_put(Dst, 23, (unsigned int)(&pow), (unsigned int)((&pow)>>32));
+     lava_info("%s","Function Pow address is not in 0-2GB");
+  dasm_put(Dst, 23, (unsigned int)(reinterpret_cast<std::uintptr_t>(Pow)), (unsigned int)((reinterpret_cast<std::uintptr_t>(Pow))>>32));
    }
-#line 384 "src/interpreter/bytecode-interpreter.dasc"
+#line 407 "src/interpreter/bytecode-interpreter.dasc"
   //|  movsd qword [ACC],xmm0
   //|  Dispatch
   dasm_put(Dst, 164);
-#line 386 "src/interpreter/bytecode-interpreter.dasc"
+#line 409 "src/interpreter/bytecode-interpreter.dasc"
 
   //|->InterpPowSlow:
   //|  mov CARG1, SANDBOX
   //|  fcall InterpreterPow
   dasm_put(Dst, 191);
-   if(CheckAddress(reinterpret_cast<std::uintptr_t>(&InterpreterPow))) {
+   if(CheckAddress(reinterpret_cast<std::uintptr_t>(InterpreterPow))) {
   dasm_put(Dst, 197);
    } else {
-     lava_debug(NORMAL,lava_warn("Function %s's addr %p doesn't have address located in 0-2GB","InterpreterPow",&InterpreterPow););
-  dasm_put(Dst, 23, (unsigned int)(&InterpreterPow), (unsigned int)((&InterpreterPow)>>32));
+     lava_info("%s","Function InterpreterPow address is not in 0-2GB");
+  dasm_put(Dst, 23, (unsigned int)(reinterpret_cast<std::uintptr_t>(InterpreterPow)), (unsigned int)((reinterpret_cast<std::uintptr_t>(InterpreterPow))>>32));
    }
-#line 390 "src/interpreter/bytecode-interpreter.dasc"
+#line 413 "src/interpreter/bytecode-interpreter.dasc"
   //|  arith_handle_ret
   dasm_put(Dst, 31, Value::TAG_NULL);
-#line 391 "src/interpreter/bytecode-interpreter.dasc"
+#line 414 "src/interpreter/bytecode-interpreter.dasc"
 
   /* -------------------------------------------
    * Interp Arithmetic Exception               |
@@ -711,32 +731,32 @@ void GenerateHelper( BuildContext* bctx ) {
   //|  mov CARG2,[PC-4]
   //|  fcall InterpreterDivByZero
   dasm_put(Dst, 202);
-   if(CheckAddress(reinterpret_cast<std::uintptr_t>(&InterpreterDivByZero))) {
+   if(CheckAddress(reinterpret_cast<std::uintptr_t>(InterpreterDivByZero))) {
   dasm_put(Dst, 213);
    } else {
-     lava_debug(NORMAL,lava_warn("Function %s's addr %p doesn't have address located in 0-2GB","InterpreterDivByZero",&InterpreterDivByZero););
-  dasm_put(Dst, 23, (unsigned int)(&InterpreterDivByZero), (unsigned int)((&InterpreterDivByZero)>>32));
+     lava_info("%s","Function InterpreterDivByZero address is not in 0-2GB");
+  dasm_put(Dst, 23, (unsigned int)(reinterpret_cast<std::uintptr_t>(InterpreterDivByZero)), (unsigned int)((reinterpret_cast<std::uintptr_t>(InterpreterDivByZero))>>32));
    }
-#line 399 "src/interpreter/bytecode-interpreter.dasc"
+#line 422 "src/interpreter/bytecode-interpreter.dasc"
   //|  jmp ->InterpFail
   dasm_put(Dst, 218);
-#line 400 "src/interpreter/bytecode-interpreter.dasc"
+#line 423 "src/interpreter/bytecode-interpreter.dasc"
 
   //|->ModByReal:
   //|  mov CARG1,SANDBOX
   //|  mov CARG2,[PC-4]
   //|  fcall InterpreterModByReal
   dasm_put(Dst, 223);
-   if(CheckAddress(reinterpret_cast<std::uintptr_t>(&InterpreterModByReal))) {
+   if(CheckAddress(reinterpret_cast<std::uintptr_t>(InterpreterModByReal))) {
   dasm_put(Dst, 234);
    } else {
-     lava_debug(NORMAL,lava_warn("Function %s's addr %p doesn't have address located in 0-2GB","InterpreterModByReal",&InterpreterModByReal););
-  dasm_put(Dst, 23, (unsigned int)(&InterpreterModByReal), (unsigned int)((&InterpreterModByReal)>>32));
+     lava_info("%s","Function InterpreterModByReal address is not in 0-2GB");
+  dasm_put(Dst, 23, (unsigned int)(reinterpret_cast<std::uintptr_t>(InterpreterModByReal)), (unsigned int)((reinterpret_cast<std::uintptr_t>(InterpreterModByReal))>>32));
    }
-#line 405 "src/interpreter/bytecode-interpreter.dasc"
+#line 428 "src/interpreter/bytecode-interpreter.dasc"
   //|  jmp ->InterpFail
   dasm_put(Dst, 218);
-#line 406 "src/interpreter/bytecode-interpreter.dasc"
+#line 429 "src/interpreter/bytecode-interpreter.dasc"
 
 
   /* -------------------------------------------
@@ -747,7 +767,7 @@ void GenerateHelper( BuildContext* bctx ) {
   //|  epilog
   //|  ret
   dasm_put(Dst, 239);
-#line 415 "src/interpreter/bytecode-interpreter.dasc"
+#line 438 "src/interpreter/bytecode-interpreter.dasc"
 
   //|->InterpReturn:
   //|  mov rax, qword [ACC]
@@ -756,7 +776,7 @@ void GenerateHelper( BuildContext* bctx ) {
   //|  epilog
   //|  ret
   dasm_put(Dst, 246, SandboxLayout::kRetOffset);
-#line 422 "src/interpreter/bytecode-interpreter.dasc"
+#line 445 "src/interpreter/bytecode-interpreter.dasc"
 }
 
 void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
@@ -776,19 +796,19 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
       //|  mov dword [STK+ACCFIDX],Value::FLAG_NULL
       //|  jmp ->InterpReturn
       dasm_put(Dst, 271,  bc, Value::FLAG_NULL);
-#line 440 "src/interpreter/bytecode-interpreter.dasc"
+#line 463 "src/interpreter/bytecode-interpreter.dasc"
       break;
     /** =====================================================
      *  Register Move                                       |
      *  ====================================================*/
-    case BC_MOV:
+    case BC_MOVE:
       //|=> bc:
       //|  instr_E
       //|  mov RREG,qword [STK+ARG2*8]
       //|  mov qword [STK+ARG1*8],RREG
       //|  Dispatch
       dasm_put(Dst, 285,  bc);
-#line 450 "src/interpreter/bytecode-interpreter.dasc"
+#line 473 "src/interpreter/bytecode-interpreter.dasc"
       break;
     /** =====================================================
      *  Constant Loading                                    |
@@ -799,8 +819,8 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
       //|  LdInt LREGL,ARG2
       //|  StInt ARG1,LREGL
       //|  Dispatch
-      dasm_put(Dst, 317,  bc, PrototypeLayout::IntTableOffset, Value::FLAG_INTEGER);
-#line 460 "src/interpreter/bytecode-interpreter.dasc"
+      dasm_put(Dst, 317,  bc, PrototypeLayout::kIntTableOffset, Value::FLAG_INTEGER);
+#line 483 "src/interpreter/bytecode-interpreter.dasc"
       break;
 
     case BC_LOAD0:
@@ -809,7 +829,7 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
       //|  StInt ARG1,0
       //|  Dispatch
       dasm_put(Dst, 363,  bc, Value::FLAG_INTEGER);
-#line 467 "src/interpreter/bytecode-interpreter.dasc"
+#line 490 "src/interpreter/bytecode-interpreter.dasc"
       break;
 
     case BC_LOAD1:
@@ -818,7 +838,7 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
       //|  StInt ARG1,1
       //|  Dispatch
       dasm_put(Dst, 401,  bc, Value::FLAG_INTEGER);
-#line 474 "src/interpreter/bytecode-interpreter.dasc"
+#line 497 "src/interpreter/bytecode-interpreter.dasc"
       break;
 
     case BC_LOADN1:
@@ -827,7 +847,7 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
       //|  StInt ARG1,-1
       //|  Dispatch
       dasm_put(Dst, 439,  bc, Value::FLAG_INTEGER);
-#line 481 "src/interpreter/bytecode-interpreter.dasc"
+#line 504 "src/interpreter/bytecode-interpreter.dasc"
       break;
 
     case BC_LOADR:
@@ -836,8 +856,8 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
       //|  LdReal xmm0,ARG2
       //|  movsd qword [STK+ARG1*8],xmm0
       //|  Dispatch
-      dasm_put(Dst, 481,  bc, PrototypeLayout::RealTableOffset);
-#line 489 "src/interpreter/bytecode-interpreter.dasc"
+      dasm_put(Dst, 481,  bc, PrototypeLayout::kRealTableOffset);
+#line 512 "src/interpreter/bytecode-interpreter.dasc"
       break;
 
     case BC_LOADNULL:
@@ -846,7 +866,7 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
       //|  mov dword [STK+ARG1*8+4],Value::FLAG_NULL
       //|  Dispatch
       dasm_put(Dst, 527,  bc, Value::FLAG_NULL);
-#line 496 "src/interpreter/bytecode-interpreter.dasc"
+#line 519 "src/interpreter/bytecode-interpreter.dasc"
       break;
 
     case BC_LOADTRUE:
@@ -855,7 +875,7 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
       //|  mov dword [STK+ARG1*8+4],Value::FLAG_TRUE
       //|  Dispatch
       dasm_put(Dst, 527,  bc, Value::FLAG_TRUE);
-#line 503 "src/interpreter/bytecode-interpreter.dasc"
+#line 526 "src/interpreter/bytecode-interpreter.dasc"
       break;
 
     case BC_LOADFALSE:
@@ -864,7 +884,7 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
       //|  mov dword [STK+ARG1*8+4],Value::FLAG_FALSE
       //|  Dispatch
       dasm_put(Dst, 527,  bc, Value::FLAG_FALSE);
-#line 510 "src/interpreter/bytecode-interpreter.dasc"
+#line 533 "src/interpreter/bytecode-interpreter.dasc"
       break;
 
     /** =====================================================
@@ -916,7 +936,7 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
     //|    StIntACC edx
     //|| } else {
     //|    instr LREGL,RREGL
-    //|    StIntACC LREAL
+    //|    StIntACC LREGL
     //|| }
     //|  Dispatch
     //|.endmacro
@@ -936,16 +956,16 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
       //|  arith_iv_real,addsd
       //|2:
       //|  arith_iv_int,add
-      dasm_put(Dst, 554,  bc, Value::FLAG_REAL, Value::FLAG_INTEGER, BC_ADDIV, PrototypeLayout::IntTableOffset, PrototypeLayout::IntTableOffset);
+      dasm_put(Dst, 554,  bc, Value::FLAG_REAL, Value::FLAG_INTEGER, BC_ADDIV, PrototypeLayout::kIntTableOffset, PrototypeLayout::kIntTableOffset);
        if( arith_div ) {
       dasm_put(Dst, 665, Value::FLAG_INTEGER);
        } else if( arith_mod ) {
       dasm_put(Dst, 695, Value::FLAG_INTEGER);
        } else {
-      dasm_put(Dst, 725, LREAL, Value::FLAG_INTEGER);
+      dasm_put(Dst, 725, Value::FLAG_INTEGER);
        }
       dasm_put(Dst, 56);
-#line 581 "src/interpreter/bytecode-interpreter.dasc"
+#line 604 "src/interpreter/bytecode-interpreter.dasc"
       break;
 
     case BC_ADDRV:
@@ -955,8 +975,8 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
       //|  arith_rv_real,addsd
       //|2:
       //|  arith_rv_int,addsd
-      dasm_put(Dst, 745, bc, Value::FLAG_REAL, Value::FLAG_INTEGER, BC_ADDRV, PrototypeLayout::RealTableOffset, PrototypeLayout::RealTableOffset);
-#line 590 "src/interpreter/bytecode-interpreter.dasc"
+      dasm_put(Dst, 744, bc, Value::FLAG_REAL, Value::FLAG_INTEGER, BC_ADDRV, PrototypeLayout::kRealTableOffset, PrototypeLayout::kRealTableOffset);
+#line 613 "src/interpreter/bytecode-interpreter.dasc"
       break;
 
     case BC_SUBIV:
@@ -966,16 +986,16 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
       //|  arith_iv_real,subsd
       //|2:
       //|  arith_iv_int ,sub
-      dasm_put(Dst, 895, bc, Value::FLAG_REAL, Value::FLAG_INTEGER, BC_SUBIV, PrototypeLayout::IntTableOffset, PrototypeLayout::IntTableOffset);
+      dasm_put(Dst, 894, bc, Value::FLAG_REAL, Value::FLAG_INTEGER, BC_SUBIV, PrototypeLayout::kIntTableOffset, PrototypeLayout::kIntTableOffset);
        if( arith_div ) {
       dasm_put(Dst, 665, Value::FLAG_INTEGER);
        } else if( arith_mod ) {
       dasm_put(Dst, 695, Value::FLAG_INTEGER);
        } else {
-      dasm_put(Dst, 1006, LREAL, Value::FLAG_INTEGER);
+      dasm_put(Dst, 1005, Value::FLAG_INTEGER);
        }
       dasm_put(Dst, 56);
-#line 599 "src/interpreter/bytecode-interpreter.dasc"
+#line 622 "src/interpreter/bytecode-interpreter.dasc"
       break;
 
     case BC_SUBRV:
@@ -985,8 +1005,8 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
       //|  arith_rv_real,subsd
       //|2:
       //|  arith_rv_int ,subsd
-      dasm_put(Dst, 1026, bc, Value::FLAG_REAL, Value::FLAG_INTEGER, BC_SUBRV, PrototypeLayout::RealTableOffset, PrototypeLayout::RealTableOffset);
-#line 608 "src/interpreter/bytecode-interpreter.dasc"
+      dasm_put(Dst, 1024, bc, Value::FLAG_REAL, Value::FLAG_INTEGER, BC_SUBRV, PrototypeLayout::kRealTableOffset, PrototypeLayout::kRealTableOffset);
+#line 631 "src/interpreter/bytecode-interpreter.dasc"
       break;
 
     case BC_MULIV:
@@ -996,16 +1016,16 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
       //|  arith_iv_real,mulsd
       //|2:
       //|  arith_iv_int,imul
-      dasm_put(Dst, 1176, bc, Value::FLAG_REAL, Value::FLAG_INTEGER, BC_MULIV, PrototypeLayout::IntTableOffset, PrototypeLayout::IntTableOffset);
+      dasm_put(Dst, 1174, bc, Value::FLAG_REAL, Value::FLAG_INTEGER, BC_MULIV, PrototypeLayout::kIntTableOffset, PrototypeLayout::kIntTableOffset);
        if( arith_div ) {
       dasm_put(Dst, 665, Value::FLAG_INTEGER);
        } else if( arith_mod ) {
       dasm_put(Dst, 695, Value::FLAG_INTEGER);
        } else {
-      dasm_put(Dst, 1287, LREAL, Value::FLAG_INTEGER);
+      dasm_put(Dst, 1285, Value::FLAG_INTEGER);
        }
       dasm_put(Dst, 56);
-#line 617 "src/interpreter/bytecode-interpreter.dasc"
+#line 640 "src/interpreter/bytecode-interpreter.dasc"
       break;
 
     case BC_MULRV:
@@ -1015,8 +1035,8 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
       //|  arith_rv_real,mulsd
       //|2:
       //|  arith_rv_int,mulsd
-      dasm_put(Dst, 1309, bc, Value::FLAG_REAL, Value::FLAG_INTEGER, BC_MULRV, PrototypeLayout::RealTableOffset, PrototypeLayout::RealTableOffset);
-#line 626 "src/interpreter/bytecode-interpreter.dasc"
+      dasm_put(Dst, 1306, bc, Value::FLAG_REAL, Value::FLAG_INTEGER, BC_MULRV, PrototypeLayout::kRealTableOffset, PrototypeLayout::kRealTableOffset);
+#line 649 "src/interpreter/bytecode-interpreter.dasc"
       break;
 
     case BC_DIVIV:
@@ -1027,16 +1047,16 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
       //|  arith_iv_real,mulsd
       //|2:
       //|  arith_iv_int,imul
-      dasm_put(Dst, 1176, bc, Value::FLAG_REAL, Value::FLAG_INTEGER, BC_DIVIV, PrototypeLayout::IntTableOffset, PrototypeLayout::IntTableOffset);
+      dasm_put(Dst, 1174, bc, Value::FLAG_REAL, Value::FLAG_INTEGER, BC_DIVIV, PrototypeLayout::kIntTableOffset, PrototypeLayout::kIntTableOffset);
        if( arith_div ) {
       dasm_put(Dst, 665, Value::FLAG_INTEGER);
        } else if( arith_mod ) {
       dasm_put(Dst, 695, Value::FLAG_INTEGER);
        } else {
-      dasm_put(Dst, 1287, LREAL, Value::FLAG_INTEGER);
+      dasm_put(Dst, 1285, Value::FLAG_INTEGER);
        }
       dasm_put(Dst, 56);
-#line 636 "src/interpreter/bytecode-interpreter.dasc"
+#line 659 "src/interpreter/bytecode-interpreter.dasc"
       break;
 
     case BC_DIVRV:
@@ -1047,8 +1067,8 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
       //|  arith_rv_real,divsd
       //|2:
       //|  arith_rv_int,divsd
-      dasm_put(Dst, 1459, bc, Value::FLAG_REAL, Value::FLAG_INTEGER, BC_DIVRV, PrototypeLayout::RealTableOffset, PrototypeLayout::RealTableOffset);
-#line 646 "src/interpreter/bytecode-interpreter.dasc"
+      dasm_put(Dst, 1456, bc, Value::FLAG_REAL, Value::FLAG_INTEGER, BC_DIVRV, PrototypeLayout::kRealTableOffset, PrototypeLayout::kRealTableOffset);
+#line 669 "src/interpreter/bytecode-interpreter.dasc"
       break;
 
     case BC_MODIV:
@@ -1059,25 +1079,16 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
       //|  jmp ->ModByReal
       //|2:
       //|  arith_iv_int,imul
-      dasm_put(Dst, 1609, bc, Value::FLAG_REAL, Value::FLAG_INTEGER, BC_MODIV, PrototypeLayout::IntTableOffset);
+      dasm_put(Dst, 1606, bc, Value::FLAG_REAL, Value::FLAG_INTEGER, BC_MODIV, PrototypeLayout::kIntTableOffset);
        if( arith_div ) {
       dasm_put(Dst, 665, Value::FLAG_INTEGER);
        } else if( arith_mod ) {
       dasm_put(Dst, 695, Value::FLAG_INTEGER);
        } else {
-      dasm_put(Dst, 1287, LREAL, Value::FLAG_INTEGER);
+      dasm_put(Dst, 1285, Value::FLAG_INTEGER);
        }
       dasm_put(Dst, 56);
-#line 656 "src/interpreter/bytecode-interpreter.dasc"
-      break;
-
-    case BC_MODRV:
-      // we should not see this type of bytecode since we cannot have
-      // mod between real numbers
-      //|=>bc:
-      //|  jmp ->ModByReal
-      dasm_put(Dst, 1673, bc);
-#line 663 "src/interpreter/bytecode-interpreter.dasc"
+#line 679 "src/interpreter/bytecode-interpreter.dasc"
       break;
 
     /* =========================================================
@@ -1151,16 +1162,16 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
       //|  arith_vi_real addsd
       //|2:
       //|  arith_vi_int  add
-      dasm_put(Dst, 1679,  bc, Value::FLAG_REAL, Value::FLAG_INTEGER, BC_ADDVI, PrototypeLayout::IntTableOffset, PrototypeLayout::IntTableOffset);
+      dasm_put(Dst, 1670,  bc, Value::FLAG_REAL, Value::FLAG_INTEGER, BC_ADDVI, PrototypeLayout::kIntTableOffset, PrototypeLayout::kIntTableOffset);
        if( arith_div ) {
-      dasm_put(Dst, 1787, Value::FLAG_INTEGER);
+      dasm_put(Dst, 1778, Value::FLAG_INTEGER);
        } else if(arith_mod) {
-      dasm_put(Dst, 1817, Value::FLAG_INTEGER);
+      dasm_put(Dst, 1808, Value::FLAG_INTEGER);
        } else {
-      dasm_put(Dst, 1847, Value::FLAG_INTEGER);
+      dasm_put(Dst, 725, Value::FLAG_INTEGER);
        }
       dasm_put(Dst, 56);
-#line 736 "src/interpreter/bytecode-interpreter.dasc"
+#line 752 "src/interpreter/bytecode-interpreter.dasc"
       break;
 
     case BC_ADDVR:
@@ -1170,8 +1181,8 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
       //|  arith_vr_real addsd
       //|2:
       //|  arith_vr_int addsd
-      dasm_put(Dst, 1866,  bc, Value::FLAG_REAL, Value::FLAG_INTEGER, BC_ADDVR, PrototypeLayout::RealTableOffset, PrototypeLayout::RealTableOffset);
-#line 745 "src/interpreter/bytecode-interpreter.dasc"
+      dasm_put(Dst, 1838,  bc, Value::FLAG_REAL, Value::FLAG_INTEGER, BC_ADDVR, PrototypeLayout::kRealTableOffset, PrototypeLayout::kRealTableOffset);
+#line 761 "src/interpreter/bytecode-interpreter.dasc"
       break;
 
     case BC_SUBVI:
@@ -1181,16 +1192,16 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
       //|  arith_vi_real subsd
       //|2:
       //|  arith_vi_int sub
-      dasm_put(Dst, 2013,  bc, Value::FLAG_REAL, Value::FLAG_INTEGER, BC_SUBVI, PrototypeLayout::IntTableOffset, PrototypeLayout::IntTableOffset);
+      dasm_put(Dst, 1985,  bc, Value::FLAG_REAL, Value::FLAG_INTEGER, BC_SUBVI, PrototypeLayout::kIntTableOffset, PrototypeLayout::kIntTableOffset);
        if( arith_div ) {
-      dasm_put(Dst, 1787, Value::FLAG_INTEGER);
+      dasm_put(Dst, 1778, Value::FLAG_INTEGER);
        } else if(arith_mod) {
-      dasm_put(Dst, 1817, Value::FLAG_INTEGER);
+      dasm_put(Dst, 1808, Value::FLAG_INTEGER);
        } else {
-      dasm_put(Dst, 2121, Value::FLAG_INTEGER);
+      dasm_put(Dst, 1005, Value::FLAG_INTEGER);
        }
       dasm_put(Dst, 56);
-#line 754 "src/interpreter/bytecode-interpreter.dasc"
+#line 770 "src/interpreter/bytecode-interpreter.dasc"
       break;
 
     case BC_SUBVR:
@@ -1200,8 +1211,8 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
       //|  arith_vr_real subsd
       //|2:
       //|  arith_vr_int subsd
-      dasm_put(Dst, 2140,  bc, Value::FLAG_REAL, Value::FLAG_INTEGER, BC_SUBVR, PrototypeLayout::RealTableOffset, PrototypeLayout::RealTableOffset);
-#line 763 "src/interpreter/bytecode-interpreter.dasc"
+      dasm_put(Dst, 2093,  bc, Value::FLAG_REAL, Value::FLAG_INTEGER, BC_SUBVR, PrototypeLayout::kRealTableOffset, PrototypeLayout::kRealTableOffset);
+#line 779 "src/interpreter/bytecode-interpreter.dasc"
       break;
 
     case BC_MULVI:
@@ -1211,16 +1222,16 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
       //|  arith_vi_real mulsd
       //|2:
       //|  arith_vi_int imul
-      dasm_put(Dst, 2287,  bc, Value::FLAG_REAL, Value::FLAG_INTEGER, BC_MULVI, PrototypeLayout::IntTableOffset, PrototypeLayout::IntTableOffset);
+      dasm_put(Dst, 2240,  bc, Value::FLAG_REAL, Value::FLAG_INTEGER, BC_MULVI, PrototypeLayout::kIntTableOffset, PrototypeLayout::kIntTableOffset);
        if( arith_div ) {
-      dasm_put(Dst, 1787, Value::FLAG_INTEGER);
+      dasm_put(Dst, 1778, Value::FLAG_INTEGER);
        } else if(arith_mod) {
-      dasm_put(Dst, 1817, Value::FLAG_INTEGER);
+      dasm_put(Dst, 1808, Value::FLAG_INTEGER);
        } else {
-      dasm_put(Dst, 2395, Value::FLAG_INTEGER);
+      dasm_put(Dst, 1285, Value::FLAG_INTEGER);
        }
       dasm_put(Dst, 56);
-#line 772 "src/interpreter/bytecode-interpreter.dasc"
+#line 788 "src/interpreter/bytecode-interpreter.dasc"
       break;
 
     case BC_MULVR:
@@ -1230,30 +1241,30 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
       //|  arith_vr_real mulsd
       //|2:
       //|  arith_vr_real mulsd
-      dasm_put(Dst, 2416,  bc, Value::FLAG_REAL, Value::FLAG_INTEGER, BC_MULVR, PrototypeLayout::RealTableOffset, PrototypeLayout::RealTableOffset);
-#line 781 "src/interpreter/bytecode-interpreter.dasc"
+      dasm_put(Dst, 2348,  bc, Value::FLAG_REAL, Value::FLAG_INTEGER, BC_MULVR, PrototypeLayout::kRealTableOffset, PrototypeLayout::kRealTableOffset);
+#line 797 "src/interpreter/bytecode-interpreter.dasc"
       break;
 
     case BC_DIVVI:
       //|=> bc:
-      dasm_put(Dst, 2563,  bc);
-#line 785 "src/interpreter/bytecode-interpreter.dasc"
+      dasm_put(Dst, 2495,  bc);
+#line 801 "src/interpreter/bytecode-interpreter.dasc"
       arith_div = true;
       //|  arith_vx_pre BC_DIVVI,InterpArithIntR
       //|1:
       //|  arith_vi_real divsd
       //|2:
       //|  arith_vi_int sub
-      dasm_put(Dst, 2565, Value::FLAG_REAL, Value::FLAG_INTEGER, BC_DIVVI, PrototypeLayout::IntTableOffset, PrototypeLayout::IntTableOffset);
+      dasm_put(Dst, 2497, Value::FLAG_REAL, Value::FLAG_INTEGER, BC_DIVVI, PrototypeLayout::kIntTableOffset, PrototypeLayout::kIntTableOffset);
        if( arith_div ) {
-      dasm_put(Dst, 1787, Value::FLAG_INTEGER);
+      dasm_put(Dst, 1778, Value::FLAG_INTEGER);
        } else if(arith_mod) {
-      dasm_put(Dst, 1817, Value::FLAG_INTEGER);
+      dasm_put(Dst, 1808, Value::FLAG_INTEGER);
        } else {
-      dasm_put(Dst, 2121, Value::FLAG_INTEGER);
+      dasm_put(Dst, 1005, Value::FLAG_INTEGER);
        }
       dasm_put(Dst, 56);
-#line 791 "src/interpreter/bytecode-interpreter.dasc"
+#line 807 "src/interpreter/bytecode-interpreter.dasc"
       break;
 
     case BC_DIVVR:
@@ -1263,8 +1274,8 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
       //|  arith_vr_real divsd
       //|2:
       //|  arith_vr_int divsd
-      dasm_put(Dst, 2672,  bc, Value::FLAG_REAL, Value::FLAG_INTEGER, BC_DIVVR, PrototypeLayout::RealTableOffset, PrototypeLayout::RealTableOffset);
-#line 800 "src/interpreter/bytecode-interpreter.dasc"
+      dasm_put(Dst, 2604,  bc, Value::FLAG_REAL, Value::FLAG_INTEGER, BC_DIVVR, PrototypeLayout::kRealTableOffset, PrototypeLayout::kRealTableOffset);
+#line 816 "src/interpreter/bytecode-interpreter.dasc"
       break;
 
     case BC_MODVI:
@@ -1275,24 +1286,16 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
       //|  jmp ->ModByReal
       //|2:
       //|  arith_vi_int imul
-      dasm_put(Dst, 2819,  bc, Value::FLAG_REAL, Value::FLAG_INTEGER, BC_MODVI, PrototypeLayout::IntTableOffset);
+      dasm_put(Dst, 2751,  bc, Value::FLAG_REAL, Value::FLAG_INTEGER, BC_MODVI, PrototypeLayout::kIntTableOffset);
        if( arith_div ) {
-      dasm_put(Dst, 1787, Value::FLAG_INTEGER);
+      dasm_put(Dst, 1778, Value::FLAG_INTEGER);
        } else if(arith_mod) {
-      dasm_put(Dst, 1817, Value::FLAG_INTEGER);
+      dasm_put(Dst, 1808, Value::FLAG_INTEGER);
        } else {
-      dasm_put(Dst, 2395, Value::FLAG_INTEGER);
+      dasm_put(Dst, 1285, Value::FLAG_INTEGER);
        }
       dasm_put(Dst, 56);
-#line 810 "src/interpreter/bytecode-interpreter.dasc"
-      break;
-
-    case BC_MODVR:
-      //|=> bc:
-      //| instr_B
-      //| jmp ->ModByReal
-      dasm_put(Dst, 2880,  bc);
-#line 816 "src/interpreter/bytecode-interpreter.dasc"
+#line 826 "src/interpreter/bytecode-interpreter.dasc"
       break;
 
     /* ========================================================
@@ -1313,14 +1316,14 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
     // here we will do a type check and also promotion
     //|  cmp LREGL,Value::FLAG_INTEGER
     //|  je >1
-    //|  cmp RREGL,Value::FLAG_NUMBER
+    //|  cmp RREGL,Value::FLAG_REAL
     //|  jb >2
     //|  jmp >6 // cannot handle
 
     //|1:
     //|  cmp RREGL,Value::FLAG_INTEGER
     //|  je >4 // int && int
-    //|  cmp RREGL,Value::FLAG_NUMBER
+    //|  cmp RREGL,Value::FLAG_REAL
     //|  jnb >6 // cannot handle
 
     // promoting LHS->real
@@ -1330,7 +1333,7 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
     //|  Dispatch
 
     //|2:
-    //|  cmp RREGL,Value::FLAG_NUMBER
+    //|  cmp RREGL,Value::FLAG_REAL
     //|  jb >5  // real && real
     //|  cmp RREGL,Value::FLAG_INTEGER
     //|  jne >6 // cannot handle
@@ -1378,109 +1381,109 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
     case BC_ADDVV:
       //|=> bc:
       //|  arith_vv BC_ADDVV,add,StIntACC,addsd,StRealACC
-      dasm_put(Dst, 2893,  bc, Value::FLAG_INTEGER, Value::FLAG_NUMBER, Value::FLAG_INTEGER, Value::FLAG_NUMBER, Value::FLAG_NUMBER);
-      dasm_put(Dst, 3007, Value::FLAG_INTEGER);
+      dasm_put(Dst, 2812,  bc, Value::FLAG_INTEGER, Value::FLAG_REAL, Value::FLAG_INTEGER, Value::FLAG_REAL, Value::FLAG_REAL);
+      dasm_put(Dst, 2926, Value::FLAG_INTEGER);
        if( arith_div ) {
-      dasm_put(Dst, 3058, Value::FLAG_INTEGER);
+      dasm_put(Dst, 2977, Value::FLAG_INTEGER);
        } else if (arith_mod) {
-      dasm_put(Dst, 3084, Value::FLAG_INTEGER);
+      dasm_put(Dst, 3003, Value::FLAG_INTEGER);
        } else {
-      dasm_put(Dst, 3110, Value::FLAG_INTEGER);
+      dasm_put(Dst, 3029, Value::FLAG_INTEGER);
        }
-      dasm_put(Dst, 3135);
+      dasm_put(Dst, 3054);
        if( arith_mod ) {
-      dasm_put(Dst, 1674);
+      dasm_put(Dst, 3072);
        } else {
-      dasm_put(Dst, 3153);
+      dasm_put(Dst, 3077);
        }
-      dasm_put(Dst, 3179, BC_ADDVV);
-#line 901 "src/interpreter/bytecode-interpreter.dasc"
+      dasm_put(Dst, 3103, BC_ADDVV);
+#line 911 "src/interpreter/bytecode-interpreter.dasc"
       break;
     case BC_SUBVV:
       //|=> bc:
       //|  arith_vv BC_SUBVV,sub,StIntACC,subsd,StRealACC
-      dasm_put(Dst, 3203,  bc, Value::FLAG_INTEGER, Value::FLAG_NUMBER, Value::FLAG_INTEGER, Value::FLAG_NUMBER, Value::FLAG_NUMBER);
-      dasm_put(Dst, 3007, Value::FLAG_INTEGER);
+      dasm_put(Dst, 3127,  bc, Value::FLAG_INTEGER, Value::FLAG_REAL, Value::FLAG_INTEGER, Value::FLAG_REAL, Value::FLAG_REAL);
+      dasm_put(Dst, 2926, Value::FLAG_INTEGER);
        if( arith_div ) {
-      dasm_put(Dst, 3058, Value::FLAG_INTEGER);
+      dasm_put(Dst, 2977, Value::FLAG_INTEGER);
        } else if (arith_mod) {
-      dasm_put(Dst, 3084, Value::FLAG_INTEGER);
+      dasm_put(Dst, 3003, Value::FLAG_INTEGER);
        } else {
-      dasm_put(Dst, 3317, Value::FLAG_INTEGER);
+      dasm_put(Dst, 3241, Value::FLAG_INTEGER);
        }
-      dasm_put(Dst, 3135);
+      dasm_put(Dst, 3054);
        if( arith_mod ) {
-      dasm_put(Dst, 1674);
+      dasm_put(Dst, 3072);
        } else {
-      dasm_put(Dst, 3342);
+      dasm_put(Dst, 3266);
        }
-      dasm_put(Dst, 3179, BC_SUBVV);
-#line 905 "src/interpreter/bytecode-interpreter.dasc"
+      dasm_put(Dst, 3103, BC_SUBVV);
+#line 915 "src/interpreter/bytecode-interpreter.dasc"
       break;
     case BC_MULVV:
       //|=> bc:
       //|  arith_vv BC_MULVV,imul,StIntACC,mulsd,StRealACC
-      dasm_put(Dst, 3368,  bc, Value::FLAG_INTEGER, Value::FLAG_NUMBER, Value::FLAG_INTEGER, Value::FLAG_NUMBER, Value::FLAG_NUMBER);
-      dasm_put(Dst, 3007, Value::FLAG_INTEGER);
+      dasm_put(Dst, 3292,  bc, Value::FLAG_INTEGER, Value::FLAG_REAL, Value::FLAG_INTEGER, Value::FLAG_REAL, Value::FLAG_REAL);
+      dasm_put(Dst, 2926, Value::FLAG_INTEGER);
        if( arith_div ) {
-      dasm_put(Dst, 3058, Value::FLAG_INTEGER);
+      dasm_put(Dst, 2977, Value::FLAG_INTEGER);
        } else if (arith_mod) {
-      dasm_put(Dst, 3084, Value::FLAG_INTEGER);
+      dasm_put(Dst, 3003, Value::FLAG_INTEGER);
        } else {
-      dasm_put(Dst, 3482, Value::FLAG_INTEGER);
+      dasm_put(Dst, 3406, Value::FLAG_INTEGER);
        }
-      dasm_put(Dst, 3135);
+      dasm_put(Dst, 3054);
        if( arith_mod ) {
-      dasm_put(Dst, 1674);
+      dasm_put(Dst, 3072);
        } else {
-      dasm_put(Dst, 3508);
+      dasm_put(Dst, 3432);
        }
-      dasm_put(Dst, 3179, BC_MULVV);
-#line 909 "src/interpreter/bytecode-interpreter.dasc"
+      dasm_put(Dst, 3103, BC_MULVV);
+#line 919 "src/interpreter/bytecode-interpreter.dasc"
       break;
     case BC_DIVVV:
       arith_div = true;
       //|=> bc:
       //|  arith_vv BC_DIVVV,imul,StIntACC,divsd,StRealACC
-      dasm_put(Dst, 3534,  bc, Value::FLAG_INTEGER, Value::FLAG_NUMBER, Value::FLAG_INTEGER, Value::FLAG_NUMBER, Value::FLAG_NUMBER);
-      dasm_put(Dst, 3007, Value::FLAG_INTEGER);
+      dasm_put(Dst, 3458,  bc, Value::FLAG_INTEGER, Value::FLAG_REAL, Value::FLAG_INTEGER, Value::FLAG_REAL, Value::FLAG_REAL);
+      dasm_put(Dst, 2926, Value::FLAG_INTEGER);
        if( arith_div ) {
-      dasm_put(Dst, 3058, Value::FLAG_INTEGER);
+      dasm_put(Dst, 2977, Value::FLAG_INTEGER);
        } else if (arith_mod) {
-      dasm_put(Dst, 3084, Value::FLAG_INTEGER);
+      dasm_put(Dst, 3003, Value::FLAG_INTEGER);
        } else {
-      dasm_put(Dst, 3482, Value::FLAG_INTEGER);
+      dasm_put(Dst, 3406, Value::FLAG_INTEGER);
        }
-      dasm_put(Dst, 3135);
+      dasm_put(Dst, 3054);
        if( arith_mod ) {
-      dasm_put(Dst, 1674);
+      dasm_put(Dst, 3072);
        } else {
-      dasm_put(Dst, 3648);
+      dasm_put(Dst, 3572);
        }
-      dasm_put(Dst, 3179, BC_DIVVV);
-#line 914 "src/interpreter/bytecode-interpreter.dasc"
+      dasm_put(Dst, 3103, BC_DIVVV);
+#line 924 "src/interpreter/bytecode-interpreter.dasc"
       break;
     case BC_MODVV:
       arith_mod = true;
       //|=> bc:
       //|  arith_vv BC_MODVV,imul,StIntACC,divsd,StRealACC
-      dasm_put(Dst, 3534,  bc, Value::FLAG_INTEGER, Value::FLAG_NUMBER, Value::FLAG_INTEGER, Value::FLAG_NUMBER, Value::FLAG_NUMBER);
-      dasm_put(Dst, 3007, Value::FLAG_INTEGER);
+      dasm_put(Dst, 3458,  bc, Value::FLAG_INTEGER, Value::FLAG_REAL, Value::FLAG_INTEGER, Value::FLAG_REAL, Value::FLAG_REAL);
+      dasm_put(Dst, 2926, Value::FLAG_INTEGER);
        if( arith_div ) {
-      dasm_put(Dst, 3058, Value::FLAG_INTEGER);
+      dasm_put(Dst, 2977, Value::FLAG_INTEGER);
        } else if (arith_mod) {
-      dasm_put(Dst, 3084, Value::FLAG_INTEGER);
+      dasm_put(Dst, 3003, Value::FLAG_INTEGER);
        } else {
-      dasm_put(Dst, 3482, Value::FLAG_INTEGER);
+      dasm_put(Dst, 3406, Value::FLAG_INTEGER);
        }
-      dasm_put(Dst, 3135);
+      dasm_put(Dst, 3054);
        if( arith_mod ) {
-      dasm_put(Dst, 1674);
+      dasm_put(Dst, 3072);
        } else {
-      dasm_put(Dst, 3648);
+      dasm_put(Dst, 3572);
        }
-      dasm_put(Dst, 3179, BC_MODVV);
-#line 919 "src/interpreter/bytecode-interpreter.dasc"
+      dasm_put(Dst, 3103, BC_MODVV);
+#line 929 "src/interpreter/bytecode-interpreter.dasc"
       break;
 
     /* ==========================================================
@@ -1512,8 +1515,8 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
       //|  mov CARG3, qword [STK+ARG2*8]
       //|  mov CARG4, BC_POWIV
       //|  jmp ->InterpPowSlow
-      dasm_put(Dst, 3674,  bc, PrototypeLayout::IntTableOffset, Value::FLAG_REAL, Value::FLAG_INTEGER, Prototype::IntTableOffset, Value::FLAG_INTEGER, BC_POWIV);
-#line 950 "src/interpreter/bytecode-interpreter.dasc"
+      dasm_put(Dst, 3598,  bc, PrototypeLayout::kIntTableOffset, Value::FLAG_REAL, Value::FLAG_INTEGER, PrototypeLayout::kIntTableOffset, Value::FLAG_INTEGER, BC_POWIV);
+#line 960 "src/interpreter/bytecode-interpreter.dasc"
       break;
 
     case BC_POWVI:
@@ -1528,8 +1531,8 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
       //|  LdIntV CARG3,CARG3L,ARG2
       //|  mov CARG4, BC_POWVI
       //|  jmp ->InterpPowSlow
-      dasm_put(Dst, 3769,  bc, PrototypeLayout::IntTableOffset, Value::FLAG_REAL, Value::FLAG_INTEGER, Prototype::IntTableOffset, Value::FLAG_INTEGER, BC_POWVI);
-#line 964 "src/interpreter/bytecode-interpreter.dasc"
+      dasm_put(Dst, 3693,  bc, PrototypeLayout::kIntTableOffset, Value::FLAG_REAL, Value::FLAG_INTEGER, PrototypeLayout::kIntTableOffset, Value::FLAG_INTEGER, BC_POWVI);
+#line 974 "src/interpreter/bytecode-interpreter.dasc"
       break;
 
     case BC_POWRV:
@@ -1544,8 +1547,8 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
       //|  mov CARG3,qword [STK+ARG2*8]
       //|  mov CARG4,BC_POWRV
       //|  jmp ->InterpPowSlow
-      dasm_put(Dst, 3861,  bc, PrototypeLayout::RealTableOffset, Value::FLAG_REAL, Value::FLAG_INTEGER, PrototypeLayout::RealTableOffset, BC_POWRV);
-#line 978 "src/interpreter/bytecode-interpreter.dasc"
+      dasm_put(Dst, 3785,  bc, PrototypeLayout::kRealTableOffset, Value::FLAG_REAL, Value::FLAG_INTEGER, PrototypeLayout::kRealTableOffset, BC_POWRV);
+#line 988 "src/interpreter/bytecode-interpreter.dasc"
       break;
 
     case BC_POWVR:
@@ -1560,8 +1563,8 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
       //|  mov CARG2,qword [STK+ARG1*8]
       //|  mov CARG4,BC_POWVR
       //|  jmp ->InterpPowSlow
-      dasm_put(Dst, 3948,  bc, PrototypeLayout::RealTableOffset, Value::FLAG_REAL, Value::FLAG_INTEGER, PrototypeLayout::RealTableOffset, BC_POWVR);
-#line 992 "src/interpreter/bytecode-interpreter.dasc"
+      dasm_put(Dst, 3872,  bc, PrototypeLayout::kRealTableOffset, Value::FLAG_REAL, Value::FLAG_INTEGER, PrototypeLayout::kRealTableOffset, BC_POWVR);
+#line 1002 "src/interpreter/bytecode-interpreter.dasc"
       break;
 
     case BC_POWVV:
@@ -1571,11 +1574,87 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
       //|  mov CARG3,qword [STK+ARG2*8]
       //|  mov CARG4,BC_POWVV
       //|  jmp ->InterpPowSlow
-      dasm_put(Dst, 4035,  bc, BC_POWVV);
-#line 1001 "src/interpreter/bytecode-interpreter.dasc"
+      dasm_put(Dst, 3959,  bc, BC_POWVV);
+#line 1011 "src/interpreter/bytecode-interpreter.dasc"
       break;
-    default: lava_unreach();
+    default:
+      //|=> bc:
+      //|  nop
+      dasm_put(Dst, 3987,  bc);
+#line 1015 "src/interpreter/bytecode-interpreter.dasc"
+      break;
   }
+}
+
+// Help Dasm to resolve external address via Index idx
+int ResolveExternAddress( void** ctx , unsigned char* addr ,
+                                       int idx,
+                                       int type ) {
+  (void)ctx;
+  void* ptr;
+  if(strcmp(extnames[idx],"Pow")==0) {
+    ptr = reinterpret_cast<void*>(&Pow);
+  } else if(strcmp(extnames[idx],"InterpreterModByReal")==0) {
+    ptr = reinterpret_cast<void*>(&InterpreterModByReal);
+  } else if(strcmp(extnames[idx],"InterpreterDivByZero")==0) {
+    ptr = reinterpret_cast<void*>(&InterpreterDivByZero);
+  } else if(strcmp(extnames[idx],"InterpreterPow")==0) {
+    ptr = reinterpret_cast<void*>(&InterpreterPow);
+  } else if(strcmp(extnames[idx],"InterpreterDoArithmetic")==0) {
+    ptr = reinterpret_cast<void*>(&InterpreterDoArithmetic);
+  } else {
+    lava_unreach("WHY!");
+  }
+
+  lava_verify(CheckAddress(reinterpret_cast<std::uintptr_t>(ptr)));
+
+  if(type) {
+    return (int)((reinterpret_cast<unsigned char*>(ptr) - (addr+4)));
+  } else {
+    return (int)(reinterpret_cast<std::uintptr_t>(ptr));
+  }
+}
+
+void Disassemble( Interpreter* interp ) {
+  DumpWriter writer;
+  std::size_t length = interp->code_size;
+  void* buffer = reinterpret_cast<void*>(interp->entry);
+
+  ZydisDecoder decoder;
+  ZydisDecoderInit(
+      &decoder,
+      ZYDIS_MACHINE_MODE_LONG_64,
+      ZYDIS_ADDRESS_WIDTH_64);
+
+  ZydisFormatter formatter;
+  ZydisFormatterInit(&formatter,ZYDIS_FORMATTER_STYLE_INTEL);
+
+  std::uint64_t pc = reinterpret_cast<std::uint64_t>(buffer);
+  std::uint8_t* rp = static_cast<std::uint8_t*>(buffer);
+  std::size_t size = length;
+
+  ZydisDecodedInstruction instr;
+  while(ZYDIS_SUCCESS(
+        ZydisDecoderDecodeBuffer(&decoder,rp,size,pc,&instr))) {
+    char buffer[256];
+    ZydisFormatterFormatInstruction(
+        &formatter,&instr,buffer,sizeof(buffer));
+
+    for( std::size_t i = 0 ; i < SIZE_OF_BYTECODE ; ++i ) {
+      void* p = reinterpret_cast<void*>(pc);
+      if(p == interp->dispatch_interp[i]) {
+        writer.WriteL("===> Bytecode : %s",GetBytecodeName(
+              static_cast<Bytecode>(i)));
+        break;
+      }
+    }
+
+    writer.WriteL("%016" PRIX64 " " "%s",pc,buffer);
+    rp += instr.length;
+    size -= instr.length;
+    pc += instr.length;
+  }
+
 }
 
 // We directly allocate a chunk of memory and *let it leak*
@@ -1585,7 +1664,8 @@ void BuildInterpreter( Interpreter* interp ) {
   dasm_init(&(bctx.dasm_ctx),1);
 
   // setup the freaking global
-  dasm_setupglobal(&(bctx.dasm_ctx),glbnames,GLBNAME__MAX);
+  void* glb_arr[GLBNAME__MAX];
+  dasm_setupglobal(&(bctx.dasm_ctx),glb_arr,GLBNAME__MAX);
 
   // setup the dasm
   dasm_setup(&(bctx.dasm_ctx),actions);
@@ -1594,7 +1674,7 @@ void BuildInterpreter( Interpreter* interp ) {
   dasm_growpc(&(bctx.dasm_ctx), SIZE_OF_BYTECODE);
 
   // build the prolog
-  // GenerateInterpProlog(&bctx);
+  GenerateProlog(&bctx);
 
   // build the helper
   GenerateHelper(&bctx);
@@ -1610,11 +1690,11 @@ void BuildInterpreter( Interpreter* interp ) {
   // generate a buffer and set the proper protection field for that piece of
   // memory to make our code *work*
   std::size_t new_size;
-  void* buffer = OS::CreateCodePage(size,&new_size);
+  void* buffer = OS::CreateCodePage(code_size,&new_size);
   lava_verify(buffer);
 
   // encode the assembly code into the buffer
-  dasm_encode(&(bctx,dasm_ctx),buffer);
+  dasm_encode(&(bctx.dasm_ctx),buffer);
 
   // get all pc labels for entry of bytecode routine
   for( int i = static_cast<int>(BC_ADDIV) ; i < SIZE_OF_BYTECODE ; ++i ) {
@@ -1630,8 +1710,10 @@ void BuildInterpreter( Interpreter* interp ) {
   // now we try a disassemble to see whether our shit actually looks Okay
   {
     DumpWriter writer(NULL);
-    Disassemble(buffer,code_size,&writer);
+    Disassemble(interp);
   }
+
+  dasm_free(&(bctx.dasm_ctx));
 }
 
 } // namespace

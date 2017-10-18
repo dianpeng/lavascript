@@ -11,8 +11,8 @@
 
 #define DASM_ARCH		"x86"
 
-#ifndef DASM_EXTERN
-#define DASM_EXTERN(a,b,c,d)	0
+#ifndef DASM_EXTERN_FUNC
+#define DASM_EXTERN_FUNC(a,b,c,d)	0
 #endif
 
 /* Action definitions. DASM_STOP must be 255. */
@@ -422,7 +422,7 @@ int dasm_encode(Dst_DECL, void *buffer)
 	  n = *p++;
 	  while (((cp-base) & n)) *cp++ = 0x90; /* nop */
 	  break;
-	case DASM_EXTERN: n = DASM_EXTERN(Dst, cp, p[1], *p); p += 2; goto wd;
+	case DASM_EXTERN: n = DASM_EXTERN_FUNC(Dst, cp, p[1], *p); p += 2; goto wd;
 	case DASM_MARK: mark = cp; break;
 	case DASM_ESC: action = *p++;
 	default: *cp++ = action; break;

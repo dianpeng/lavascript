@@ -1,20 +1,21 @@
 #include "bytecode-interpreter.h"
 #include "src/trace.h"
 #include "src/os.h"
-#include "src/disassemble.h"
-
-// Workaround for ODR
-namespace {
-
-#include "dep/dynasm/dasm_proto.h"
-#include "dep/dynasm/dasm_x86.h"
-
-} // namespace
 
 #include <math.h>
+#include <Zydis/Zydis.h>
 
 namespace lavascript {
 namespace interpreter{
+namespace {
+
+// Used in dynasm library
+int ResolveExternAddress( void**,unsigned char*,int,int );
+
+// Workaround for ODR
+#include "dep/dynasm/dasm_proto.h"
+#define DASM_EXTERN_FUNC(a,b,c,d) ResolveExternAddress((void**)a,b,c,d)
+#include "dep/dynasm/dasm_x86.h"
 
 
 /**
@@ -33,10 +34,32 @@ Value InterpreterDoArithmetic( Sandbox* sandbox ,
   return Value();
 }
 
-namespace {
+Value InterpreterPow         ( Sandbox* sandbox ,
+                               Value left,
+                               Value right,
+                               Bytecode bc ) {
+  (void)sandbox;
+  (void)left;
+  (void)right;
+  (void)bc;
+  return Value();
+}
 
-// A frame object that is used to record the function's runtime
-// information
+void InterpreterModByReal    ( Sandbox* sandbox , std::uint32_t* pc ) {
+  (void)sandbox;
+  (void)pc;
+}
+
+void InterpreterDivByZero    ( Sandbox* sandbox , std::uint32_t* pc ) {
+  (void)sandbox;
+  (void)pc;
+}
+
+double Pow( double a , double b ) {
+  return pow(a,b);
+}
+
+// A frame object that is used to record the function's runtime information
 struct Frame {
   void* caller;
   std::int32_t offset;
@@ -86,20 +109,20 @@ inline bool CheckAddress( std::uintptr_t addr ) {
 }
 
 |.macro fcall,FUNC
-|| if(CheckAddress(reinterpret_cast<std::uintptr_t>(&FUNC))) {
+|| if(CheckAddress(reinterpret_cast<std::uintptr_t>(FUNC))) {
 |    call extern FUNC
 || } else {
-||   lava_debug(NORMAL,lava_warn("Function %s's addr %p doesn't have address located in 0-2GB","FUNC",&FUNC););
+||   lava_info("%s","Function FUNC address is not in 0-2GB");
 |.if 0
 // I don't know whether this is faster than use rax , need profile. I see
 // this one is used in MoarVM. It uses memory address to workaraoud the
 // address space problem. But I am kind of unsure about it since it maybe
 // because MoarVM already allocate rax for other things
 |9:
-|.dword (std::uint32_t)((std::uintptr_t)(&FUNC)),(std::uint32_t)((std::uintptr_t)(&FUNC))
+|.dword (std::uint32_t)((std::uintptr_t)(FUNC)),(std::uint32_t)((std::uintptr_t)((FUNC)>>32))
 |    call qword[<9]
 |.else
-|    mov64 rax,&FUNC
+|    mov64 rax, reinterpret_cast<std::uintptr_t>(FUNC)
 |    call rax
 |.endif
 || }
@@ -248,14 +271,14 @@ inline bool CheckAddress( std::uintptr_t addr ) {
 // need to worry about GC move the reference
 |.macro LdInt,reg,index
 |  mov T1,qword [PROTO]
-|  mov T1,qword [T1+PrototypeLayout::IntTableOffset]
+|  mov T1,qword [T1+PrototypeLayout::kIntTableOffset]
 |  mov reg, [T1+index*4]
 |.endmacro
 
 // TODO:: Optimize this piece of shit
 |.macro LdIntV,reg,regL,index
 |  mov T1,qword [PROTO]
-|  mov T1,qword [T1+Prototype::IntTableOffset]
+|  mov T1,qword [T1+PrototypeLayout::kIntTableOffset]
 
 |.if 1
 |  mov reg, Value::FLAG_INTEGER
@@ -270,20 +293,20 @@ inline bool CheckAddress( std::uintptr_t addr ) {
 
 |.macro LdReal,reg,index
 |  mov T1,qword [PROTO]
-|  mov T1,qword [T1+PrototypeLayout::RealTableOffset]
+|  mov T1,qword [T1+PrototypeLayout::kRealTableOffset]
 |  movsd reg,qword[T1+index*8]
 |.endmacro
 
 |.macro LdRealV,reg,index
 |  mov T1,qword [PROTO]
-|  mov T1,qword [T1+PrototypeLayout::RealTableOffset]
+|  mov T1,qword [T1+PrototypeLayout::kRealTableOffset]
 // not a xmm register
 |  mov reg,qword[T1+index*8]
 |.endmacro
 
 |.macro LdInt2Real,reg,index
 |  mov T1,qword [PROTO]
-|  mov T1,qword [T1+PrototypeLayout::IntTableOffset]
+|  mov T1,qword [T1+PrototypeLayout::kIntTableOffset]
 |  cvtsi2sd reg, dword [T1+index*4]
 |.endmacro
 
@@ -380,7 +403,7 @@ void GenerateHelper( BuildContext* bctx ) {
   |  arith_handle_ret
 
   |->InterpPowFast:
-  |  fcall pow
+  |  fcall Pow 
   |  movsd qword [ACC],xmm0
   |  Dispatch
 
@@ -441,7 +464,7 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
     /** =====================================================
      *  Register Move                                       |
      *  ====================================================*/
-    case BC_MOV:
+    case BC_MOVE:
       |=> bc:
       |  instr_E
       |  mov RREG,qword [STK+ARG2*8]
@@ -558,7 +581,7 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
     |    StIntACC edx
     || } else {
     |    instr LREGL,RREGL
-    |    StIntACC LREAL
+    |    StIntACC LREGL
     || }
     |  Dispatch
     |.endmacro
@@ -653,13 +676,6 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
       |  jmp ->ModByReal
       |2:
       |  arith_iv_int,imul
-      break;
-
-    case BC_MODRV:
-      // we should not see this type of bytecode since we cannot have
-      // mod between real numbers
-      |=>bc:
-      |  jmp ->ModByReal
       break;
 
     /* =========================================================
@@ -809,12 +825,6 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
       |  arith_vi_int imul
       break;
 
-    case BC_MODVR:
-      |=> bc:
-      | instr_B
-      | jmp ->ModByReal
-      break;
-
     /* ========================================================
      * ArithVV
      *
@@ -833,14 +843,14 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
     // here we will do a type check and also promotion
     |  cmp LREGL,Value::FLAG_INTEGER
     |  je >1
-    |  cmp RREGL,Value::FLAG_NUMBER
+    |  cmp RREGL,Value::FLAG_REAL
     |  jb >2
     |  jmp >6 // cannot handle
 
     |1:
     |  cmp RREGL,Value::FLAG_INTEGER
     |  je >4 // int && int
-    |  cmp RREGL,Value::FLAG_NUMBER
+    |  cmp RREGL,Value::FLAG_REAL
     |  jnb >6 // cannot handle
 
     // promoting LHS->real
@@ -850,7 +860,7 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
     |  Dispatch
 
     |2:
-    |  cmp RREGL,Value::FLAG_NUMBER
+    |  cmp RREGL,Value::FLAG_REAL
     |  jb >5  // real && real
     |  cmp RREGL,Value::FLAG_INTEGER
     |  jne >6 // cannot handle
@@ -999,8 +1009,82 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
       |  mov CARG4,BC_POWVV
       |  jmp ->InterpPowSlow
       break;
-    default: lava_unreach();
+    default:
+      |=> bc:
+      |  nop
+      break;
   }
+}
+
+// Help Dasm to resolve external address via Index idx
+int ResolveExternAddress( void** ctx , unsigned char* addr ,
+                                       int idx,
+                                       int type ) {
+  (void)ctx;
+  void* ptr;
+  if(strcmp(extnames[idx],"Pow")==0) {
+    ptr = reinterpret_cast<void*>(&Pow);
+  } else if(strcmp(extnames[idx],"InterpreterModByReal")==0) {
+    ptr = reinterpret_cast<void*>(&InterpreterModByReal);
+  } else if(strcmp(extnames[idx],"InterpreterDivByZero")==0) {
+    ptr = reinterpret_cast<void*>(&InterpreterDivByZero);
+  } else if(strcmp(extnames[idx],"InterpreterPow")==0) {
+    ptr = reinterpret_cast<void*>(&InterpreterPow);
+  } else if(strcmp(extnames[idx],"InterpreterDoArithmetic")==0) {
+    ptr = reinterpret_cast<void*>(&InterpreterDoArithmetic);
+  } else {
+    lava_unreach("WHY!");
+  }
+
+  lava_verify(CheckAddress(reinterpret_cast<std::uintptr_t>(ptr)));
+
+  if(type) {
+    return (int)((reinterpret_cast<unsigned char*>(ptr) - (addr+4)));
+  } else {
+    return (int)(reinterpret_cast<std::uintptr_t>(ptr));
+  }
+}
+
+void Disassemble( Interpreter* interp ) {
+  DumpWriter writer;
+  std::size_t length = interp->code_size;
+  void* buffer = reinterpret_cast<void*>(interp->entry);
+
+  ZydisDecoder decoder;
+  ZydisDecoderInit(
+      &decoder,
+      ZYDIS_MACHINE_MODE_LONG_64,
+      ZYDIS_ADDRESS_WIDTH_64);
+
+  ZydisFormatter formatter;
+  ZydisFormatterInit(&formatter,ZYDIS_FORMATTER_STYLE_INTEL);
+
+  std::uint64_t pc = reinterpret_cast<std::uint64_t>(buffer);
+  std::uint8_t* rp = static_cast<std::uint8_t*>(buffer);
+  std::size_t size = length;
+
+  ZydisDecodedInstruction instr;
+  while(ZYDIS_SUCCESS(
+        ZydisDecoderDecodeBuffer(&decoder,rp,size,pc,&instr))) {
+    char buffer[256];
+    ZydisFormatterFormatInstruction(
+        &formatter,&instr,buffer,sizeof(buffer));
+
+    for( std::size_t i = 0 ; i < SIZE_OF_BYTECODE ; ++i ) {
+      void* p = reinterpret_cast<void*>(pc);
+      if(p == interp->dispatch_interp[i]) {
+        writer.WriteL("===> Bytecode : %s",GetBytecodeName(
+              static_cast<Bytecode>(i)));
+        break;
+      }
+    }
+
+    writer.WriteL("%016" PRIX64 " " "%s",pc,buffer);
+    rp += instr.length;
+    size -= instr.length;
+    pc += instr.length;
+  }
+
 }
 
 // We directly allocate a chunk of memory and *let it leak*
@@ -1010,7 +1094,8 @@ void BuildInterpreter( Interpreter* interp ) {
   dasm_init(&(bctx.dasm_ctx),1);
 
   // setup the freaking global
-  dasm_setupglobal(&(bctx.dasm_ctx),glbnames,GLBNAME__MAX);
+  void* glb_arr[GLBNAME__MAX];
+  dasm_setupglobal(&(bctx.dasm_ctx),glb_arr,GLBNAME__MAX);
 
   // setup the dasm
   dasm_setup(&(bctx.dasm_ctx),actions);
@@ -1019,7 +1104,7 @@ void BuildInterpreter( Interpreter* interp ) {
   dasm_growpc(&(bctx.dasm_ctx), SIZE_OF_BYTECODE);
 
   // build the prolog
-  // GenerateInterpProlog(&bctx);
+  GenerateProlog(&bctx);
 
   // build the helper
   GenerateHelper(&bctx);
@@ -1035,11 +1120,11 @@ void BuildInterpreter( Interpreter* interp ) {
   // generate a buffer and set the proper protection field for that piece of
   // memory to make our code *work*
   std::size_t new_size;
-  void* buffer = OS::CreateCodePage(size,&new_size);
+  void* buffer = OS::CreateCodePage(code_size,&new_size);
   lava_verify(buffer);
 
   // encode the assembly code into the buffer
-  dasm_encode(&(bctx,dasm_ctx),buffer);
+  dasm_encode(&(bctx.dasm_ctx),buffer);
 
   // get all pc labels for entry of bytecode routine
   for( int i = static_cast<int>(BC_ADDIV) ; i < SIZE_OF_BYTECODE ; ++i ) {
@@ -1055,8 +1140,10 @@ void BuildInterpreter( Interpreter* interp ) {
   // now we try a disassemble to see whether our shit actually looks Okay
   {
     DumpWriter writer(NULL);
-    Disassemble(buffer,code_size,&writer);
+    Disassemble(interp);
   }
+
+  dasm_free(&(bctx.dasm_ctx));
 }
 
 } // namespace

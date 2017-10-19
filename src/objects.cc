@@ -269,7 +269,7 @@ Handle<Script> Script::New( GC* gc , Context* context , const ScriptBuilder& sb 
   Script* script = *ref;
   FunctionTableEntry* start = script->fte_array();
   // Copy the function table in the script object
-  MemCopy(start,sb.function_table());
+  if(sb.function_table_size()) MemCopy(start,sb.function_table());
   return Handle<Script>(ref);
 }
 

@@ -881,6 +881,7 @@ class Prototype final : public HeapObject {
   interpreter::BytecodeIterator GetBytecodeIterator() const {
     return interpreter::BytecodeIterator( code_buffer(), code_buffer_size() );
   }
+  const std::uint32_t* code_buffer() const { return code_buffer_; }
   inline const SourceCodeInfo& GetSci( std::size_t i ) const;
 
   template< typename T >
@@ -906,7 +907,6 @@ class Prototype final : public HeapObject {
   const double* real_table() const { return real_table_; }
   String*** string_table() const { return string_table_; }
   const std::uint32_t* upvalue_table() const { return upvalue_table_; }
-  const std::uint32_t* code_buffer() const { return code_buffer_; }
   const SourceCodeInfo* sci_buffer() const { return sci_buffer_; }
 
  private:

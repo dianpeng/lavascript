@@ -54,10 +54,7 @@ class AssemblyInterpreter {
     LAVA_DISALLOW_COPY_AND_ASSIGN(Instance);
   };
 
-  // Create an instance, then user could use this instance to interpret a certain
-  // procedure or script. User is responsible to *free* the memory of this instance
-  // And it is not on our internal heap
-  Instance* CreateInstance();
+ public:
 
   // Dump the interpreter into human readable assembly into the DumpWriter
   void Dump( DumpWriter* ) const;
@@ -95,6 +92,7 @@ class AssemblyInterpreter {
   // the actual buffer size , this number will be aligned with page size
   std::size_t buffer_size_;
 
+  friend class Instance;
   friend struct AssemblyInterpreterLayout;
   LAVA_DISALLOW_COPY_AND_ASSIGN(AssemblyInterpreter);
 };

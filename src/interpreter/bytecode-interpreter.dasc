@@ -51,11 +51,38 @@ int HorribleCast( T* ptr ) {
 }
 
 // --------------------------------------------------------------
-// Sandbox
+// Runtime
 //
 // Used in the interpretation phase for the interpreter
 // --------------------------------------------------------------
-struct Sandbox {};
+struct Runtime {
+  // TODO:: This is for test purpose , no going into production
+  Prototype** cur;
+  Script** script;
+  Object** global;
+  Value ret;
+  std::string* error;
+  std::uint64_t stack[1024];
+
+  Runtime( const Handle<Script>& script , const Handle<Object>& glb , std::string* err ):
+    cur     (script->main().ref()),
+    script  (script.ref()),
+    global  (glb.ref()),
+    ret     (),
+    error   (err),
+    stack   ()
+  {}
+};
+
+static_assert( std::is_standard_layout<Runtime>::value );
+
+struct RuntimeLayout {
+  static const std::uint32_t kRetOffset = offsetof(Runtime,ret);
+};
+
+// prototype for the interpreter's main
+//                    runtime  proto     stk    pc    dispatch
+typedef bool (*Main)(Runtime*,Prototype**,void*,void*,void*);
 
 // ------------------------------------------------------------------
 // Helper function/macros to register its literal name into a global
@@ -80,7 +107,7 @@ ExternSymbolTable* GetExternSymbolTable() {
   };                                                                         \
   static XX##_Registry k##XX##_Registry;
 
-Value InterpreterDoArithmetic( Sandbox* sandbox ,
+Value InterpreterDoArithmetic( Runtime* sandbox ,
                                Value left ,  // rsi
                                Value right , // rdx
                                Bytecode bc ) {
@@ -92,7 +119,7 @@ Value InterpreterDoArithmetic( Sandbox* sandbox ,
 }
 INTERPRETER_REGISTER_EXTERN_SYMBOL(InterpreterDoArithmetic)
 
-Value InterpreterPow         ( Sandbox* sandbox ,
+Value InterpreterPow         ( Runtime* sandbox ,
                                Value left,
                                Value right,
                                Bytecode bc ) {
@@ -104,13 +131,13 @@ Value InterpreterPow         ( Sandbox* sandbox ,
 }
 INTERPRETER_REGISTER_EXTERN_SYMBOL(InterpreterPow)
 
-void InterpreterModByReal    ( Sandbox* sandbox , std::uint32_t* pc ) {
+void InterpreterModByReal    ( Runtime* sandbox , std::uint32_t* pc ) {
   (void)sandbox;
   (void)pc;
 }
 INTERPRETER_REGISTER_EXTERN_SYMBOL(InterpreterModByReal)
 
-void InterpreterDivByZero    ( Sandbox* sandbox , std::uint32_t* pc ) {
+void InterpreterDivByZero    ( Runtime* sandbox , std::uint32_t* pc ) {
   (void)sandbox;
   (void)pc;
 }
@@ -182,8 +209,8 @@ inline bool CheckAddress( std::uintptr_t addr ) {
 /* ---------------------------------------------------------------
  * summary of register usage                                     |
  * --------------------------------------------------------------*/
-// Sandbox pointer
-|.define SANDBOX,               r12   // callee saved
+// Runtime pointer
+|.define RUNTIME,               r12   // callee saved
 
 // Current prototype's GCRef pointer
 |.define PROTO,                 r13   // callee saved
@@ -198,14 +225,13 @@ inline bool CheckAddress( std::uintptr_t addr ) {
 |.define DISPATCH,              r15  // callee saved
 
 // Bytecode array
-|.define PC,                    rbx  // callee saved
+|.define PC,                    rbp  // callee saved
 
 // Hold the decoded unit
 |.define INSTR,                 eax
 |.define INSTR_OP,              al
 |.define INSTR_A8,              ah
 |.define INSTR_A16,             ax
-|.define OP,                    rbx
 
 /** ------------------------------------------------------------
  *
@@ -288,14 +314,25 @@ inline bool CheckAddress( std::uintptr_t addr ) {
 |  int 3
 |.endmacro
 
+void PrintOP( int op ) {
+  lava_error("OP:%s",GetBytecodeName(static_cast<Bytecode>(op)));
+}
+INTERPRETER_REGISTER_EXTERN_SYMBOL(PrintOP)
+
 /* ---------------------------------------------------------------
  * dispatch table                                                |
  * --------------------------------------------------------------*/
 |.macro Dispatch
 |  mov INSTR,dword [PC]
-|  movzx OP,INSTR_OP
+|  movzx T1,INSTR_OP
+|.if 1
+|  mov CARG1,T1
+|  fcall PrintOP
+|.endif
+|  mov INSTR,dword [PC]
+|  movzx T1,INSTR_OP
 |  add PC,4
-|  jmp aword [DISPATCH+OP*8]
+|  jmp aword [DISPATCH+T1*8]
 |.endmacro
 
 /* ---------------------------------------------------------------
@@ -433,7 +470,9 @@ inline bool CheckAddress( std::uintptr_t addr ) {
   __(INTERP_POW_FAST,InterpPowFast)          \
   __(INTERP_POW_SLOW,InterpPowSlow)          \
   __(DIV_BY_ZERO,DivByZero)                  \
-  __(MOD_BY_REAL,ModByReal)
+  __(MOD_BY_REAL,ModByReal)                  \
+  /* ---- debug helper ---- */               \
+  __(PRINT_OP,PrintOP)
 
 enum {
   INTERP_HELPER_DUMMY = SIZE_OF_BYTECODE,
@@ -452,7 +491,9 @@ const char* GetInterpHelperName( int idx ) {
   switch(idx) {
 #define __(A,B) case A: return #B;
     INTERP_HELPER_LIST(__)
-    default: lava_unreachF("unknown helper with index:%d",idx); return NULL;
+    default:
+      lava_unreachF("unknown helper with index:%d",idx);
+      return NULL;
 #undef __ // __
   }
 }
@@ -469,10 +510,16 @@ void GenerateMisc( BuildContext* bctx ) {
   /* -------------------------------------------
    * Interpreter Prolog                        |
    * ------------------------------------------*/
-
   |=> INTERP_START:
   |->InterpStart:
-  |  mov SANDBOX,CARG1
+  |  prolog,0
+  |  mov RUNTIME ,CARG1   // runtime
+  |  mov PROTO   ,CARG2   // proto
+  |  mov STK     ,CARG3   // stack
+  |  mov PC      ,CARG4   // pc
+  |  mov DISPATCH,CARG5   // dispatch
+  // fire the run
+  |  Dispatch
 
   /* -------------------------------------------
    * Interpreter exit handler                  |
@@ -486,6 +533,7 @@ void GenerateMisc( BuildContext* bctx ) {
   |=> INTERP_RETURN:
   |->InterpReturn:
   |  mov rax, qword [ACC]
+  |  mov qword [RUNTIME+RuntimeLayout::kRetOffset],rax
   |  mov rax,1
   |  epilog
   |  ret
@@ -494,7 +542,6 @@ void GenerateMisc( BuildContext* bctx ) {
 /* ------------------------------------------
  * helper functions/routines generation     |
  * -----------------------------------------*/
-
 void GenerateHelper( BuildContext* bctx ) {
   /* ----------------------------------------
    * InterpArithXXX                         |
@@ -510,21 +557,21 @@ void GenerateHelper( BuildContext* bctx ) {
 
   |=> INTERP_ARITH_INTL:
   |->InterpArithIntL:
-  |  mov CARG1,SANDBOX
+  |  mov CARG1,RUNTIME
   |  LdInt CARG2L,ARG1
   |  fcall InterpreterDoArithmetic
   |  arith_handle_ret
 
   |=> INTERP_ARITH_INTR:
   |->InterpArithIntR:
-  |  mov CARG1,SANDBOX
+  |  mov CARG1,RUNTIME
   |  LdInt CARG3L,ARG2
   |  fcall InterpreterDoArithmetic
   |  arith_handle_ret
 
   |=> INTERP_ARITH_REALL:
   |->InterpArithRealL:
-  |  mov CARG1,SANDBOX
+  |  mov CARG1,RUNTIME
   |  LdReal xmm0,ARG1
   |  movd CARG2,xmm0
   |  fcall InterpreterDoArithmetic
@@ -532,7 +579,7 @@ void GenerateHelper( BuildContext* bctx ) {
 
   |=> INTERP_ARITH_REALR:
   |->InterpArithRealR:
-  |  mov CARG1,SANDBOX
+  |  mov CARG1,RUNTIME
   |  LdReal xmm0,ARG2
   |  movd CARG3,xmm0
   |  fcall InterpreterDoArithmetic
@@ -540,7 +587,7 @@ void GenerateHelper( BuildContext* bctx ) {
 
   |=> INTERP_ARITH_VV:
   |->InterpArithVV:
-  |  mov CARG1, SANDBOX
+  |  mov CARG1, RUNTIME
   |  mov CARG2, qword [STK+ARG1*8]
   |  mov CARG3, qword [STK+ARG2*8]
   |  fcall InterpreterDoArithmetic
@@ -554,7 +601,7 @@ void GenerateHelper( BuildContext* bctx ) {
 
   |=> INTERP_POW_SLOW:
   |->InterpPowSlow:
-  |  mov CARG1, SANDBOX
+  |  mov CARG1, RUNTIME
   |  fcall InterpreterPow
   |  arith_handle_ret
 
@@ -563,14 +610,14 @@ void GenerateHelper( BuildContext* bctx ) {
    * ------------------------------------------*/
   |=> DIV_BY_ZERO:
   |->DivByZero:
-  |  mov CARG1,SANDBOX
+  |  mov CARG1,RUNTIME
   |  mov CARG2,[PC-4]
   |  fcall InterpreterDivByZero
   |  jmp ->InterpFail
 
   |=> MOD_BY_REAL:
   |->ModByReal:
-  |  mov CARG1,SANDBOX
+  |  mov CARG1,RUNTIME
   |  mov CARG2,[PC-4]
   |  fcall InterpreterModByReal
   |  jmp ->InterpFail
@@ -1197,7 +1244,6 @@ AssemblyInterpreter::~AssemblyInterpreter() {
   if(interp_entry_) OS::FreeCodePage(interp_entry_,buffer_size_);
 }
 
-// We directly allocate a chunk of memory and *let it leak*
 std::shared_ptr<AssemblyInterpreter> AssemblyInterpreter::Generate() {
   std::shared_ptr<AssemblyInterpreter> interp( new AssemblyInterpreter() );
 
@@ -1324,6 +1370,33 @@ void AssemblyInterpreter::Dump( DumpWriter* writer ) const {
     size -= instr.length;
     pc += instr.length;
   }
+}
+
+AssemblyInterpreter::Instance::Instance( const std::shared_ptr<AssemblyInterpreter>& interp ):
+  dispatch_interp_(),
+  dispatch_record_(),
+  dispatch_jit_   (),
+  interp_         (interp)
+{
+  memcpy(dispatch_interp_,interp->dispatch_interp_,sizeof(dispatch_interp_));
+  memcpy(dispatch_record_,interp->dispatch_record_,sizeof(dispatch_record_));
+  memcpy(dispatch_jit_   ,interp->dispatch_jit_   ,sizeof(dispatch_jit_   ));
+}
+
+bool AssemblyInterpreter::Instance::Run( Context* context , const Handle<Script>& script ,
+                                                           const Handle<Object>& globals,
+                                                           std::string* error,
+                                                           Value* rval ) {
+  Runtime runtime(script,globals,error);
+  Main m = reinterpret_cast<Main>(interp_->interp_entry_);
+  bool ret = m(&runtime,runtime.cur,reinterpret_cast<void*>(runtime.stack),
+                                    const_cast<void*>(
+                                      reinterpret_cast<const void*>((*runtime.cur)->code_buffer())),
+                                    dispatch_interp_);
+  if(ret) {
+    *rval = runtime.ret;
+  }
+  return ret;
 }
 
 } // namespace lavascript

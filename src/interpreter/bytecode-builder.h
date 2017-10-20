@@ -416,7 +416,7 @@ inline std::int32_t BytecodeBuilder::Add( double rval ) {
       return -1;
     }
     real_table_.push_back(rval);
-    return static_cast<std::int32_t>(int_table_.size()-1);
+    return static_cast<std::int32_t>(real_table_.size()-1);
   }
   return (static_cast<std::int32_t>(
       std::distance(real_table_.begin(),ret)));

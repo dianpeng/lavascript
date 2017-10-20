@@ -8,6 +8,7 @@
 #include <src/trace.h>
 #include <gtest/gtest.h>
 #include <cassert>
+#include <iostream>
 
 #include "src/interpreter/bytecode-interpreter.h"
 
@@ -64,8 +65,9 @@ int main() {
   Context ctx(TestGCConfig());
   std::string error;
   std::string script(stringify(
-        var a = 0;
-        var b = a + 1;
+        var a = 5;
+        var b = 20;
+        return a + b;
         ));
 
   ScriptBuilder sb("a",script);
@@ -76,5 +78,8 @@ int main() {
   Handle<Object> obj( Object::New(ctx.gc()) );
   Value ret;
   bool r = ins.Run(&ctx,scp,obj,&error,&ret);
+  assert(r);
+  assert(ret.IsInteger());
+  std::cout<<ret.GetInteger()<<std::endl;
   return r;
 }

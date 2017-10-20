@@ -40,6 +40,11 @@ class Extension;
 class Script;
 class ScriptBuilder;
 
+namespace interpreter {
+void SetValueFlag( Value* v , std::uint32_t );
+std::uint32_t GetValueFlag( const Value& );
+} // namespace interpreter
+
 // Used in Assembly to modify field in an object. Based on C++ standard, offsetof
 // must be used in class that is standard_layout due to sick C++ object modle. We
 // must be sure that we can maintain this shitty concept. Another thing is the offset
@@ -121,6 +126,8 @@ class Value final {
     double real_;
   };
 
+  friend void interpreter::SetValueFlag( Value*, std::uint32_t );
+  friend std::uint32_t interpreter::GetValueFlag( const Value& );
  public:
   // For primitive type , we can tell it directly from *raw* value due to the
   // double never use the lower 53 bits.
@@ -148,7 +155,18 @@ class Value final {
     FLAG_TRUE   = 0xfffa0000,
     FLAG_FALSE  = 0xfffa1000,
     FLAG_NULL   = 0xfffb0000,
-    FLAG_HEAP   = 0xfffc0000
+    FLAG_HEAP   = 0xfffc    ,       // pointer is 48 bits , so we only test the upper 16 bits
+    FLAG_HEAP_UNMASK = ~FLAG_HEAP,  // used to extract pointer from assembly
+    // reserved flag used by interpreter
+    FLAG_1      = 0xfffd    ,
+    FLAG_2      = 0xfffe
+  };
+
+  enum {
+    TAG_HEAP_STORE_MASK_HIGHER = 0xfffc0000,
+    TAG_HEAP_STORE_MASK_LOWER  = 0x00000000,
+    TAG_HEAP_LOAD_MASK_HIGHER  = ~(TAG_HEAP_STORE_MASK_HIGHER),
+    TAG_HEAP_LOAD_MASK_LOWER   = ~(TAG_HEAP_STORE_MASK_LOWER)
   };
 
  private:

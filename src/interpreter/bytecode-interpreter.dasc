@@ -12,6 +12,15 @@
 
 namespace lavascript {
 namespace interpreter{
+
+inline void SetValueFlag( Value* v , std::uint32_t flag ) {
+  v->raw_ = static_cast<std::uint64_t>(flag) << 32;
+}
+
+inline std::uint32_t GetValueFlag( const Value& v ) {
+  return static_cast<std::uint32_t>(v.raw_ >>32);
+}
+
 namespace {
 
 // Used in dynasm library
@@ -19,6 +28,7 @@ int ResolveExternAddress( void**,unsigned char*,int,int );
 
 // Workaround for ODR
 #include "dep/dynasm/dasm_proto.h"
+
 #define DASM_EXTERN_FUNC(a,b,c,d) ResolveExternAddress((void**)a,b,c,d)
 #include "dep/dynasm/dasm_x86.h"
 
@@ -41,7 +51,8 @@ struct BuildContext {
   }
 };
 
-// Make GCC bitch less
+
+// Shut the GCC's mouth fucked up
 template< typename T >
 int HorribleCast( T* ptr ) {
   std::uint64_t iptr = reinterpret_cast<std::uint64_t>(ptr);
@@ -89,7 +100,6 @@ typedef bool (*Main)(Runtime*,Prototype**,void*,void*,void*);
 // table to help resolve the function's address during assembly link
 // phase
 // ------------------------------------------------------------------
-
 typedef std::map<std::string,void*> ExternSymbolTable;
 
 ExternSymbolTable* GetExternSymbolTable() {
@@ -107,6 +117,17 @@ ExternSymbolTable* GetExternSymbolTable() {
   };                                                                         \
   static XX##_Registry k##XX##_Registry;
 
+
+// -------------------------------------------------------------------------
+// Helper to set Value object to indicate special meaning
+// -------------------------------------------------------------------------
+#define VALUE_FAIL Value::FLAG_1
+
+
+
+// --------------------------------------------------------------------------
+// Arithmetic helper function to take care of slow path of interpretation
+// --------------------------------------------------------------------------
 Value InterpreterDoArithmetic( Runtime* sandbox ,
                                Value left ,  // rsi
                                Value right , // rdx
@@ -115,7 +136,11 @@ Value InterpreterDoArithmetic( Runtime* sandbox ,
   (void)left;
   (void)right;
   (void)bc;
-  return Value();
+  {
+    Value r;
+    SetValueFlag( &r, VALUE_FAIL );
+    return r;
+  }
 }
 INTERPRETER_REGISTER_EXTERN_SYMBOL(InterpreterDoArithmetic)
 
@@ -127,7 +152,11 @@ Value InterpreterPow         ( Runtime* sandbox ,
   (void)left;
   (void)right;
   (void)bc;
-  return Value();
+  {
+    Value r;
+    SetValueFlag( &r, VALUE_FAIL );
+    return r;
+  }
 }
 INTERPRETER_REGISTER_EXTERN_SYMBOL(InterpreterPow)
 
@@ -148,28 +177,32 @@ double Pow( double a , double b ) {
 }
 INTERPRETER_REGISTER_EXTERN_SYMBOL(Pow)
 
+Value InterpreterDoCompare  ( Runtime* sandbox , Value left ,
+                                                 Value right,
+                                                 Bytecode bc ) {
+  (void)sandbox;
+  (void)left;
+  (void)right;
+  (void)bc;
+  {
+    Value r;
+    SetValueFlag( &r, VALUE_FAIL );
+    return r;
+  }
+}
+INTERPRETER_REGISTER_EXTERN_SYMBOL(InterpreterDoCompare);
+
+/* ======================================================================
+ *
+ * Implementation of AssemblyIntepreter
+ *
+ * =====================================================================*/
 |.arch x64
 |.actionlist actions
 |.globals GLBNAME_
 |.globalnames glbnames
 |.externnames extnames
-
-|.macro prolog,reserve
-|.if 0
-|   push rbp
-|   mov rbp,rsp
-||  if(reserve) {
-|     sub rsp,reserve
-||  }
-|.endif
-|.endmacro
-
-|.macro epilog
-|.if 0
-|   mov rsp,rbp
-|   pop rbp
-|.endif
-|.endmacro
+|.section code,data
 
 /* -------------------------------------------------------------------
  * 64 bits call
@@ -193,7 +226,7 @@ inline bool CheckAddress( std::uintptr_t addr ) {
 ||   lava_warn("%s","Function FUNC address is not in 0-2GB");
 |.if 0
 // I don't know whether this is faster than use rax , need profile. I see
-// this one is used in MoarVM. It uses memory address to workaraoud the
+// this one is used in MoarVM. It uses memory address to work araoud the
 // address space problem. But I am kind of unsure about it since it maybe
 // because MoarVM already allocate rax for other things
 |9:
@@ -244,13 +277,14 @@ inline bool CheckAddress( std::uintptr_t addr ) {
  *        you need to use movzx/movsx instruction.
  *
  *        But code like this :
+ *
  *           movzx eax,al
  *           mov rbx,[rcx+rax*8+disp]
  *
- *        will work. We assume that movzx's dest is 32 bits register,
- *        so it will only zero out its upper 24 bits. However
- *        this movzx actually gonna zero out *every* bits for
- *        the whole 64 bits register.
+ *        will work. We assume that movzx's dest is 32 bits
+ *        register,so it will only zero out its upper 24 bits.
+ *        However this movzx actually gonna zero out *every*
+ *        bits for the whole 64 bits register.
  *
  *        This is the actual behavior and *most* compiler will
  *        assume such behavior even documentation doesn't say so.
@@ -259,8 +293,8 @@ inline bool CheckAddress( std::uintptr_t addr ) {
  *
  *        The operand for each instruction will always be a
  *        32 bits register and whenever decode happened , we
- *        will use movzx to clear the *whole* register
- *        out.
+ *        will use movzx to clear the *whole* register out.
+ *
  * --------------------------------------------------------------*/
 
 // Instruction's argument
@@ -284,6 +318,8 @@ inline bool CheckAddress( std::uintptr_t addr ) {
 
 |.define T1,                    r11
 |.define T1L,                   r11d
+|.define T2,                    r10
+|.define T2L,                   r10d
 
 // registers for normal C function calling ABI
 |.define CARG1,                 rdi
@@ -323,9 +359,9 @@ INTERPRETER_REGISTER_EXTERN_SYMBOL(PrintOP)
  * dispatch table                                                |
  * --------------------------------------------------------------*/
 |.macro Dispatch
+|.if 1
 |  mov INSTR,dword [PC]
 |  movzx T1,INSTR_OP
-|.if 1
 |  mov CARG1,T1
 |  fcall PrintOP
 |.endif
@@ -353,7 +389,7 @@ INTERPRETER_REGISTER_EXTERN_SYMBOL(PrintOP)
 |  movzx ARG1,INSTR_A8
 |  shr INSTR,16
 |  movzx ARG3,INSTR_A8
-|  shr INSTR,8
+|  or ARG2,0xff
 |.endmacro
 
 |.macro instr_E
@@ -443,7 +479,7 @@ INTERPRETER_REGISTER_EXTERN_SYMBOL(PrintOP)
 |.endmacro
 
 |.macro CheckNum,index,val,real_label,int_label
-|.if 1
+|.if 0
 |  cmp dword[STK+index*8+4],Value::FLAG_REAL
 |  jb >real_label
 |  cmp dword[STK+index*8+4],Value::FLAG_INTEGER
@@ -458,7 +494,55 @@ INTERPRETER_REGISTER_EXTERN_SYMBOL(PrintOP)
 |.endif
 |.endmacro
 
+// Set a pointer into a register , this is really painful
+|.macro StHeap,reg,val
+
+|.if 1
+|  mov reg,Value::FLAG_HEAP
+|  shl reg,48
+|  or reg ,val
+|.else
+|  mov reg,val
+|  or  reg,qword [->ValueHeapStoreMask]
+|.endif
+
+|.endmacro
+
+// Store a pointer into memory pointed by index
+|.macro StHeapMem,index,ptr
+|  mov qword[STK+index*8]  ,ptr
+|  mov word [STK+index*8+6],Value::FLAG_HEAP
+|.endmacro
+
+// Load a pointer from Value object , assume this object
+// is a pointer type
+|.macro LdPtrFromV,dest,val
+|.if 1
+|  mov dest,Value::FLAG_HEAP_UNMASK
+|  shl dest,48
+|  or  dest,val
+|.else
+|  mov dest,val
+|  or  dest,qword [->ValueHeapLoadMask]
+|.endif
+|.endmacro
+
+// It is painful to load a string into its Value format
+|.macro LdStrV,val,index
+|  mov T1 , qword [PROTO]
+|  mov T1 , qword [T1+PrototypeLayout::kStrTableOffset]
+|  mov T1 , qword [T1+index*8]
+|  StHeap val,T1
+|.endmacro
+
+|.macro LdStr,val,index
+|  mov T1 , qword [PROTO]
+|  mov T1 , qword [T1+PrototypeLayout::kStrTableOffset]
+|  mov val, qword [T1+index*8]
+|.endmacro
+
 #define INTERP_HELPER_LIST(__) \
+  /* arithmetic */                           \
   __(INTERP_START,InterpStart)               \
   __(INTERP_FAIL ,InterpFail)                \
   __(INTERP_RETURN,InterpReturn)             \
@@ -468,9 +552,15 @@ INTERPRETER_REGISTER_EXTERN_SYMBOL(PrintOP)
   __(INTERP_ARITH_REALR,InterpArithRealR)    \
   __(INTERP_ARITH_VV,InterpArithVV)          \
   __(INTERP_POW_FAST,InterpPowFast)          \
-  __(INTERP_POW_SLOW,InterpPowSlow)          \
+  __(INTERP_POW_SLOWVI,InterpPowSlowVI)      \
+  __(INTERP_POW_SLOWIV,InterpPowSlowIV)      \
+  __(INTERP_POW_SLOWVR,InterpPowSlowVR)      \
+  __(INTERP_POW_SLOWRV,InterpPowSlowRV)      \
+  __(INTERP_POW_SLOWVV,InterpPowSlowVV)      \
   __(DIV_BY_ZERO,DivByZero)                  \
   __(MOD_BY_REAL,ModByReal)                  \
+  /* comparison */                           \
+  __(INTERP_COMPARE,InterpCompare)           \
   /* ---- debug helper ---- */               \
   __(PRINT_OP,PrintOP)
 
@@ -506,19 +596,55 @@ const char* GetInterpHelperName( int idx ) {
 /* -----------------------------------------------------------
  * Interpreter Prolog                                        |
  * ----------------------------------------------------------*/
-void GenerateMisc( BuildContext* bctx ) {
+void GenerateInterpMisc( BuildContext* bctx ) {
+  /* -------------------------------------------
+   * Constant value needed for the interpreter |
+   * ------------------------------------------*/
+  |.data
+  |->ValueHeapMaskStore:
+  |.dword Value::TAG_HEAP_STORE_MASK_HIGHER,Value::TAG_HEAP_STORE_MASK_LOWER
+
+  |->ValueHeapMaskLoad:
+  |.dword Value::TAG_HEAP_LOAD_MASK_HIGHER,Value::TAG_HEAP_LOAD_MASK_LOWER
+
+  |.code
+  /* -------------------------------------------
+   * Start of the code                         |
+   * ------------------------------------------*/
+
+  |.macro interp_pushr
+  |  push  r12            // runtime
+  |  push  r13            // proto
+  |  push  r14            // stack
+  |  push  r15            // dispatch
+  |  push  rbp            // PC
+  |  push  rbx            // used by ARG2 , this may be changed in the future
+  |.endmacro
+
+  |.macro interp_popr
+  |  pop   rbx
+  |  pop   rbp
+  |  pop   r15
+  |  pop   r14
+  |  pop   r13
+  |  pop   r12
+  |.endmacro
+
   /* -------------------------------------------
    * Interpreter Prolog                        |
    * ------------------------------------------*/
   |=> INTERP_START:
   |->InterpStart:
-  |  prolog,0
+  // save all callee saved register since we use them to keep tracking of
+  // our most important data structure
+  |  interp_pushr
+
   |  mov RUNTIME ,CARG1   // runtime
   |  mov PROTO   ,CARG2   // proto
   |  mov STK     ,CARG3   // stack
   |  mov PC      ,CARG4   // pc
   |  mov DISPATCH,CARG5   // dispatch
-  // fire the run
+  // run
   |  Dispatch
 
   /* -------------------------------------------
@@ -527,7 +653,8 @@ void GenerateMisc( BuildContext* bctx ) {
   |=> INTERP_FAIL:
   |->InterpFail:
   |  xor rax,rax
-  |  epilog
+
+  |  interp_popr
   |  ret
 
   |=> INTERP_RETURN:
@@ -535,7 +662,8 @@ void GenerateMisc( BuildContext* bctx ) {
   |  mov rax, qword [ACC]
   |  mov qword [RUNTIME+RuntimeLayout::kRetOffset],rax
   |  mov rax,1
-  |  epilog
+
+  |  interp_popr
   |  ret
 }
 
@@ -546,10 +674,10 @@ void GenerateHelper( BuildContext* bctx ) {
   /* ----------------------------------------
    * InterpArithXXX                         |
    * ---------------------------------------*/
-  |.macro arith_handle_ret
+  |.macro handle_ret
   |  mov T1,rax
   |  shr T1,32
-  |  cmp T1,Value::TAG_NULL
+  |  cmp T1,VALUE_FAIL
   |  je ->InterpFail
   |  mov qword [ACC], rax
   |  Dispatch
@@ -559,39 +687,44 @@ void GenerateHelper( BuildContext* bctx ) {
   |->InterpArithIntL:
   |  mov CARG1,RUNTIME
   |  LdInt CARG2L,ARG1
+  |  mov CARG4,byte [PC-4]
   |  fcall InterpreterDoArithmetic
-  |  arith_handle_ret
+  |  handle_ret
 
   |=> INTERP_ARITH_INTR:
   |->InterpArithIntR:
   |  mov CARG1,RUNTIME
   |  LdInt CARG3L,ARG2
+  |  mov CARG4,byte [PC-4]
   |  fcall InterpreterDoArithmetic
-  |  arith_handle_ret
+  |  handle_ret
 
   |=> INTERP_ARITH_REALL:
   |->InterpArithRealL:
   |  mov CARG1,RUNTIME
   |  LdReal xmm0,ARG1
   |  movd CARG2,xmm0
+  |  mov CARG4,byte [PC-4]
   |  fcall InterpreterDoArithmetic
-  |  arith_handle_ret
+  |  handle_ret
 
   |=> INTERP_ARITH_REALR:
   |->InterpArithRealR:
   |  mov CARG1,RUNTIME
   |  LdReal xmm0,ARG2
   |  movd CARG3,xmm0
+  |  mov CARG4,byte [PC-4]
   |  fcall InterpreterDoArithmetic
-  |  arith_handle_ret
+  |  handle_ret
 
   |=> INTERP_ARITH_VV:
   |->InterpArithVV:
   |  mov CARG1, RUNTIME
   |  mov CARG2, qword [STK+ARG1*8]
   |  mov CARG3, qword [STK+ARG2*8]
+  |  mov CARG4,byte [PC-4]
   |  fcall InterpreterDoArithmetic
-  |  arith_handle_ret
+  |  handle_ret
 
   |=> INTERP_POW_FAST:
   |->InterpPowFast:
@@ -599,11 +732,50 @@ void GenerateHelper( BuildContext* bctx ) {
   |  movsd qword [ACC],xmm0
   |  Dispatch
 
-  |=> INTERP_POW_SLOW:
-  |->InterpPowSlow:
+  |=> INTERP_POW_SLOWIV:
+  |->InterpPowSlowIV:
   |  mov CARG1, RUNTIME
+  |  LdInt CARG2,CARG2L,ARG1
+  |  mov CARG3,qword [STK+ARG2*8]
+  |  mov CARG4,byte  [PC-4]
   |  fcall InterpreterPow
-  |  arith_handle_ret
+  |  handle_ret
+
+  |=> INTERP_POW_SLOWRV
+  |->InterpPowSlowRV:
+  |  mov CARG1, RUNTIME
+  |  LdRealV CARG2,ARG1
+  |  mov CARG3,qword [STK+ARG2*8]
+  |  mov CARG4,byte  [PC-4]
+  |  fcall InterpreterPow
+  |  handle_ret
+
+  |=> INTERP_POW_SLOWVI:
+  |->InterpPowSlowVI:
+  |  mov CARG1, RUNTIME
+  |  mov CARG2, qword [STK+ARG1*8]
+  |  LdInt CARG3,CARG3L,ARG2
+  |  mov CARG4, byte [PC-4]
+  |  fcall InterpreterPow
+  |  handle_ret
+
+  |=> INTERP_POW_SLOWVR:
+  |->InterpPowSlowVR:
+  |  mov CARG1, RUNTIME
+  |  mov CARG2, qword [STK+ARG1*8]
+  |  LdRealV CARG3,ARG2
+  |  mov CARG4, byte [PC-4]
+  |  fcall InterpreterPow
+  |  handle_ret
+
+  |=> INTERP_POW_SLOWVV:
+  |->InterpPowSlowVV:
+  |  mov CARG1, RUNTIME
+  |  mov CARG2,qword [STK+ARG1*8]
+  |  LdRealV CARG3,ARG2
+  |  mov CARG4, byte [PC-4]
+  |  fcall InterpreterPow
+  |  handle_ret
 
   /* -------------------------------------------
    * Interp Arithmetic Exception               |
@@ -611,16 +783,26 @@ void GenerateHelper( BuildContext* bctx ) {
   |=> DIV_BY_ZERO:
   |->DivByZero:
   |  mov CARG1,RUNTIME
-  |  mov CARG2,[PC-4]
+  |  lea CARG2,[PC-4]
   |  fcall InterpreterDivByZero
   |  jmp ->InterpFail
 
   |=> MOD_BY_REAL:
   |->ModByReal:
   |  mov CARG1,RUNTIME
-  |  mov CARG2,[PC-4]
+  |  lea CARG2,[PC-4]
   |  fcall InterpreterModByReal
   |  jmp ->InterpFail
+
+
+  /* -------------------------------------------
+   * Interp Comparison                         |
+   * ------------------------------------------*/
+  |=> INTERP_COMPARE:
+  |->InterpCompare:
+  |  mov CARG1,RUNTIME
+  |  fcall InterpreterDoCompare
+  |  handle_ret
 
 }
 
@@ -641,6 +823,13 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
       |  mov dword [STK+ACCFIDX],Value::FLAG_NULL
       |  jmp ->InterpReturn
       break;
+
+    case BC_RET:
+      |=> bc:
+      |  instr_X
+      |  jmp ->InterpReturn
+      break;
+
     /** =====================================================
      *  Register Move                                       |
      *  ====================================================*/
@@ -719,7 +908,6 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
     |  instr_C
     |  mov RREG,qword [STK+ARG2*8]
     |  CheckNum ARG2,RREG,1,2
-    |  mov CARG4L,BC
     |  jmp ->SlowPath
     |.endmacro
 
@@ -865,7 +1053,6 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
     |  instr_B
     |  mov LREG,qword [STK+ARG1*8]
     |  CheckNum ARG1,LREG,1,2
-    |  mov CARG4L,BC
     |  jmp ->SlowPath
     |.endmacro
 
@@ -1016,7 +1203,8 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
 
     // perform VV calaculation based on instruction
     |.macro arith_vv,BC,instrI,setterI,instrR,setterR
-    |  instr_D
+    |=> BC:
+    |  instr_E
     |  mov LREGL,dword[STK+ARG1*8+4]
     |  mov RREGL,dword[STK+ARG2*8+4]
 
@@ -1081,41 +1269,35 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
 
     // slow path
     |6:
-    |  mov CARG4L,BC
     |  jmp ->InterpArithVV
 
     |.endmacro
 
     case BC_ADDVV:
-      |=> bc:
       |  arith_vv BC_ADDVV,add,StIntACC,addsd,StRealACC
       break;
     case BC_SUBVV:
-      |=> bc:
       |  arith_vv BC_SUBVV,sub,StIntACC,subsd,StRealACC
       break;
     case BC_MULVV:
-      |=> bc:
       |  arith_vv BC_MULVV,imul,StIntACC,mulsd,StRealACC
       break;
     case BC_DIVVV:
       arith_div = true;
-      |=> bc:
       |  arith_vv BC_DIVVV,imul,StIntACC,divsd,StRealACC
       break;
     case BC_MODVV:
       arith_mod = true;
-      |=> bc:
       |  arith_vv BC_MODVV,imul,StIntACC,divsd,StRealACC
       break;
 
-    /* ==========================================================
+    /* ==============================================================
      * POW part
      *
      * Currently we directly use std::pow/pow in libc for simplicity.
      * For numeric type we will directly call pow for other types
      * we will fallback to slow C++ function
-     * =========================================================*/
+     * =============================================================*/
 
     |.macro pow_promo,REGL,XREG,ARG
     |  mov REGL,dword [STK+ARG*8+4]
@@ -1134,10 +1316,7 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
       |1:
       |  jmp ->InterpPowFast
       |2:
-      |  LdIntV CARG2,CARG2L,ARG1
-      |  mov CARG3, qword [STK+ARG2*8]
-      |  mov CARG4, BC_POWIV
-      |  jmp ->InterpPowSlow
+      |  jmp ->InterpPowSlowIV
       break;
 
     case BC_POWVI:
@@ -1148,10 +1327,7 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
       |1:
       |  jmp ->InterpPowFast
       |2:
-      |  mov CARG2, qword [STK+ARG1*8]
-      |  LdIntV CARG3,CARG3L,ARG2
-      |  mov CARG4, BC_POWVI
-      |  jmp ->InterpPowSlow
+      |  jmp ->InterpPowSlowVI
       break;
 
     case BC_POWRV:
@@ -1162,10 +1338,7 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
       |1:
       |  jmp ->InterpPowFast
       |2:
-      |  LdRealV CARG2,ARG1
-      |  mov CARG3,qword [STK+ARG2*8]
-      |  mov CARG4,BC_POWRV
-      |  jmp ->InterpPowSlow
+      |  jmp ->InterpPowSlowRV
       break;
 
     case BC_POWVR:
@@ -1176,20 +1349,338 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
       |1:
       |  jmp ->InterpPowFast
       |2:
-      |  LdRealV CARG3,ARG2
-      |  mov CARG2,qword [STK+ARG1*8]
-      |  mov CARG4,BC_POWVR
-      |  jmp ->InterpPowSlow
+      |  jmp ->InterpPowSlowVR
       break;
 
     case BC_POWVV:
       |=> bc:
       |  instr_C
-      |  mov CARG2,qword [STK+ARG1*8]
-      |  mov CARG3,qword [STK+ARG2*8]
-      |  mov CARG4,BC_POWVV
-      |  jmp ->InterpPowSlow
+      |  jmp ->InterpPowSlowVV
       break;
+
+
+    /* ====================================================================
+     * Comparison
+     *
+     * Inline numeric comparison and also do promotion inline
+     * ===================================================================*/
+
+    /* --------------------------------------------------------------------
+     *
+     * Comparison XV
+     *
+     * -------------------------------------------------------------------*/
+    // pre-phase of each comparison
+    |.macro comp_xv_pre,BC,SlowPath,mov_ops
+    |  instr_C
+    |  mov RREG,qword [STK+ARG2*8]
+    |  CheckNum ARG2,RREG,1,2
+    |  mov_ops
+    |  mov CARG4,BC    // Always mov CARG4 at last since it alias with ARG3
+    |  jmp ->SlowPath
+    |.endmacro
+
+    // comparison phase , we have 2 versions , need to profile
+    |.macro comp_cmp_real,instr
+    |  mov T1L, Value::TAG_FALSE
+    |  mov T2L, Value::TAG_TRUE
+    |  ucomisd xmm0,xmm1
+    |  instr T1L, T2L
+    |  mov dword [STK+ACCFIDX], T1L
+    |.endmacro
+
+    |.macro comp_cmp_int,instr
+    |  mov T1L, Value::TAG_FALSE
+    |  mov T2L, Value::TAG_TRUE
+    |  cmp LREGL,RREGL
+    |  instr T1L, T2L
+    |  mov dword[STK+ACCFIDX], T1L
+    |.endmacro
+
+    // real/int part for iv/rv
+    |.macro comp_iv_real,instr
+    |  LdInt2Real xmm0,ARG1
+    |  movd xmm1,RREG
+    |  comp_cmp_real,instr
+    |  Dispatch
+    |.endmacro
+
+    |.macro comp_iv_int,instr
+    |  LdInt LREGL,ARG1
+    |  comp_cmp_int,instr
+    |  Dispatch
+    |.endmacro
+
+    |.macro comp_rv_real,instr
+    |  LdReal xmm0,ARG1
+    |  movsd xmm1,qword [STK+ARG2*8]
+    |  comp_cmp_real,instr
+    |  Dispatch
+    |.endmacro
+
+    |.macro comp_rv_int,instr
+    |  LdReal xmm0,ARG1
+    |  cvtsi2sd xmm1,dword [STK+ARG2*8]
+    |  comp_cmp_real,instr
+    |  Dispatch
+    |.endmacro
+
+    |.macro comp_xv_mov_iv_ops
+    |  LdIntV CARG2,CARG2L,ARG1
+    |  mov CARG3,RREG
+    |.endmacro
+
+    |.macro comp_xv_mov_rv_ops
+    |  LdRealV CARG2,ARG1
+    |  mov CARG3,RREG
+    |.endmacro
+
+    case BC_LTIV:
+      |=> bc:
+      |  comp_xv_pre,BC_LTIV,InterpCompare,comp_xv_mov_iv_ops
+      |1:
+      |  comp_iv_real,cmovl
+      |2:
+      |  comp_iv_int,cmovl
+      break;
+    case BC_LTRV:
+      |=>bc:
+      |  comp_xv_pre,BC_LTRV,InterpCompare,comp_xv_mov_rv_ops
+      |1:
+      |  comp_rv_real,cmovl
+      |2:
+      |  comp_rv_int,cmovl
+      break;
+    case BC_LEIV:
+      |=> bc:
+      |  comp_xv_pre,BC_LEIV,InterpCompare,comp_xv_mov_iv_ops
+      |1:
+      |  comp_iv_real,cmovle
+      |2:
+      |  comp_iv_int,cmovle
+      break;
+    case BC_LERV:
+      |=> bc:
+      |  comp_xv_pre,BC_LERV,InterpCompare,comp_xv_mov_rv_ops
+      |1:
+      |  comp_rv_real,cmovle
+      |2:
+      |  comp_rv_int,cmovle
+      break;
+    case BC_GTIV:
+      |=> bc:
+      |  comp_xv_pre,BC_GTIV,InterpCompare,comp_xv_mov_iv_ops
+      |1:
+      |  comp_iv_real,cmovg
+      |2:
+      |  comp_iv_int,cmovg
+      break;
+    case BC_GTRV:
+      |=>bc:
+      |  comp_xv_pre,BC_GTRV,InterpCompare,comp_xv_mov_rv_ops
+      |1:
+      |  comp_rv_real,cmovg
+      |2:
+      |  comp_rv_int ,cmovg
+      break;
+    case BC_GEIV:
+      |=> bc:
+      |  comp_xv_pre,BC_GEIV,InterpCompare,comp_xv_mov_iv_ops
+      |1:
+      |  comp_iv_real,cmovge
+      |2:
+      |  comp_iv_int,cmovge
+      break;
+    case BC_GERV:
+      |=> bc:
+      |  comp_xv_pre,BC_GERV,InterpCompare,comp_xv_mov_rv_ops
+      |1:
+      |  comp_rv_real ,cmovge
+      |2:
+      |  comp_rv_int  ,cmovge
+      break;
+    case BC_EQIV:
+      |=> bc:
+      |  comp_xv_pre,BC_EQIV,InterpCompare,comp_xv_mov_iv_ops
+      |1:
+      |  comp_iv_real,cmove
+      |2:
+      |  comp_iv_int,cmove
+      break;
+    case BC_EQRV:
+      |=> bc:
+      |  comp_xv_pre,BC_EQRV,InterpCompare,comp_xv_mov_rv_ops
+      |1:
+      |  comp_rv_real,cmove
+      |2:
+      |  comp_rv_int,cmove
+      break;
+    case BC_NEIV:
+      |=> bc:
+      |  comp_xv_pre,BC_NEIV,InterpCompare,comp_xv_mov_iv_ops
+      |1:
+      |  comp_iv_real,cmovne
+      |2:
+      |  comp_iv_int,cmovne
+      break;
+    case BC_NERV:
+      |=> bc:
+      |  comp_xv_pre,BC_NERV,InterpCompare,comp_xv_mov_rv_ops
+      |1:
+      |  comp_rv_real,cmovne
+      |2:
+      |  comp_rv_int,cmovne
+      break;
+
+    /* --------------------------------------------------------------------
+     *
+     * Comparison VX
+     *
+     * -------------------------------------------------------------------*/
+    |.macro comp_vx_pre,BC,SlowPath,mov_ops
+    |  instr_C
+    |  mov LREG,qword [STK+ARG1*8]
+    |  CheckNum ARG1,LREG,1,2
+    |  mov_ops
+    |  mov CARG4,BC    // Always mov CARG4 at last since it alias with ARG3
+    |  jmp ->SlowPath
+    |.endmacro
+
+    // real/int part for iv/rv
+    |.macro comp_vi_real,instr
+    |  LdInt2Real xmm1,ARG2
+    |  movd xmm0,LREG
+    |  comp_cmp_real,instr
+    |  Dispatch
+    |.endmacro
+
+    |.macro comp_vi_int,instr
+    |  LdInt RREGL,ARG2
+    |  comp_cmp_int,instr
+    |  Dispatch
+    |.endmacro
+
+    |.macro comp_vr_real,instr
+    |  LdReal xmm1,ARG2
+    |  movsd xmm0, qword [STK+ARG1*8]
+    |  comp_cmp_real,instr
+    |  Dispatch
+    |.endmacro
+
+    |.macro comp_vr_int,instr
+    |  LdReal xmm1,ARG2
+    |  cvtsi2sd xmm0,dword [STK+ARG1*8]
+    |  comp_cmp_real,instr
+    |  Dispatch
+    |.endmacro
+
+    |.macro comp_vx_mov_vi_ops
+    |  mov CARG2,LREG
+    |  LdIntV CARG3,CARG3L,ARG2
+    |.endmacro
+
+    |.macro comp_vx_mov_vr_ops
+    |  mov CARG2,LREG
+    |  LdRealV CARG3,ARG2
+    |.endmacro
+
+    case BC_LTVI:
+      |=>bc:
+      |  comp_vx_pre,BC_LTVI,InterpCompare,comp_vx_mov_vi_ops
+      |1:
+      |  comp_vi_real,cmovl
+      |2:
+      |  comp_vi_int,cmovl
+      break;
+    case BC_LTVR:
+      |=>bc:
+      |  comp_vx_pre,BC_LTVR,InterpCompare,comp_vx_mov_vr_ops
+      |1:
+      |  comp_vr_real,cmovl
+      |2:
+      |  comp_vr_int ,cmovl
+      break;
+    case BC_LEVI:
+      |=>bc:
+      |  comp_vx_pre,BC_LEVI,InterpCompare,comp_vx_mov_vi_ops
+      |1:
+      |  comp_vi_real,cmovle
+      |2:
+      |  comp_vi_int ,cmovle
+      break;
+    case BC_LEVR:
+      |=>bc:
+      |  comp_vx_pre,BC_LEVR,InterpCompare,comp_vx_mov_vr_ops
+      |1:
+      |  comp_vr_real,cmovle
+      |2:
+      |  comp_vr_int ,cmovle
+      break;
+    case BC_GTVI:
+      |=>bc:
+      |  comp_vx_pre,BC_GTVI,InterpCompare,comp_vx_mov_vi_ops
+      |1:
+      |  comp_vi_real,cmovg
+      |2:
+      |  comp_vi_int ,cmovg
+      break;
+    case BC_GTVR:
+      |=>bc:
+      |  comp_vx_pre,BC_GTVR,InterpCompare,comp_vx_mov_vr_ops
+      |1:
+      |  comp_vr_real, cmovg
+      |2:
+      |  comp_vr_int , cmovg
+      break;
+    case BC_GEVI:
+      |=>bc:
+      |  comp_vx_pre,BC_GEVI,InterpCompare,comp_vx_mov_vi_ops
+      |1:
+      |  comp_vi_real ,cmovge
+      |2:
+      |  comp_vi_int  ,cmovge
+      break;
+    case BC_GEVR:
+      |=>bc:
+      |  comp_vx_pre,BC_GEVR,InterpCompare,comp_vx_mov_vr_ops
+      |1:
+      |  comp_vr_real ,cmovge
+      |2:
+      |  comp_vr_int  ,cmovge
+      break;
+    case BC_EQVI:
+      |=>bc:
+      |  comp_vx_pre,BC_EQVI,InterpCompare,comp_vx_mov_vi_ops
+      |1:
+      |  comp_vi_real ,cmove
+      |2:
+      |  comp_vi_int  ,cmove
+      break;
+    case BC_EQVR:
+      |=>bc:
+      |  comp_vx_pre,BC_EQVR,InterpCompare,comp_vx_mov_vr_ops
+      |1:
+      |  comp_vr_real ,cmove
+      |2:
+      |  comp_vr_int  ,cmove
+      break;
+    case BC_NEVI:
+      |=>bc:
+      |  comp_vx_pre,BC_NEVI,InterpCompare,comp_vx_mov_vi_ops
+      |1:
+      |  comp_vi_real ,cmovne
+      |2:
+      |  comp_vi_int  ,cmovne
+      break;
+    case BC_NEVR:
+      |=>bc:
+      |  comp_vx_pre,BC_NEVR,InterpCompare,comp_vx_mov_vr_ops
+      |1:
+      |  comp_vr_real ,cmovne
+      |2:
+      |  comp_vr_int  ,cmovne
+      break;
+
     default:
       |=> bc:
       |  Break
@@ -1202,11 +1693,14 @@ int ResolveExternAddress( void** ctx , unsigned char* addr ,
                                        int idx,
                                        int type ) {
   (void)ctx;
+
   ExternSymbolTable* t = GetExternSymbolTable();
   ExternSymbolTable::iterator itr = t->find(extnames[idx]);
   lava_verify( itr != t->end() );
+
   void* ptr = itr->second;
   lava_verify(CheckAddress(reinterpret_cast<std::uintptr_t>(ptr)));
+
   int iptr = HorribleCast(ptr);
   lava_verify(reinterpret_cast<void*>(iptr) == ptr);
 
@@ -1251,7 +1745,7 @@ std::shared_ptr<AssemblyInterpreter> AssemblyInterpreter::Generate() {
   BuildContext bctx;
 
   // initialize dasm_State object
-  dasm_init(&(bctx.dasm_ctx),1);
+  dasm_init(&(bctx.dasm_ctx),2);
 
   // setup the freaking global
   void* glb_arr[GLBNAME__MAX];
@@ -1265,7 +1759,7 @@ std::shared_ptr<AssemblyInterpreter> AssemblyInterpreter::Generate() {
   dasm_growpc(&(bctx.dasm_ctx), DASM_GROWABLE_PC_SIZE );
 
   // build the prolog
-  GenerateMisc(&bctx);
+  GenerateInterpMisc(&bctx);
 
   // build the helper
   GenerateHelper(&bctx);

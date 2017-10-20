@@ -179,14 +179,15 @@ class Value final {
   // So not break our assumption. This assumption can be held always,I guess
   static const std::uint64_t kPtrCheckMask = ~kPtrMask;
 
-  std::uint64_t tag() const { return (raw_&kTagMask); }
+  std::uint64_t tag() const { return (raw_ & kTagMask); }
+  std::uint32_t flag()const { return static_cast<std::uint32_t>(raw_ >> 32); }
 
-  bool IsTagReal()    const { return tag() <  TAG_REAL; }
-  bool IsTagInteger() const { return tag() == TAG_INTEGER; }
-  bool IsTagTrue()    const { return raw_  == TAG_TRUE; }
-  bool IsTagFalse()   const { return raw_  == TAG_FALSE;}
-  bool IsTagNull()    const { return raw_  == TAG_NULL; }
-  bool IsTagHeap()    const { return tag() == TAG_HEAP; }
+  bool IsTagReal()    const { return tag()  <  TAG_REAL; }
+  bool IsTagInteger() const { return flag() == FLAG_INTEGER; }
+  bool IsTagTrue()    const { return flag() == FLAG_TRUE; }
+  bool IsTagFalse()   const { return flag() == FLAG_FALSE; }
+  bool IsTagNull()    const { return flag() == FLAG_NULL; }
+  bool IsTagHeap()    const { return tag()  == TAG_HEAP; }
 
   inline HeapObject** heap_object() const;
  public:

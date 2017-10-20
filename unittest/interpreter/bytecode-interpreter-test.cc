@@ -66,8 +66,8 @@ int main() {
   std::string error;
   std::string script(stringify(
         var a = 5;
-        var b = 20;
-        return a + b;
+        var b = 6;
+        return b > 5;
         ));
 
   ScriptBuilder sb("a",script);
@@ -79,7 +79,7 @@ int main() {
   Value ret;
   bool r = ins.Run(&ctx,scp,obj,&error,&ret);
   assert(r);
-  assert(ret.IsInteger());
-  std::cout<<ret.GetInteger()<<std::endl;
+  assert(ret.IsBoolean());
+  std::cout<<ret.GetBoolean()<<std::endl;
   return r;
 }

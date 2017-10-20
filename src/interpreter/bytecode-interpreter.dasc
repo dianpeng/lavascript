@@ -251,8 +251,8 @@ inline bool CheckAddress( std::uintptr_t addr ) {
 
 // Top stack's pointer
 |.define STK,                   r14   // callee saved
-|.define ACCIDX,                1020
-|.define ACCFIDX,               1024
+|.define ACCIDX,                2040
+|.define ACCFIDX,               2044
 |.define ACC,                   STK+ACCIDX
 
 // Dispatch table pointer
@@ -322,6 +322,17 @@ inline bool CheckAddress( std::uintptr_t addr ) {
 |.define CARG4LL,               cl
 |.define CARG5LL,               r8b
 |.define CARG6LL,               r9b
+
+// we need to save 6 callee saved registers this acounts for
+// 6*8 = 48 bytes, which is aligned to 16 bytes , required by
+// x64 ABI.
+|.define RESERVE_RSP,           48
+|.define SAVED_R12,             [rsp+40]
+|.define SAVED_R13,             [rsp+32]
+|.define SAVED_R14,             [rsp+24]
+|.define SAVED_R15,             [rsp+16]
+|.define SAVED_RBP,             [rsp+8]
+|.define SAVED_RBX,             [rsp]
 
 /* ---------------------------------------------------------------
  * debug helper                                                  |
@@ -464,7 +475,8 @@ INTERPRETER_REGISTER_EXTERN_SYMBOL(Print2)
 |.endmacro
 
 |.macro CheckNum,index,val,real_label,int_label
-|.if 0
+// TODO:: profile these 2 implementations
+|.if 1
 |  cmp dword[STK+index*8+4],Value::FLAG_REAL
 |  jb >real_label
 |  cmp dword[STK+index*8+4],Value::FLAG_INTEGER
@@ -472,9 +484,9 @@ INTERPRETER_REGISTER_EXTERN_SYMBOL(Print2)
 |.else
 |  mov T1,val
 |  shr T1,32
-|  cmp T1,Value::FLAG_REAL
+|  cmp T1L,Value::FLAG_REAL
 |  jb >real_label
-|  cmp T1,Value::FLAG_INTEGER
+|  cmp T1L,Value::FLAG_INTEGER
 |  je >int_label
 |.endif
 |.endmacro
@@ -545,7 +557,11 @@ INTERPRETER_REGISTER_EXTERN_SYMBOL(Print2)
   __(DIV_BY_ZERO,DivByZero)                  \
   __(MOD_BY_REAL,ModByReal)                  \
   /* comparison */                           \
-  __(INTERP_COMPARE,InterpDoCompare)           \
+  __(INTERP_COMPAREIV,InterpCompareIV)       \
+  __(INTERP_COMPAREVI,InterpCompareVI)       \
+  __(INTERP_COMPARERV,InterpCompareRV)       \
+  __(INTERP_COMPAREVR,InterpCompareVR)       \
+  __(INTERP_COMPAREVV,InterpCompareVV)       \
   /* ---- debug helper ---- */               \
   __(PRINT_OP,PrintOP)                       \
   __(PRINT2  ,Print2 )
@@ -598,22 +614,26 @@ void GenerateInterpMisc( BuildContext* bctx ) {
    * Start of the code                         |
    * ------------------------------------------*/
 
-  |.macro interp_pushr
-  |  push  r12            // runtime
-  |  push  r13            // proto
-  |  push  r14            // stack
-  |  push  r15            // dispatch
-  |  push  rbp            // PC
-  |  push  rbx            // used by ARG2 , this may be changed in the future
+  |.macro interp_prolog
+  |  sub   rsp, RESERVE_RSP             // make room on the stack
+
+  |  mov qword SAVED_R12,r12            // runtime
+  |  mov qword SAVED_R13,r13            // proto
+  |  mov qword SAVED_R14,r14            // stack
+  |  mov qword SAVED_R15,r15            // dispatch
+  |  mov qword SAVED_RBP,rbp            // PC
+  |  mov qword SAVED_RBX,rbx            // used by ARG2 , this may be changed in the future
   |.endmacro
 
-  |.macro interp_popr
-  |  pop   rbx
-  |  pop   rbp
-  |  pop   r15
-  |  pop   r14
-  |  pop   r13
-  |  pop   r12
+  |.macro interp_epilog
+  |  mov r12, qword SAVED_R12
+  |  mov r13, qword SAVED_R13
+  |  mov r14, qword SAVED_R14
+  |  mov r15, qword SAVED_R15
+  |  mov rbp, qword SAVED_RBP
+  |  mov rbx, qword SAVED_RBX
+
+  |  add rsp, RESERVE_RSP
   |.endmacro
 
   /* -------------------------------------------
@@ -623,7 +643,7 @@ void GenerateInterpMisc( BuildContext* bctx ) {
   |->InterpStart:
   // save all callee saved register since we use them to keep tracking of
   // our most important data structure
-  |  interp_pushr
+  |  interp_prolog
 
   |  mov RUNTIME ,CARG1   // runtime
   |  mov PROTO   ,CARG2   // proto
@@ -640,7 +660,7 @@ void GenerateInterpMisc( BuildContext* bctx ) {
   |->InterpFail:
   |  xor rax,rax
 
-  |  interp_popr
+  |  interp_epilog
   |  ret
 
   |=> INTERP_RETURN:
@@ -649,7 +669,7 @@ void GenerateInterpMisc( BuildContext* bctx ) {
   |  mov qword [RUNTIME+RuntimeLayout::kRetOffset],rax
   |  mov rax,1
 
-  |  interp_popr
+  |  interp_epilog
   |  ret
 }
 
@@ -673,7 +693,7 @@ void GenerateHelper( BuildContext* bctx ) {
   |->InterpArithIntL:
   |  mov CARG1,RUNTIME
   |  LdIntV CARG2,CARG2L,ARG1
-  |  movzx CARG4,byte [PC-4]
+  |  movzx CARG4L,byte [PC-4]
   |  fcall InterpreterDoArithmetic
   |  handle_ret
 
@@ -681,7 +701,7 @@ void GenerateHelper( BuildContext* bctx ) {
   |->InterpArithIntR:
   |  mov CARG1,RUNTIME
   |  LdIntV CARG3,CARG3L,ARG2
-  |  movzx CARG4,byte [PC-4]
+  |  movzx CARG4L,byte [PC-4]
   |  fcall InterpreterDoArithmetic
   |  handle_ret
 
@@ -689,7 +709,7 @@ void GenerateHelper( BuildContext* bctx ) {
   |->InterpArithRealL:
   |  mov CARG1,RUNTIME
   |  LdRealV CARG2,ARG1
-  |  movzx CARG4,byte [PC-4]
+  |  movzx CARG4L,byte [PC-4]
   |  fcall InterpreterDoArithmetic
   |  handle_ret
 
@@ -697,7 +717,7 @@ void GenerateHelper( BuildContext* bctx ) {
   |->InterpArithRealR:
   |  mov CARG1,RUNTIME
   |  LdRealV CARG3,ARG2
-  |  movzx CARG4,byte [PC-4]
+  |  movzx CARG4L,byte [PC-4]
   |  fcall InterpreterDoArithmetic
   |  handle_ret
 
@@ -706,7 +726,7 @@ void GenerateHelper( BuildContext* bctx ) {
   |  mov CARG1, RUNTIME
   |  mov CARG2, qword [STK+ARG1*8]
   |  mov CARG3, qword [STK+ARG2*8]
-  |  movzx CARG4,byte [PC-4]
+  |  movzx CARG4L,byte [PC-4]
   |  fcall InterpreterDoArithmetic
   |  handle_ret
 
@@ -721,7 +741,7 @@ void GenerateHelper( BuildContext* bctx ) {
   |  mov CARG1, RUNTIME
   |  LdIntV CARG2,CARG2L,ARG1
   |  mov CARG3,qword [STK+ARG2*8]
-  |  movzx CARG4,byte  [PC-4]
+  |  movzx CARG4L,byte  [PC-4]
   |  fcall InterpreterPow
   |  handle_ret
 
@@ -730,7 +750,7 @@ void GenerateHelper( BuildContext* bctx ) {
   |  mov CARG1, RUNTIME
   |  LdRealV CARG2,ARG1
   |  mov CARG3,qword [STK+ARG2*8]
-  |  movzx CARG4,byte[PC-4]
+  |  movzx CARG4L,byte[PC-4]
   |  fcall InterpreterPow
   |  handle_ret
 
@@ -739,7 +759,7 @@ void GenerateHelper( BuildContext* bctx ) {
   |  mov CARG1, RUNTIME
   |  mov CARG2, qword [STK+ARG1*8]
   |  LdIntV CARG3,CARG3L,ARG2
-  |  movzx CARG4, byte [PC-4]
+  |  movzx CARG4L, byte [PC-4]
   |  fcall InterpreterPow
   |  handle_ret
 
@@ -748,7 +768,7 @@ void GenerateHelper( BuildContext* bctx ) {
   |  mov CARG1, RUNTIME
   |  mov CARG2, qword [STK+ARG1*8]
   |  LdRealV CARG3,ARG2
-  |  movzx CARG4, byte [PC-4]
+  |  movzx CARG4L, byte [PC-4]
   |  fcall InterpreterPow
   |  handle_ret
 
@@ -757,7 +777,7 @@ void GenerateHelper( BuildContext* bctx ) {
   |  mov CARG1, RUNTIME
   |  mov CARG2,qword [STK+ARG1*8]
   |  LdRealV CARG3,ARG2
-  |  movzx CARG4, byte [PC-4]
+  |  movzx CARG4L, byte [PC-4]
   |  fcall InterpreterPow
   |  handle_ret
 
@@ -782,9 +802,48 @@ void GenerateHelper( BuildContext* bctx ) {
   /* -------------------------------------------
    * Interp Comparison                         |
    * ------------------------------------------*/
-  |=> INTERP_COMPARE:
-  |->InterpDoCompare:
+  |=> INTERP_COMPAREIV:
+  |->InterpCompareIV:
   |  mov CARG1,RUNTIME
+  |  LdIntV CARG2,CARG2L,ARG1
+  |  mov CARG3, qword [STK+ARG2*8]
+  |  movzx CARG4L, byte [PC-4]
+  |  fcall InterpreterDoCompare
+  |  handle_ret
+
+  |=> INTERP_COMPAREVI:
+  |->InterpCompareVI:
+  |  mov CARG1,RUNTIME
+  |  mov CARG2, qword [STK+ARG1*8]
+  |  LdIntV CARG3,CARG3L,ARG2
+  |  movzx CARG4L, byte [PC-4]
+  |  fcall InterpreterDoCompare
+  |  handle_ret
+
+  |=> INTERP_COMPARERV:
+  |->InterpCompareRV:
+  |  mov CARG1,RUNTIME
+  |  LdRealV CARG2,ARG2
+  |  mov CARG3, qword [STK+ARG2*8]
+  |  movzx CARG4L, byte [PC-4]
+  |  fcall InterpreterDoCompare
+  |  handle_ret
+
+  |=> INTERP_COMPAREVR:
+  |->InterpCompareVR:
+  |  mov CARG1,RUNTIME
+  |  mov CARG2,qword [STK+ARG1*8]
+  |  LdRealV CARG3,ARG2
+  |  movzx CARG4L, byte [PC-4]
+  |  fcall InterpreterDoCompare
+  |  handle_ret
+
+  |=> INTERP_COMPAREVV:
+  |->InterpCompareVV:
+  |  mov CARG1, RUNTIME
+  |  mov CARG2, qword [STK+ARG1*8]
+  |  mov CARG3, qword [STK+ARG2*8]
+  |  movzx CARG4L, byte [PC-4]
   |  fcall InterpreterDoCompare
   |  handle_ret
 
@@ -820,8 +879,8 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
     case BC_MOVE:
       |=> bc:
       |  instr_E
-      |  mov RREG,qword [STK+ARG2*8]
-      |  mov qword [STK+ARG1*8],RREG
+      |  mov T1,qword [STK+ARG2*8]
+      |  mov qword [STK+ARG1*8],T1
       |  Dispatch
       break;
     /** =====================================================
@@ -837,21 +896,21 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
 
     case BC_LOAD0:
       |=> bc:
-      |  instr_B
+      |  instr_F
       |  StInt ARG1,0
       |  Dispatch
       break;
 
     case BC_LOAD1:
       |=> bc:
-      |  instr_B
+      |  instr_F
       |  StInt ARG1,1
       |  Dispatch
       break;
 
     case BC_LOADN1:
       |=> bc:
-      |  instr_B
+      |  instr_F
       |  StInt ARG1,-1
       |  Dispatch
       break;
@@ -1182,8 +1241,10 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
      * which may be extended to support meta function call
      * ========================================================*/
     |.macro arith_vv_do_div
-    |  mov T1L,dword [STK+ARG2*8]
-    |  mov eax,dword [STK+ARG1*8]
+    |  shr RREG,32
+    |  shr LREG,32
+    |  mov T1L,RREGL
+    |  mov eax,LREGL
     |.if 1
     |  test eax,eax
     |  je ->DivByZero
@@ -1196,42 +1257,17 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
     |.macro arith_vv,BC,instrI,setterI,instrR,setterR
     |=> BC:
     |  instr_E
-    |  mov LREGL,dword [STK+ARG1*8+4]
-    |  mov RREGL,dword [STK+ARG2*8+4]
+    |  mov LREG,qword [STK+ARG1*8]
+    |  mov RREG,qword [STK+ARG2*8]
 
     // here we will do a type check and also promotion
     |  cmp LREGL,Value::FLAG_INTEGER
-    |  je >1
-    |  cmp RREGL,Value::FLAG_REAL
-    |  jb >2
-    |  jmp >6 // cannot handle
+    |  jne >1
 
-    |1:
+    | // int && xx
     |  cmp RREGL,Value::FLAG_INTEGER
-    |  je >4 // int && int
-    |  cmp RREGL,Value::FLAG_REAL
-    |  jnb >6 // cannot handle
-
-    // promoting LHS->real
-    |  cvtsi2sd xmm0,dword [STK+ARG1*8]
-    |  instrR   xmm0,qword [STK+ARG2*8]
-    |  setterR  xmm0
-    |  Dispatch
-
-    |2:
-    |  cmp RREGL,Value::FLAG_REAL
-    |  jb >5  // real && real
-    |  cmp RREGL,Value::FLAG_INTEGER
-    |  jne >6 // cannot handle
-
-    // promoting RHS->real
-    |  cvtsi2sd xmm1,dword [STK+ARG2*8]
-    |  movsd    xmm0,qword [STK+ARG1*8]
-    |  setterR  xmm0
-    |  Dispatch
-
+    |  jne >4
     // int && int
-    |4:
     || if( arith_div ) {
          // order matters
     |    arith_vv_do_div
@@ -1247,13 +1283,37 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
     || }
     |  Dispatch
 
+    |1:
+    |  cmp RREGL,Value::FLAG_REAL
+    |  jnb >6
+
+    // real && xx
+    |  cmp RREGL,Value::FLAG_REAL
+    |  jb >5  // real && real
+    |  cmp RREGL,Value::FLAG_INTEGER
+    |  jne >6 // cannot handle
+
+    // promoting RHS->real
+    |  shr RREG,32
+    |  cvtsi2sd xmm1,RREGL
+    |  movd xmm0,LREG
+    |  jmp >5
+
+
+    |4: // int && xx
+    |  cmp RREGL,Value::FLAG_REAL
+    |  jnb >6 // cannot handle
+    // promoting LHS->real
+    |  shr LREG,32
+    |  cvtsi2sd xmm0,LREGL
+    |  movd xmm1,RREG
+
     // real && real
     |5:
     || if( arith_mod ) {
     |    jmp ->ModByReal
     || } else {
-    |    movsd   xmm0,qword [STK+ARG1*8]
-    |    instrR  xmm0,qword [STK+ARG2*8]
+    |    instrR  xmm0,xmm1
     |    setterR xmm0
     || }
     |  Dispatch
@@ -1261,6 +1321,7 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
     // slow path
     |6:
     |  jmp ->InterpArithVV
+
 
     |.endmacro
 
@@ -1357,21 +1418,16 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
      * ===================================================================*/
 
     /* --------------------------------------------------------------------
-     *
-     * Comparison XV
-     *
+     * Comparison XV                                                      |
      * -------------------------------------------------------------------*/
     // pre-phase of each comparison
-    |.macro comp_xv_pre,BC,SlowPath,mov_ops
+    |.macro comp_xv_pre,BC,SlowPath
     |  instr_C
     |  mov RREG,qword [STK+ARG2*8]
     |  CheckNum ARG2,RREG,1,2
-    |  mov_ops
-    |  mov CARG4,BC    // Always mov CARG4 at last since it alias with ARG3
     |  jmp ->SlowPath
     |.endmacro
 
-    // comparison phase , we have 2 versions , need to profile
     |.macro comp_cmp_real,instr
     |  mov T1L, Value::FLAG_FALSE
     |  mov T2L, Value::FLAG_TRUE
@@ -1416,19 +1472,9 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
     |  Dispatch
     |.endmacro
 
-    |.macro comp_xv_mov_iv_ops
-    |  LdIntV CARG2,CARG2L,ARG1
-    |  mov CARG3,RREG
-    |.endmacro
-
-    |.macro comp_xv_mov_rv_ops
-    |  LdRealV CARG2,ARG1
-    |  mov CARG3,RREG
-    |.endmacro
-
     case BC_LTIV:
       |=> bc:
-      |  comp_xv_pre,BC_LTIV,InterpDoCompare,comp_xv_mov_iv_ops
+      |  comp_xv_pre,BC_LTIV,InterpDoCompareIV
       |1:
       |  comp_iv_real,cmovl
       |2:
@@ -1436,7 +1482,7 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
       break;
     case BC_LTRV:
       |=>bc:
-      |  comp_xv_pre,BC_LTRV,InterpDoCompare,comp_xv_mov_rv_ops
+      |  comp_xv_pre,BC_LTRV,InterpDoCompareRV
       |1:
       |  comp_rv_real,cmovl
       |2:
@@ -1444,7 +1490,7 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
       break;
     case BC_LEIV:
       |=> bc:
-      |  comp_xv_pre,BC_LEIV,InterpDoCompare,comp_xv_mov_iv_ops
+      |  comp_xv_pre,BC_LEIV,InterpDoCompareIV
       |1:
       |  comp_iv_real,cmovle
       |2:
@@ -1452,7 +1498,7 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
       break;
     case BC_LERV:
       |=> bc:
-      |  comp_xv_pre,BC_LERV,InterpDoCompare,comp_xv_mov_rv_ops
+      |  comp_xv_pre,BC_LERV,InterpDoCompareRV
       |1:
       |  comp_rv_real,cmovle
       |2:
@@ -1460,7 +1506,7 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
       break;
     case BC_GTIV:
       |=> bc:
-      |  comp_xv_pre,BC_GTIV,InterpDoCompare,comp_xv_mov_iv_ops
+      |  comp_xv_pre,BC_GTIV,InterpDoCompareIV
       |1:
       |  comp_iv_real,cmovg
       |2:
@@ -1468,7 +1514,7 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
       break;
     case BC_GTRV:
       |=>bc:
-      |  comp_xv_pre,BC_GTRV,InterpDoCompare,comp_xv_mov_rv_ops
+      |  comp_xv_pre,BC_GTRV,InterpDoCompareRV
       |1:
       |  comp_rv_real,cmovg
       |2:
@@ -1476,7 +1522,7 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
       break;
     case BC_GEIV:
       |=> bc:
-      |  comp_xv_pre,BC_GEIV,InterpDoCompare,comp_xv_mov_iv_ops
+      |  comp_xv_pre,BC_GEIV,InterpDoCompareIV
       |1:
       |  comp_iv_real,cmovge
       |2:
@@ -1484,7 +1530,7 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
       break;
     case BC_GERV:
       |=> bc:
-      |  comp_xv_pre,BC_GERV,InterpDoCompare,comp_xv_mov_rv_ops
+      |  comp_xv_pre,BC_GERV,InterpDoCompareRV
       |1:
       |  comp_rv_real ,cmovge
       |2:
@@ -1492,7 +1538,7 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
       break;
     case BC_EQIV:
       |=> bc:
-      |  comp_xv_pre,BC_EQIV,InterpDoCompare,comp_xv_mov_iv_ops
+      |  comp_xv_pre,BC_EQIV,InterpDoCompareIV
       |1:
       |  comp_iv_real,cmove
       |2:
@@ -1500,7 +1546,7 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
       break;
     case BC_EQRV:
       |=> bc:
-      |  comp_xv_pre,BC_EQRV,InterpDoCompare,comp_xv_mov_rv_ops
+      |  comp_xv_pre,BC_EQRV,InterpDoCompareRV
       |1:
       |  comp_rv_real,cmove
       |2:
@@ -1508,7 +1554,7 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
       break;
     case BC_NEIV:
       |=> bc:
-      |  comp_xv_pre,BC_NEIV,InterpDoCompare,comp_xv_mov_iv_ops
+      |  comp_xv_pre,BC_NEIV,InterpDoCompareIV
       |1:
       |  comp_iv_real,cmovne
       |2:
@@ -1516,7 +1562,7 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
       break;
     case BC_NERV:
       |=> bc:
-      |  comp_xv_pre,BC_NERV,InterpDoCompare,comp_xv_mov_rv_ops
+      |  comp_xv_pre,BC_NERV,InterpDoCompareRV
       |1:
       |  comp_rv_real,cmovne
       |2:
@@ -1524,16 +1570,12 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
       break;
 
     /* --------------------------------------------------------------------
-     *
-     * Comparison VX
-     *
+     * Comparison VX                                                      |
      * -------------------------------------------------------------------*/
-    |.macro comp_vx_pre,BC,SlowPath,mov_ops
-    |  instr_C
+    |.macro comp_vx_pre,BC,SlowPath
+    |  instr_B
     |  mov LREG,qword [STK+ARG1*8]
     |  CheckNum ARG1,LREG,1,2
-    |  mov_ops
-    |  mov CARG4,BC    // Always mov CARG4 at last since it alias with ARG3
     |  jmp ->SlowPath
     |.endmacro
 
@@ -1565,19 +1607,9 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
     |  Dispatch
     |.endmacro
 
-    |.macro comp_vx_mov_vi_ops
-    |  mov CARG2,LREG
-    |  LdIntV CARG3,CARG3L,ARG2
-    |.endmacro
-
-    |.macro comp_vx_mov_vr_ops
-    |  mov CARG2,LREG
-    |  LdRealV CARG3,ARG2
-    |.endmacro
-
     case BC_LTVI:
       |=>bc:
-      |  comp_vx_pre,BC_LTVI,InterpDoCompare,comp_vx_mov_vi_ops
+      |  comp_vx_pre,BC_LTVI,InterpDoCompareVI
       |1:
       |  comp_vi_real,cmovl
       |2:
@@ -1585,7 +1617,7 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
       break;
     case BC_LTVR:
       |=>bc:
-      |  comp_vx_pre,BC_LTVR,InterpDoCompare,comp_vx_mov_vr_ops
+      |  comp_vx_pre,BC_LTVR,InterpDoCompareVR
       |1:
       |  comp_vr_real,cmovl
       |2:
@@ -1593,7 +1625,7 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
       break;
     case BC_LEVI:
       |=>bc:
-      |  comp_vx_pre,BC_LEVI,InterpDoCompare,comp_vx_mov_vi_ops
+      |  comp_vx_pre,BC_LEVI,InterpDoCompareVI
       |1:
       |  comp_vi_real,cmovle
       |2:
@@ -1601,7 +1633,7 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
       break;
     case BC_LEVR:
       |=>bc:
-      |  comp_vx_pre,BC_LEVR,InterpDoCompare,comp_vx_mov_vr_ops
+      |  comp_vx_pre,BC_LEVR,InterpDoCompareVR
       |1:
       |  comp_vr_real,cmovle
       |2:
@@ -1609,7 +1641,7 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
       break;
     case BC_GTVI:
       |=>bc:
-      |  comp_vx_pre,BC_GTVI,InterpDoCompare,comp_vx_mov_vi_ops
+      |  comp_vx_pre,BC_GTVI,InterpDoCompareVI
       |1:
       |  comp_vi_real,cmovg
       |2:
@@ -1617,7 +1649,7 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
       break;
     case BC_GTVR:
       |=>bc:
-      |  comp_vx_pre,BC_GTVR,InterpDoCompare,comp_vx_mov_vr_ops
+      |  comp_vx_pre,BC_GTVR,InterpDoCompareVR
       |1:
       |  comp_vr_real, cmovg
       |2:
@@ -1625,7 +1657,7 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
       break;
     case BC_GEVI:
       |=>bc:
-      |  comp_vx_pre,BC_GEVI,InterpDoCompare,comp_vx_mov_vi_ops
+      |  comp_vx_pre,BC_GEVI,InterpDoCompareVI
       |1:
       |  comp_vi_real ,cmovge
       |2:
@@ -1633,7 +1665,7 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
       break;
     case BC_GEVR:
       |=>bc:
-      |  comp_vx_pre,BC_GEVR,InterpDoCompare,comp_vx_mov_vr_ops
+      |  comp_vx_pre,BC_GEVR,InterpDoCompareVR
       |1:
       |  comp_vr_real ,cmovge
       |2:
@@ -1641,7 +1673,7 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
       break;
     case BC_EQVI:
       |=>bc:
-      |  comp_vx_pre,BC_EQVI,InterpDoCompare,comp_vx_mov_vi_ops
+      |  comp_vx_pre,BC_EQVI,InterpDoCompareVI
       |1:
       |  comp_vi_real ,cmove
       |2:
@@ -1649,7 +1681,7 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
       break;
     case BC_EQVR:
       |=>bc:
-      |  comp_vx_pre,BC_EQVR,InterpDoCompare,comp_vx_mov_vr_ops
+      |  comp_vx_pre,BC_EQVR,InterpDoCompareVR
       |1:
       |  comp_vr_real ,cmove
       |2:
@@ -1657,7 +1689,7 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
       break;
     case BC_NEVI:
       |=>bc:
-      |  comp_vx_pre,BC_NEVI,InterpDoCompare,comp_vx_mov_vi_ops
+      |  comp_vx_pre,BC_NEVI,InterpDoCompareVI
       |1:
       |  comp_vi_real ,cmovne
       |2:
@@ -1665,12 +1697,104 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
       break;
     case BC_NEVR:
       |=>bc:
-      |  comp_vx_pre,BC_NEVR,InterpDoCompare,comp_vx_mov_vr_ops
+      |  comp_vx_pre,BC_NEVR,InterpDoCompareVR
       |1:
       |  comp_vr_real ,cmovne
       |2:
       |  comp_vr_int  ,cmovne
       break;
+
+
+    /* --------------------------------------------------------
+     * comparison VV
+     *
+     * We do inline type promotion and comparison for all
+     * numeric type
+     * --------------------------------------------------------*/
+    |.macro comp_vv_pre,BC,instr
+    |  instr_E
+    |  mov LREG, qword [STK+ARG1*8]
+    |  mov RREG, qword [STK+ARG2*8]
+    |  cmp LREGL, Value::FLAG_INTEGER
+    |  jne >1 // int && xx
+    |  cmp RREGL, Value::FLAG_INTEGER
+    |  jne >2 // int && xx
+    |  shr LREG,32
+    |  shr RREG,32
+    |  mov T1L, Value::FLAG_TRUE
+    |  mov T2L, Value::FLAG_FALSE
+    |  cmp LREGL,RREGL
+    |  instr T1L,T2L
+    |  mov dword [STK+ACCFIDX], T1L
+    |  Dispatch
+
+    |1:
+    |  cmp LREGL, Value::FLAG_REAL
+    |  jnb >6
+    //  real && xx
+    |  cmp RREGL, Value::FLAG_REAL
+    |  jb >3
+    |  cmp RREGL, Value::FLAG_INTEGER
+    |  jne >6
+    // promotion real && int
+    |  movd xmm0,LREG
+    |  shr RREG,32
+    |  cvtsi2sd xmm1,RREGL
+    |  jmp >3
+
+    |2:
+    |  cmp RREGL, Value::FLAG_REAL
+    |  jnb >6
+    // promotion int && real
+    |  shr LREG,32
+    |  cvtsi2sd xmm0,LREGL
+    |  movd xmm1, RREGL
+
+    |3: // real && real
+    |  mov T1L, Value::FLAG_TRUE
+    |  mov T2L, Value::FLAG_FALSE
+    |  ucomisd xmm0,xmm1
+    |  instr T1L,T2L
+    |  mov dword [STK+ACCFIDX], T1L
+    |  Dispatch
+
+    // slow path
+    |6:
+    | jmp ->InterpCompareVV
+
+    |.endmacro
+
+    case BC_LTVV:
+      |=>bc:
+      |  comp_vv_pre,BC_LTVV,cmovl
+      break;
+    case BC_LEVV:
+      |=>bc:
+      |  comp_vv_pre,BC_LEVV,cmovle
+      break;
+    case BC_GTVV:
+      |=>bc:
+      |  comp_vv_pre,BC_GTVV,cmovg
+      break;
+    case BC_GEVV:
+      |=>bc:
+      |  comp_vv_pre,BC_GEVV,cmovge
+      break;
+    case BC_EQVV:
+      |=>bc:
+      |  comp_vv_pre,BC_EQVV,cmove
+      break;
+    case BC_NEVV:
+      |=>bc:
+      |  comp_vv_pre,BC_NEVV,cmovne
+      break;
+
+    /* ------------------------------------------------------------
+     * Comparison SV
+     *
+     * Inline cases that V is a string and also they are both small
+     * string so we can do the comparison
+     * -----------------------------------------------------------*/
 
     default:
       |=> bc:
@@ -1831,6 +1955,7 @@ void AssemblyInterpreter::Dump( DumpWriter* writer ) const {
   std::uint8_t* rp = static_cast<std::uint8_t*>(interp_entry_);
   std::size_t size = code_size_;
 
+  writer->WriteL("CodeSize:%zu",code_size_);
   ZydisDecodedInstruction instr;
   while(ZYDIS_SUCCESS(
         ZydisDecoderDecodeBuffer(&decoder,rp,size,pc,&instr))) {

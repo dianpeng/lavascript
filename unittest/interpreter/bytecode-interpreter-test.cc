@@ -65,9 +65,9 @@ int main() {
   Context ctx(TestGCConfig());
   std::string error;
   std::string script(stringify(
-        var a = 5;
-        var b = 6;
-        return b > 5;
+        var a = 10;
+        var b = 20;
+        return b < 30;
         ));
 
   ScriptBuilder sb("a",script);

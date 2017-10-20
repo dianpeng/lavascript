@@ -39,8 +39,8 @@
  * expression/function error. Additionally we have a implicit accumulator register to
  * be used by certain bytecode for holding results or passing around register information
  *
- * There's another accumulator register will be used implicitly. The accumulator register
- * is aliased with #255 register . So instruction can reference acc register via #255 register.
+ * The accumulator is aliased with #255 register . So instruction can reference accregister
+ * via #255 register.
  *
  */
 

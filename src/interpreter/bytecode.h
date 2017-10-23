@@ -156,8 +156,6 @@ static const std::size_t kAllocatableBytecodeRegisterSize = 255;
   __(F,LOADN1, loadn1, REG , _ , _   )          \
   __(B,LOADR , loadr , REG , RREF , _    )      \
   __(B,LOADSTR,loadstr,REG , SREF , _   )       \
-  __(F,LOADESTR,loadestr,REG , _ , _ )          \
-  __(B,LOADCSTR,loadcstr,REG , GARG , _ )       \
   __(F,LOADTRUE,loadtrue,REG , _ , _ )          \
   __(F,LOADFALSE,loadfalse,  REG, _ , _ )       \
   __(F,LOADNULL , loadnull , REG , _ , _ )      \

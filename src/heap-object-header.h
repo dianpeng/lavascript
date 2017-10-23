@@ -2,8 +2,9 @@
 #define HEAP_OBJECT_HEADER_H_
 
 #include <cstdint>
-#include "all-static.h"
+#include <type_traits>
 
+#include "all-static.h"
 #include "bits.h"
 
 namespace lavascript {
@@ -122,10 +123,12 @@ class HeapObjectHeader : DoNotAllocateOnNormalHeap {
   // Mask for getting the heap object type , should be 0b0011100
   static const std::uint32_t kHeapObjectTypeMask  = bits::BitOn<std::uint32_t,2,6>::value;
 
-  GCState gc_state() const { return static_cast<GCState>(high_ & kGCStateMask); }
+  GCState gc_state() const { return static_cast<GCState>(high() & kGCStateMask); }
   void set_gc_state( GCState state ) {
-    high_ &= ~kGCStateMask;
-    high_ |= static_cast<std::uint32_t>(state);
+    std::uint32_t v = high();
+    v &= ~kGCStateMask;
+    v |= static_cast<std::uint32_t>(state);
+    set_high(v);
   }
 
   bool IsGCBlack() const { return gc_state() == GC_BLACK; }
@@ -137,22 +140,22 @@ class HeapObjectHeader : DoNotAllocateOnNormalHeap {
 
   // Check whether this object is a short string or long string if this
   // object is a heap object there
-  void set_sso() { high_ &= ~kLongStringMask;  }
-  void set_long_string()  { high_ |= kLongStringMask;   }
+  void set_sso() { set_high( high() & ~kLongStringMask);  }
+  void set_long_string()  { set_high( high() | kLongStringMask);   }
 
   // These two functions doesn't test whether the HeapObjectType is a TYPE_STRING but
   // assume it is a string
-  bool IsSSO() const { return type() == TYPE_STRING && !(high_ & kLongStringMask); }
-  bool IsLongString() const  { return type() == TYPE_STRING && (high_ & kLongStringMask); }
+  bool IsSSO() const { return type() == TYPE_STRING && !(high() & kLongStringMask); }
+  bool IsLongString() const  { return type() == TYPE_STRING && (high() & kLongStringMask); }
 
   // Check if it is end of the chunk. Used when iterating through object on heap
-  bool IsEndOfChunk() const { return (high_ & kEndOfChunkMask); }
-  void set_end_of_chunk() { high_ |= kEndOfChunkMask; }
-  void set_not_end_of_chunk() { high_ &= ~kEndOfChunkMask; }
+  bool IsEndOfChunk() const { return (high() & kEndOfChunkMask); }
+  void set_end_of_chunk() { set_high( high() | kEndOfChunkMask); }
+  void set_not_end_of_chunk() { set_high( high() & ~kEndOfChunkMask); }
 
   // HeapObject's type are stored inside of this HeapObjectHeader
   ValueType type() const {
-    return static_cast<ValueType>( (high_ & kHeapObjectTypeMask) >> 2 );
+    return static_cast<ValueType>( (high() & kHeapObjectTypeMask) >> 2 );
   }
   bool IsString() const { return type() == TYPE_STRING; }
   bool IsList() const { return type() == TYPE_LIST; }
@@ -166,8 +169,10 @@ class HeapObjectHeader : DoNotAllocateOnNormalHeap {
   bool IsScript() const { return type() == TYPE_SCRIPT; }
 
   void set_type( ValueType type ) {
-    high_ &= ~kHeapObjectTypeMask;
-    high_ |= (static_cast<std::uint32_t>(type) << 2);
+    std::uint32_t v = high();
+    v &= ~kHeapObjectTypeMask;
+    v |= (static_cast<std::uint32_t>(type) << 2);
+    set_high(v);
   }
 
   // Size of the object + the header size
@@ -179,14 +184,13 @@ class HeapObjectHeader : DoNotAllocateOnNormalHeap {
   std::size_t total_size() const {return size() + kHeapObjectHeaderSize; }
 
   // Size of the object in byte
-  std::size_t size() const { return low_ ; }
+  std::size_t size() const { return low() ; }
 
   // Set the object's size in byte
-  void set_size( std::uint32_t size ) { low_ = size; }
+  void set_size( std::uint32_t size ) { set_low(size); }
 
   // Return the heap object header in raw format basically a 64 bits number
-  Type raw () const { return (static_cast<uint64_t>(low_) |
-                             (static_cast<uint64_t>(high_)<<32)); }
+  Type raw () const { return raw_; }
 
   operator Type const () { return raw(); }
 
@@ -197,20 +201,41 @@ class HeapObjectHeader : DoNotAllocateOnNormalHeap {
   }
 
   explicit HeapObjectHeader( Type raw ) :
-    high_( bits::High64(raw) ),
-    low_ ( bits::Low64 (raw) )
+    raw_(raw)
   {}
 
   explicit HeapObjectHeader( void* raw ):
-    high_( bits::High64(*reinterpret_cast<Type*>(raw)) ),
-    low_ ( bits::Low64 (*reinterpret_cast<Type*>(raw)) )
+    raw_ ( *reinterpret_cast<Type*>(raw) )
   {}
 
  private:
-  std::uint32_t high_;
-  std::uint32_t low_;
+  std::uint32_t high() const { return high_; }
+  std::uint32_t low () const { return low_ ; }
+  void set_high( std::uint32_t h ) { high_ = h; }
+  void set_low( std::uint32_t l ) { low_  = l; }
 
+ private:
+  union {
+    Type raw_;
+    // Though we don't support big endian but suppose we want to extend
+    // it to more platform so we leave this here to make our code easier
+    // to be extended in the future
+#ifdef LAVA_LITTLE_ENDIAN
+    struct {
+      std::uint32_t low_;
+      std::uint32_t high_;
+    };
+#else
+    struct {
+      std::uint32_t high_;
+      std::uint32_t low_ ;
+    };
+#endif // LAVA_LTTILE_ENDIAN
+  };
 };
+
+static_assert( std::is_standard_layout<HeapObjectHeader>::value );
+static_assert( sizeof(HeapObjectHeader::Type) == sizeof(HeapObjectHeader) );
 
 } // namespace lavascript
 #endif // HEAP_OBJECT_HEADER_H_

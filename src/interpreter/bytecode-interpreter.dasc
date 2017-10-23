@@ -430,7 +430,7 @@ INTERPRETER_REGISTER_EXTERN_SYMBOL(Print2)
 |  mov T1,qword [PROTO]
 |  mov T1,qword [T1+PrototypeLayout::kIntTableOffset]
 
-|.if 1
+|.if 0
 |  mov reg, Value::FLAG_INTEGER
 |  shl reg,32
 |  or regL,dword [T1+index*4]
@@ -476,7 +476,7 @@ INTERPRETER_REGISTER_EXTERN_SYMBOL(Print2)
 
 |.macro CheckNum,index,val,real_label,int_label
 // TODO:: profile these 2 implementations
-|.if 1
+|.if 0
 |  cmp dword[STK+index*8+4],Value::FLAG_REAL
 |  jb >real_label
 |  cmp dword[STK+index*8+4],Value::FLAG_INTEGER
@@ -500,7 +500,7 @@ INTERPRETER_REGISTER_EXTERN_SYMBOL(Print2)
 |  or reg ,val
 |.else
 |  mov reg,val
-|  or  reg,qword [->ValueHeapStoreMask]
+|  or  reg,qword [->ValueHeapMaskLoad]
 |.endif
 
 |.endmacro
@@ -527,15 +527,38 @@ INTERPRETER_REGISTER_EXTERN_SYMBOL(Print2)
 // It is painful to load a string into its Value format
 |.macro LdStrV,val,index
 |  mov T1 , qword [PROTO]
-|  mov T1 , qword [T1+PrototypeLayout::kStrTableOffset]
+|  mov T1 , qword [T1+PrototypeLayout::kStringTableOffset]
 |  mov T1 , qword [T1+index*8]
 |  StHeap val,T1
 |.endmacro
 
 |.macro LdStr,val,index
 |  mov T1 , qword [PROTO]
-|  mov T1 , qword [T1+PrototypeLayout::kStrTableOffset]
+|  mov T1 , qword [T1+PrototypeLayout::kStringTableOffset]
 |  mov val, qword [T1+index*8]
+|.endmacro
+
+
+// --------------------------------------------------------------------------
+// Check a *GCRef* is SSO or not , not stored in Value
+
+// This is a bit pattern for SSO string , sso bit is *off* and it is a string
+// so basically just TYPE_STRING stored in the corresponding bits
+#define SSO_BIT_PATTERN 0x14
+
+|.macro CheckSSO,reg,fail
+|  mov reg, qword [reg]  
+|  cmp dword [reg-(HeapObjectHeader::kHeapObjectHeaderSize+4)], SSO_BIT_PATTERN
+|  jne >fail
+|.endmacro
+
+|.macro CheckSSOV,reg,fail
+|  mov T1,reg
+|  shr T1,48
+|  cmp T1L,Value::TAG_HEAP
+|  jne >fail
+|  or  reg,qword [->ValueHeapMaskLoad]
+|  CheckSSO,reg,fail
 |.endmacro
 
 #define INTERP_HELPER_LIST(__) \
@@ -562,6 +585,8 @@ INTERPRETER_REGISTER_EXTERN_SYMBOL(Print2)
   __(INTERP_COMPARERV,InterpCompareRV)       \
   __(INTERP_COMPAREVR,InterpCompareVR)       \
   __(INTERP_COMPAREVV,InterpCompareVV)       \
+  __(INTERP_COMPARESV,InterpCompareSV)       \
+  __(INTERP_COMPAREVS,InterpCompareVS)       \
   /* ---- debug helper ---- */               \
   __(PRINT_OP,PrintOP)                       \
   __(PRINT2  ,Print2 )
@@ -847,6 +872,23 @@ void GenerateHelper( BuildContext* bctx ) {
   |  fcall InterpreterDoCompare
   |  handle_ret
 
+  |=> INTERP_COMPARESV:
+  |->InterpCompareSV:
+  |  mov CARG1, RUNTIME
+  |  LdStrV CARG2,ARG1
+  |  mov CARG2, qword [STK+ARG2*8]
+  |  movzx CARG4L, byte [PC-4]
+  |  fcall InterpreterDoCompare
+  |  handle_ret
+
+  |=> INTERP_COMPAREVS:
+  |->InterpCompareVS:
+  |  mov CARG1, RUNTIME
+  |  mov CARG2, qword [STK+ARG1*8]
+  |  LdStrV CARG3,ARG2
+  |  movzx CARG4, byte [PC-4]
+  |  fcall InterpreterDoCompare
+  |  handle_ret
 }
 
 void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
@@ -941,6 +983,14 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
       |=> bc:
       |  instr_F
       |  mov dword [STK+ARG1*8+4],Value::FLAG_FALSE
+      |  Dispatch
+      break;
+      
+    case BC_LOADSTR:
+      |=> bc:
+      |  instr_B
+      |  LdStrV LREG,ARG2
+      |  mov qword [STK+ARG1*8],LREG
       |  Dispatch
       break;
 
@@ -1790,11 +1840,103 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
       break;
 
     /* ------------------------------------------------------------
-     * Comparison SV
+     * Comparison SV/VS
      *
-     * Inline cases that V is a string and also they are both small
-     * string so we can do the comparison
+     * For this sort of cases, we don't inline anything for none EQ/NE
+     * comparison but just call the function to perform the comparison
      * -----------------------------------------------------------*/
+    |.macro comp_str,BC,instrDecoder,SlowPath
+    |  instrDecoder
+    |  jmp ->SlowPath
+    |.endmacro
+
+    case BC_LTSV:
+      |=> bc:
+      |  comp_str BC_LTSV,instr_C,InterpCompareSV
+      break;
+    case BC_LTVS:
+      |=> bc:
+      |  comp_str BC_LTSV,instr_B,InterpCompareVS
+      break;
+    case BC_LESV:
+      |=> bc:
+      |  comp_str BC_LESV,instr_C,InterpCompareSV
+      break;
+    case BC_LEVS:
+      |=> bc:
+      |  comp_str BC_LEVS,instr_B,InterpCompareVS
+      break;
+    case BC_GTSV:
+      |=> bc:
+      |  comp_str BC_GTSV,instr_C,InterpCompareSV
+      break;
+    case BC_GTVS:
+      |=> bc:
+      |  comp_str BC_GTVS,instr_B,InterpCompareVS
+      break;
+    case BC_GESV:
+      |=> bc:
+      |  comp_str BC_GESV,instr_C,InterpCompareSV
+      break;
+    case BC_GEVS:
+      |=> bc:
+      |  comp_str BC_GEVS,instr_B,InterpCompareVS
+      break;
+
+    |.macro comp_sv,BC,SlowPath,instr
+    |  instr_B
+    |  LdStr LREG,ARG1
+    |  mov RREG  ,qword [STK+ARG2*8]
+    |  CheckSSO LREG,1
+    |  CheckSSOV RREG,1
+    |  mov T1L, Value::FLAG_FALSE
+    |  mov T2L, Value::FLAG_TRUE
+    |  test LREG,RREG
+    |  instr T1L,T2L
+    |  mov dword [STK+ACCFIDX],T1L
+    |  Dispatch
+
+    |1:
+    |  jmp ->SlowPath
+    |.endmacro
+
+    |.macro comp_vs,BC,SlowPath,instr
+    |  instr_C
+    |  mov LREG, qword [STK+ARG1*8]
+    |  LdStr RREG,ARG2
+    |  CheckSSOV LREG,1
+    |  CheckSSO  RREG,1
+    |  mov T1L, Value::FLAG_FALSE
+    |  mov T2L, Value::FLAG_TRUE
+    |  test LREG,RREG
+    |  instr T1L,T2L
+    |  mov dword [STK+ACCFIDX],T1L
+    |  Dispatch
+
+    |1:
+    |  jmp ->SlowPath
+    |.endmacro
+
+    case BC_EQSV:
+      |=> bc:
+      |  comp_sv BC_EQSV,InterpCompareSV,cmove
+      break;
+    case BC_EQVS:
+      |=> bc:
+      |  comp_vs BC_EQVS,InterpCompareVS,cmove
+      break;
+    case BC_NESV:
+      |=>bc:
+      |  comp_sv BC_NESV,InterpCompareSV,cmovne
+      break;
+    case BC_NEVS:
+      |=>bc:
+      |  comp_vs BC_NEVS,InterpCompareVS,cmovne
+      break;
+
+    /* -------------------------------------------------
+     * Unary                                           |
+     * ------------------------------------------------*/
 
     default:
       |=> bc:

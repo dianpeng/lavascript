@@ -221,7 +221,7 @@ class Value final {
   inline bool IsIterator() const;
 
   // Getters --------------------------------------------
-  inline std::uint32_t GetInteger() const;
+  inline std::int32_t GetInteger() const;
   inline bool GetBoolean() const;
   inline double GetReal() const;
 
@@ -401,11 +401,17 @@ class SSO final {
 
   // memory pool for SSOs
   friend class gc::SSOPool;
+  friend class SSOLayout;
 
   LAVA_DISALLOW_COPY_AND_ASSIGN(SSO);
 };
 
 static_assert( std::is_standard_layout<SSO>::value );
+
+struct SSOLayout {
+  static const std::uint32_t kSizeOffset = offsetof(SSO,size_);
+  static const std::uint32_t kHashOffset = offsetof(SSO,hash_);
+};
 
 /**
  * Long string representation inside of VM
@@ -712,7 +718,7 @@ class Map final : public HeapObject {
    */
 
   struct Entry {
-    Value key;
+    String** key;
     Value value;
     std::uint32_t hash;
     std::uint32_t next : 29;
@@ -808,9 +814,9 @@ class Map final : public HeapObject {
   Entry* FindEntry( const T& , std::uint32_t , Option ) const;
 
  private:
-  std::size_t capacity_;
-  std::size_t size_;
-  std::size_t slot_size_;
+  std::uint32_t capacity_;
+  std::uint32_t size_;
+  std::uint32_t slot_size_;
 
   friend struct MapLayout;
   friend class GC;
@@ -824,6 +830,14 @@ struct MapLayout {
   static const std::uint32_t kSizeOffset     = offsetof(Map,size_);
   static const std::uint32_t kSlotSize       = offsetof(Map,slot_size_);
   static const std::uint32_t kArrayOffset    = sizeof(Map);
+};
+
+struct MapEntryLayout {
+  static const std::uint32_t kKeyOffset = offsetof(Map::Entry,key);
+  static const std::uint32_t kValueOffset = offsetof(Map::Entry,value);
+  static const std::uint32_t kHashOffset = offsetof(Map::Entry,hash);
+  static const std::uint32_t kFlagOffset = sizeof(Value) + sizeof(Value) +
+                                                           sizeof(std::uint32_t);
 };
 
 /**
@@ -1259,7 +1273,7 @@ inline bool Value::IsIterator() const {
   return IsHeapObject() && (*heap_object())->IsIterator();
 }
 
-inline std::uint32_t Value::GetInteger() const {
+inline std::int32_t Value::GetInteger() const {
   lava_debug(NORMAL,lava_verify(IsInteger()););
 
   /**
@@ -1277,7 +1291,7 @@ inline std::uint32_t Value::GetInteger() const {
    * and low alias for this register instead of wasting cycle to do the
    * bitmask
    */
-  return static_cast<std::uint32_t>(raw_ & kIntMask);
+  return static_cast<std::int32_t>(raw_ & kIntMask);
 }
 
 inline bool Value::GetBoolean() const {
@@ -2057,7 +2071,7 @@ template<typename T> bool Object::Visit( T* visitor ) {
 
 inline std::uint32_t Map::Hash( const Handle<String>& key ) {
   if(key->IsSSO()) {
-    // Use default hash when it is SSO
+    // Use default hash when it is SSO and this behavior *should* not change
     return key->sso().hash();
   } else {
     return Hasher::Hash(key->long_string().data(),key->long_string().size);
@@ -2089,11 +2103,7 @@ Map::Entry* Map::FindEntry( const T& key , std::uint32_t fullhash ,
   Entry* cur = main;
   do {
     if(!cur->del) {
-      // The current entry is not deleted, so we can try check wether it is a
-      // matched key or not
-      lava_debug(NORMAL,lava_verify( cur->key.IsString() ););
-
-      if(cur->hash == fullhash && Equal(cur->key.GetString(),key)) {
+      if(cur->hash == fullhash && Equal(Handle<String>(cur->key),key)) {
         return opt == INSERT ? NULL : cur;
       }
     }
@@ -2174,7 +2184,7 @@ inline bool Map::Set( GC* gc , const Handle<String>& key , const Value& value ) 
     lava_debug(NORMAL,lava_verify(!entry->use););
     entry->use = 1;
     entry->value = value;
-    entry->key.SetHandle(key);
+    entry->key = key.ref();
     entry->hash = f;
     ++size_;
     ++slot_size_;
@@ -2192,7 +2202,7 @@ inline bool Map::Set( GC* gc , const char* key , const Value& value ) {
     lava_debug(NORMAL,lava_verify(!entry->use););
     entry->use = 1;
     entry->value = value;
-    entry->key.SetString( String::New(gc,key) );
+    entry->key = String::New(gc,key).ref();
     entry->hash = f;
     ++size_;
     ++slot_size_;
@@ -2210,7 +2220,7 @@ inline bool Map::Set( GC* gc , const std::string& key , const Value& value ) {
     lava_debug(NORMAL,lava_verify(!entry->use););
     entry->use = 1;
     entry->value = value;
-    entry->key.SetString( String::New(gc,key) );
+    entry->key =  String::New(gc,key).ref();
     entry->hash = f;
     ++size_;
     ++slot_size_;
@@ -2232,7 +2242,7 @@ inline void Map::Put( GC* gc , const Handle<String>& key , const Value& value ) 
   entry->del = 0;
   entry->use = 1;
   entry->value = value;
-  entry->key.SetString(key);
+  entry->key = key.ref();
   entry->hash = f;
 }
 
@@ -2249,7 +2259,7 @@ inline void Map::Put( GC* gc , const char* key , const Value& value ) {
   entry->del = 0;
   entry->use = 1;
   entry->value = value;
-  entry->key.SetString(String::New(gc,key));
+  entry->key = (String::New(gc,key)).ref();
   entry->hash = f;
 }
 
@@ -2266,7 +2276,7 @@ inline void Map::Put( GC* gc , const std::string& key , const Value& value ) {
   entry->del = 0;
   entry->use = 1;
   entry->value = value;
-  entry->key.SetString(String::New(gc,key));
+  entry->key = (String::New(gc,key)).ref();
   entry->hash = f;
 }
 
@@ -2280,7 +2290,7 @@ inline bool Map::Update( GC* gc , const Handle<String>& key , const Value& value
     entry->value = value;
     lava_debug(NORMAL,
         lava_verify( entry->hash == f  );
-        lava_verify( *key == (*entry->key.GetString()) );
+        lava_verify( *key == **(entry->key) );
       );
     return true;
   }
@@ -2297,7 +2307,7 @@ inline bool Map::Update( GC* gc , const char* key , const Value& value ) {
     entry->value = value;
     lava_debug(NORMAL,
         lava_verify( entry->hash == f  );
-        lava_verify( (*entry->key.GetString()) == key );
+        lava_verify( **(entry->key) == key );
       );
     return true;
   }
@@ -2314,7 +2324,7 @@ inline bool Map::Update( GC* gc , const std::string& key , const Value& value ) 
     entry->value = value;
     lava_debug(NORMAL,
         lava_verify( entry->hash == f  );
-        lava_verify( (*entry->key.GetString()) == key );
+        lava_verify( **(entry->key) == key );
       );
     return true;
   }
@@ -2362,7 +2372,7 @@ template< typename T > bool Map::Visit( T* visitor ) {
     for( std::size_t i = 0 ; i < capacity() ; ++i ) {
       Entry* e = data()[i];
       if(e->active()) {
-        if(!visitor->VisitString( e->key.GetString() ) ||
+        if(!visitor->VisitString( Handle<String>(e->key)) ||
            !visitor->VisitValue ( e->value ))
           return false;
       }

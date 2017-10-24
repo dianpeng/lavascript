@@ -92,7 +92,7 @@ Handle<Map> Map::Rehash( GC* gc , const Handle<Map>& old_map ) {
   for( std::size_t i = 0 ; i < capacity ; ++i ) {
     const Entry* e = old_map->data()+i;
     if(e->active()) {
-      Entry* new_entry = new_map->FindEntry(e->key.GetString(),
+      Entry* new_entry = new_map->FindEntry(Handle<String>(e->key),
                                             e->hash,
                                             INSERT);
       lava_debug(NORMAL,lava_verify(new_entry && !new_entry->use););

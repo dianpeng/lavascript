@@ -120,7 +120,7 @@ class HeapObjectHeader : DoNotAllocateOnNormalHeap {
   static const std::uint32_t kLongStringMask = (1<<7); // 0b10000000
   static const std::uint32_t kEndOfChunkMask = (1<<6); // 0b01000000
 
-  // Mask for getting the heap object type , should be 0b0011100
+  // Mask for getting the heap object type , should be 0b00111100
   static const std::uint32_t kHeapObjectTypeMask  = bits::BitOn<std::uint32_t,2,6>::value;
 
   GCState gc_state() const { return static_cast<GCState>(high() & kGCStateMask); }

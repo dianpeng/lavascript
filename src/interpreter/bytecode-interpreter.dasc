@@ -75,7 +75,8 @@ struct Runtime {
   std::string* error;
   std::uint64_t stack[1024];
 
-  Runtime( const Handle<Script>& script , const Handle<Object>& glb , std::string* err ):
+  Runtime( const Handle<Script>& script , const Handle<Object>& glb ,
+                                          std::string* err ):
     cur     (script->main().ref()),
     script  (script.ref()),
     global  (glb.ref()),
@@ -123,10 +124,23 @@ ExternSymbolTable* GetExternSymbolTable() {
 // -------------------------------------------------------------------------
 #define VALUE_FAIL Value::FLAG_1
 
+// ----------------------------------------------------------------------------
+// Type Conversion
+// ----------------------------------------------------------------------------
+inline Value InterpreterToBoolean  ( Runtime* sandbox , Value val ) {
+  (void)sandbox;
+  (void)val;
+  {
+    Value r;
+    SetValueFlag( &r, VALUE_FAIL );
+    return r;
+  }
+}
+INTERPRETER_REGISTER_EXTERN_SYMBOL(InterpreterToBoolean)
 
 
 // --------------------------------------------------------------------------
-// Arithmetic helper function to take care of slow path of interpretation
+// Arithmetic Helper
 // --------------------------------------------------------------------------
 Value InterpreterDoArithmetic( Runtime* sandbox ,
                                Value left ,  // rsi
@@ -177,6 +191,10 @@ double Pow( double a , double b ) {
 }
 INTERPRETER_REGISTER_EXTERN_SYMBOL(Pow)
 
+
+// ---------------------------------------------------------------------------
+// Comparison Helper
+// ---------------------------------------------------------------------------
 Value InterpreterDoCompare  ( Runtime* sandbox , Value left ,
                                                  Value right,
                                                  Bytecode bc ) {
@@ -189,9 +207,74 @@ Value InterpreterDoCompare  ( Runtime* sandbox , Value left ,
     SetValueFlag( &r, VALUE_FAIL );
     return r;
   }
-  lava_error("%s","HERE");
 }
-INTERPRETER_REGISTER_EXTERN_SYMBOL(InterpreterDoCompare);
+INTERPRETER_REGISTER_EXTERN_SYMBOL(InterpreterDoCompare)
+
+// ----------------------------------------------------------------------------
+// Unary Helper
+// ----------------------------------------------------------------------------
+bool InterpreterDoNegate   ( Runtime* sandbox , Value* operand ) {
+  (void)sandbox;
+  (void)operand;
+  return false;
+}
+INTERPRETER_REGISTER_EXTERN_SYMBOL(InterpreterDoNegate)
+
+bool InterpreterDoNot      ( Runtime* sandbox , Value* operand ) {
+  (void)sandbox;
+  (void)operand;
+  return false;
+}
+INTERPRETER_REGISTER_EXTERN_SYMBOL(InterpreterDoNot)
+
+// ----------------------------------------------------------------------------
+// Jump Helper
+// ----------------------------------------------------------------------------
+void* InterpreterDoCondJmpT  ( Runtime* sandbox , Value condition ,
+                                                  std::uint32_t where ,
+                                                  void* start_of_pc ) {
+  (void)sandbox;
+  (void)condition;
+  (void)where;
+  (void)start_of_pc;
+  return NULL;
+}
+INTERPRETER_REGISTER_EXTERN_SYMBOL(InterpreterDoCondJmpT)
+
+void* InterpreterDoCondJmpF  ( Runtime* sandbox , Value condition ,
+                                                  std::uint32_t where ,
+                                                  void* start_of_pc ) {
+  (void)sandbox;
+  (void)condition;
+  (void)where;
+  (void)start_of_pc;
+  return NULL;
+}
+INTERPRETER_REGISTER_EXTERN_SYMBOL(InterpreterDoCondJmpF)
+
+
+void* InterpreterDoCondAnd   ( Runtime* sandbox , Value condition ,
+                                                  std::uint32_t where ,
+                                                  void* start_of_pc ) {
+  (void)sandbox;
+  (void)condition;
+  (void)where;
+  (void)start_of_pc;
+  return NULL;
+}
+INTERPRETER_REGISTER_EXTERN_SYMBOL(InterpreterDoCondAnd)
+
+void* InterpreterDoCondOr    ( Runtime* sandbox , Value condition ,
+                                                  std::uint32_t where ,
+                                                  void* start_of_pc ) {
+  (void)sandbox;
+  (void)condition;
+  (void)where;
+  (void)start_of_pc;
+  return NULL;
+}
+INTERPRETER_REGISTER_EXTERN_SYMBOL(InterpreterDoCondOr)
+
 
 /* ======================================================================
  *
@@ -323,16 +406,25 @@ inline bool CheckAddress( std::uintptr_t addr ) {
 |.define CARG5LL,               r8b
 |.define CARG6LL,               r9b
 
-// we need to save 6 callee saved registers this acounts for
-// 6*8 = 48 bytes, which is aligned to 16 bytes , required by
-// x64 ABI.
-|.define RESERVE_RSP,           48
+// saved callee registers plus some other important stuff
+|.define RESERVE_RSP,           64
+|.define SAVED_RBX,             [rsp+48]
 |.define SAVED_R12,             [rsp+40]
 |.define SAVED_R13,             [rsp+32]
 |.define SAVED_R14,             [rsp+24]
 |.define SAVED_R15,             [rsp+16]
 |.define SAVED_RBP,             [rsp+8]
-|.define SAVED_RBX,             [rsp]
+
+// DO NOT MODIFY IT UNLESS YOU KNOW SHIT
+|.define SAVED_PPC,             rsp
+|.define SAVED_PC ,             [rsp]
+
+// Used to save certain registers while we call cross the function
+// boundary. Like we may call into ToBoolean function to get value
+// of certain register's Boolean value and we may need to save register
+// like rax which is part of our argument/operand of isntructions
+|.define SAVED_SLOT1,           [rsp+56]
+|.define SAVED_SLOT2,           [rsp+64]
 
 /* ---------------------------------------------------------------
  * debug helper                                                  |
@@ -350,6 +442,11 @@ void Print2( int a , int b ) {
   lava_error("L:%d,R:%d",a,b);
 }
 INTERPRETER_REGISTER_EXTERN_SYMBOL(Print2)
+
+void PrintF( double v ) {
+  lava_error("Value:%f",v);
+}
+INTERPRETER_REGISTER_EXTERN_SYMBOL(PrintF)
 
 /* ---------------------------------------------------------------
  * dispatch table                                                |
@@ -409,6 +506,26 @@ INTERPRETER_REGISTER_EXTERN_SYMBOL(Print2)
 |  instr_D
 |.endmacro
 
+/* -----------------------------------------------------------
+ * Special Constant for Real                                 |
+ * ----------------------------------------------------------*/
+|.macro LdRConstH,XREG,HIGH
+|  mov64 T1,(static_cast<std::uint64_t>(HIGH)<<32)
+|  movd XREG,T1
+|.endmacro
+
+|.macro LdRConstL,XREG,LOW
+|  mov64 T1,(static_cast<std::uint64_t>(LOW))
+|  movd XREG,T1
+|.endmacro
+
+|.macro LdRConst,XREG,X64V
+|  mov64 T1,X64V
+|  movd  XREG,T1
+|.endmacro
+
+// Used to negate the double precision number's sign bit
+|.macro LdRConst_sign,XREG; LdRConstH XREG,0x80000000; .endmacro
 
 /* -----------------------------------------------------------
  * constant loading                                          |
@@ -546,8 +663,9 @@ INTERPRETER_REGISTER_EXTERN_SYMBOL(Print2)
 // so basically just TYPE_STRING stored in the corresponding bits
 #define SSO_BIT_PATTERN 0x14
 
+// reg : pointer of String
 |.macro CheckSSO,reg,fail
-|  mov reg, qword [reg]  
+|  mov reg, qword [reg]
 |  cmp dword [reg-(HeapObjectHeader::kHeapObjectHeaderSize+4)], SSO_BIT_PATTERN
 |  jne >fail
 |.endmacro
@@ -587,9 +705,13 @@ INTERPRETER_REGISTER_EXTERN_SYMBOL(Print2)
   __(INTERP_COMPAREVV,InterpCompareVV)       \
   __(INTERP_COMPARESV,InterpCompareSV)       \
   __(INTERP_COMPAREVS,InterpCompareVS)       \
+  /* unary */                                \
+  __(INTERP_NEGATE,InterpNegate)             \
+  __(INTERP_NOT,InterpNot)                   \
   /* ---- debug helper ---- */               \
   __(PRINT_OP,PrintOP)                       \
-  __(PRINT2  ,Print2 )
+  __(PRINT2  ,Print2 )                       \
+  __(PRINTF  ,PrintF )
 
 enum {
   INTERP_HELPER_DUMMY = SIZE_OF_BYTECODE,
@@ -634,6 +756,9 @@ void GenerateInterpMisc( BuildContext* bctx ) {
   |->ValueHeapMaskLoad:
   |.dword Value::TAG_HEAP_LOAD_MASK_HIGHER,Value::TAG_HEAP_LOAD_MASK_LOWER
 
+  |->RealZero:
+  |.dword 0,0
+
   |.code
   /* -------------------------------------------
    * Start of the code                         |
@@ -675,6 +800,8 @@ void GenerateInterpMisc( BuildContext* bctx ) {
   |  mov STK     ,CARG3   // stack
   |  mov PC      ,CARG4   // pc
   |  mov DISPATCH,CARG5   // dispatch
+
+  |  mov qword SAVED_PC,CARG4           // save the *start* of bc array
   // run
   |  Dispatch
 
@@ -705,7 +832,7 @@ void GenerateHelper( BuildContext* bctx ) {
   /* ----------------------------------------
    * InterpArithXXX                         |
    * ---------------------------------------*/
-  |.macro handle_ret
+  |.macro handle_ret_acc
   |  mov T1,rax
   |  shr T1,32
   |  cmp T1,VALUE_FAIL
@@ -720,7 +847,7 @@ void GenerateHelper( BuildContext* bctx ) {
   |  LdIntV CARG2,CARG2L,ARG1
   |  movzx CARG4L,byte [PC-4]
   |  fcall InterpreterDoArithmetic
-  |  handle_ret
+  |  handle_ret_acc
 
   |=> INTERP_ARITH_INTR:
   |->InterpArithIntR:
@@ -728,7 +855,7 @@ void GenerateHelper( BuildContext* bctx ) {
   |  LdIntV CARG3,CARG3L,ARG2
   |  movzx CARG4L,byte [PC-4]
   |  fcall InterpreterDoArithmetic
-  |  handle_ret
+  |  handle_ret_acc
 
   |=> INTERP_ARITH_REALL:
   |->InterpArithRealL:
@@ -736,7 +863,7 @@ void GenerateHelper( BuildContext* bctx ) {
   |  LdRealV CARG2,ARG1
   |  movzx CARG4L,byte [PC-4]
   |  fcall InterpreterDoArithmetic
-  |  handle_ret
+  |  handle_ret_acc
 
   |=> INTERP_ARITH_REALR:
   |->InterpArithRealR:
@@ -744,7 +871,7 @@ void GenerateHelper( BuildContext* bctx ) {
   |  LdRealV CARG3,ARG2
   |  movzx CARG4L,byte [PC-4]
   |  fcall InterpreterDoArithmetic
-  |  handle_ret
+  |  handle_ret_acc
 
   |=> INTERP_ARITH_VV:
   |->InterpArithVV:
@@ -753,7 +880,7 @@ void GenerateHelper( BuildContext* bctx ) {
   |  mov CARG3, qword [STK+ARG2*8]
   |  movzx CARG4L,byte [PC-4]
   |  fcall InterpreterDoArithmetic
-  |  handle_ret
+  |  handle_ret_acc
 
   |=> INTERP_POW_FAST:
   |->InterpPowFast:
@@ -768,7 +895,7 @@ void GenerateHelper( BuildContext* bctx ) {
   |  mov CARG3,qword [STK+ARG2*8]
   |  movzx CARG4L,byte  [PC-4]
   |  fcall InterpreterPow
-  |  handle_ret
+  |  handle_ret_acc
 
   |=> INTERP_POW_SLOWRV:
   |->InterpPowSlowRV:
@@ -777,7 +904,7 @@ void GenerateHelper( BuildContext* bctx ) {
   |  mov CARG3,qword [STK+ARG2*8]
   |  movzx CARG4L,byte[PC-4]
   |  fcall InterpreterPow
-  |  handle_ret
+  |  handle_ret_acc
 
   |=> INTERP_POW_SLOWVI:
   |->InterpPowSlowVI:
@@ -786,7 +913,7 @@ void GenerateHelper( BuildContext* bctx ) {
   |  LdIntV CARG3,CARG3L,ARG2
   |  movzx CARG4L, byte [PC-4]
   |  fcall InterpreterPow
-  |  handle_ret
+  |  handle_ret_acc
 
   |=> INTERP_POW_SLOWVR:
   |->InterpPowSlowVR:
@@ -795,7 +922,7 @@ void GenerateHelper( BuildContext* bctx ) {
   |  LdRealV CARG3,ARG2
   |  movzx CARG4L, byte [PC-4]
   |  fcall InterpreterPow
-  |  handle_ret
+  |  handle_ret_acc
 
   |=> INTERP_POW_SLOWVV:
   |->InterpPowSlowVV:
@@ -804,7 +931,7 @@ void GenerateHelper( BuildContext* bctx ) {
   |  LdRealV CARG3,ARG2
   |  movzx CARG4L, byte [PC-4]
   |  fcall InterpreterPow
-  |  handle_ret
+  |  handle_ret_acc
 
   /* -------------------------------------------
    * Interp Arithmetic Exception               |
@@ -834,7 +961,7 @@ void GenerateHelper( BuildContext* bctx ) {
   |  mov CARG3, qword [STK+ARG2*8]
   |  movzx CARG4L, byte [PC-4]
   |  fcall InterpreterDoCompare
-  |  handle_ret
+  |  handle_ret_acc
 
   |=> INTERP_COMPAREVI:
   |->InterpCompareVI:
@@ -843,7 +970,7 @@ void GenerateHelper( BuildContext* bctx ) {
   |  LdIntV CARG3,CARG3L,ARG2
   |  movzx CARG4L, byte [PC-4]
   |  fcall InterpreterDoCompare
-  |  handle_ret
+  |  handle_ret_acc
 
   |=> INTERP_COMPARERV:
   |->InterpCompareRV:
@@ -852,7 +979,7 @@ void GenerateHelper( BuildContext* bctx ) {
   |  mov CARG3, qword [STK+ARG2*8]
   |  movzx CARG4L, byte [PC-4]
   |  fcall InterpreterDoCompare
-  |  handle_ret
+  |  handle_ret_acc
 
   |=> INTERP_COMPAREVR:
   |->InterpCompareVR:
@@ -861,7 +988,7 @@ void GenerateHelper( BuildContext* bctx ) {
   |  LdRealV CARG3,ARG2
   |  movzx CARG4L, byte [PC-4]
   |  fcall InterpreterDoCompare
-  |  handle_ret
+  |  handle_ret_acc
 
   |=> INTERP_COMPAREVV:
   |->InterpCompareVV:
@@ -870,7 +997,7 @@ void GenerateHelper( BuildContext* bctx ) {
   |  mov CARG3, qword [STK+ARG2*8]
   |  movzx CARG4L, byte [PC-4]
   |  fcall InterpreterDoCompare
-  |  handle_ret
+  |  handle_ret_acc
 
   |=> INTERP_COMPARESV:
   |->InterpCompareSV:
@@ -879,7 +1006,7 @@ void GenerateHelper( BuildContext* bctx ) {
   |  mov CARG2, qword [STK+ARG2*8]
   |  movzx CARG4L, byte [PC-4]
   |  fcall InterpreterDoCompare
-  |  handle_ret
+  |  handle_ret_acc
 
   |=> INTERP_COMPAREVS:
   |->InterpCompareVS:
@@ -888,7 +1015,30 @@ void GenerateHelper( BuildContext* bctx ) {
   |  LdStrV CARG3,ARG2
   |  movzx CARG4, byte [PC-4]
   |  fcall InterpreterDoCompare
-  |  handle_ret
+  |  handle_ret_acc
+
+  /* -------------------------------------------------
+   * Unary                                           |
+   * ------------------------------------------------*/
+  |=> INTERP_NEGATE:
+  |->InterpNegate:
+  |  mov CARG1, RUNTIME
+  |  lea CARG2, qword [STK+ARG1*8]
+  |  fcall InterpreterDoNegate
+  // return value is a *boolean*
+  |  test al,al
+  |  jmp ->InterpFail
+  |  Dispatch
+
+  |=> INTERP_NOT:
+  |->InterpNot:
+  |  mov CARG1, RUNTIME
+  |  lea CARG2, qword [STK+ARG1*8]
+  |  fcall InterpreterDoNot
+  |  test al,al
+  |  jmp ->InterpFail
+  |  Dispatch
+
 }
 
 void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
@@ -985,7 +1135,7 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
       |  mov dword [STK+ARG1*8+4],Value::FLAG_FALSE
       |  Dispatch
       break;
-      
+
     case BC_LOADSTR:
       |=> bc:
       |  instr_B
@@ -1938,6 +2088,286 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
      * Unary                                           |
      * ------------------------------------------------*/
 
+    // inline integers and reals inlined to be processed
+    // and other types are throwed away to the slower
+    // functions to help since we may need to support meta
+    // function in the future
+    case BC_NEGATE:
+      |=> bc:
+      |  instr_F
+      |  mov LREG, qword [STK+ARG1*8]
+      |  CheckNum ARG1,LREG,1,2
+      |  jmp ->InterpNegate
+
+      // real
+      |1:
+      |  movd xmm0,LREG
+      |  LdRConst_sign xmm1
+      |  xorpd xmm0, xmm1
+      |  movsd qword [STK+ARG1*8], xmm0
+      |  Dispatch
+
+      // int
+      |2:
+      |  neg dword [STK+ARG1*8]
+      // TODO:: overflow ??
+      |  Dispatch
+      break;
+
+    case BC_NOT:
+      |=> bc:
+      |  instr_F
+      |  mov LREG, qword [STK+ARG1*8]
+      |  mov RREGL, dword [STK+ARG1*8+4]
+
+      // TODO::Optimize
+      //
+      // The following *flat* comparison table is not
+      // good since in worst cases for (null) we need
+      // 5 comparison to be executed. Maybe we can have
+      // a better comparison table for the following
+      // comparison
+      |  cmp RREGL, Value::FLAG_TRUE
+      |  je >1
+
+      |  cmp RREGL, Value::FLAG_FALSE
+      |  je >2
+
+      |  cmp RREGL, Value::FLAG_INTEGER
+      |  je >3
+
+      |  cmp RREGL, Value::FLAG_REAL
+      |  jb >4
+
+      |  cmp RREGL, Value::FLAG_NULL
+      |  je >5
+
+      // slow path
+      |  jmp ->InterpNot
+
+      |1: // true
+      |  mov dword [STK+ARG1*8+4], Value::FLAG_FALSE
+      |  jmp >6
+
+      |2: // false
+      |  mov dword [STK+ARG1*8+4], Value::FLAG_TRUE
+      |  jmp >6
+
+      |3: // int
+      |.if 0
+      |  test LREGL, LREGL
+      |  je >7
+      |  mov dword [STK+ARG1*8+4], Value::FLAG_FALSE
+      |  jmp >6
+      |7:
+      |  mov dword [STK+ARG1*8+4], Value::FLAG_TRUE
+      |  jmp >6
+      |.else
+      |  mov T1L, Value::FLAG_FALSE
+      |  mov T2L, Value::FLAG_TRUE
+      |  test LREGL,LREGL
+      |  cmove T1L, T2L
+      |  mov dword [STK+ARG1*8+4], T1L
+      |  jmp >6
+      |.endif
+
+      |4: // real
+      |  movd xmm0, LREG
+      |  pxor xmm1,xmm1
+      |  mov T1L, Value::FLAG_FALSE
+      |  mov T2L, Value::FLAG_TRUE
+      |  ucomisd xmm0,xmm1
+      |  cmove T1L,T2L
+      |  mov dword [STK+ARG1*8+4],T1L
+      |  jmp >6
+
+      |5: // null
+      |  mov dword [STK+ARG1*8+4],Value::FLAG_TRUE
+      |  jmp >6
+
+      |6:
+      |  Dispatch
+      break;
+
+    // -------------------------------------------
+    // Branch
+    // -------------------------------------------
+
+    // branch PC
+    |.macro branch_to,where
+    |  mov T1,qword SAVED_PC
+    |  lea PC,[T1+where*4]
+    |.endmacro
+
+    // jump macro -------------------------------------------------
+    // inline int/real/true/false/null here to perform the jump
+    // rest of the type goes to slow path to *convert* to boolean
+    //
+    // assume T1 holds the flag; REG holds the actual Value;REGL holds
+    // the lower 32 bits
+    |.macro do_cond_jmp,SlowPath,REG,REGL,tflag,fflag,last_jmp
+    |  cmp T1L, Value::FLAG_TRUE
+    |  je >tflag
+    |  cmp T1L, Value::FLAG_FALSE
+    |  je >fflag
+    |  cmp T1L, Value::FLAG_NULL
+    |  je >fflag
+    |  cmp T1L, Value::FLAG_INTEGER
+    |  je >7
+    |  cmp T1L, Value::FLAG_REAL
+    |  jb >8
+    |  jmp ->SlowPath
+
+    |7:  // int
+    |  test REGL,REGL
+    |  je >fflag
+    |  jmp >tflag
+
+    |8:  // real
+    |  pxor xmm1,xmm1
+    |  movd xmm0,REG
+    |  ucomisd xmm0,xmm1
+    |  last_jmp
+    |.endmacro
+
+
+    case BC_JMPT:
+      |=>bc:
+      |  instr_B
+      |  mov LREG,qword [STK+ARG1*8]
+      |  mov T1,LREG
+      |  shr T1,32
+      |  do_cond_jmp InterpJmpT,LREG,LREGL,1,2, je >2
+      |1:  // true branch
+      |  branch_to ARG2
+      |2:  // false branch
+      |  Dispatch
+      break;
+
+    case BC_JMPF:
+      |=>bc:
+      |  instr_B
+      |  mov LREG,qword [STK+ARG1*8]
+      |  mov T1,LREG
+      |  shr T1,32
+      |  do_cond_jmp InterpJmpF,LREG,LREGL,2,1, jne >2
+      |1: // false condition
+      |  branch_to ARG2
+      |2: // true condition
+      |  Dispatch
+      break;
+
+    case BC_AND:
+      |=>bc:
+      |  instr_G
+      |  mov LREG,qword [ACC]
+      |  mov T1,LREG
+      |  shr T1,32
+      |  do_cond_jmp InterpAnd,LREG,LREGL,2,1, jne >2
+      |1: // false condition
+      |  branch_to ARG1
+      |2: // true condition
+      |  Dispatch
+      break;
+
+    case BC_OR:
+      |=>bc:
+      |  instr_G
+      |  mov LREG,qword [ACC]
+      |  mov T1,LREG
+      |  shr T1,32
+      |  do_cond_jmp InterpOr,LREG,LREGL,1,2, je >2
+      |1:  // true condition
+      |  branch_to ARG1
+      |2:
+      |  Dispatch
+      break;
+
+    case BC_JMP:
+      |=>bc:
+      |  instr_G
+      |  branch_to ARG1
+      |  Dispatch
+      break;
+
+    // ----------------------------------------------------------
+    // Property/Upvalue/Global
+    // ---------------------------------------------------------*/
+
+
+    // A better way to implement property get/set is via IC (inline cache)
+    // but currently we don't have IC states at bytecode level and we will
+    // add it guide the JIT compilation phase. For interpreter, we will use
+    // something simpler but good to capture most of the cases. Since we force
+    // our internal hash use SSO's default hash value to serve as hash value
+    // of the key, so we will use a trick that is used in LuaJIT here. For
+    // key that is SSO, we will retrieve its hash value out and directly generate
+    // index to anchor its main position inside of the *chain* and if we miss
+    // we will fallback to the slow path
+
+    |.macro find_sso_pos,SlowPath,output
+    |  mov T2, qword [LREG]
+
+    || if(MapLayout::kCapacityOffset) {
+    |    mov T2L, dword [T2+ObjectLayout::kCapacityOffset]
+    || } else {
+    |    mov T2L, dword [T2]
+    || }
+
+    || if(SSOLayout::kHashOffset) {
+    |    mov T1L, dword [RREG+SSOLayout::kHashOffset]
+    || } else {
+    |    mov T1L, dword [RREG]
+    || }
+
+    // T2L capacity , T1L size
+    |  dec T2L
+    |  and T1L,T2L
+
+    // index are in T1L, now checkout the main entry
+    |  lea T2L, [LREG+T1L*sizeof(Map::Entry)+MapLayout::kArrayOffset]
+
+    // save map's starting address
+    |  mov T1 , [LREG+MapLayout::kArrayOffset]
+
+    // 1. check if this entry is *deleted* or *used*
+    |1: // start of the loop
+    |  mov LREG, dword [T2L+MapEntryLayout::kFlagOffset]
+    |  and LREG, ((1<<30))
+    |  test LREG,LREG
+    |  je >6 // not used slots
+
+    // 2. check if it is deleted
+    |  mov LREG, dword [T2L+MapEntryLayout::kFlagOffset]
+    |  and LREG, ((1<<31))
+    |  test LREG,LREG
+    |  jne >6 // deleted slots
+
+    // 3. check if the key is a SSO
+    |  mov LREG, qword [T2L]
+    |  CheckSSO LREG,6
+    |  mov LREG, qword [LREG]
+    |  cmp LREG, RREG
+    |  jne >6 // string not identical
+
+    // now we find the entry
+    |  mov [STK+output*8],[T2L+MapEntryLayout::kValueOffset]
+    |  Dispatch
+
+    // move to next iteration
+    |6:
+    |  mov LREG, dword [T2L+MapEntryLayout::kFlagOffset]
+    |  and LREG, ((1<<29))
+    |  test LREG,LREG
+    |  je ->InterpPropGetNotFound
+    |  mov LREG, dword [T2L+MapEntryLayout::kFlagOffset]
+    |  and LREG, ((bits::BitOn<std::uint32_t,0,29>::value))
+    |  mov T2L , [T1+LREG*sizeof(Map::Entry)]
+    |  jmp <1
+    |.endmacro
+
+
+
     default:
       |=> bc:
       |  Break
@@ -1996,7 +2426,11 @@ AssemblyInterpreter::~AssemblyInterpreter() {
 }
 
 std::shared_ptr<AssemblyInterpreter> AssemblyInterpreter::Generate() {
-  std::shared_ptr<AssemblyInterpreter> interp( new AssemblyInterpreter() );
+  static std::shared_ptr<AssemblyInterpreter> interp;
+  if(interp) return interp; // return interp if we already have a interpreter pointer
+
+  // create a new interp object since this is our first time
+  interp.reset( new AssemblyInterpreter() );
 
   // create a build context
   BuildContext bctx;

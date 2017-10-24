@@ -65,7 +65,11 @@ int main() {
   Context ctx(TestGCConfig());
   std::string error;
   std::string script(stringify(
-        return "string";
+        var a = 10;
+        var b = 20;
+        var c = true;
+        var d = c ? a + 10 : b + 10;
+        return d;
         ));
 
   ScriptBuilder sb("a",script);
@@ -77,7 +81,7 @@ int main() {
   Value ret;
   bool r = ins.Run(&ctx,scp,obj,&error,&ret);
   assert(r);
-  assert(ret.IsString());
-  std::cout<<ret.GetString()->ToStdString()<<std::endl;
+  assert(ret.IsInteger());
+  std::cout<<ret.GetInteger()<<std::endl;
   return r;
 }

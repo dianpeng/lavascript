@@ -645,7 +645,8 @@ bool Generator::Visit( const ast::Variable& var , ExprResult* result ) {
         return false;
       }
 
-      // Hold the global value inside of Acc register since we can
+      // Hold the global value inside of Acc register for now , in the future we will
+      // work out a better register allocation strategy
       EEMIT(gget(var.sci(),Register::kAccIndex,ref));
       result->SetAcc();
     } else {

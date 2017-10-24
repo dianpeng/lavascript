@@ -566,7 +566,7 @@ class List final : public HeapObject {
 
  private:
 
-  std::size_t size_;
+  std::uint32_t size_;
   Handle<Slice> slice_;
 
   friend struct ListLayout;
@@ -616,7 +616,7 @@ class Slice final : public HeapObject {
 
  private:
 
-  std::size_t capacity_;
+  std::uint32_t capacity_;
 
   friend struct SliceLayout;
   friend class GC;
@@ -824,6 +824,7 @@ class Map final : public HeapObject {
 };
 
 static_assert( std::is_standard_layout<Map>::value );
+static_assert( sizeof(Map::Entry) == 24 );
 
 struct MapLayout {
   static const std::uint32_t kCapacityOffset = offsetof(Map,capacity_);
@@ -1022,10 +1023,16 @@ class Closure final : public HeapObject {
  private:
   Handle<Prototype> prototype_;
 
+  friend struct ClosureLayout;
   friend class GC;
   LAVA_DISALLOW_COPY_AND_ASSIGN(Closure);
 };
+static_assert( std::is_standard_layout<Closure>::value );
 
+struct ClosureLayout {
+  static const std::uint32_t kPrototypeOffset = offsetof(Closure,prototype_);
+  static const std::uint32_t kUpValueOffset   = sizeof(Closure);
+};
 
 /**
  * Extension is the only interfaces that user can be used to extend the whole world

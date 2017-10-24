@@ -162,18 +162,13 @@ static const std::size_t kAllocatableBytecodeRegisterSize = 255;
   __(F,LOADLIST0, loadlist0, REG , _ , _ )      \
   __(E,LOADLIST1, loadlist1, REG , REG , _ )    \
   __(D,LOADLIST2, loadlist2, REG , REG , REG )  \
-  __(E,NEWLIST, newlist, REG , NARG  , _ )      \
+  __(B,NEWLIST, newlist, REG , NARG  , _ )      \
   __(E,ADDLIST, addlist, REG , REG , _ )        \
   __(F,LOADOBJ0 , loadobj0 , REG , _ , _  )     \
   __(D,LOADOBJ1, loadobj1, REG , REG , REG )    \
-  __(E,NEWOBJ  , newobj , REG , NARG  , _  )    \
+  __(B,NEWOBJ  , newobj , REG , NARG  , _  )    \
   __(D,ADDOBJ  , addobj , REG , REG , REG )     \
   __(G,LOADCLS  , loadcls  , GARG , _  , _ )    \
-  /* subroutine */ \
-  __(N,CALL, call , NARG , REG , BASE )         \
-  __(N,TCALL, tcall, NARG , REG , BASE )        \
-  __(X,RETNULL, retnull , _ , _ , _ )           \
-  __(X,RET  , ret  , _ , _ , _ )                \
   /* property/upvalue/global value */           \
   __(B,PROPGET,propget,REG,SREF,_) \
   __(B,PROPSET,propset,REG,SREF,_) \
@@ -184,6 +179,11 @@ static const std::size_t kAllocatableBytecodeRegisterSize = 255;
   __(C,UVSET  ,uvset ,GARG,REG,_)  \
   __(C,GSET   ,gset  ,GARG,REG,_)  \
   __(B,GGET   ,gget  ,REG,GARG,_)  \
+  /* subroutine */ \
+  __(N,CALL, call , NARG , REG , BASE )         \
+  __(N,TCALL, tcall, NARG , REG , BASE )        \
+  __(X,RETNULL, retnull , _ , _ , _ )           \
+  __(X,RET  , ret  , _ , _ , _ )                \
   /* forloop tag */ \
   __(B,FSTART,fstart,REG,PC,_)     \
   __(G,FEND  ,fend  ,PC,_,_)       \

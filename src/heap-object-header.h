@@ -155,7 +155,7 @@ class HeapObjectHeader : DoNotAllocateOnNormalHeap {
  public:
   // Check whether this object is a short string or long string if this
   // object is a heap object there
-  void set_sso() { 
+  void set_sso() {
     std::uint8_t v = high<1>();
     v &= ~kLongStringMask;
     set_high<1>(v);

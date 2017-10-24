@@ -61,14 +61,18 @@ int HorribleCast( T* ptr ) {
   return ret;
 }
 
+
 // --------------------------------------------------------------
 // Runtime
 //
 // Used in the interpretation phase for the interpreter
 // --------------------------------------------------------------
 struct Runtime {
-  // TODO:: This is for test purpose , no going into production
+  // Current function's prototype
   Prototype** cur;
+  // Current function's closure object
+  Closure**   curcls;
+
   Script** script;
   Object** global;
   Value ret;
@@ -85,15 +89,24 @@ struct Runtime {
     stack   ()
   {}
 };
-
 static_assert( std::is_standard_layout<Runtime>::value );
 
 struct RuntimeLayout {
+  static const std::uint32_t kCurProtoOffset = offsetof(Runtime,cur);
+  static const std::uint32_t kCurClsOffset   = offsetof(Runtime,curcls);
   static const std::uint32_t kRetOffset = offsetof(Runtime,ret);
 };
 
-// prototype for the interpreter's main
-//                    runtime  proto     stk    pc    dispatch
+
+// ----------------------------------------------------------------------
+// Prototype for the main interpreter function
+//
+// @ARG1: runtime
+// @ARG2: Prototype** of the function
+// @ARG3: start of the stack
+// @ARG4: start of the code buffer for the *Prototype*
+// @ARG5: start of the dispatch table
+
 typedef bool (*Main)(Runtime*,Prototype**,void*,void*,void*);
 
 // ------------------------------------------------------------------
@@ -123,6 +136,12 @@ ExternSymbolTable* GetExternSymbolTable() {
 // Helper to set Value object to indicate special meaning
 // -------------------------------------------------------------------------
 #define VALUE_FAIL Value::FLAG_1
+
+/* --------------------------------------------------------------------------
+ *
+ * Interpreter C++ Part Function Implementation
+ *
+ * -------------------------------------------------------------------------*/
 
 // ----------------------------------------------------------------------------
 // Type Conversion
@@ -275,12 +294,196 @@ void* InterpreterDoCondOr    ( Runtime* sandbox , Value condition ,
 }
 INTERPRETER_REGISTER_EXTERN_SYMBOL(InterpreterDoCondOr)
 
+// ----------------------------------------------------------------------------
+// Literal Loader Helper
+// ----------------------------------------------------------------------------
+bool InterpreterDoLoadList0  ( Runtime* sandbox , Value* output ) {
+  (void)sandbox;
+  (void)output;
+  return false;
+}
+INTERPRETER_REGISTER_EXTERN_SYMBOL(InterpreterDoLoadList0)
 
-/* ======================================================================
+bool InterpreterDoLoadList1  ( Runtime* sandbox , Value* output ,
+                                                  Value e1 ) {
+  (void)sandbox;
+  (void)output;
+  (void)e1;
+  return false;
+}
+INTERPRETER_REGISTER_EXTERN_SYMBOL(InterpreterDoLoadList1)
+
+bool InterpreterDoLoadList2  ( Runtime* sandbox , Value* output ,
+                                                  Value e1,
+                                                  Value e2 ) {
+  (void)sandbox;
+  (void)output;
+  (void)e1;
+  (void)e2;
+  return false;
+}
+INTERPRETER_REGISTER_EXTERN_SYMBOL(InterpreterDoLoadList2)
+
+bool InterpreterDoNewList    ( Runtime* sandbox , Value* output ,
+                                                  std::uint32_t narg ) {
+  (void)sandbox;
+  (void)output;
+  (void)narg;
+  return false;
+}
+INTERPRETER_REGISTER_EXTERN_SYMBOL(InterpreterDoNewList)
+
+bool InterpreterDoAddList   ( Runtime* sandbox , Value* output ,
+                                                 Value  val ) {
+  (void)sandbox;
+  (void)output;
+  (void)val;
+  return false;
+}
+INTERPRETER_REGISTER_EXTERN_SYMBOL(InterpreterDoAddList)
+
+bool InterpreterDoLoadObj0   ( Runtime* sandbox , Value* output ) {
+  (void)sandbox;
+  (void)output;
+  return false;
+}
+INTERPRETER_REGISTER_EXTERN_SYMBOL(InterpreterDoLoadObj0)
+
+bool InterpreterDoLoadObj1   ( Runtime* sandbox , Value* output ,
+                                                  Value  key,
+                                                  Value  val ) {
+  (void)sandbox;
+  (void)output;
+  (void)key;
+  (void)val;
+  return false;
+}
+INTERPRETER_REGISTER_EXTERN_SYMBOL(InterpreterDoLoadObj1)
+
+bool InterpreterDoNewObj    ( Runtime* sandbox , Value* output ,
+                                                 std::uint32_t narg ) {
+  (void)sandbox;
+  (void)output;
+  (void)narg;
+  return false;
+}
+INTERPRETER_REGISTER_EXTERN_SYMBOL(InterpreterDoNewObj)
+
+bool InterpreterDoAddObj    ( Runtime* sandbox , Value* output ,
+                                                 Value  key,
+                                                 Value  val ) {
+  (void)sandbox;
+  (void)output;
+  (void)key;
+  (void)val;
+  return false;
+}
+INTERPRETER_REGISTER_EXTERN_SYMBOL(InterpreterDoAddObj)
+
+bool InterpreterDoLoadCls   ( Runtime* sandbox , Value* start_of_stack ,
+                                                 std::uint32_t prototype_id ) {
+  (void)sandbox;
+  (void)start_of_stack;
+  (void)prototype_id;
+  return false;
+}
+INTERPRETER_REGISTER_EXTERN_SYMBOL(InterpreterDoLoadCls)
+
+// ----------------------------------------------------------------------------
+// Property Get/Set
+// ----------------------------------------------------------------------------
+Value InterpreterDoPropGet   ( Runtime* sandbox , Value obj , String** key ) {
+  (void)sandbox;
+  (void)obj;
+  (void)key;
+  {
+    Value r;
+    SetValueFlag( &r, VALUE_FAIL );
+    return r;
+  }
+}
+INTERPRETER_REGISTER_EXTERN_SYMBOL(InterpreterDoPropGet)
+
+void InterpreterPropGetNotFound( Runtime* sandbox , Value obj , String** key ) {
+  (void)sandbox;
+  (void)obj;
+  (void)key;
+}
+INTERPRETER_REGISTER_EXTERN_SYMBOL(InterpreterPropGetNotFound)
+
+void InterpreterPropGetNotObject( Runtime* sandbox, Value obj , String** key ) {
+  (void)sandbox;
+  (void)obj;
+  (void)key;
+}
+INTERPRETER_REGISTER_EXTERN_SYMBOL(InterpreterPropGetNotObject)
+
+bool InterpreterDoPropSet      ( Runtime* sandbox , Value obj , String** key ,
+                                                                Value val ) {
+  (void)sandbox;
+  (void)obj;
+  (void)key;
+  (void)val;
+  return false;
+}
+INTERPRETER_REGISTER_EXTERN_SYMBOL(InterpreterDoPropSet)
+
+Value InterpreterDoIdxGet      ( Runtime* sandbox , Value obj , Value key ) {
+  (void)sandbox;
+  (void)obj;
+  (void)key;
+  {
+    Value r;
+    SetValueFlag( &r, VALUE_FAIL );
+    return r;
+  }
+}
+INTERPRETER_REGISTER_EXTERN_SYMBOL(InterpreterDoIdxGet)
+
+Value InterpreterDoIdxGetI     ( Runtime* sandbox , Value obj , std::int32_t idx ) {
+  (void)sandbox;
+  (void)obj;
+  (void)idx;
+  {
+    Value r;
+    SetValueFlag( &r, VALUE_FAIL );
+    return r;
+  }
+}
+INTERPRETER_REGISTER_EXTERN_SYMBOL(InterpreterDoIdxGetI)
+
+bool InterpreterDoIdxSet      ( Runtime* sandbox , Value obj , Value key ,
+                                                               Value val ) {
+  (void)sandbox;
+  (void)obj;
+  (void)key;
+  (void)val;
+  return false;
+}
+INTERPRETER_REGISTER_EXTERN_SYMBOL(InterpreterDoIdxSet)
+
+bool InterpreterDoGGet       ( Runtime* sandbox , Value* output , String** key ) {
+  (void)sandbox;
+  (void)key;
+  (void)output;
+  return false;
+}
+INTERPRETER_REGISTER_EXTERN_SYMBOL(InterpreterDoGGet)
+
+bool InterpreterDoGSet       ( Runtime* sandbox , String** key , Value value ) {
+  (void)sandbox;
+  (void)key;
+  (void)value;
+  return false;
+}
+INTERPRETER_REGISTER_EXTERN_SYMBOL(InterpreterDoGSet)
+
+
+/* ---------------------------------------------------------------------
  *
  * Implementation of AssemblyIntepreter
  *
- * =====================================================================*/
+ * --------------------------------------------------------------------*/
 |.arch x64
 |.actionlist actions
 |.globals GLBNAME_
@@ -452,7 +655,7 @@ INTERPRETER_REGISTER_EXTERN_SYMBOL(PrintF)
  * dispatch table                                                |
  * --------------------------------------------------------------*/
 |.macro Dispatch
-|.if 1
+|.if 0
 |  mov INSTR,dword [PC]
 |  movzx T1,INSTR_OP
 |  mov CARG1,T1
@@ -591,6 +794,20 @@ INTERPRETER_REGISTER_EXTERN_SYMBOL(PrintF)
 |  movsd qword [ACC],reg
 |.endmacro
 
+// --------------------------------------------
+// load upvalue value into register
+|.macro LdUV,reg,index
+|  mov T1,qword [RUNTIME+RuntimeLayout::kCurClsOffset]
+|  mov T1,qword [T1+ClosureLayout::kUpValueOffset]
+|  mov reg, qword [T1+index*8]
+|.endmacro
+
+|.macro StUV,reg,index
+|  mov T1,qword [RUNTIME+RuntimeLayout::kCurClsOffset]
+|  mov T1,qword [T1+ClosureLayout::kUpValueOffset]
+|  mov qword [T1+index*8], reg
+|.endmacro
+
 |.macro CheckNum,index,val,real_label,int_label
 // TODO:: profile these 2 implementations
 |.if 0
@@ -608,6 +825,13 @@ INTERPRETER_REGISTER_EXTERN_SYMBOL(PrintF)
 |.endif
 |.endmacro
 
+// Check whether a Value is a HeapObject
+|.macro CheckHeap,val,fail_label
+|  mov T1,val
+|  shr T1,48
+|  cmp T1L, Value::FLAG_HEAP
+|  jne >fail_label
+|.endmacro
 
 // Set a pointer into a register , this is really painful
 |.macro StHeap,reg,val
@@ -618,7 +842,7 @@ INTERPRETER_REGISTER_EXTERN_SYMBOL(PrintF)
 |  or reg ,val
 |.else
 |  mov reg,val
-|  or  reg,qword [->ValueHeapMaskLoad]
+|  or  reg,qword [->ValueHeapMaskStore]
 |.endif
 
 |.endmacro
@@ -656,15 +880,43 @@ INTERPRETER_REGISTER_EXTERN_SYMBOL(PrintF)
 |  mov val, qword [T1+index*8]
 |.endmacro
 
+// General macro to check a heap object is certain type
+|.macro CheckHeapPtrT,val,pattern,fail_label
+|  cmp byte [val-(HeapObjectHeader::kHeapObjectHeaderSize+6)], pattern
+|  jne >fail_label
+|.endmacro
+
+|.macro CheckHeapT,val,pattern,fail_label
+|  or val,qword [->ValueHeapMaskLoad]
+|  mov val, qword [val]
+|  CheckHeapPtrT val,pattern,fail_label
+|.endmacro
+
+
+// -------------------------------------------------------------------------
+// Check an *GCRef* is Object or not
+#define OBJECT_BIT_PATTERN TYPE_OBJECT
 
 |.macro CheckObj,val,fail_label
-|  mov T1 , val
-|  shr T1 , 48
-|  cmp T1L, Value::TAG_HEAP
-|  jne >fail_label
-|  or reg,qword [->ValueHeapMaskLoad]
-|  mov reg, qword[reg]
-|  cmp dword [reg-(HeapObjectHeader::kHeapObjectHeaderSize+4)], OBJECT_BIT_PATTERN
+|  CheckHeapT val,OBJECT_BIT_PATTERN,fail_label
+|.endmacro
+
+|.macro CheckObjV,val,fail_label
+|  CheckHeap val,fail_label
+|  CheckObj val,fail_label
+|.endmacro
+
+// --------------------------------------------------------------------------
+// Check an *GCRef* is List or not
+#define LIST_BIT_PATTERN TYPE_LIST
+
+|.macro CheckList,val,fail_label
+|  CheckHeapT val,LIST_BIT_PATTERN,fail_label
+|.endmacro
+
+|.macro CheckListV,val,fail_label
+|  CheckHeap val,fail_label
+|  CheckObj val,fail_label
 |.endmacro
 
 // --------------------------------------------------------------------------
@@ -672,22 +924,21 @@ INTERPRETER_REGISTER_EXTERN_SYMBOL(PrintF)
 
 // This is a bit pattern for SSO string , sso bit is *off* and it is a string
 // so basically just TYPE_STRING stored in the corresponding bits
-#define SSO_BIT_PATTERN 0x14
+#define SSO_BIT_PATTERN TYPE_STRING
 
 // reg : pointer of String
 |.macro CheckSSO,reg,fail
 |  mov reg, qword [reg]
-|  cmp dword [reg-(HeapObjectHeader::kHeapObjectHeaderSize+4)], SSO_BIT_PATTERN
-|  jne >fail
+|  CheckHeapPtrT reg,SSO_BIT_PATTERN,fail
+// dereference *once* from String* --> SSO*
+|  mov reg, qword [reg]
 |.endmacro
 
 |.macro CheckSSOV,reg,fail
-|  mov T1,reg
-|  shr T1,48
-|  cmp T1L,Value::TAG_HEAP
-|  jne >fail
-|  or  reg,qword [->ValueHeapMaskLoad]
-|  CheckSSO,reg,fail
+|  CheckHeap reg,fail
+|  CheckHeapT,reg,SSO_BIT_PATTERN,fail
+// dereference *once* from String* --> SSO*
+|  mov reg, qword [reg]
 |.endmacro
 
 #define INTERP_HELPER_LIST(__) \
@@ -716,9 +967,30 @@ INTERPRETER_REGISTER_EXTERN_SYMBOL(PrintF)
   __(INTERP_COMPAREVV,InterpCompareVV)       \
   __(INTERP_COMPARESV,InterpCompareSV)       \
   __(INTERP_COMPAREVS,InterpCompareVS)       \
+  /* loading obj/list/cls */                 \
+  __(INTERP_LOADOBJ0 ,InterpLoadObj0)        \
+  __(INTERP_LOADOBJ1 ,InterpLoadObj1)        \
+  __(INTERP_NEWOBJ   ,InterpNewObj  )        \
+  __(INTERP_ADDOBJ   ,InterpAddObj  )        \
+  __(INTERP_LOADLIST0,InterpLoadList0)       \
+  __(INTERP_LOADLIST1,InterpLoadList1)       \
+  __(INTERP_LOADLIST2,InterpLoadList2)       \
+  __(INTERP_NEWLIST  ,InterpNewList  )       \
+  __(INTERP_ADDLIST  ,InterpAddList  )       \
+  __(INTERP_LOADCLS  ,InterpLoadCls  )       \
   /* unary */                                \
   __(INTERP_NEGATE,InterpNegate)             \
   __(INTERP_NOT,InterpNot)                   \
+  /* property get/set */                     \
+  __(INTERP_PROPGET_NOTFOUND,InterpPropGetNotFound)      \
+  __(INTERP_PROPGET_NOTOBJECT,InterpPropGetNotObject)    \
+  __(INTERP_PROPGET,InterpPropGet)           \
+  __(INTERP_PROPSET,InterpPropSet)           \
+  __(INTERP_IDXGETI,InterpIdxGetI)           \
+  __(INTERP_IDXGET ,InterpIdxGet )           \
+  __(INTERP_IDXSET ,InterpIdxSet )           \
+  __(INTERP_GSET   ,InterpGGset  )           \
+  __(INTERP_GGET   ,InterpGGet   )           \
   /* ---- debug helper ---- */               \
   __(PRINT_OP,PrintOP)                       \
   __(PRINT2  ,Print2 )                       \
@@ -806,11 +1078,11 @@ void GenerateInterpMisc( BuildContext* bctx ) {
   // our most important data structure
   |  interp_prolog
 
-  |  mov RUNTIME ,CARG1   // runtime
-  |  mov PROTO   ,CARG2   // proto
-  |  mov STK     ,CARG3   // stack
-  |  mov PC      ,CARG4   // pc
-  |  mov DISPATCH,CARG5   // dispatch
+  |  mov RUNTIME ,CARG1                 // runtime
+  |  mov PROTO   ,CARG2                 // proto
+  |  mov STK     ,CARG3                 // stack
+  |  mov PC      ,CARG4                 // pc
+  |  mov DISPATCH,CARG5                 // dispatch
 
   |  mov qword SAVED_PC,CARG4           // save the *start* of bc array
   // run
@@ -840,10 +1112,10 @@ void GenerateInterpMisc( BuildContext* bctx ) {
  * helper functions/routines generation     |
  * -----------------------------------------*/
 void GenerateHelper( BuildContext* bctx ) {
-  /* ----------------------------------------
-   * InterpArithXXX                         |
-   * ---------------------------------------*/
-  |.macro handle_ret_acc
+  // ----------------------------------------
+  // helper macros
+  // ----------------------------------------
+  |.macro ret2acc
   |  mov T1,rax
   |  shr T1,32
   |  cmp T1,VALUE_FAIL
@@ -852,13 +1124,119 @@ void GenerateHelper( BuildContext* bctx ) {
   |  Dispatch
   |.endmacro
 
+  |.macro retbool
+  |  test al,al
+  |  je ->InterpFail
+  |  Dispatch
+  |.endmacro
+
+  /* ----------------------------------------
+   * Load object/list/closure               |
+   * ---------------------------------------*/
+  |=> INTERP_LOADLIST0:
+  |->InterpLoadList0:
+  |  instr_F
+  |  mov CARG1,RUNTIME
+  |  lea CARG2,[STK+ARG1*8]
+  |  fcall InterpreterDoLoadList0
+  |  retbool
+
+
+  |=> INTERP_LOADLIST1:
+  |->InterpLoadList1:
+  |  instr_E
+  |  mov CARG1, RUNTIME
+  |  lea CARG2, [STK+ARG1*8]
+  |  mov CARG2, qword [STK+ARG2*8]
+  |  fcall InterpreterDoLoadList1
+  |  retbool
+
+  |=> INTERP_LOADLIST2:
+  |->InterpLoadList2:
+  |  instr_D
+  |  mov CARG1, RUNTIME
+  |  lea CARG2, [STK+ARG1*8]
+  |  mov CARG3, qword [STK+ARG2*8]
+  |  mov CARG4, qword [STK+ARG3*8]
+  |  fcall InterpreterDoLoadList2
+  |  retbool
+
+  |=> INTERP_NEWLIST:
+  |->InterpNewList:
+  |  instr_B
+  |  mov CARG1, RUNTIME
+  |  lea CARG2, [STK+ARG1*8]
+  |  mov CARG3L, ARG2
+  |  fcall InterpreterDoNewList
+  |  retbool
+
+  |=> INTERP_ADDLIST:
+  |->InterpAddList:
+  |  instr_E
+  |  mov CARG1, RUNTIME
+  |  lea CARG2, [STK+ARG1*8]
+  |  mov CARG3, qword [STK+ARG2*8]
+  |  fcall InterpreterDoAddList
+  |  retbool
+
+
+  |=> INTERP_LOADOBJ0:
+  |->InterpLoadObj0:
+  |  instr_F
+  |  mov CARG1, RUNTIME
+  |  lea CARG2, [STK+ARG1*8]
+  |  fcall InterpreterDoLoadObj0
+  |  retbool
+
+  |=> INTERP_LOADOBJ1:
+  |->InterpLoadObj1:
+  |  instr_D
+  |  mov CARG1, RUNTIME
+  |  lea CARG2, [STK+ARG1*8]
+  |  mov CARG3, qword [STK+ARG2*8]
+  |  mov CARG4, qword [STK+ARG3*8]
+  |  fcall InterpreterDoLoadObj1
+  |  retbool
+
+  |=> INTERP_NEWOBJ:
+  |->InterpNewObj:
+  |  instr_B
+  |  mov CARG1, RUNTIME
+  |  lea CARG2, [STK+ARG1*8]
+  |  mov CARG3L, ARG2
+  |  fcall InterpreterDoNewObj
+  |  retbool
+
+  |=> INTERP_ADDOBJ:
+  |->InterpAddObj:
+  |  instr_D
+  |  mov CARG1, RUNTIME
+  |  lea CARG2, [STK+ARG1*8]
+  |  mov CARG3, qword [STK+ARG2*8]
+  |  mov CARG4, qword [STK+ARG3*8]
+  |  fcall InterpreterDoAddObj
+  |  retbool
+
+  |=> INTERP_LOADCLS:
+  |->InterpLoadCls:
+  |  instr_G
+  |  mov CARG1, RUNTIME
+  |  mov CARG2, STK
+  |  mov CARG3L, ARG1
+  |  fcall InterpreterDoLoadCls
+  |  retbool
+
+  /* ----------------------------------------
+   * InterpArithXXX                         |
+   * ---------------------------------------*/
+
   |=> INTERP_ARITH_INTL:
   |->InterpArithIntL:
   |  mov CARG1,RUNTIME
   |  LdIntV CARG2,CARG2L,ARG1
   |  movzx CARG4L,byte [PC-4]
   |  fcall InterpreterDoArithmetic
-  |  handle_ret_acc
+  |  ret2acc
 
   |=> INTERP_ARITH_INTR:
   |->InterpArithIntR:
@@ -866,7 +1244,7 @@ void GenerateHelper( BuildContext* bctx ) {
   |  LdIntV CARG3,CARG3L,ARG2
   |  movzx CARG4L,byte [PC-4]
   |  fcall InterpreterDoArithmetic
-  |  handle_ret_acc
+  |  ret2acc
 
   |=> INTERP_ARITH_REALL:
   |->InterpArithRealL:
@@ -874,7 +1252,7 @@ void GenerateHelper( BuildContext* bctx ) {
   |  LdRealV CARG2,ARG1
   |  movzx CARG4L,byte [PC-4]
   |  fcall InterpreterDoArithmetic
-  |  handle_ret_acc
+  |  ret2acc
 
   |=> INTERP_ARITH_REALR:
   |->InterpArithRealR:
@@ -882,7 +1260,7 @@ void GenerateHelper( BuildContext* bctx ) {
   |  LdRealV CARG3,ARG2
   |  movzx CARG4L,byte [PC-4]
   |  fcall InterpreterDoArithmetic
-  |  handle_ret_acc
+  |  ret2acc
 
   |=> INTERP_ARITH_VV:
   |->InterpArithVV:
@@ -891,7 +1269,7 @@ void GenerateHelper( BuildContext* bctx ) {
   |  mov CARG3, qword [STK+ARG2*8]
   |  movzx CARG4L,byte [PC-4]
   |  fcall InterpreterDoArithmetic
-  |  handle_ret_acc
+  |  ret2acc
 
   |=> INTERP_POW_FAST:
   |->InterpPowFast:
@@ -906,7 +1284,7 @@ void GenerateHelper( BuildContext* bctx ) {
   |  mov CARG3,qword [STK+ARG2*8]
   |  movzx CARG4L,byte  [PC-4]
   |  fcall InterpreterPow
-  |  handle_ret_acc
+  |  ret2acc
 
   |=> INTERP_POW_SLOWRV:
   |->InterpPowSlowRV:
@@ -915,7 +1293,7 @@ void GenerateHelper( BuildContext* bctx ) {
   |  mov CARG3,qword [STK+ARG2*8]
   |  movzx CARG4L,byte[PC-4]
   |  fcall InterpreterPow
-  |  handle_ret_acc
+  |  ret2acc
 
   |=> INTERP_POW_SLOWVI:
   |->InterpPowSlowVI:
@@ -924,7 +1302,7 @@ void GenerateHelper( BuildContext* bctx ) {
   |  LdIntV CARG3,CARG3L,ARG2
   |  movzx CARG4L, byte [PC-4]
   |  fcall InterpreterPow
-  |  handle_ret_acc
+  |  ret2acc
 
   |=> INTERP_POW_SLOWVR:
   |->InterpPowSlowVR:
@@ -933,7 +1311,7 @@ void GenerateHelper( BuildContext* bctx ) {
   |  LdRealV CARG3,ARG2
   |  movzx CARG4L, byte [PC-4]
   |  fcall InterpreterPow
-  |  handle_ret_acc
+  |  ret2acc
 
   |=> INTERP_POW_SLOWVV:
   |->InterpPowSlowVV:
@@ -942,7 +1320,7 @@ void GenerateHelper( BuildContext* bctx ) {
   |  LdRealV CARG3,ARG2
   |  movzx CARG4L, byte [PC-4]
   |  fcall InterpreterPow
-  |  handle_ret_acc
+  |  ret2acc
 
   /* -------------------------------------------
    * Interp Arithmetic Exception               |
@@ -972,7 +1350,7 @@ void GenerateHelper( BuildContext* bctx ) {
   |  mov CARG3, qword [STK+ARG2*8]
   |  movzx CARG4L, byte [PC-4]
   |  fcall InterpreterDoCompare
-  |  handle_ret_acc
+  |  ret2acc
 
   |=> INTERP_COMPAREVI:
   |->InterpCompareVI:
@@ -981,7 +1359,7 @@ void GenerateHelper( BuildContext* bctx ) {
   |  LdIntV CARG3,CARG3L,ARG2
   |  movzx CARG4L, byte [PC-4]
   |  fcall InterpreterDoCompare
-  |  handle_ret_acc
+  |  ret2acc
 
   |=> INTERP_COMPARERV:
   |->InterpCompareRV:
@@ -990,7 +1368,7 @@ void GenerateHelper( BuildContext* bctx ) {
   |  mov CARG3, qword [STK+ARG2*8]
   |  movzx CARG4L, byte [PC-4]
   |  fcall InterpreterDoCompare
-  |  handle_ret_acc
+  |  ret2acc
 
   |=> INTERP_COMPAREVR:
   |->InterpCompareVR:
@@ -999,7 +1377,7 @@ void GenerateHelper( BuildContext* bctx ) {
   |  LdRealV CARG3,ARG2
   |  movzx CARG4L, byte [PC-4]
   |  fcall InterpreterDoCompare
-  |  handle_ret_acc
+  |  ret2acc
 
   |=> INTERP_COMPAREVV:
   |->InterpCompareVV:
@@ -1008,7 +1386,7 @@ void GenerateHelper( BuildContext* bctx ) {
   |  mov CARG3, qword [STK+ARG2*8]
   |  movzx CARG4L, byte [PC-4]
   |  fcall InterpreterDoCompare
-  |  handle_ret_acc
+  |  ret2acc
 
   |=> INTERP_COMPARESV:
   |->InterpCompareSV:
@@ -1017,7 +1395,7 @@ void GenerateHelper( BuildContext* bctx ) {
   |  mov CARG2, qword [STK+ARG2*8]
   |  movzx CARG4L, byte [PC-4]
   |  fcall InterpreterDoCompare
-  |  handle_ret_acc
+  |  ret2acc
 
   |=> INTERP_COMPAREVS:
   |->InterpCompareVS:
@@ -1026,7 +1404,7 @@ void GenerateHelper( BuildContext* bctx ) {
   |  LdStrV CARG3,ARG2
   |  movzx CARG4, byte [PC-4]
   |  fcall InterpreterDoCompare
-  |  handle_ret_acc
+  |  ret2acc
 
   /* -------------------------------------------------
    * Unary                                           |
@@ -1037,19 +1415,86 @@ void GenerateHelper( BuildContext* bctx ) {
   |  lea CARG2, qword [STK+ARG1*8]
   |  fcall InterpreterDoNegate
   // return value is a *boolean*
-  |  test al,al
-  |  jmp ->InterpFail
-  |  Dispatch
+  |  retbool
 
   |=> INTERP_NOT:
   |->InterpNot:
   |  mov CARG1, RUNTIME
   |  lea CARG2, qword [STK+ARG1*8]
   |  fcall InterpreterDoNot
-  |  test al,al
-  |  jmp ->InterpFail
-  |  Dispatch
+  |  retbool
 
+  /* -------------------------------------------------
+   * Property Get/Set                                |
+   * ------------------------------------------------*/
+  |=> INTERP_PROPGET:
+  |->InterpPropGet:
+  |  mov CARG1, RUNTIME
+  |  mov CARG2, qword [STK+ARG1*8]
+  |  LdStr CARG3, ARG2
+  |  fcall InterpreterDoPropGet
+  |  ret2acc
+
+  |=> INTERP_PROPGET_NOTFOUND:
+  |->InterpPropGetNotFound:
+  |  mov CARG1, RUNTIME
+  |  mov CARG2, qword [STK+ARG1*8]
+  |  LdStr CARG3,ARG1
+  |  fcall InterpreterPropGetNotFound
+  |  jmp ->InterpFail
+
+  |=> INTERP_PROPGET_NOTOBJECT:
+  |->InterpPropGetNotObject:
+  |  mov CARG1, RUNTIME
+  |  mov CARG2, qword [STK+ARG1*8]
+  |  LdStr CARG3, ARG2
+  |  fcall InterpreterPropGetNotObject
+  |  jmp ->InterpFail
+
+  |=> INTERP_PROPSET:
+  |->InterpPropSet:
+  |  instr_B
+  |  mov CARG1, RUNTIME
+  |  mov CARG2, qword [ACC]
+  |  mov CARG3, qword [STK+ARG1*8]
+  |  LdStr CARG4, ARG2
+  |  fcall InterpreterDoPropSet
+  |  retbool
+
+  |=> INTERP_IDXGET:
+  |->InterpIdxGet:
+  |  instr_E
+  |  mov CARG1, RUNTIME
+  |  mov CARG2, qword [STK+ARG1*8]
+  |  mov CARG3, qword [STK+ARG2*8]
+  |  fcall InterpreterDoIdxGet
+  |  retbool
+
+  |=> INTERP_IDXGETI:
+  |->InterpIdxGetI:
+  |  mov CARG1, RUNTIME
+  |  mov CARG2, qword [STK+ARG1*8]
+  |  LdInt CARG3L,ARG2
+  |  fcall InterpreterDoIdxGetI
+  |  retbool
+
+  |=> INTERP_GSET:
+  |->InterpGSet:
+  |  instr_C
+  |  mov CARG1, RUNTIME
+  |  LdStr CARG2,ARG1
+  |  mov CARG3, qword [STK+ARG2*8]
+  |  fcall InterpreterDoGSet
+  |  retbool
+
+  |=> INTERP_GGET:
+  |->InterpGGet:
+  |  instr_B
+  |  mov CARG1, RUNTIME
+  |  lea CARG2, [STK+ARG1*8]
+  |  LdStr CARG3, ARG2
+  |  fcall InterpreterDoGGet
+  |  retbool
 }
 
 void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
@@ -1086,6 +1531,7 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
       |  mov qword [STK+ARG1*8],T1
       |  Dispatch
       break;
+
     /** =====================================================
      *  Constant Loading                                    |
      *  ====================================================*/
@@ -1153,6 +1599,64 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
       |  LdStrV LREG,ARG2
       |  mov qword [STK+ARG1*8],LREG
       |  Dispatch
+      break;
+
+    // -------------------------------------------------
+    // Loading List/Object/Cls
+    //
+    //
+    // For these bytecodes, no optimization is performed but
+    // directly yield back to C++ function to do the job. It
+    // has no points to optimize these cases since they are
+    // small amount of bytecodes and also complicated to write
+    // in assembly without too much gain
+    //
+    //
+    // To reduce ICache stress, the decode routine is *not*
+    // placed inlined with each BC_XXX here but in the slow
+    // path. This is purposely to make the main part of
+    // interpreter to be small which helps about the icache
+    // footprint of hot code
+    // ------------------------------------------------*/
+    case BC_LOADLIST0:
+      |=> bc:
+      |  jmp ->InterpLoadList0
+      break;
+    case BC_LOADLIST1:
+      |=>bc:
+      |  jmp ->InterpLoadList1
+      break;
+    case BC_LOADLIST2:
+      |=>bc:
+      |  jmp ->InterpLoadList2
+      break;
+    case BC_NEWLIST:
+      |=>bc:
+      |  jmp ->InterpNewList
+      break;
+    case BC_ADDLIST:
+      |=>bc:
+      |  jmp ->InterpAddList
+      break;
+    case BC_LOADOBJ0:
+      |=>bc:
+      |  jmp ->InterpLoadObj0
+      break;
+    case BC_LOADOBJ1:
+      |=>bc:
+      |  jmp ->InterpLoadObj1
+      break;
+    case BC_NEWOBJ:
+      |=>bc:
+      |  jmp ->InterpNewObj
+      break;
+    case BC_ADDOBJ:
+      |=>bc:
+      |  jmp ->InterpAddObj
+      break;
+    case BC_LOADCLS:
+      |=>bc:
+      |  jmp ->InterpLoadCls
       break;
 
     /** =====================================================
@@ -2138,22 +2642,11 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
       // 5 comparison to be executed. Maybe we can have
       // a better comparison table for the following
       // comparison
-      |  cmp RREGL, Value::FLAG_TRUE
-      |  je >1
-
-      |  cmp RREGL, Value::FLAG_FALSE
-      |  je >2
-
-      |  cmp RREGL, Value::FLAG_INTEGER
-      |  je >3
-
-      |  cmp RREGL, Value::FLAG_REAL
-      |  jb >4
-
-      |  cmp RREGL, Value::FLAG_NULL
-      |  je >5
-
-      // slow path
+      |  cmp RREGL, Value::FLAG_TRUE;    je >1
+      |  cmp RREGL, Value::FLAG_FALSE;   je >2
+      |  cmp RREGL, Value::FLAG_INTEGER; je >3
+      |  cmp RREGL, Value::FLAG_REAL;    jb >4
+      |  cmp RREGL, Value::FLAG_NULL;    je >5
       |  jmp ->InterpNot
 
       |1: // true
@@ -2200,9 +2693,9 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
       |  Dispatch
       break;
 
-    // -------------------------------------------
-    // Branch
-    // -------------------------------------------
+    // ------------------------------------------------
+    // Branch                                         |
+    // -----------------------------------------------*/
 
     // branch PC
     |.macro branch_to,where
@@ -2217,16 +2710,12 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
     // assume T1 holds the flag; REG holds the actual Value;REGL holds
     // the lower 32 bits
     |.macro do_cond_jmp,SlowPath,REG,REGL,tflag,fflag,last_jmp
-    |  cmp T1L, Value::FLAG_TRUE
-    |  je >tflag
-    |  cmp T1L, Value::FLAG_FALSE
-    |  je >fflag
-    |  cmp T1L, Value::FLAG_NULL
-    |  je >fflag
-    |  cmp T1L, Value::FLAG_INTEGER
-    |  je >7
-    |  cmp T1L, Value::FLAG_REAL
-    |  jb >8
+
+    |  cmp T1L, Value::FLAG_TRUE ;    je >tflag
+    |  cmp T1L, Value::FLAG_FALSE;    je >fflag
+    |  cmp T1L, Value::FLAG_NULL ;    je >fflag
+    |  cmp T1L, Value::FLAG_INTEGER;  je >7
+    |  cmp T1L, Value::FLAG_REAL;     jb >8
     |  jmp ->SlowPath
 
     |7:  // int
@@ -2304,7 +2793,7 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
     // ----------------------------------------------------------
     // Property/Upvalue/Global
     // ---------------------------------------------------------*/
-
+    static_assert( sizeof(Map::Entry) == 24 );
 
     // A better way to implement property get/set is via IC (inline cache)
     // but currently we don't have IC states at bytecode level and we will
@@ -2316,11 +2805,13 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
     // index to anchor its main position inside of the *chain* and if we miss
     // we will fallback to the slow path
 
-    |.macro find_sso_pos,SlowPath,output
-    |  mov T2, qword [LREG]
+    // LREG --> Object*
+    // RREG --> SSO*
+    |.macro find_sso_pos,output
+    |  mov T2,LREG
 
     || if(MapLayout::kCapacityOffset) {
-    |    mov T2L, dword [T2+ObjectLayout::kCapacityOffset]
+    |    mov T2L, dword [T2+MapLayout::kCapacityOffset]
     || } else {
     |    mov T2L, dword [T2]
     || }
@@ -2333,22 +2824,26 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
 
     // T2L capacity , T1L size
     |  dec T2L
+
+    // T1L -> index
     |  and T1L,T2L
 
-    // index are in T1L, now checkout the main entry
-    |  lea T2L, [LREG+T1L*sizeof(Map::Entry)+MapLayout::kArrayOffset]
+    // index into the array
+    |  lea T2L, [LREG+(MapLayout::kArrayOffset)]
+    |  lea T1L, [T1L+T1L*2]
+    |  lea T2L, [T2L+T1L*8]
 
     // save map's starting address
-    |  mov T1 , [LREG+MapLayout::kArrayOffset]
+    |  lea T1 , [LREG+MapLayout::kArrayOffset]
 
     // 1. check if this entry is *deleted* or *used*
     |1: // start of the loop
-    |  mov LREG, dword [T2L+MapEntryLayout::kFlagOffset]
-    |  test LREG,((1<<30))
+    |  mov LREGL, dword [T2L+MapEntryLayout::kFlagOffset]
+    |  test LREGL,((1<<30))
     |  je >6
 
     // 2. check if it is deleted
-    |  test LREG,((1<<31))
+    |  test LREGL,((1<<31))
     |  jne >6 // deleted slots
 
     // 3. check if the key is a SSO
@@ -2359,27 +2854,140 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
     |  jne >6 // string not identical
 
     // now we find the entry
-    |  mov [STK+output*8],[T2L+MapEntryLayout::kValueOffset]
+    |  mov T2,qword [T2L+MapEntryLayout::kValueOffset]
+    |  mov qword [STK+output*8], T2
     |  Dispatch
 
     // move to next iteration
     |6:
-    |  mov LREG, dword [T2L+MapEntryLayout::kFlagOffset]
-    |  test LREG,((1<<29))
+    |  mov LREGL, dword [T2L+MapEntryLayout::kFlagOffset]
+    |  test LREGL,((1<<29))
     |  je ->InterpPropGetNotFound
-    |  and LREG, ((bits::BitOn<std::uint32_t,0,29>::value))
-    |  mov T2L , [T1+LREG*sizeof(Map::Entry)]
+    |  and LREGL, ((bits::BitOn<std::uint32_t,0,29>::value))
+    |  lea T2L  , [LREGL+LREGL*2]
+    |  lea T2L  , [T1+T2L*8]
     |  jmp <1
+
     |.endmacro
 
     case BC_PROPGET:
       |=>bc:
       |  instr_B
+
+      |.if 1
+      |  cmp word [STK+ARG1*8+6],Value::FLAG_HEAP
+      |  jne >8
       |  mov LREG, qword [STK+ARG1*8]
+      |  CheckObj LREG,9
+      |.else
+      |  mov LREG, qword [STK+ARG1*8]
+      |  CheckObjV LREG,9
+      |.endif
+
       |  LdStr RREG,ARG2
-      // checking whether LREG is an object
+      // assume RREG is an heap object since this should be guaranteed
+      // by front-end
+      |  or RREG,qword [->ValueHeapMaskLoad]
+      |  CheckSSO RREG,8
 
+      // find sso's position
+      |  find_sso_pos ACCIDX
 
+      |8: // should be done by slow path of InterpPorpGet
+      |  jmp ->InterpPropGet
+
+      |9: // failed at *object*
+      |  jmp ->InterpPropGetNotObject
+      break;
+
+    case BC_PROPSET:
+      // propset is directly yielded back to C++ functions
+      |=>bc:
+      |  jmp ->InterpPropSet
+      break;
+
+    case BC_IDXGET:
+      |=>bc:
+      |  jmp ->InterpIdxGet
+      break;
+    case BC_IDXSET:
+      |=>bc:
+      |  jmp ->InterpIdxSet
+      break;
+
+    // IDXGETI means using integer index to fetch a value from object
+    // we will optimize cases that the object is an List. Basically
+    // inline the memory access right inside of the assembly code. For
+    // rest of the cases, we yield back to C++ functions to take care of
+    case BC_IDXGETI:
+      |=>bc:
+      |  instr_B
+
+      // check if object is a list
+      |.if 1
+      |  cmp word [STK+ARG1*8+6],Value::FLAG_HEAP
+      |  jne >9
+      |  mov LREG,qword [STK+ARG1*8]
+      |  CheckList LREG,9
+      |.else
+      |  mov LREG,qword [STK+ARG1*8]
+      |  CheckListV LREG,9
+      |.endif
+
+      // load the integer into RREGL
+      |  LdInt RREGL,ARG2
+
+      // check if index out of boundary
+      |  mov T1L, dword [LREG+ListLayout::kSizeOffset]
+      |  cmp T1L, RREGL
+      |  jnb >8 // index outof boundary
+
+      // check if T1L is negative value since we don't
+      // handle the negative value right here
+      |  test T1L,T1L
+      |  js >9
+
+      // get the Slice object out of List
+      |  mov LREG, qword [LREG+ListLayout::kSliceOffset]
+      |  mov LREG, qword [LREG]  // Slice*
+
+      // grab the element out of the array
+      |  mov LREG, qword [LREG+LREG*8+SliceLayout::kArrayOffset]
+      |  mov qword [ACC], LREG
+      |  Dispatch
+
+      |9:
+      |  jmp ->InterpIdxGetI
+
+      |8:
+      |  jmp ->InterpIdxGetIOutOfBoundary
+      break;
+
+    case BC_UVGET:
+      |=>bc:
+      |  instr_B
+      |  LdUV LREG,ARG2
+      |  mov  qword [STK+ARG1*8], LREG
+      |  Dispatch
+      break;
+
+    case BC_UVSET:
+      |=>bc:
+      |  instr_C
+      |  mov RREG, qword [STK+ARG2*8]
+      |  StUV RREG,ARG1
+      |  Dispatch
+      break;
+
+    case BC_GSET:
+      |=>bc:
+      |  jmp ->InterpGSet
+      break;
+
+    case BC_GGET:
+      |=>bc:
+      |  jmp ->InterpGGet
+      break;
 
     default:
       |=> bc:
@@ -2430,12 +3038,13 @@ AssemblyInterpreter::AssemblyInterpreter():
   dispatch_jit_   (),
   interp_helper_  (),
   interp_entry_   (),
+  code_buffer_    (),
   code_size_      (),
   buffer_size_    ()
 {}
 
 AssemblyInterpreter::~AssemblyInterpreter() {
-  if(interp_entry_) OS::FreeCodePage(interp_entry_,buffer_size_);
+  if(interp_entry_) OS::FreeCodePage(code_buffer_,buffer_size_);
 }
 
 std::shared_ptr<AssemblyInterpreter> AssemblyInterpreter::Generate() {
@@ -2462,11 +3071,13 @@ std::shared_ptr<AssemblyInterpreter> AssemblyInterpreter::Generate() {
   bctx.tag = DASM_GROWABLE_PC_SIZE;
   dasm_growpc(&(bctx.dasm_ctx), DASM_GROWABLE_PC_SIZE );
 
-  // build the prolog
-  GenerateInterpMisc(&bctx);
+  // Order matters, it may change profile of our icache
 
   // build the helper
   GenerateHelper(&bctx);
+
+  // build the prolog
+  GenerateInterpMisc(&bctx);
 
   // generate all bytecode's routine
   for( int i = static_cast<int>(BC_ADDIV) ; i < SIZE_OF_BYTECODE ; ++i ) {
@@ -2504,7 +3115,14 @@ std::shared_ptr<AssemblyInterpreter> AssemblyInterpreter::Generate() {
         reinterpret_cast<void*>(static_cast<char*>(buffer)+off));
   }
 
-  interp->interp_entry_ = buffer;
+  // start of the code buffer
+  interp->code_buffer_  = buffer;
+
+  // get the *interpreter's* entry
+  int off = dasm_getpclabel(&(bctx.dasm_ctx),INTERP_START);
+  interp->interp_entry_ = reinterpret_cast<void*>(
+      static_cast<char*>(buffer) + off);
+
   interp->buffer_size_  = new_size;
   interp->code_size_    = code_size;
   return interp;
@@ -2540,8 +3158,8 @@ void AssemblyInterpreter::Dump( DumpWriter* writer ) const {
   ZydisFormatter formatter;
   ZydisFormatterInit(&formatter,ZYDIS_FORMATTER_STYLE_INTEL);
 
-  std::uint64_t pc = reinterpret_cast<std::uint64_t>(interp_entry_);
-  std::uint8_t* rp = static_cast<std::uint8_t*>(interp_entry_);
+  std::uint64_t pc = reinterpret_cast<std::uint64_t>(code_buffer_);
+  std::uint8_t* rp = static_cast<std::uint8_t*>(code_buffer_);
   std::size_t size = code_size_;
 
   writer->WriteL("CodeSize:%zu",code_size_);

@@ -86,6 +86,9 @@ class AssemblyInterpreter {
   // we can use inline assembly to jmp to this routine
   void* interp_entry_;
 
+  // code buffer
+  void* code_buffer_;
+
   // code size for this buffer
   std::size_t code_size_;
 

@@ -100,11 +100,18 @@ LAVASCRIPT_HEAP_OBJECT_LIST(__)
  * High: Used for storing bit flags and other stuffs .
  *
  * [
- *   3 bytes reserved ;
+ *   2 bytes reserved [3rd - 4th bytes]
+ *   ---------------------------
+ *   2nd byte
+ *   --------
  *   bit 8:short/long string ;
- *   bit 7:end of chunk;
- *   bit 6-3:heap object type ;
+ *   bit 7-0:heap object type ;
+ *   ---------------------------
+ *   1st byte
+ *   --------
+ *   bit   3:end of chunk
  *   bit 2-1:gc mark state
+ *   ---------------------------
  * ]
  *
  * The last 2 bits are used for storing flag for GC cycle
@@ -118,10 +125,10 @@ class HeapObjectHeader : DoNotAllocateOnNormalHeap {
 
   static const std::uint32_t kGCStateMask = 3;         // 0b11
   static const std::uint32_t kLongStringMask = (1<<7); // 0b10000000
-  static const std::uint32_t kEndOfChunkMask = (1<<6); // 0b01000000
+  static const std::uint32_t kEndOfChunkMask = (1<<3); // 0b00000100
 
-  // Mask for getting the heap object type , should be 0b00111100
-  static const std::uint32_t kHeapObjectTypeMask  = bits::BitOn<std::uint32_t,2,6>::value;
+  // Mask for getting the heap object type , should be 0b01111111
+  static const std::uint32_t kHeapObjectTypeMask  = bits::BitOn<std::uint32_t,0,7>::value;
 
   GCState gc_state() const { return static_cast<GCState>(high() & kGCStateMask); }
   void set_gc_state( GCState state ) {
@@ -138,24 +145,37 @@ class HeapObjectHeader : DoNotAllocateOnNormalHeap {
   void set_gc_white() { set_gc_state( GC_WHITE ); }
   void set_gc_gray () { set_gc_state( GC_GRAY  ); }
 
-  // Check whether this object is a short string or long string if this
-  // object is a heap object there
-  void set_sso() { set_high( high() & ~kLongStringMask);  }
-  void set_long_string()  { set_high( high() | kLongStringMask);   }
-
-  // These two functions doesn't test whether the HeapObjectType is a TYPE_STRING but
-  // assume it is a string
-  bool IsSSO() const { return type() == TYPE_STRING && !(high() & kLongStringMask); }
-  bool IsLongString() const  { return type() == TYPE_STRING && (high() & kLongStringMask); }
+ public:
 
   // Check if it is end of the chunk. Used when iterating through object on heap
   bool IsEndOfChunk() const { return (high() & kEndOfChunkMask); }
   void set_end_of_chunk() { set_high( high() | kEndOfChunkMask); }
   void set_not_end_of_chunk() { set_high( high() & ~kEndOfChunkMask); }
 
+ public:
+  // Check whether this object is a short string or long string if this
+  // object is a heap object there
+  void set_sso() { 
+    std::uint8_t v = high<1>();
+    v &= ~kLongStringMask;
+    set_high<1>(v);
+  }
+
+  void set_long_string()  {
+    std::uint8_t v = high<1>();
+    v |= kLongStringMask;
+    set_high<1>(v);
+  }
+
+  // These two functions doesn't test whether the HeapObjectType is a TYPE_STRING but
+  // assume it is a string
+  bool IsSSO() const { return type() == TYPE_STRING && !(high<1>() & kLongStringMask); }
+  bool IsLongString() const  { return type() == TYPE_STRING && (high<1>() & kLongStringMask); }
+
   // HeapObject's type are stored inside of this HeapObjectHeader
   ValueType type() const {
-    return static_cast<ValueType>( (high() & kHeapObjectTypeMask) >> 2 );
+    std::uint8_t h = high<1>();
+    return static_cast<ValueType>((h & kHeapObjectTypeMask));
   }
   bool IsString() const { return type() == TYPE_STRING; }
   bool IsList() const { return type() == TYPE_LIST; }
@@ -169,10 +189,10 @@ class HeapObjectHeader : DoNotAllocateOnNormalHeap {
   bool IsScript() const { return type() == TYPE_SCRIPT; }
 
   void set_type( ValueType type ) {
-    std::uint32_t v = high();
+    std::uint8_t v = high<1>();
     v &= ~kHeapObjectTypeMask;
-    v |= (static_cast<std::uint32_t>(type) << 2);
-    set_high(v);
+    v |= static_cast<std::uint32_t>(type);
+    set_high<1>(v);
   }
 
   // Size of the object + the header size
@@ -181,7 +201,7 @@ class HeapObjectHeader : DoNotAllocateOnNormalHeap {
   // implementation uses size() which has std::size_t larger
   // range than std::uint32_t catch corner case that size is
   // std::uint32_t::max()
-  std::size_t total_size() const {return size() + kHeapObjectHeaderSize; }
+  std::size_t total_size() const { return size() + kHeapObjectHeaderSize; }
 
   // Size of the object in byte
   std::size_t size() const { return low() ; }
@@ -214,6 +234,12 @@ class HeapObjectHeader : DoNotAllocateOnNormalHeap {
   void set_high( std::uint32_t h ) { high_ = h; }
   void set_low( std::uint32_t l ) { low_  = l; }
 
+  template< std::size_t index >
+  inline std::uint8_t high() const;
+
+  template< std::size_t index >
+  inline void set_high( std::uint8_t v );
+
  private:
   union {
     Type raw_;
@@ -236,6 +262,41 @@ class HeapObjectHeader : DoNotAllocateOnNormalHeap {
 
 static_assert( std::is_standard_layout<HeapObjectHeader>::value );
 static_assert( sizeof(HeapObjectHeader::Type) == sizeof(HeapObjectHeader) );
+
+template< std::size_t index >
+inline std::uint8_t HeapObjectHeader::high() const {
+  static_assert( index >= 0 && index < 4 );
+  std::uint32_t v = high_;
+  switch(index) {
+    case 0:
+      return static_cast<std::uint8_t>(v);
+    case 1:
+      return static_cast<std::uint8_t>(v>>8);
+    case 2:
+      return static_cast<std::uint8_t>(v>>16);
+    default:
+      return static_cast<std::uint8_t>(v>>24);
+  }
+}
+
+template< std::size_t index >
+inline void HeapObjectHeader::set_high( std::uint8_t v ) {
+  static_assert( index >= 0 && index < 4 );
+  switch(index) {
+    case 0:
+      high_ = (high_ & 0xffffff00) | static_cast<std::uint32_t>(v);
+      break;
+    case 1:
+      high_ = (high_ & 0xffff00ff) | (static_cast<std::uint32_t>(v)<<8);
+      break;
+    case 2:
+      high_ = (high_ & 0xff00ffff) | (static_cast<std::uint32_t>(v)<<16);
+      break;
+    default:
+      high_ = (high_ & 0x00ffffff) | (static_cast<std::uint32_t>(v)<<24);
+      break;
+  }
+}
 
 } // namespace lavascript
 #endif // HEAP_OBJECT_HEADER_H_

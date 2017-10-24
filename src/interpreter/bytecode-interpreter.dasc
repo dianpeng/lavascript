@@ -608,6 +608,7 @@ INTERPRETER_REGISTER_EXTERN_SYMBOL(PrintF)
 |.endif
 |.endmacro
 
+
 // Set a pointer into a register , this is really painful
 |.macro StHeap,reg,val
 
@@ -655,6 +656,16 @@ INTERPRETER_REGISTER_EXTERN_SYMBOL(PrintF)
 |  mov val, qword [T1+index*8]
 |.endmacro
 
+
+|.macro CheckObj,val,fail_label
+|  mov T1 , val
+|  shr T1 , 48
+|  cmp T1L, Value::TAG_HEAP
+|  jne >fail_label
+|  or reg,qword [->ValueHeapMaskLoad]
+|  mov reg, qword[reg]
+|  cmp dword [reg-(HeapObjectHeader::kHeapObjectHeaderSize+4)], OBJECT_BIT_PATTERN
+|.endmacro
 
 // --------------------------------------------------------------------------
 // Check a *GCRef* is SSO or not , not stored in Value
@@ -2333,14 +2344,11 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
     // 1. check if this entry is *deleted* or *used*
     |1: // start of the loop
     |  mov LREG, dword [T2L+MapEntryLayout::kFlagOffset]
-    |  and LREG, ((1<<30))
-    |  test LREG,LREG
-    |  je >6 // not used slots
+    |  test LREG,((1<<30))
+    |  je >6
 
     // 2. check if it is deleted
-    |  mov LREG, dword [T2L+MapEntryLayout::kFlagOffset]
-    |  and LREG, ((1<<31))
-    |  test LREG,LREG
+    |  test LREG,((1<<31))
     |  jne >6 // deleted slots
 
     // 3. check if the key is a SSO
@@ -2357,14 +2365,19 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
     // move to next iteration
     |6:
     |  mov LREG, dword [T2L+MapEntryLayout::kFlagOffset]
-    |  and LREG, ((1<<29))
-    |  test LREG,LREG
+    |  test LREG,((1<<29))
     |  je ->InterpPropGetNotFound
-    |  mov LREG, dword [T2L+MapEntryLayout::kFlagOffset]
     |  and LREG, ((bits::BitOn<std::uint32_t,0,29>::value))
     |  mov T2L , [T1+LREG*sizeof(Map::Entry)]
     |  jmp <1
     |.endmacro
+
+    case BC_PROPGET:
+      |=>bc:
+      |  instr_B
+      |  mov LREG, qword [STK+ARG1*8]
+      |  LdStr RREG,ARG2
+      // checking whether LREG is an object
 
 
 

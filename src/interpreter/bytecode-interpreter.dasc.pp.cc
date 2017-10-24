@@ -1278,6 +1278,7 @@ INTERPRETER_REGISTER_EXTERN_SYMBOL(PrintF)
 // so basically just TYPE_STRING stored in the corresponding bits
 #define SSO_BIT_PATTERN 0x14
 
+// reg : pointer of String
 //|.macro CheckSSO,reg,fail
 //|  mov reg, qword [reg]
 //|  cmp dword [reg-(HeapObjectHeader::kHeapObjectHeaderSize+4)], SSO_BIT_PATTERN
@@ -1365,25 +1366,25 @@ void GenerateInterpMisc( BuildContext* bctx ) {
    * ------------------------------------------*/
   //|.data
   dasm_put(Dst, 0);
-#line 752 "src/interpreter/bytecode-interpreter.dasc"
+#line 753 "src/interpreter/bytecode-interpreter.dasc"
   //|->ValueHeapMaskStore:
   //|.dword Value::TAG_HEAP_STORE_MASK_HIGHER,Value::TAG_HEAP_STORE_MASK_LOWER
   dasm_put(Dst, 2, Value::TAG_HEAP_STORE_MASK_HIGHER, Value::TAG_HEAP_STORE_MASK_LOWER);
-#line 754 "src/interpreter/bytecode-interpreter.dasc"
+#line 755 "src/interpreter/bytecode-interpreter.dasc"
 
   //|->ValueHeapMaskLoad:
   //|.dword Value::TAG_HEAP_LOAD_MASK_HIGHER,Value::TAG_HEAP_LOAD_MASK_LOWER
   dasm_put(Dst, 7, Value::TAG_HEAP_LOAD_MASK_HIGHER, Value::TAG_HEAP_LOAD_MASK_LOWER);
-#line 757 "src/interpreter/bytecode-interpreter.dasc"
+#line 758 "src/interpreter/bytecode-interpreter.dasc"
 
   //|->RealZero:
   //|.dword 0,0
   dasm_put(Dst, 12);
-#line 760 "src/interpreter/bytecode-interpreter.dasc"
+#line 761 "src/interpreter/bytecode-interpreter.dasc"
 
   //|.code
   dasm_put(Dst, 23);
-#line 762 "src/interpreter/bytecode-interpreter.dasc"
+#line 763 "src/interpreter/bytecode-interpreter.dasc"
   /* -------------------------------------------
    * Start of the code                         |
    * ------------------------------------------*/
@@ -1416,12 +1417,12 @@ void GenerateInterpMisc( BuildContext* bctx ) {
   //|=> INTERP_START:
   //|->InterpStart:
   dasm_put(Dst, 25,  INTERP_START);
-#line 793 "src/interpreter/bytecode-interpreter.dasc"
+#line 794 "src/interpreter/bytecode-interpreter.dasc"
   // save all callee saved register since we use them to keep tracking of
   // our most important data structure
   //|  interp_prolog
   dasm_put(Dst, 29);
-#line 796 "src/interpreter/bytecode-interpreter.dasc"
+#line 797 "src/interpreter/bytecode-interpreter.dasc"
 
   //|  mov RUNTIME ,CARG1   // runtime
   //|  mov PROTO   ,CARG2   // proto
@@ -1429,11 +1430,11 @@ void GenerateInterpMisc( BuildContext* bctx ) {
   //|  mov PC      ,CARG4   // pc
   //|  mov DISPATCH,CARG5   // dispatch
   dasm_put(Dst, 65);
-#line 802 "src/interpreter/bytecode-interpreter.dasc"
+#line 803 "src/interpreter/bytecode-interpreter.dasc"
 
   //|  mov qword SAVED_PC,CARG4           // save the *start* of bc array
   dasm_put(Dst, 83);
-#line 804 "src/interpreter/bytecode-interpreter.dasc"
+#line 805 "src/interpreter/bytecode-interpreter.dasc"
   // run
   //|  Dispatch
   dasm_put(Dst, 88);
@@ -1444,7 +1445,7 @@ void GenerateInterpMisc( BuildContext* bctx ) {
   dasm_put(Dst, 104, (unsigned int)(reinterpret_cast<std::uintptr_t>(PrintOP)), (unsigned int)((reinterpret_cast<std::uintptr_t>(PrintOP))>>32));
    }
   dasm_put(Dst, 112);
-#line 806 "src/interpreter/bytecode-interpreter.dasc"
+#line 807 "src/interpreter/bytecode-interpreter.dasc"
 
   /* -------------------------------------------
    * Interpreter exit handler                  |
@@ -1453,12 +1454,12 @@ void GenerateInterpMisc( BuildContext* bctx ) {
   //|->InterpFail:
   //|  xor rax,rax
   dasm_put(Dst, 129,  INTERP_FAIL);
-#line 813 "src/interpreter/bytecode-interpreter.dasc"
+#line 814 "src/interpreter/bytecode-interpreter.dasc"
 
   //|  interp_epilog
   //|  ret
   dasm_put(Dst, 136);
-#line 816 "src/interpreter/bytecode-interpreter.dasc"
+#line 817 "src/interpreter/bytecode-interpreter.dasc"
 
   //|=> INTERP_RETURN:
   //|->InterpReturn:
@@ -1466,12 +1467,12 @@ void GenerateInterpMisc( BuildContext* bctx ) {
   //|  mov qword [RUNTIME+RuntimeLayout::kRetOffset],rax
   //|  mov rax,1
   dasm_put(Dst, 172,  INTERP_RETURN, RuntimeLayout::kRetOffset);
-#line 822 "src/interpreter/bytecode-interpreter.dasc"
+#line 823 "src/interpreter/bytecode-interpreter.dasc"
 
   //|  interp_epilog
   //|  ret
   dasm_put(Dst, 136);
-#line 825 "src/interpreter/bytecode-interpreter.dasc"
+#line 826 "src/interpreter/bytecode-interpreter.dasc"
 }
 
 /* ------------------------------------------
@@ -1503,7 +1504,7 @@ void GenerateHelper( BuildContext* bctx ) {
      lava_warn("%s","Function InterpreterDoArithmetic address is not in 0-2GB");
   dasm_put(Dst, 104, (unsigned int)(reinterpret_cast<std::uintptr_t>(InterpreterDoArithmetic)), (unsigned int)((reinterpret_cast<std::uintptr_t>(InterpreterDoArithmetic))>>32));
    }
-#line 849 "src/interpreter/bytecode-interpreter.dasc"
+#line 850 "src/interpreter/bytecode-interpreter.dasc"
   //|  handle_ret_acc
   dasm_put(Dst, 230, VALUE_FAIL);
    if(CheckAddress(reinterpret_cast<std::uintptr_t>(PrintOP))) {
@@ -1513,7 +1514,7 @@ void GenerateHelper( BuildContext* bctx ) {
   dasm_put(Dst, 104, (unsigned int)(reinterpret_cast<std::uintptr_t>(PrintOP)), (unsigned int)((reinterpret_cast<std::uintptr_t>(PrintOP))>>32));
    }
   dasm_put(Dst, 112);
-#line 850 "src/interpreter/bytecode-interpreter.dasc"
+#line 851 "src/interpreter/bytecode-interpreter.dasc"
 
   //|=> INTERP_ARITH_INTR:
   //|->InterpArithIntR:
@@ -1528,7 +1529,7 @@ void GenerateHelper( BuildContext* bctx ) {
      lava_warn("%s","Function InterpreterDoArithmetic address is not in 0-2GB");
   dasm_put(Dst, 104, (unsigned int)(reinterpret_cast<std::uintptr_t>(InterpreterDoArithmetic)), (unsigned int)((reinterpret_cast<std::uintptr_t>(InterpreterDoArithmetic))>>32));
    }
-#line 857 "src/interpreter/bytecode-interpreter.dasc"
+#line 858 "src/interpreter/bytecode-interpreter.dasc"
   //|  handle_ret_acc
   dasm_put(Dst, 230, VALUE_FAIL);
    if(CheckAddress(reinterpret_cast<std::uintptr_t>(PrintOP))) {
@@ -1538,7 +1539,7 @@ void GenerateHelper( BuildContext* bctx ) {
   dasm_put(Dst, 104, (unsigned int)(reinterpret_cast<std::uintptr_t>(PrintOP)), (unsigned int)((reinterpret_cast<std::uintptr_t>(PrintOP))>>32));
    }
   dasm_put(Dst, 112);
-#line 858 "src/interpreter/bytecode-interpreter.dasc"
+#line 859 "src/interpreter/bytecode-interpreter.dasc"
 
   //|=> INTERP_ARITH_REALL:
   //|->InterpArithRealL:
@@ -1553,7 +1554,7 @@ void GenerateHelper( BuildContext* bctx ) {
      lava_warn("%s","Function InterpreterDoArithmetic address is not in 0-2GB");
   dasm_put(Dst, 104, (unsigned int)(reinterpret_cast<std::uintptr_t>(InterpreterDoArithmetic)), (unsigned int)((reinterpret_cast<std::uintptr_t>(InterpreterDoArithmetic))>>32));
    }
-#line 865 "src/interpreter/bytecode-interpreter.dasc"
+#line 866 "src/interpreter/bytecode-interpreter.dasc"
   //|  handle_ret_acc
   dasm_put(Dst, 230, VALUE_FAIL);
    if(CheckAddress(reinterpret_cast<std::uintptr_t>(PrintOP))) {
@@ -1563,7 +1564,7 @@ void GenerateHelper( BuildContext* bctx ) {
   dasm_put(Dst, 104, (unsigned int)(reinterpret_cast<std::uintptr_t>(PrintOP)), (unsigned int)((reinterpret_cast<std::uintptr_t>(PrintOP))>>32));
    }
   dasm_put(Dst, 112);
-#line 866 "src/interpreter/bytecode-interpreter.dasc"
+#line 867 "src/interpreter/bytecode-interpreter.dasc"
 
   //|=> INTERP_ARITH_REALR:
   //|->InterpArithRealR:
@@ -1578,7 +1579,7 @@ void GenerateHelper( BuildContext* bctx ) {
      lava_warn("%s","Function InterpreterDoArithmetic address is not in 0-2GB");
   dasm_put(Dst, 104, (unsigned int)(reinterpret_cast<std::uintptr_t>(InterpreterDoArithmetic)), (unsigned int)((reinterpret_cast<std::uintptr_t>(InterpreterDoArithmetic))>>32));
    }
-#line 873 "src/interpreter/bytecode-interpreter.dasc"
+#line 874 "src/interpreter/bytecode-interpreter.dasc"
   //|  handle_ret_acc
   dasm_put(Dst, 230, VALUE_FAIL);
    if(CheckAddress(reinterpret_cast<std::uintptr_t>(PrintOP))) {
@@ -1588,7 +1589,7 @@ void GenerateHelper( BuildContext* bctx ) {
   dasm_put(Dst, 104, (unsigned int)(reinterpret_cast<std::uintptr_t>(PrintOP)), (unsigned int)((reinterpret_cast<std::uintptr_t>(PrintOP))>>32));
    }
   dasm_put(Dst, 112);
-#line 874 "src/interpreter/bytecode-interpreter.dasc"
+#line 875 "src/interpreter/bytecode-interpreter.dasc"
 
   //|=> INTERP_ARITH_VV:
   //|->InterpArithVV:
@@ -1604,7 +1605,7 @@ void GenerateHelper( BuildContext* bctx ) {
      lava_warn("%s","Function InterpreterDoArithmetic address is not in 0-2GB");
   dasm_put(Dst, 104, (unsigned int)(reinterpret_cast<std::uintptr_t>(InterpreterDoArithmetic)), (unsigned int)((reinterpret_cast<std::uintptr_t>(InterpreterDoArithmetic))>>32));
    }
-#line 882 "src/interpreter/bytecode-interpreter.dasc"
+#line 883 "src/interpreter/bytecode-interpreter.dasc"
   //|  handle_ret_acc
   dasm_put(Dst, 230, VALUE_FAIL);
    if(CheckAddress(reinterpret_cast<std::uintptr_t>(PrintOP))) {
@@ -1614,7 +1615,7 @@ void GenerateHelper( BuildContext* bctx ) {
   dasm_put(Dst, 104, (unsigned int)(reinterpret_cast<std::uintptr_t>(PrintOP)), (unsigned int)((reinterpret_cast<std::uintptr_t>(PrintOP))>>32));
    }
   dasm_put(Dst, 112);
-#line 883 "src/interpreter/bytecode-interpreter.dasc"
+#line 884 "src/interpreter/bytecode-interpreter.dasc"
 
   //|=> INTERP_POW_FAST:
   //|->InterpPowFast:
@@ -1626,7 +1627,7 @@ void GenerateHelper( BuildContext* bctx ) {
      lava_warn("%s","Function Pow address is not in 0-2GB");
   dasm_put(Dst, 104, (unsigned int)(reinterpret_cast<std::uintptr_t>(Pow)), (unsigned int)((reinterpret_cast<std::uintptr_t>(Pow))>>32));
    }
-#line 887 "src/interpreter/bytecode-interpreter.dasc"
+#line 888 "src/interpreter/bytecode-interpreter.dasc"
   //|  movsd qword [ACC],xmm0
   //|  Dispatch
   dasm_put(Dst, 371);
@@ -1637,7 +1638,7 @@ void GenerateHelper( BuildContext* bctx ) {
   dasm_put(Dst, 104, (unsigned int)(reinterpret_cast<std::uintptr_t>(PrintOP)), (unsigned int)((reinterpret_cast<std::uintptr_t>(PrintOP))>>32));
    }
   dasm_put(Dst, 112);
-#line 889 "src/interpreter/bytecode-interpreter.dasc"
+#line 890 "src/interpreter/bytecode-interpreter.dasc"
 
   //|=> INTERP_POW_SLOWIV:
   //|->InterpPowSlowIV:
@@ -1653,7 +1654,7 @@ void GenerateHelper( BuildContext* bctx ) {
      lava_warn("%s","Function InterpreterPow address is not in 0-2GB");
   dasm_put(Dst, 104, (unsigned int)(reinterpret_cast<std::uintptr_t>(InterpreterPow)), (unsigned int)((reinterpret_cast<std::uintptr_t>(InterpreterPow))>>32));
    }
-#line 897 "src/interpreter/bytecode-interpreter.dasc"
+#line 898 "src/interpreter/bytecode-interpreter.dasc"
   //|  handle_ret_acc
   dasm_put(Dst, 230, VALUE_FAIL);
    if(CheckAddress(reinterpret_cast<std::uintptr_t>(PrintOP))) {
@@ -1663,7 +1664,7 @@ void GenerateHelper( BuildContext* bctx ) {
   dasm_put(Dst, 104, (unsigned int)(reinterpret_cast<std::uintptr_t>(PrintOP)), (unsigned int)((reinterpret_cast<std::uintptr_t>(PrintOP))>>32));
    }
   dasm_put(Dst, 112);
-#line 898 "src/interpreter/bytecode-interpreter.dasc"
+#line 899 "src/interpreter/bytecode-interpreter.dasc"
 
   //|=> INTERP_POW_SLOWRV:
   //|->InterpPowSlowRV:
@@ -1679,7 +1680,7 @@ void GenerateHelper( BuildContext* bctx ) {
      lava_warn("%s","Function InterpreterPow address is not in 0-2GB");
   dasm_put(Dst, 104, (unsigned int)(reinterpret_cast<std::uintptr_t>(InterpreterPow)), (unsigned int)((reinterpret_cast<std::uintptr_t>(InterpreterPow))>>32));
    }
-#line 906 "src/interpreter/bytecode-interpreter.dasc"
+#line 907 "src/interpreter/bytecode-interpreter.dasc"
   //|  handle_ret_acc
   dasm_put(Dst, 230, VALUE_FAIL);
    if(CheckAddress(reinterpret_cast<std::uintptr_t>(PrintOP))) {
@@ -1689,7 +1690,7 @@ void GenerateHelper( BuildContext* bctx ) {
   dasm_put(Dst, 104, (unsigned int)(reinterpret_cast<std::uintptr_t>(PrintOP)), (unsigned int)((reinterpret_cast<std::uintptr_t>(PrintOP))>>32));
    }
   dasm_put(Dst, 112);
-#line 907 "src/interpreter/bytecode-interpreter.dasc"
+#line 908 "src/interpreter/bytecode-interpreter.dasc"
 
   //|=> INTERP_POW_SLOWVI:
   //|->InterpPowSlowVI:
@@ -1705,7 +1706,7 @@ void GenerateHelper( BuildContext* bctx ) {
      lava_warn("%s","Function InterpreterPow address is not in 0-2GB");
   dasm_put(Dst, 104, (unsigned int)(reinterpret_cast<std::uintptr_t>(InterpreterPow)), (unsigned int)((reinterpret_cast<std::uintptr_t>(InterpreterPow))>>32));
    }
-#line 915 "src/interpreter/bytecode-interpreter.dasc"
+#line 916 "src/interpreter/bytecode-interpreter.dasc"
   //|  handle_ret_acc
   dasm_put(Dst, 230, VALUE_FAIL);
    if(CheckAddress(reinterpret_cast<std::uintptr_t>(PrintOP))) {
@@ -1715,7 +1716,7 @@ void GenerateHelper( BuildContext* bctx ) {
   dasm_put(Dst, 104, (unsigned int)(reinterpret_cast<std::uintptr_t>(PrintOP)), (unsigned int)((reinterpret_cast<std::uintptr_t>(PrintOP))>>32));
    }
   dasm_put(Dst, 112);
-#line 916 "src/interpreter/bytecode-interpreter.dasc"
+#line 917 "src/interpreter/bytecode-interpreter.dasc"
 
   //|=> INTERP_POW_SLOWVR:
   //|->InterpPowSlowVR:
@@ -1731,7 +1732,7 @@ void GenerateHelper( BuildContext* bctx ) {
      lava_warn("%s","Function InterpreterPow address is not in 0-2GB");
   dasm_put(Dst, 104, (unsigned int)(reinterpret_cast<std::uintptr_t>(InterpreterPow)), (unsigned int)((reinterpret_cast<std::uintptr_t>(InterpreterPow))>>32));
    }
-#line 924 "src/interpreter/bytecode-interpreter.dasc"
+#line 925 "src/interpreter/bytecode-interpreter.dasc"
   //|  handle_ret_acc
   dasm_put(Dst, 230, VALUE_FAIL);
    if(CheckAddress(reinterpret_cast<std::uintptr_t>(PrintOP))) {
@@ -1741,7 +1742,7 @@ void GenerateHelper( BuildContext* bctx ) {
   dasm_put(Dst, 104, (unsigned int)(reinterpret_cast<std::uintptr_t>(PrintOP)), (unsigned int)((reinterpret_cast<std::uintptr_t>(PrintOP))>>32));
    }
   dasm_put(Dst, 112);
-#line 925 "src/interpreter/bytecode-interpreter.dasc"
+#line 926 "src/interpreter/bytecode-interpreter.dasc"
 
   //|=> INTERP_POW_SLOWVV:
   //|->InterpPowSlowVV:
@@ -1757,7 +1758,7 @@ void GenerateHelper( BuildContext* bctx ) {
      lava_warn("%s","Function InterpreterPow address is not in 0-2GB");
   dasm_put(Dst, 104, (unsigned int)(reinterpret_cast<std::uintptr_t>(InterpreterPow)), (unsigned int)((reinterpret_cast<std::uintptr_t>(InterpreterPow))>>32));
    }
-#line 933 "src/interpreter/bytecode-interpreter.dasc"
+#line 934 "src/interpreter/bytecode-interpreter.dasc"
   //|  handle_ret_acc
   dasm_put(Dst, 230, VALUE_FAIL);
    if(CheckAddress(reinterpret_cast<std::uintptr_t>(PrintOP))) {
@@ -1767,7 +1768,7 @@ void GenerateHelper( BuildContext* bctx ) {
   dasm_put(Dst, 104, (unsigned int)(reinterpret_cast<std::uintptr_t>(PrintOP)), (unsigned int)((reinterpret_cast<std::uintptr_t>(PrintOP))>>32));
    }
   dasm_put(Dst, 112);
-#line 934 "src/interpreter/bytecode-interpreter.dasc"
+#line 935 "src/interpreter/bytecode-interpreter.dasc"
 
   /* -------------------------------------------
    * Interp Arithmetic Exception               |
@@ -1784,10 +1785,10 @@ void GenerateHelper( BuildContext* bctx ) {
      lava_warn("%s","Function InterpreterDivByZero address is not in 0-2GB");
   dasm_put(Dst, 104, (unsigned int)(reinterpret_cast<std::uintptr_t>(InterpreterDivByZero)), (unsigned int)((reinterpret_cast<std::uintptr_t>(InterpreterDivByZero))>>32));
    }
-#line 943 "src/interpreter/bytecode-interpreter.dasc"
+#line 944 "src/interpreter/bytecode-interpreter.dasc"
   //|  jmp ->InterpFail
   dasm_put(Dst, 563);
-#line 944 "src/interpreter/bytecode-interpreter.dasc"
+#line 945 "src/interpreter/bytecode-interpreter.dasc"
 
   //|=> MOD_BY_REAL:
   //|->ModByReal:
@@ -1801,10 +1802,10 @@ void GenerateHelper( BuildContext* bctx ) {
      lava_warn("%s","Function InterpreterModByReal address is not in 0-2GB");
   dasm_put(Dst, 104, (unsigned int)(reinterpret_cast<std::uintptr_t>(InterpreterModByReal)), (unsigned int)((reinterpret_cast<std::uintptr_t>(InterpreterModByReal))>>32));
    }
-#line 950 "src/interpreter/bytecode-interpreter.dasc"
+#line 951 "src/interpreter/bytecode-interpreter.dasc"
   //|  jmp ->InterpFail
   dasm_put(Dst, 563);
-#line 951 "src/interpreter/bytecode-interpreter.dasc"
+#line 952 "src/interpreter/bytecode-interpreter.dasc"
 
 
   /* -------------------------------------------
@@ -1824,7 +1825,7 @@ void GenerateHelper( BuildContext* bctx ) {
      lava_warn("%s","Function InterpreterDoCompare address is not in 0-2GB");
   dasm_put(Dst, 104, (unsigned int)(reinterpret_cast<std::uintptr_t>(InterpreterDoCompare)), (unsigned int)((reinterpret_cast<std::uintptr_t>(InterpreterDoCompare))>>32));
    }
-#line 963 "src/interpreter/bytecode-interpreter.dasc"
+#line 964 "src/interpreter/bytecode-interpreter.dasc"
   //|  handle_ret_acc
   dasm_put(Dst, 230, VALUE_FAIL);
    if(CheckAddress(reinterpret_cast<std::uintptr_t>(PrintOP))) {
@@ -1834,7 +1835,7 @@ void GenerateHelper( BuildContext* bctx ) {
   dasm_put(Dst, 104, (unsigned int)(reinterpret_cast<std::uintptr_t>(PrintOP)), (unsigned int)((reinterpret_cast<std::uintptr_t>(PrintOP))>>32));
    }
   dasm_put(Dst, 112);
-#line 964 "src/interpreter/bytecode-interpreter.dasc"
+#line 965 "src/interpreter/bytecode-interpreter.dasc"
 
   //|=> INTERP_COMPAREVI:
   //|->InterpCompareVI:
@@ -1850,7 +1851,7 @@ void GenerateHelper( BuildContext* bctx ) {
      lava_warn("%s","Function InterpreterDoCompare address is not in 0-2GB");
   dasm_put(Dst, 104, (unsigned int)(reinterpret_cast<std::uintptr_t>(InterpreterDoCompare)), (unsigned int)((reinterpret_cast<std::uintptr_t>(InterpreterDoCompare))>>32));
    }
-#line 972 "src/interpreter/bytecode-interpreter.dasc"
+#line 973 "src/interpreter/bytecode-interpreter.dasc"
   //|  handle_ret_acc
   dasm_put(Dst, 230, VALUE_FAIL);
    if(CheckAddress(reinterpret_cast<std::uintptr_t>(PrintOP))) {
@@ -1860,7 +1861,7 @@ void GenerateHelper( BuildContext* bctx ) {
   dasm_put(Dst, 104, (unsigned int)(reinterpret_cast<std::uintptr_t>(PrintOP)), (unsigned int)((reinterpret_cast<std::uintptr_t>(PrintOP))>>32));
    }
   dasm_put(Dst, 112);
-#line 973 "src/interpreter/bytecode-interpreter.dasc"
+#line 974 "src/interpreter/bytecode-interpreter.dasc"
 
   //|=> INTERP_COMPARERV:
   //|->InterpCompareRV:
@@ -1876,7 +1877,7 @@ void GenerateHelper( BuildContext* bctx ) {
      lava_warn("%s","Function InterpreterDoCompare address is not in 0-2GB");
   dasm_put(Dst, 104, (unsigned int)(reinterpret_cast<std::uintptr_t>(InterpreterDoCompare)), (unsigned int)((reinterpret_cast<std::uintptr_t>(InterpreterDoCompare))>>32));
    }
-#line 981 "src/interpreter/bytecode-interpreter.dasc"
+#line 982 "src/interpreter/bytecode-interpreter.dasc"
   //|  handle_ret_acc
   dasm_put(Dst, 230, VALUE_FAIL);
    if(CheckAddress(reinterpret_cast<std::uintptr_t>(PrintOP))) {
@@ -1886,7 +1887,7 @@ void GenerateHelper( BuildContext* bctx ) {
   dasm_put(Dst, 104, (unsigned int)(reinterpret_cast<std::uintptr_t>(PrintOP)), (unsigned int)((reinterpret_cast<std::uintptr_t>(PrintOP))>>32));
    }
   dasm_put(Dst, 112);
-#line 982 "src/interpreter/bytecode-interpreter.dasc"
+#line 983 "src/interpreter/bytecode-interpreter.dasc"
 
   //|=> INTERP_COMPAREVR:
   //|->InterpCompareVR:
@@ -1902,7 +1903,7 @@ void GenerateHelper( BuildContext* bctx ) {
      lava_warn("%s","Function InterpreterDoCompare address is not in 0-2GB");
   dasm_put(Dst, 104, (unsigned int)(reinterpret_cast<std::uintptr_t>(InterpreterDoCompare)), (unsigned int)((reinterpret_cast<std::uintptr_t>(InterpreterDoCompare))>>32));
    }
-#line 990 "src/interpreter/bytecode-interpreter.dasc"
+#line 991 "src/interpreter/bytecode-interpreter.dasc"
   //|  handle_ret_acc
   dasm_put(Dst, 230, VALUE_FAIL);
    if(CheckAddress(reinterpret_cast<std::uintptr_t>(PrintOP))) {
@@ -1912,7 +1913,7 @@ void GenerateHelper( BuildContext* bctx ) {
   dasm_put(Dst, 104, (unsigned int)(reinterpret_cast<std::uintptr_t>(PrintOP)), (unsigned int)((reinterpret_cast<std::uintptr_t>(PrintOP))>>32));
    }
   dasm_put(Dst, 112);
-#line 991 "src/interpreter/bytecode-interpreter.dasc"
+#line 992 "src/interpreter/bytecode-interpreter.dasc"
 
   //|=> INTERP_COMPAREVV:
   //|->InterpCompareVV:
@@ -1928,7 +1929,7 @@ void GenerateHelper( BuildContext* bctx ) {
      lava_warn("%s","Function InterpreterDoCompare address is not in 0-2GB");
   dasm_put(Dst, 104, (unsigned int)(reinterpret_cast<std::uintptr_t>(InterpreterDoCompare)), (unsigned int)((reinterpret_cast<std::uintptr_t>(InterpreterDoCompare))>>32));
    }
-#line 999 "src/interpreter/bytecode-interpreter.dasc"
+#line 1000 "src/interpreter/bytecode-interpreter.dasc"
   //|  handle_ret_acc
   dasm_put(Dst, 230, VALUE_FAIL);
    if(CheckAddress(reinterpret_cast<std::uintptr_t>(PrintOP))) {
@@ -1938,7 +1939,7 @@ void GenerateHelper( BuildContext* bctx ) {
   dasm_put(Dst, 104, (unsigned int)(reinterpret_cast<std::uintptr_t>(PrintOP)), (unsigned int)((reinterpret_cast<std::uintptr_t>(PrintOP))>>32));
    }
   dasm_put(Dst, 112);
-#line 1000 "src/interpreter/bytecode-interpreter.dasc"
+#line 1001 "src/interpreter/bytecode-interpreter.dasc"
 
   //|=> INTERP_COMPARESV:
   //|->InterpCompareSV:
@@ -1954,7 +1955,7 @@ void GenerateHelper( BuildContext* bctx ) {
      lava_warn("%s","Function InterpreterDoCompare address is not in 0-2GB");
   dasm_put(Dst, 104, (unsigned int)(reinterpret_cast<std::uintptr_t>(InterpreterDoCompare)), (unsigned int)((reinterpret_cast<std::uintptr_t>(InterpreterDoCompare))>>32));
    }
-#line 1008 "src/interpreter/bytecode-interpreter.dasc"
+#line 1009 "src/interpreter/bytecode-interpreter.dasc"
   //|  handle_ret_acc
   dasm_put(Dst, 230, VALUE_FAIL);
    if(CheckAddress(reinterpret_cast<std::uintptr_t>(PrintOP))) {
@@ -1964,7 +1965,7 @@ void GenerateHelper( BuildContext* bctx ) {
   dasm_put(Dst, 104, (unsigned int)(reinterpret_cast<std::uintptr_t>(PrintOP)), (unsigned int)((reinterpret_cast<std::uintptr_t>(PrintOP))>>32));
    }
   dasm_put(Dst, 112);
-#line 1009 "src/interpreter/bytecode-interpreter.dasc"
+#line 1010 "src/interpreter/bytecode-interpreter.dasc"
 
   //|=> INTERP_COMPAREVS:
   //|->InterpCompareVS:
@@ -1980,7 +1981,7 @@ void GenerateHelper( BuildContext* bctx ) {
      lava_warn("%s","Function InterpreterDoCompare address is not in 0-2GB");
   dasm_put(Dst, 104, (unsigned int)(reinterpret_cast<std::uintptr_t>(InterpreterDoCompare)), (unsigned int)((reinterpret_cast<std::uintptr_t>(InterpreterDoCompare))>>32));
    }
-#line 1017 "src/interpreter/bytecode-interpreter.dasc"
+#line 1018 "src/interpreter/bytecode-interpreter.dasc"
   //|  handle_ret_acc
   dasm_put(Dst, 230, VALUE_FAIL);
    if(CheckAddress(reinterpret_cast<std::uintptr_t>(PrintOP))) {
@@ -1990,7 +1991,7 @@ void GenerateHelper( BuildContext* bctx ) {
   dasm_put(Dst, 104, (unsigned int)(reinterpret_cast<std::uintptr_t>(PrintOP)), (unsigned int)((reinterpret_cast<std::uintptr_t>(PrintOP))>>32));
    }
   dasm_put(Dst, 112);
-#line 1018 "src/interpreter/bytecode-interpreter.dasc"
+#line 1019 "src/interpreter/bytecode-interpreter.dasc"
 
   /* -------------------------------------------------
    * Unary                                           |
@@ -2007,7 +2008,7 @@ void GenerateHelper( BuildContext* bctx ) {
      lava_warn("%s","Function InterpreterDoNegate address is not in 0-2GB");
   dasm_put(Dst, 104, (unsigned int)(reinterpret_cast<std::uintptr_t>(InterpreterDoNegate)), (unsigned int)((reinterpret_cast<std::uintptr_t>(InterpreterDoNegate))>>32));
    }
-#line 1027 "src/interpreter/bytecode-interpreter.dasc"
+#line 1028 "src/interpreter/bytecode-interpreter.dasc"
   // return value is a *boolean*
   //|  test al,al
   //|  jmp ->InterpFail
@@ -2020,7 +2021,7 @@ void GenerateHelper( BuildContext* bctx ) {
   dasm_put(Dst, 104, (unsigned int)(reinterpret_cast<std::uintptr_t>(PrintOP)), (unsigned int)((reinterpret_cast<std::uintptr_t>(PrintOP))>>32));
    }
   dasm_put(Dst, 112);
-#line 1031 "src/interpreter/bytecode-interpreter.dasc"
+#line 1032 "src/interpreter/bytecode-interpreter.dasc"
 
   //|=> INTERP_NOT:
   //|->InterpNot:
@@ -2034,7 +2035,7 @@ void GenerateHelper( BuildContext* bctx ) {
      lava_warn("%s","Function InterpreterDoNot address is not in 0-2GB");
   dasm_put(Dst, 104, (unsigned int)(reinterpret_cast<std::uintptr_t>(InterpreterDoNot)), (unsigned int)((reinterpret_cast<std::uintptr_t>(InterpreterDoNot))>>32));
    }
-#line 1037 "src/interpreter/bytecode-interpreter.dasc"
+#line 1038 "src/interpreter/bytecode-interpreter.dasc"
   //|  test al,al
   //|  jmp ->InterpFail
   //|  Dispatch
@@ -2046,7 +2047,7 @@ void GenerateHelper( BuildContext* bctx ) {
   dasm_put(Dst, 104, (unsigned int)(reinterpret_cast<std::uintptr_t>(PrintOP)), (unsigned int)((reinterpret_cast<std::uintptr_t>(PrintOP))>>32));
    }
   dasm_put(Dst, 112);
-#line 1040 "src/interpreter/bytecode-interpreter.dasc"
+#line 1041 "src/interpreter/bytecode-interpreter.dasc"
 
 }
 
@@ -2067,7 +2068,7 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
       //|  mov dword [STK+ACCFIDX],Value::FLAG_NULL
       //|  jmp ->InterpReturn
       dasm_put(Dst, 858,  bc, Value::FLAG_NULL);
-#line 1059 "src/interpreter/bytecode-interpreter.dasc"
+#line 1060 "src/interpreter/bytecode-interpreter.dasc"
       break;
 
     case BC_RET:
@@ -2075,7 +2076,7 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
       //|  instr_X
       //|  jmp ->InterpReturn
       dasm_put(Dst, 873,  bc);
-#line 1065 "src/interpreter/bytecode-interpreter.dasc"
+#line 1066 "src/interpreter/bytecode-interpreter.dasc"
       break;
 
     /** =====================================================
@@ -2095,7 +2096,7 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
       dasm_put(Dst, 104, (unsigned int)(reinterpret_cast<std::uintptr_t>(PrintOP)), (unsigned int)((reinterpret_cast<std::uintptr_t>(PrintOP))>>32));
        }
       dasm_put(Dst, 112);
-#line 1076 "src/interpreter/bytecode-interpreter.dasc"
+#line 1077 "src/interpreter/bytecode-interpreter.dasc"
       break;
     /** =====================================================
      *  Constant Loading                                    |
@@ -2114,7 +2115,7 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
       dasm_put(Dst, 104, (unsigned int)(reinterpret_cast<std::uintptr_t>(PrintOP)), (unsigned int)((reinterpret_cast<std::uintptr_t>(PrintOP))>>32));
        }
       dasm_put(Dst, 112);
-#line 1086 "src/interpreter/bytecode-interpreter.dasc"
+#line 1087 "src/interpreter/bytecode-interpreter.dasc"
       break;
 
     case BC_LOAD0:
@@ -2130,7 +2131,7 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
       dasm_put(Dst, 104, (unsigned int)(reinterpret_cast<std::uintptr_t>(PrintOP)), (unsigned int)((reinterpret_cast<std::uintptr_t>(PrintOP))>>32));
        }
       dasm_put(Dst, 112);
-#line 1093 "src/interpreter/bytecode-interpreter.dasc"
+#line 1094 "src/interpreter/bytecode-interpreter.dasc"
       break;
 
     case BC_LOAD1:
@@ -2146,7 +2147,7 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
       dasm_put(Dst, 104, (unsigned int)(reinterpret_cast<std::uintptr_t>(PrintOP)), (unsigned int)((reinterpret_cast<std::uintptr_t>(PrintOP))>>32));
        }
       dasm_put(Dst, 112);
-#line 1100 "src/interpreter/bytecode-interpreter.dasc"
+#line 1101 "src/interpreter/bytecode-interpreter.dasc"
       break;
 
     case BC_LOADN1:
@@ -2162,7 +2163,7 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
       dasm_put(Dst, 104, (unsigned int)(reinterpret_cast<std::uintptr_t>(PrintOP)), (unsigned int)((reinterpret_cast<std::uintptr_t>(PrintOP))>>32));
        }
       dasm_put(Dst, 112);
-#line 1107 "src/interpreter/bytecode-interpreter.dasc"
+#line 1108 "src/interpreter/bytecode-interpreter.dasc"
       break;
 
     case BC_LOADR:
@@ -2179,7 +2180,7 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
       dasm_put(Dst, 104, (unsigned int)(reinterpret_cast<std::uintptr_t>(PrintOP)), (unsigned int)((reinterpret_cast<std::uintptr_t>(PrintOP))>>32));
        }
       dasm_put(Dst, 112);
-#line 1115 "src/interpreter/bytecode-interpreter.dasc"
+#line 1116 "src/interpreter/bytecode-interpreter.dasc"
       break;
 
     case BC_LOADNULL:
@@ -2195,7 +2196,7 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
       dasm_put(Dst, 104, (unsigned int)(reinterpret_cast<std::uintptr_t>(PrintOP)), (unsigned int)((reinterpret_cast<std::uintptr_t>(PrintOP))>>32));
        }
       dasm_put(Dst, 112);
-#line 1122 "src/interpreter/bytecode-interpreter.dasc"
+#line 1123 "src/interpreter/bytecode-interpreter.dasc"
       break;
 
     case BC_LOADTRUE:
@@ -2211,7 +2212,7 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
       dasm_put(Dst, 104, (unsigned int)(reinterpret_cast<std::uintptr_t>(PrintOP)), (unsigned int)((reinterpret_cast<std::uintptr_t>(PrintOP))>>32));
        }
       dasm_put(Dst, 112);
-#line 1129 "src/interpreter/bytecode-interpreter.dasc"
+#line 1130 "src/interpreter/bytecode-interpreter.dasc"
       break;
 
     case BC_LOADFALSE:
@@ -2227,7 +2228,7 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
       dasm_put(Dst, 104, (unsigned int)(reinterpret_cast<std::uintptr_t>(PrintOP)), (unsigned int)((reinterpret_cast<std::uintptr_t>(PrintOP))>>32));
        }
       dasm_put(Dst, 112);
-#line 1136 "src/interpreter/bytecode-interpreter.dasc"
+#line 1137 "src/interpreter/bytecode-interpreter.dasc"
       break;
 
     case BC_LOADSTR:
@@ -2244,7 +2245,7 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
       dasm_put(Dst, 104, (unsigned int)(reinterpret_cast<std::uintptr_t>(PrintOP)), (unsigned int)((reinterpret_cast<std::uintptr_t>(PrintOP))>>32));
        }
       dasm_put(Dst, 112);
-#line 1144 "src/interpreter/bytecode-interpreter.dasc"
+#line 1145 "src/interpreter/bytecode-interpreter.dasc"
       break;
 
     /** =====================================================
@@ -2319,7 +2320,7 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
          lava_warn("%s","Function PrintOP address is not in 0-2GB");
       dasm_put(Dst, 104, (unsigned int)(reinterpret_cast<std::uintptr_t>(PrintOP)), (unsigned int)((reinterpret_cast<std::uintptr_t>(PrintOP))>>32));
        }
-#line 1211 "src/interpreter/bytecode-interpreter.dasc"
+#line 1212 "src/interpreter/bytecode-interpreter.dasc"
       //|2:
       //|  arith_iv_int,add
       dasm_put(Dst, 1235);
@@ -2338,7 +2339,7 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
       dasm_put(Dst, 104, (unsigned int)(reinterpret_cast<std::uintptr_t>(PrintOP)), (unsigned int)((reinterpret_cast<std::uintptr_t>(PrintOP))>>32));
        }
       dasm_put(Dst, 112);
-#line 1213 "src/interpreter/bytecode-interpreter.dasc"
+#line 1214 "src/interpreter/bytecode-interpreter.dasc"
       break;
 
     case BC_ADDRV:
@@ -2353,7 +2354,7 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
          lava_warn("%s","Function PrintOP address is not in 0-2GB");
       dasm_put(Dst, 104, (unsigned int)(reinterpret_cast<std::uintptr_t>(PrintOP)), (unsigned int)((reinterpret_cast<std::uintptr_t>(PrintOP))>>32));
        }
-#line 1220 "src/interpreter/bytecode-interpreter.dasc"
+#line 1221 "src/interpreter/bytecode-interpreter.dasc"
       //|2:
       //|  arith_rv_int,addsd
       dasm_put(Dst, 1471, PrototypeLayout::kRealTableOffset);
@@ -2364,7 +2365,7 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
       dasm_put(Dst, 104, (unsigned int)(reinterpret_cast<std::uintptr_t>(PrintOP)), (unsigned int)((reinterpret_cast<std::uintptr_t>(PrintOP))>>32));
        }
       dasm_put(Dst, 112);
-#line 1222 "src/interpreter/bytecode-interpreter.dasc"
+#line 1223 "src/interpreter/bytecode-interpreter.dasc"
       break;
 
     case BC_SUBIV:
@@ -2379,7 +2380,7 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
          lava_warn("%s","Function PrintOP address is not in 0-2GB");
       dasm_put(Dst, 104, (unsigned int)(reinterpret_cast<std::uintptr_t>(PrintOP)), (unsigned int)((reinterpret_cast<std::uintptr_t>(PrintOP))>>32));
        }
-#line 1229 "src/interpreter/bytecode-interpreter.dasc"
+#line 1230 "src/interpreter/bytecode-interpreter.dasc"
       //|2:
       //|  arith_iv_int ,sub
       dasm_put(Dst, 1235);
@@ -2398,7 +2399,7 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
       dasm_put(Dst, 104, (unsigned int)(reinterpret_cast<std::uintptr_t>(PrintOP)), (unsigned int)((reinterpret_cast<std::uintptr_t>(PrintOP))>>32));
        }
       dasm_put(Dst, 112);
-#line 1231 "src/interpreter/bytecode-interpreter.dasc"
+#line 1232 "src/interpreter/bytecode-interpreter.dasc"
       break;
 
     case BC_SUBRV:
@@ -2413,7 +2414,7 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
          lava_warn("%s","Function PrintOP address is not in 0-2GB");
       dasm_put(Dst, 104, (unsigned int)(reinterpret_cast<std::uintptr_t>(PrintOP)), (unsigned int)((reinterpret_cast<std::uintptr_t>(PrintOP))>>32));
        }
-#line 1238 "src/interpreter/bytecode-interpreter.dasc"
+#line 1239 "src/interpreter/bytecode-interpreter.dasc"
       //|2:
       //|  arith_rv_int ,subsd
       dasm_put(Dst, 1754, PrototypeLayout::kRealTableOffset);
@@ -2424,7 +2425,7 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
       dasm_put(Dst, 104, (unsigned int)(reinterpret_cast<std::uintptr_t>(PrintOP)), (unsigned int)((reinterpret_cast<std::uintptr_t>(PrintOP))>>32));
        }
       dasm_put(Dst, 112);
-#line 1240 "src/interpreter/bytecode-interpreter.dasc"
+#line 1241 "src/interpreter/bytecode-interpreter.dasc"
       break;
 
     case BC_MULIV:
@@ -2439,7 +2440,7 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
          lava_warn("%s","Function PrintOP address is not in 0-2GB");
       dasm_put(Dst, 104, (unsigned int)(reinterpret_cast<std::uintptr_t>(PrintOP)), (unsigned int)((reinterpret_cast<std::uintptr_t>(PrintOP))>>32));
        }
-#line 1247 "src/interpreter/bytecode-interpreter.dasc"
+#line 1248 "src/interpreter/bytecode-interpreter.dasc"
       //|2:
       //|  arith_iv_int,imul
       dasm_put(Dst, 1235);
@@ -2458,7 +2459,7 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
       dasm_put(Dst, 104, (unsigned int)(reinterpret_cast<std::uintptr_t>(PrintOP)), (unsigned int)((reinterpret_cast<std::uintptr_t>(PrintOP))>>32));
        }
       dasm_put(Dst, 112);
-#line 1249 "src/interpreter/bytecode-interpreter.dasc"
+#line 1250 "src/interpreter/bytecode-interpreter.dasc"
       break;
 
     case BC_MULRV:
@@ -2473,7 +2474,7 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
          lava_warn("%s","Function PrintOP address is not in 0-2GB");
       dasm_put(Dst, 104, (unsigned int)(reinterpret_cast<std::uintptr_t>(PrintOP)), (unsigned int)((reinterpret_cast<std::uintptr_t>(PrintOP))>>32));
        }
-#line 1256 "src/interpreter/bytecode-interpreter.dasc"
+#line 1257 "src/interpreter/bytecode-interpreter.dasc"
       //|2:
       //|  arith_rv_int,mulsd
       dasm_put(Dst, 2039, PrototypeLayout::kRealTableOffset);
@@ -2484,7 +2485,7 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
       dasm_put(Dst, 104, (unsigned int)(reinterpret_cast<std::uintptr_t>(PrintOP)), (unsigned int)((reinterpret_cast<std::uintptr_t>(PrintOP))>>32));
        }
       dasm_put(Dst, 112);
-#line 1258 "src/interpreter/bytecode-interpreter.dasc"
+#line 1259 "src/interpreter/bytecode-interpreter.dasc"
       break;
 
     case BC_DIVIV:
@@ -2500,7 +2501,7 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
          lava_warn("%s","Function PrintOP address is not in 0-2GB");
       dasm_put(Dst, 104, (unsigned int)(reinterpret_cast<std::uintptr_t>(PrintOP)), (unsigned int)((reinterpret_cast<std::uintptr_t>(PrintOP))>>32));
        }
-#line 1266 "src/interpreter/bytecode-interpreter.dasc"
+#line 1267 "src/interpreter/bytecode-interpreter.dasc"
       //|2:
       //|  arith_iv_int,imul
       dasm_put(Dst, 1235);
@@ -2519,7 +2520,7 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
       dasm_put(Dst, 104, (unsigned int)(reinterpret_cast<std::uintptr_t>(PrintOP)), (unsigned int)((reinterpret_cast<std::uintptr_t>(PrintOP))>>32));
        }
       dasm_put(Dst, 112);
-#line 1268 "src/interpreter/bytecode-interpreter.dasc"
+#line 1269 "src/interpreter/bytecode-interpreter.dasc"
       break;
 
     case BC_DIVRV:
@@ -2535,7 +2536,7 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
          lava_warn("%s","Function PrintOP address is not in 0-2GB");
       dasm_put(Dst, 104, (unsigned int)(reinterpret_cast<std::uintptr_t>(PrintOP)), (unsigned int)((reinterpret_cast<std::uintptr_t>(PrintOP))>>32));
        }
-#line 1276 "src/interpreter/bytecode-interpreter.dasc"
+#line 1277 "src/interpreter/bytecode-interpreter.dasc"
       //|2:
       //|  arith_rv_int,divsd
       dasm_put(Dst, 2197, PrototypeLayout::kRealTableOffset);
@@ -2546,7 +2547,7 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
       dasm_put(Dst, 104, (unsigned int)(reinterpret_cast<std::uintptr_t>(PrintOP)), (unsigned int)((reinterpret_cast<std::uintptr_t>(PrintOP))>>32));
        }
       dasm_put(Dst, 112);
-#line 1278 "src/interpreter/bytecode-interpreter.dasc"
+#line 1279 "src/interpreter/bytecode-interpreter.dasc"
       break;
 
     case BC_MODIV:
@@ -2573,7 +2574,7 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
       dasm_put(Dst, 104, (unsigned int)(reinterpret_cast<std::uintptr_t>(PrintOP)), (unsigned int)((reinterpret_cast<std::uintptr_t>(PrintOP))>>32));
        }
       dasm_put(Dst, 112);
-#line 1288 "src/interpreter/bytecode-interpreter.dasc"
+#line 1289 "src/interpreter/bytecode-interpreter.dasc"
       break;
 
     /* =========================================================
@@ -2649,7 +2650,7 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
          lava_warn("%s","Function PrintOP address is not in 0-2GB");
       dasm_put(Dst, 104, (unsigned int)(reinterpret_cast<std::uintptr_t>(PrintOP)), (unsigned int)((reinterpret_cast<std::uintptr_t>(PrintOP))>>32));
        }
-#line 1356 "src/interpreter/bytecode-interpreter.dasc"
+#line 1357 "src/interpreter/bytecode-interpreter.dasc"
       //|2:
       //|  arith_vi_int  add
       dasm_put(Dst, 1235);
@@ -2668,7 +2669,7 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
       dasm_put(Dst, 104, (unsigned int)(reinterpret_cast<std::uintptr_t>(PrintOP)), (unsigned int)((reinterpret_cast<std::uintptr_t>(PrintOP))>>32));
        }
       dasm_put(Dst, 112);
-#line 1358 "src/interpreter/bytecode-interpreter.dasc"
+#line 1359 "src/interpreter/bytecode-interpreter.dasc"
       break;
 
     case BC_ADDVR:
@@ -2683,7 +2684,7 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
          lava_warn("%s","Function PrintOP address is not in 0-2GB");
       dasm_put(Dst, 104, (unsigned int)(reinterpret_cast<std::uintptr_t>(PrintOP)), (unsigned int)((reinterpret_cast<std::uintptr_t>(PrintOP))>>32));
        }
-#line 1365 "src/interpreter/bytecode-interpreter.dasc"
+#line 1366 "src/interpreter/bytecode-interpreter.dasc"
       //|2:
       //|  arith_vr_int addsd
       dasm_put(Dst, 2633, PrototypeLayout::kRealTableOffset);
@@ -2694,7 +2695,7 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
       dasm_put(Dst, 104, (unsigned int)(reinterpret_cast<std::uintptr_t>(PrintOP)), (unsigned int)((reinterpret_cast<std::uintptr_t>(PrintOP))>>32));
        }
       dasm_put(Dst, 112);
-#line 1367 "src/interpreter/bytecode-interpreter.dasc"
+#line 1368 "src/interpreter/bytecode-interpreter.dasc"
       break;
 
     case BC_SUBVI:
@@ -2709,7 +2710,7 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
          lava_warn("%s","Function PrintOP address is not in 0-2GB");
       dasm_put(Dst, 104, (unsigned int)(reinterpret_cast<std::uintptr_t>(PrintOP)), (unsigned int)((reinterpret_cast<std::uintptr_t>(PrintOP))>>32));
        }
-#line 1374 "src/interpreter/bytecode-interpreter.dasc"
+#line 1375 "src/interpreter/bytecode-interpreter.dasc"
       //|2:
       //|  arith_vi_int sub
       dasm_put(Dst, 1235);
@@ -2728,7 +2729,7 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
       dasm_put(Dst, 104, (unsigned int)(reinterpret_cast<std::uintptr_t>(PrintOP)), (unsigned int)((reinterpret_cast<std::uintptr_t>(PrintOP))>>32));
        }
       dasm_put(Dst, 112);
-#line 1376 "src/interpreter/bytecode-interpreter.dasc"
+#line 1377 "src/interpreter/bytecode-interpreter.dasc"
       break;
 
     case BC_SUBVR:
@@ -2743,7 +2744,7 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
          lava_warn("%s","Function PrintOP address is not in 0-2GB");
       dasm_put(Dst, 104, (unsigned int)(reinterpret_cast<std::uintptr_t>(PrintOP)), (unsigned int)((reinterpret_cast<std::uintptr_t>(PrintOP))>>32));
        }
-#line 1383 "src/interpreter/bytecode-interpreter.dasc"
+#line 1384 "src/interpreter/bytecode-interpreter.dasc"
       //|2:
       //|  arith_vr_int subsd
       dasm_put(Dst, 2912, PrototypeLayout::kRealTableOffset);
@@ -2754,7 +2755,7 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
       dasm_put(Dst, 104, (unsigned int)(reinterpret_cast<std::uintptr_t>(PrintOP)), (unsigned int)((reinterpret_cast<std::uintptr_t>(PrintOP))>>32));
        }
       dasm_put(Dst, 112);
-#line 1385 "src/interpreter/bytecode-interpreter.dasc"
+#line 1386 "src/interpreter/bytecode-interpreter.dasc"
       break;
 
     case BC_MULVI:
@@ -2769,7 +2770,7 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
          lava_warn("%s","Function PrintOP address is not in 0-2GB");
       dasm_put(Dst, 104, (unsigned int)(reinterpret_cast<std::uintptr_t>(PrintOP)), (unsigned int)((reinterpret_cast<std::uintptr_t>(PrintOP))>>32));
        }
-#line 1392 "src/interpreter/bytecode-interpreter.dasc"
+#line 1393 "src/interpreter/bytecode-interpreter.dasc"
       //|2:
       //|  arith_vi_int imul
       dasm_put(Dst, 1235);
@@ -2788,7 +2789,7 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
       dasm_put(Dst, 104, (unsigned int)(reinterpret_cast<std::uintptr_t>(PrintOP)), (unsigned int)((reinterpret_cast<std::uintptr_t>(PrintOP))>>32));
        }
       dasm_put(Dst, 112);
-#line 1394 "src/interpreter/bytecode-interpreter.dasc"
+#line 1395 "src/interpreter/bytecode-interpreter.dasc"
       break;
 
     case BC_MULVR:
@@ -2803,7 +2804,7 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
          lava_warn("%s","Function PrintOP address is not in 0-2GB");
       dasm_put(Dst, 104, (unsigned int)(reinterpret_cast<std::uintptr_t>(PrintOP)), (unsigned int)((reinterpret_cast<std::uintptr_t>(PrintOP))>>32));
        }
-#line 1401 "src/interpreter/bytecode-interpreter.dasc"
+#line 1402 "src/interpreter/bytecode-interpreter.dasc"
       //|2:
       //|  arith_vr_real mulsd
       dasm_put(Dst, 3193, PrototypeLayout::kRealTableOffset);
@@ -2814,13 +2815,13 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
       dasm_put(Dst, 104, (unsigned int)(reinterpret_cast<std::uintptr_t>(PrintOP)), (unsigned int)((reinterpret_cast<std::uintptr_t>(PrintOP))>>32));
        }
       dasm_put(Dst, 112);
-#line 1403 "src/interpreter/bytecode-interpreter.dasc"
+#line 1404 "src/interpreter/bytecode-interpreter.dasc"
       break;
 
     case BC_DIVVI:
       //|=> bc:
       dasm_put(Dst, 3258,  bc);
-#line 1407 "src/interpreter/bytecode-interpreter.dasc"
+#line 1408 "src/interpreter/bytecode-interpreter.dasc"
       arith_div = true;
       //|  arith_vx_pre BC_DIVVI,InterpArithIntR
       //|1:
@@ -2832,7 +2833,7 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
          lava_warn("%s","Function PrintOP address is not in 0-2GB");
       dasm_put(Dst, 104, (unsigned int)(reinterpret_cast<std::uintptr_t>(PrintOP)), (unsigned int)((reinterpret_cast<std::uintptr_t>(PrintOP))>>32));
        }
-#line 1411 "src/interpreter/bytecode-interpreter.dasc"
+#line 1412 "src/interpreter/bytecode-interpreter.dasc"
       //|2:
       //|  arith_vi_int sub
       dasm_put(Dst, 1235);
@@ -2851,7 +2852,7 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
       dasm_put(Dst, 104, (unsigned int)(reinterpret_cast<std::uintptr_t>(PrintOP)), (unsigned int)((reinterpret_cast<std::uintptr_t>(PrintOP))>>32));
        }
       dasm_put(Dst, 112);
-#line 1413 "src/interpreter/bytecode-interpreter.dasc"
+#line 1414 "src/interpreter/bytecode-interpreter.dasc"
       break;
 
     case BC_DIVVR:
@@ -2866,7 +2867,7 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
          lava_warn("%s","Function PrintOP address is not in 0-2GB");
       dasm_put(Dst, 104, (unsigned int)(reinterpret_cast<std::uintptr_t>(PrintOP)), (unsigned int)((reinterpret_cast<std::uintptr_t>(PrintOP))>>32));
        }
-#line 1420 "src/interpreter/bytecode-interpreter.dasc"
+#line 1421 "src/interpreter/bytecode-interpreter.dasc"
       //|2:
       //|  arith_vr_int divsd
       dasm_put(Dst, 3441, PrototypeLayout::kRealTableOffset);
@@ -2877,7 +2878,7 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
       dasm_put(Dst, 104, (unsigned int)(reinterpret_cast<std::uintptr_t>(PrintOP)), (unsigned int)((reinterpret_cast<std::uintptr_t>(PrintOP))>>32));
        }
       dasm_put(Dst, 112);
-#line 1422 "src/interpreter/bytecode-interpreter.dasc"
+#line 1423 "src/interpreter/bytecode-interpreter.dasc"
       break;
 
     case BC_MODVI:
@@ -2904,7 +2905,7 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
       dasm_put(Dst, 104, (unsigned int)(reinterpret_cast<std::uintptr_t>(PrintOP)), (unsigned int)((reinterpret_cast<std::uintptr_t>(PrintOP))>>32));
        }
       dasm_put(Dst, 112);
-#line 1432 "src/interpreter/bytecode-interpreter.dasc"
+#line 1433 "src/interpreter/bytecode-interpreter.dasc"
       break;
 
     /* ========================================================
@@ -3031,7 +3032,7 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
       dasm_put(Dst, 104, (unsigned int)(reinterpret_cast<std::uintptr_t>(PrintOP)), (unsigned int)((reinterpret_cast<std::uintptr_t>(PrintOP))>>32));
        }
       dasm_put(Dst, 3818);
-#line 1529 "src/interpreter/bytecode-interpreter.dasc"
+#line 1530 "src/interpreter/bytecode-interpreter.dasc"
       break;
     case BC_SUBVV:
       //|  arith_vv BC_SUBVV,sub,StIntACC,subsd,StRealACC
@@ -3064,7 +3065,7 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
       dasm_put(Dst, 104, (unsigned int)(reinterpret_cast<std::uintptr_t>(PrintOP)), (unsigned int)((reinterpret_cast<std::uintptr_t>(PrintOP))>>32));
        }
       dasm_put(Dst, 3818);
-#line 1532 "src/interpreter/bytecode-interpreter.dasc"
+#line 1533 "src/interpreter/bytecode-interpreter.dasc"
       break;
     case BC_MULVV:
       //|  arith_vv BC_MULVV,imul,StIntACC,mulsd,StRealACC
@@ -3097,7 +3098,7 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
       dasm_put(Dst, 104, (unsigned int)(reinterpret_cast<std::uintptr_t>(PrintOP)), (unsigned int)((reinterpret_cast<std::uintptr_t>(PrintOP))>>32));
        }
       dasm_put(Dst, 3818);
-#line 1535 "src/interpreter/bytecode-interpreter.dasc"
+#line 1536 "src/interpreter/bytecode-interpreter.dasc"
       break;
     case BC_DIVVV:
       arith_div = true;
@@ -3131,7 +3132,7 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
       dasm_put(Dst, 104, (unsigned int)(reinterpret_cast<std::uintptr_t>(PrintOP)), (unsigned int)((reinterpret_cast<std::uintptr_t>(PrintOP))>>32));
        }
       dasm_put(Dst, 3818);
-#line 1539 "src/interpreter/bytecode-interpreter.dasc"
+#line 1540 "src/interpreter/bytecode-interpreter.dasc"
       break;
     case BC_MODVV:
       arith_mod = true;
@@ -3165,7 +3166,7 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
       dasm_put(Dst, 104, (unsigned int)(reinterpret_cast<std::uintptr_t>(PrintOP)), (unsigned int)((reinterpret_cast<std::uintptr_t>(PrintOP))>>32));
        }
       dasm_put(Dst, 3818);
-#line 1543 "src/interpreter/bytecode-interpreter.dasc"
+#line 1544 "src/interpreter/bytecode-interpreter.dasc"
       break;
 
     /* ==============================================================
@@ -3195,7 +3196,7 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
       //|2:
       //|  jmp ->InterpPowSlowIV
       dasm_put(Dst, 3945,  bc, PrototypeLayout::kIntTableOffset, Value::FLAG_REAL, Value::FLAG_INTEGER);
-#line 1571 "src/interpreter/bytecode-interpreter.dasc"
+#line 1572 "src/interpreter/bytecode-interpreter.dasc"
       break;
 
     case BC_POWVI:
@@ -3208,7 +3209,7 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
       //|2:
       //|  jmp ->InterpPowSlowVI
       dasm_put(Dst, 4011,  bc, PrototypeLayout::kIntTableOffset, Value::FLAG_REAL, Value::FLAG_INTEGER);
-#line 1582 "src/interpreter/bytecode-interpreter.dasc"
+#line 1583 "src/interpreter/bytecode-interpreter.dasc"
       break;
 
     case BC_POWRV:
@@ -3221,7 +3222,7 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
       //|2:
       //|  jmp ->InterpPowSlowRV
       dasm_put(Dst, 4074,  bc, PrototypeLayout::kRealTableOffset, Value::FLAG_REAL, Value::FLAG_INTEGER);
-#line 1593 "src/interpreter/bytecode-interpreter.dasc"
+#line 1594 "src/interpreter/bytecode-interpreter.dasc"
       break;
 
     case BC_POWVR:
@@ -3234,7 +3235,7 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
       //|2:
       //|  jmp ->InterpPowSlowVR
       dasm_put(Dst, 4140,  bc, PrototypeLayout::kRealTableOffset, Value::FLAG_REAL, Value::FLAG_INTEGER);
-#line 1604 "src/interpreter/bytecode-interpreter.dasc"
+#line 1605 "src/interpreter/bytecode-interpreter.dasc"
       break;
 
     case BC_POWVV:
@@ -3242,7 +3243,7 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
       //|  instr_C
       //|  jmp ->InterpPowSlowVV
       dasm_put(Dst, 4206,  bc);
-#line 1610 "src/interpreter/bytecode-interpreter.dasc"
+#line 1611 "src/interpreter/bytecode-interpreter.dasc"
       break;
 
 
@@ -3319,7 +3320,7 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
          lava_warn("%s","Function PrintOP address is not in 0-2GB");
       dasm_put(Dst, 104, (unsigned int)(reinterpret_cast<std::uintptr_t>(PrintOP)), (unsigned int)((reinterpret_cast<std::uintptr_t>(PrintOP))>>32));
        }
-#line 1679 "src/interpreter/bytecode-interpreter.dasc"
+#line 1680 "src/interpreter/bytecode-interpreter.dasc"
       //|2:
       //|  comp_iv_int,cmovl
       dasm_put(Dst, 4320, PrototypeLayout::kIntTableOffset, Value::FLAG_FALSE, Value::FLAG_TRUE);
@@ -3330,7 +3331,7 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
       dasm_put(Dst, 104, (unsigned int)(reinterpret_cast<std::uintptr_t>(PrintOP)), (unsigned int)((reinterpret_cast<std::uintptr_t>(PrintOP))>>32));
        }
       dasm_put(Dst, 112);
-#line 1681 "src/interpreter/bytecode-interpreter.dasc"
+#line 1682 "src/interpreter/bytecode-interpreter.dasc"
       break;
     case BC_LTRV:
       //|=>bc:
@@ -3344,7 +3345,7 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
          lava_warn("%s","Function PrintOP address is not in 0-2GB");
       dasm_put(Dst, 104, (unsigned int)(reinterpret_cast<std::uintptr_t>(PrintOP)), (unsigned int)((reinterpret_cast<std::uintptr_t>(PrintOP))>>32));
        }
-#line 1687 "src/interpreter/bytecode-interpreter.dasc"
+#line 1688 "src/interpreter/bytecode-interpreter.dasc"
       //|2:
       //|  comp_rv_int,cmovl
       dasm_put(Dst, 4482, PrototypeLayout::kRealTableOffset, Value::FLAG_FALSE, Value::FLAG_TRUE);
@@ -3355,7 +3356,7 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
       dasm_put(Dst, 104, (unsigned int)(reinterpret_cast<std::uintptr_t>(PrintOP)), (unsigned int)((reinterpret_cast<std::uintptr_t>(PrintOP))>>32));
        }
       dasm_put(Dst, 112);
-#line 1689 "src/interpreter/bytecode-interpreter.dasc"
+#line 1690 "src/interpreter/bytecode-interpreter.dasc"
       break;
     case BC_LEIV:
       //|=> bc:
@@ -3369,7 +3370,7 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
          lava_warn("%s","Function PrintOP address is not in 0-2GB");
       dasm_put(Dst, 104, (unsigned int)(reinterpret_cast<std::uintptr_t>(PrintOP)), (unsigned int)((reinterpret_cast<std::uintptr_t>(PrintOP))>>32));
        }
-#line 1695 "src/interpreter/bytecode-interpreter.dasc"
+#line 1696 "src/interpreter/bytecode-interpreter.dasc"
       //|2:
       //|  comp_iv_int,cmovle
       dasm_put(Dst, 4654, PrototypeLayout::kIntTableOffset, Value::FLAG_FALSE, Value::FLAG_TRUE);
@@ -3380,7 +3381,7 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
       dasm_put(Dst, 104, (unsigned int)(reinterpret_cast<std::uintptr_t>(PrintOP)), (unsigned int)((reinterpret_cast<std::uintptr_t>(PrintOP))>>32));
        }
       dasm_put(Dst, 112);
-#line 1697 "src/interpreter/bytecode-interpreter.dasc"
+#line 1698 "src/interpreter/bytecode-interpreter.dasc"
       break;
     case BC_LERV:
       //|=> bc:
@@ -3394,7 +3395,7 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
          lava_warn("%s","Function PrintOP address is not in 0-2GB");
       dasm_put(Dst, 104, (unsigned int)(reinterpret_cast<std::uintptr_t>(PrintOP)), (unsigned int)((reinterpret_cast<std::uintptr_t>(PrintOP))>>32));
        }
-#line 1703 "src/interpreter/bytecode-interpreter.dasc"
+#line 1704 "src/interpreter/bytecode-interpreter.dasc"
       //|2:
       //|  comp_rv_int,cmovle
       dasm_put(Dst, 4816, PrototypeLayout::kRealTableOffset, Value::FLAG_FALSE, Value::FLAG_TRUE);
@@ -3405,7 +3406,7 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
       dasm_put(Dst, 104, (unsigned int)(reinterpret_cast<std::uintptr_t>(PrintOP)), (unsigned int)((reinterpret_cast<std::uintptr_t>(PrintOP))>>32));
        }
       dasm_put(Dst, 112);
-#line 1705 "src/interpreter/bytecode-interpreter.dasc"
+#line 1706 "src/interpreter/bytecode-interpreter.dasc"
       break;
     case BC_GTIV:
       //|=> bc:
@@ -3419,7 +3420,7 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
          lava_warn("%s","Function PrintOP address is not in 0-2GB");
       dasm_put(Dst, 104, (unsigned int)(reinterpret_cast<std::uintptr_t>(PrintOP)), (unsigned int)((reinterpret_cast<std::uintptr_t>(PrintOP))>>32));
        }
-#line 1711 "src/interpreter/bytecode-interpreter.dasc"
+#line 1712 "src/interpreter/bytecode-interpreter.dasc"
       //|2:
       //|  comp_iv_int,cmovg
       dasm_put(Dst, 4988, PrototypeLayout::kIntTableOffset, Value::FLAG_FALSE, Value::FLAG_TRUE);
@@ -3430,7 +3431,7 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
       dasm_put(Dst, 104, (unsigned int)(reinterpret_cast<std::uintptr_t>(PrintOP)), (unsigned int)((reinterpret_cast<std::uintptr_t>(PrintOP))>>32));
        }
       dasm_put(Dst, 112);
-#line 1713 "src/interpreter/bytecode-interpreter.dasc"
+#line 1714 "src/interpreter/bytecode-interpreter.dasc"
       break;
     case BC_GTRV:
       //|=>bc:
@@ -3444,7 +3445,7 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
          lava_warn("%s","Function PrintOP address is not in 0-2GB");
       dasm_put(Dst, 104, (unsigned int)(reinterpret_cast<std::uintptr_t>(PrintOP)), (unsigned int)((reinterpret_cast<std::uintptr_t>(PrintOP))>>32));
        }
-#line 1719 "src/interpreter/bytecode-interpreter.dasc"
+#line 1720 "src/interpreter/bytecode-interpreter.dasc"
       //|2:
       //|  comp_rv_int ,cmovg
       dasm_put(Dst, 5150, PrototypeLayout::kRealTableOffset, Value::FLAG_FALSE, Value::FLAG_TRUE);
@@ -3455,7 +3456,7 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
       dasm_put(Dst, 104, (unsigned int)(reinterpret_cast<std::uintptr_t>(PrintOP)), (unsigned int)((reinterpret_cast<std::uintptr_t>(PrintOP))>>32));
        }
       dasm_put(Dst, 112);
-#line 1721 "src/interpreter/bytecode-interpreter.dasc"
+#line 1722 "src/interpreter/bytecode-interpreter.dasc"
       break;
     case BC_GEIV:
       //|=> bc:
@@ -3469,7 +3470,7 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
          lava_warn("%s","Function PrintOP address is not in 0-2GB");
       dasm_put(Dst, 104, (unsigned int)(reinterpret_cast<std::uintptr_t>(PrintOP)), (unsigned int)((reinterpret_cast<std::uintptr_t>(PrintOP))>>32));
        }
-#line 1727 "src/interpreter/bytecode-interpreter.dasc"
+#line 1728 "src/interpreter/bytecode-interpreter.dasc"
       //|2:
       //|  comp_iv_int,cmovge
       dasm_put(Dst, 5322, PrototypeLayout::kIntTableOffset, Value::FLAG_FALSE, Value::FLAG_TRUE);
@@ -3480,7 +3481,7 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
       dasm_put(Dst, 104, (unsigned int)(reinterpret_cast<std::uintptr_t>(PrintOP)), (unsigned int)((reinterpret_cast<std::uintptr_t>(PrintOP))>>32));
        }
       dasm_put(Dst, 112);
-#line 1729 "src/interpreter/bytecode-interpreter.dasc"
+#line 1730 "src/interpreter/bytecode-interpreter.dasc"
       break;
     case BC_GERV:
       //|=> bc:
@@ -3494,7 +3495,7 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
          lava_warn("%s","Function PrintOP address is not in 0-2GB");
       dasm_put(Dst, 104, (unsigned int)(reinterpret_cast<std::uintptr_t>(PrintOP)), (unsigned int)((reinterpret_cast<std::uintptr_t>(PrintOP))>>32));
        }
-#line 1735 "src/interpreter/bytecode-interpreter.dasc"
+#line 1736 "src/interpreter/bytecode-interpreter.dasc"
       //|2:
       //|  comp_rv_int  ,cmovge
       dasm_put(Dst, 5484, PrototypeLayout::kRealTableOffset, Value::FLAG_FALSE, Value::FLAG_TRUE);
@@ -3505,7 +3506,7 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
       dasm_put(Dst, 104, (unsigned int)(reinterpret_cast<std::uintptr_t>(PrintOP)), (unsigned int)((reinterpret_cast<std::uintptr_t>(PrintOP))>>32));
        }
       dasm_put(Dst, 112);
-#line 1737 "src/interpreter/bytecode-interpreter.dasc"
+#line 1738 "src/interpreter/bytecode-interpreter.dasc"
       break;
     case BC_EQIV:
       //|=> bc:
@@ -3519,7 +3520,7 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
          lava_warn("%s","Function PrintOP address is not in 0-2GB");
       dasm_put(Dst, 104, (unsigned int)(reinterpret_cast<std::uintptr_t>(PrintOP)), (unsigned int)((reinterpret_cast<std::uintptr_t>(PrintOP))>>32));
        }
-#line 1743 "src/interpreter/bytecode-interpreter.dasc"
+#line 1744 "src/interpreter/bytecode-interpreter.dasc"
       //|2:
       //|  comp_iv_int,cmove
       dasm_put(Dst, 5656, PrototypeLayout::kIntTableOffset, Value::FLAG_FALSE, Value::FLAG_TRUE);
@@ -3530,7 +3531,7 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
       dasm_put(Dst, 104, (unsigned int)(reinterpret_cast<std::uintptr_t>(PrintOP)), (unsigned int)((reinterpret_cast<std::uintptr_t>(PrintOP))>>32));
        }
       dasm_put(Dst, 112);
-#line 1745 "src/interpreter/bytecode-interpreter.dasc"
+#line 1746 "src/interpreter/bytecode-interpreter.dasc"
       break;
     case BC_EQRV:
       //|=> bc:
@@ -3544,7 +3545,7 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
          lava_warn("%s","Function PrintOP address is not in 0-2GB");
       dasm_put(Dst, 104, (unsigned int)(reinterpret_cast<std::uintptr_t>(PrintOP)), (unsigned int)((reinterpret_cast<std::uintptr_t>(PrintOP))>>32));
        }
-#line 1751 "src/interpreter/bytecode-interpreter.dasc"
+#line 1752 "src/interpreter/bytecode-interpreter.dasc"
       //|2:
       //|  comp_rv_int,cmove
       dasm_put(Dst, 5818, PrototypeLayout::kRealTableOffset, Value::FLAG_FALSE, Value::FLAG_TRUE);
@@ -3555,7 +3556,7 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
       dasm_put(Dst, 104, (unsigned int)(reinterpret_cast<std::uintptr_t>(PrintOP)), (unsigned int)((reinterpret_cast<std::uintptr_t>(PrintOP))>>32));
        }
       dasm_put(Dst, 112);
-#line 1753 "src/interpreter/bytecode-interpreter.dasc"
+#line 1754 "src/interpreter/bytecode-interpreter.dasc"
       break;
     case BC_NEIV:
       //|=> bc:
@@ -3569,7 +3570,7 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
          lava_warn("%s","Function PrintOP address is not in 0-2GB");
       dasm_put(Dst, 104, (unsigned int)(reinterpret_cast<std::uintptr_t>(PrintOP)), (unsigned int)((reinterpret_cast<std::uintptr_t>(PrintOP))>>32));
        }
-#line 1759 "src/interpreter/bytecode-interpreter.dasc"
+#line 1760 "src/interpreter/bytecode-interpreter.dasc"
       //|2:
       //|  comp_iv_int,cmovne
       dasm_put(Dst, 5990, PrototypeLayout::kIntTableOffset, Value::FLAG_FALSE, Value::FLAG_TRUE);
@@ -3580,7 +3581,7 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
       dasm_put(Dst, 104, (unsigned int)(reinterpret_cast<std::uintptr_t>(PrintOP)), (unsigned int)((reinterpret_cast<std::uintptr_t>(PrintOP))>>32));
        }
       dasm_put(Dst, 112);
-#line 1761 "src/interpreter/bytecode-interpreter.dasc"
+#line 1762 "src/interpreter/bytecode-interpreter.dasc"
       break;
     case BC_NERV:
       //|=> bc:
@@ -3594,7 +3595,7 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
          lava_warn("%s","Function PrintOP address is not in 0-2GB");
       dasm_put(Dst, 104, (unsigned int)(reinterpret_cast<std::uintptr_t>(PrintOP)), (unsigned int)((reinterpret_cast<std::uintptr_t>(PrintOP))>>32));
        }
-#line 1767 "src/interpreter/bytecode-interpreter.dasc"
+#line 1768 "src/interpreter/bytecode-interpreter.dasc"
       //|2:
       //|  comp_rv_int,cmovne
       dasm_put(Dst, 6152, PrototypeLayout::kRealTableOffset, Value::FLAG_FALSE, Value::FLAG_TRUE);
@@ -3605,7 +3606,7 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
       dasm_put(Dst, 104, (unsigned int)(reinterpret_cast<std::uintptr_t>(PrintOP)), (unsigned int)((reinterpret_cast<std::uintptr_t>(PrintOP))>>32));
        }
       dasm_put(Dst, 112);
-#line 1769 "src/interpreter/bytecode-interpreter.dasc"
+#line 1770 "src/interpreter/bytecode-interpreter.dasc"
       break;
 
     /* --------------------------------------------------------------------
@@ -3658,7 +3659,7 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
          lava_warn("%s","Function PrintOP address is not in 0-2GB");
       dasm_put(Dst, 104, (unsigned int)(reinterpret_cast<std::uintptr_t>(PrintOP)), (unsigned int)((reinterpret_cast<std::uintptr_t>(PrintOP))>>32));
        }
-#line 1814 "src/interpreter/bytecode-interpreter.dasc"
+#line 1815 "src/interpreter/bytecode-interpreter.dasc"
       //|2:
       //|  comp_vi_int,cmovl
       dasm_put(Dst, 6322, PrototypeLayout::kIntTableOffset, Value::FLAG_FALSE, Value::FLAG_TRUE);
@@ -3669,7 +3670,7 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
       dasm_put(Dst, 104, (unsigned int)(reinterpret_cast<std::uintptr_t>(PrintOP)), (unsigned int)((reinterpret_cast<std::uintptr_t>(PrintOP))>>32));
        }
       dasm_put(Dst, 112);
-#line 1816 "src/interpreter/bytecode-interpreter.dasc"
+#line 1817 "src/interpreter/bytecode-interpreter.dasc"
       break;
     case BC_LTVR:
       //|=>bc:
@@ -3683,7 +3684,7 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
          lava_warn("%s","Function PrintOP address is not in 0-2GB");
       dasm_put(Dst, 104, (unsigned int)(reinterpret_cast<std::uintptr_t>(PrintOP)), (unsigned int)((reinterpret_cast<std::uintptr_t>(PrintOP))>>32));
        }
-#line 1822 "src/interpreter/bytecode-interpreter.dasc"
+#line 1823 "src/interpreter/bytecode-interpreter.dasc"
       //|2:
       //|  comp_vr_int ,cmovl
       dasm_put(Dst, 6482, PrototypeLayout::kRealTableOffset, Value::FLAG_FALSE, Value::FLAG_TRUE);
@@ -3694,7 +3695,7 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
       dasm_put(Dst, 104, (unsigned int)(reinterpret_cast<std::uintptr_t>(PrintOP)), (unsigned int)((reinterpret_cast<std::uintptr_t>(PrintOP))>>32));
        }
       dasm_put(Dst, 112);
-#line 1824 "src/interpreter/bytecode-interpreter.dasc"
+#line 1825 "src/interpreter/bytecode-interpreter.dasc"
       break;
     case BC_LEVI:
       //|=>bc:
@@ -3708,7 +3709,7 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
          lava_warn("%s","Function PrintOP address is not in 0-2GB");
       dasm_put(Dst, 104, (unsigned int)(reinterpret_cast<std::uintptr_t>(PrintOP)), (unsigned int)((reinterpret_cast<std::uintptr_t>(PrintOP))>>32));
        }
-#line 1830 "src/interpreter/bytecode-interpreter.dasc"
+#line 1831 "src/interpreter/bytecode-interpreter.dasc"
       //|2:
       //|  comp_vi_int ,cmovle
       dasm_put(Dst, 6652, PrototypeLayout::kIntTableOffset, Value::FLAG_FALSE, Value::FLAG_TRUE);
@@ -3719,7 +3720,7 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
       dasm_put(Dst, 104, (unsigned int)(reinterpret_cast<std::uintptr_t>(PrintOP)), (unsigned int)((reinterpret_cast<std::uintptr_t>(PrintOP))>>32));
        }
       dasm_put(Dst, 112);
-#line 1832 "src/interpreter/bytecode-interpreter.dasc"
+#line 1833 "src/interpreter/bytecode-interpreter.dasc"
       break;
     case BC_LEVR:
       //|=>bc:
@@ -3733,7 +3734,7 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
          lava_warn("%s","Function PrintOP address is not in 0-2GB");
       dasm_put(Dst, 104, (unsigned int)(reinterpret_cast<std::uintptr_t>(PrintOP)), (unsigned int)((reinterpret_cast<std::uintptr_t>(PrintOP))>>32));
        }
-#line 1838 "src/interpreter/bytecode-interpreter.dasc"
+#line 1839 "src/interpreter/bytecode-interpreter.dasc"
       //|2:
       //|  comp_vr_int ,cmovle
       dasm_put(Dst, 6812, PrototypeLayout::kRealTableOffset, Value::FLAG_FALSE, Value::FLAG_TRUE);
@@ -3744,7 +3745,7 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
       dasm_put(Dst, 104, (unsigned int)(reinterpret_cast<std::uintptr_t>(PrintOP)), (unsigned int)((reinterpret_cast<std::uintptr_t>(PrintOP))>>32));
        }
       dasm_put(Dst, 112);
-#line 1840 "src/interpreter/bytecode-interpreter.dasc"
+#line 1841 "src/interpreter/bytecode-interpreter.dasc"
       break;
     case BC_GTVI:
       //|=>bc:
@@ -3758,7 +3759,7 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
          lava_warn("%s","Function PrintOP address is not in 0-2GB");
       dasm_put(Dst, 104, (unsigned int)(reinterpret_cast<std::uintptr_t>(PrintOP)), (unsigned int)((reinterpret_cast<std::uintptr_t>(PrintOP))>>32));
        }
-#line 1846 "src/interpreter/bytecode-interpreter.dasc"
+#line 1847 "src/interpreter/bytecode-interpreter.dasc"
       //|2:
       //|  comp_vi_int ,cmovg
       dasm_put(Dst, 6982, PrototypeLayout::kIntTableOffset, Value::FLAG_FALSE, Value::FLAG_TRUE);
@@ -3769,7 +3770,7 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
       dasm_put(Dst, 104, (unsigned int)(reinterpret_cast<std::uintptr_t>(PrintOP)), (unsigned int)((reinterpret_cast<std::uintptr_t>(PrintOP))>>32));
        }
       dasm_put(Dst, 112);
-#line 1848 "src/interpreter/bytecode-interpreter.dasc"
+#line 1849 "src/interpreter/bytecode-interpreter.dasc"
       break;
     case BC_GTVR:
       //|=>bc:
@@ -3783,7 +3784,7 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
          lava_warn("%s","Function PrintOP address is not in 0-2GB");
       dasm_put(Dst, 104, (unsigned int)(reinterpret_cast<std::uintptr_t>(PrintOP)), (unsigned int)((reinterpret_cast<std::uintptr_t>(PrintOP))>>32));
        }
-#line 1854 "src/interpreter/bytecode-interpreter.dasc"
+#line 1855 "src/interpreter/bytecode-interpreter.dasc"
       //|2:
       //|  comp_vr_int , cmovg
       dasm_put(Dst, 7142, PrototypeLayout::kRealTableOffset, Value::FLAG_FALSE, Value::FLAG_TRUE);
@@ -3794,7 +3795,7 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
       dasm_put(Dst, 104, (unsigned int)(reinterpret_cast<std::uintptr_t>(PrintOP)), (unsigned int)((reinterpret_cast<std::uintptr_t>(PrintOP))>>32));
        }
       dasm_put(Dst, 112);
-#line 1856 "src/interpreter/bytecode-interpreter.dasc"
+#line 1857 "src/interpreter/bytecode-interpreter.dasc"
       break;
     case BC_GEVI:
       //|=>bc:
@@ -3808,7 +3809,7 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
          lava_warn("%s","Function PrintOP address is not in 0-2GB");
       dasm_put(Dst, 104, (unsigned int)(reinterpret_cast<std::uintptr_t>(PrintOP)), (unsigned int)((reinterpret_cast<std::uintptr_t>(PrintOP))>>32));
        }
-#line 1862 "src/interpreter/bytecode-interpreter.dasc"
+#line 1863 "src/interpreter/bytecode-interpreter.dasc"
       //|2:
       //|  comp_vi_int  ,cmovge
       dasm_put(Dst, 7312, PrototypeLayout::kIntTableOffset, Value::FLAG_FALSE, Value::FLAG_TRUE);
@@ -3819,7 +3820,7 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
       dasm_put(Dst, 104, (unsigned int)(reinterpret_cast<std::uintptr_t>(PrintOP)), (unsigned int)((reinterpret_cast<std::uintptr_t>(PrintOP))>>32));
        }
       dasm_put(Dst, 112);
-#line 1864 "src/interpreter/bytecode-interpreter.dasc"
+#line 1865 "src/interpreter/bytecode-interpreter.dasc"
       break;
     case BC_GEVR:
       //|=>bc:
@@ -3833,7 +3834,7 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
          lava_warn("%s","Function PrintOP address is not in 0-2GB");
       dasm_put(Dst, 104, (unsigned int)(reinterpret_cast<std::uintptr_t>(PrintOP)), (unsigned int)((reinterpret_cast<std::uintptr_t>(PrintOP))>>32));
        }
-#line 1870 "src/interpreter/bytecode-interpreter.dasc"
+#line 1871 "src/interpreter/bytecode-interpreter.dasc"
       //|2:
       //|  comp_vr_int  ,cmovge
       dasm_put(Dst, 7472, PrototypeLayout::kRealTableOffset, Value::FLAG_FALSE, Value::FLAG_TRUE);
@@ -3844,7 +3845,7 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
       dasm_put(Dst, 104, (unsigned int)(reinterpret_cast<std::uintptr_t>(PrintOP)), (unsigned int)((reinterpret_cast<std::uintptr_t>(PrintOP))>>32));
        }
       dasm_put(Dst, 112);
-#line 1872 "src/interpreter/bytecode-interpreter.dasc"
+#line 1873 "src/interpreter/bytecode-interpreter.dasc"
       break;
     case BC_EQVI:
       //|=>bc:
@@ -3858,7 +3859,7 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
          lava_warn("%s","Function PrintOP address is not in 0-2GB");
       dasm_put(Dst, 104, (unsigned int)(reinterpret_cast<std::uintptr_t>(PrintOP)), (unsigned int)((reinterpret_cast<std::uintptr_t>(PrintOP))>>32));
        }
-#line 1878 "src/interpreter/bytecode-interpreter.dasc"
+#line 1879 "src/interpreter/bytecode-interpreter.dasc"
       //|2:
       //|  comp_vi_int  ,cmove
       dasm_put(Dst, 7642, PrototypeLayout::kIntTableOffset, Value::FLAG_FALSE, Value::FLAG_TRUE);
@@ -3869,7 +3870,7 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
       dasm_put(Dst, 104, (unsigned int)(reinterpret_cast<std::uintptr_t>(PrintOP)), (unsigned int)((reinterpret_cast<std::uintptr_t>(PrintOP))>>32));
        }
       dasm_put(Dst, 112);
-#line 1880 "src/interpreter/bytecode-interpreter.dasc"
+#line 1881 "src/interpreter/bytecode-interpreter.dasc"
       break;
     case BC_EQVR:
       //|=>bc:
@@ -3883,7 +3884,7 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
          lava_warn("%s","Function PrintOP address is not in 0-2GB");
       dasm_put(Dst, 104, (unsigned int)(reinterpret_cast<std::uintptr_t>(PrintOP)), (unsigned int)((reinterpret_cast<std::uintptr_t>(PrintOP))>>32));
        }
-#line 1886 "src/interpreter/bytecode-interpreter.dasc"
+#line 1887 "src/interpreter/bytecode-interpreter.dasc"
       //|2:
       //|  comp_vr_int  ,cmove
       dasm_put(Dst, 7802, PrototypeLayout::kRealTableOffset, Value::FLAG_FALSE, Value::FLAG_TRUE);
@@ -3894,7 +3895,7 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
       dasm_put(Dst, 104, (unsigned int)(reinterpret_cast<std::uintptr_t>(PrintOP)), (unsigned int)((reinterpret_cast<std::uintptr_t>(PrintOP))>>32));
        }
       dasm_put(Dst, 112);
-#line 1888 "src/interpreter/bytecode-interpreter.dasc"
+#line 1889 "src/interpreter/bytecode-interpreter.dasc"
       break;
     case BC_NEVI:
       //|=>bc:
@@ -3908,7 +3909,7 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
          lava_warn("%s","Function PrintOP address is not in 0-2GB");
       dasm_put(Dst, 104, (unsigned int)(reinterpret_cast<std::uintptr_t>(PrintOP)), (unsigned int)((reinterpret_cast<std::uintptr_t>(PrintOP))>>32));
        }
-#line 1894 "src/interpreter/bytecode-interpreter.dasc"
+#line 1895 "src/interpreter/bytecode-interpreter.dasc"
       //|2:
       //|  comp_vi_int  ,cmovne
       dasm_put(Dst, 7972, PrototypeLayout::kIntTableOffset, Value::FLAG_FALSE, Value::FLAG_TRUE);
@@ -3919,7 +3920,7 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
       dasm_put(Dst, 104, (unsigned int)(reinterpret_cast<std::uintptr_t>(PrintOP)), (unsigned int)((reinterpret_cast<std::uintptr_t>(PrintOP))>>32));
        }
       dasm_put(Dst, 112);
-#line 1896 "src/interpreter/bytecode-interpreter.dasc"
+#line 1897 "src/interpreter/bytecode-interpreter.dasc"
       break;
     case BC_NEVR:
       //|=>bc:
@@ -3933,7 +3934,7 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
          lava_warn("%s","Function PrintOP address is not in 0-2GB");
       dasm_put(Dst, 104, (unsigned int)(reinterpret_cast<std::uintptr_t>(PrintOP)), (unsigned int)((reinterpret_cast<std::uintptr_t>(PrintOP))>>32));
        }
-#line 1902 "src/interpreter/bytecode-interpreter.dasc"
+#line 1903 "src/interpreter/bytecode-interpreter.dasc"
       //|2:
       //|  comp_vr_int  ,cmovne
       dasm_put(Dst, 8132, PrototypeLayout::kRealTableOffset, Value::FLAG_FALSE, Value::FLAG_TRUE);
@@ -3944,7 +3945,7 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
       dasm_put(Dst, 104, (unsigned int)(reinterpret_cast<std::uintptr_t>(PrintOP)), (unsigned int)((reinterpret_cast<std::uintptr_t>(PrintOP))>>32));
        }
       dasm_put(Dst, 112);
-#line 1904 "src/interpreter/bytecode-interpreter.dasc"
+#line 1905 "src/interpreter/bytecode-interpreter.dasc"
       break;
 
 
@@ -4025,7 +4026,7 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
       dasm_put(Dst, 104, (unsigned int)(reinterpret_cast<std::uintptr_t>(PrintOP)), (unsigned int)((reinterpret_cast<std::uintptr_t>(PrintOP))>>32));
        }
       dasm_put(Dst, 8397);
-#line 1969 "src/interpreter/bytecode-interpreter.dasc"
+#line 1970 "src/interpreter/bytecode-interpreter.dasc"
       break;
     case BC_LEVV:
       //|=>bc:
@@ -4045,7 +4046,7 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
       dasm_put(Dst, 104, (unsigned int)(reinterpret_cast<std::uintptr_t>(PrintOP)), (unsigned int)((reinterpret_cast<std::uintptr_t>(PrintOP))>>32));
        }
       dasm_put(Dst, 8397);
-#line 1973 "src/interpreter/bytecode-interpreter.dasc"
+#line 1974 "src/interpreter/bytecode-interpreter.dasc"
       break;
     case BC_GTVV:
       //|=>bc:
@@ -4065,7 +4066,7 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
       dasm_put(Dst, 104, (unsigned int)(reinterpret_cast<std::uintptr_t>(PrintOP)), (unsigned int)((reinterpret_cast<std::uintptr_t>(PrintOP))>>32));
        }
       dasm_put(Dst, 8397);
-#line 1977 "src/interpreter/bytecode-interpreter.dasc"
+#line 1978 "src/interpreter/bytecode-interpreter.dasc"
       break;
     case BC_GEVV:
       //|=>bc:
@@ -4085,7 +4086,7 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
       dasm_put(Dst, 104, (unsigned int)(reinterpret_cast<std::uintptr_t>(PrintOP)), (unsigned int)((reinterpret_cast<std::uintptr_t>(PrintOP))>>32));
        }
       dasm_put(Dst, 8397);
-#line 1981 "src/interpreter/bytecode-interpreter.dasc"
+#line 1982 "src/interpreter/bytecode-interpreter.dasc"
       break;
     case BC_EQVV:
       //|=>bc:
@@ -4105,7 +4106,7 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
       dasm_put(Dst, 104, (unsigned int)(reinterpret_cast<std::uintptr_t>(PrintOP)), (unsigned int)((reinterpret_cast<std::uintptr_t>(PrintOP))>>32));
        }
       dasm_put(Dst, 8397);
-#line 1985 "src/interpreter/bytecode-interpreter.dasc"
+#line 1986 "src/interpreter/bytecode-interpreter.dasc"
       break;
     case BC_NEVV:
       //|=>bc:
@@ -4125,7 +4126,7 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
       dasm_put(Dst, 104, (unsigned int)(reinterpret_cast<std::uintptr_t>(PrintOP)), (unsigned int)((reinterpret_cast<std::uintptr_t>(PrintOP))>>32));
        }
       dasm_put(Dst, 8397);
-#line 1989 "src/interpreter/bytecode-interpreter.dasc"
+#line 1990 "src/interpreter/bytecode-interpreter.dasc"
       break;
 
     /* ------------------------------------------------------------
@@ -4143,49 +4144,49 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
       //|=> bc:
       //|  comp_str BC_LTSV,instr_C,InterpCompareSV
       dasm_put(Dst, 9380,  bc);
-#line 2005 "src/interpreter/bytecode-interpreter.dasc"
+#line 2006 "src/interpreter/bytecode-interpreter.dasc"
       break;
     case BC_LTVS:
       //|=> bc:
       //|  comp_str BC_LTSV,instr_B,InterpCompareVS
       dasm_put(Dst, 9395,  bc);
-#line 2009 "src/interpreter/bytecode-interpreter.dasc"
+#line 2010 "src/interpreter/bytecode-interpreter.dasc"
       break;
     case BC_LESV:
       //|=> bc:
       //|  comp_str BC_LESV,instr_C,InterpCompareSV
       dasm_put(Dst, 9380,  bc);
-#line 2013 "src/interpreter/bytecode-interpreter.dasc"
+#line 2014 "src/interpreter/bytecode-interpreter.dasc"
       break;
     case BC_LEVS:
       //|=> bc:
       //|  comp_str BC_LEVS,instr_B,InterpCompareVS
       dasm_put(Dst, 9395,  bc);
-#line 2017 "src/interpreter/bytecode-interpreter.dasc"
+#line 2018 "src/interpreter/bytecode-interpreter.dasc"
       break;
     case BC_GTSV:
       //|=> bc:
       //|  comp_str BC_GTSV,instr_C,InterpCompareSV
       dasm_put(Dst, 9380,  bc);
-#line 2021 "src/interpreter/bytecode-interpreter.dasc"
+#line 2022 "src/interpreter/bytecode-interpreter.dasc"
       break;
     case BC_GTVS:
       //|=> bc:
       //|  comp_str BC_GTVS,instr_B,InterpCompareVS
       dasm_put(Dst, 9395,  bc);
-#line 2025 "src/interpreter/bytecode-interpreter.dasc"
+#line 2026 "src/interpreter/bytecode-interpreter.dasc"
       break;
     case BC_GESV:
       //|=> bc:
       //|  comp_str BC_GESV,instr_C,InterpCompareSV
       dasm_put(Dst, 9380,  bc);
-#line 2029 "src/interpreter/bytecode-interpreter.dasc"
+#line 2030 "src/interpreter/bytecode-interpreter.dasc"
       break;
     case BC_GEVS:
       //|=> bc:
       //|  comp_str BC_GEVS,instr_B,InterpCompareVS
       dasm_put(Dst, 9395,  bc);
-#line 2033 "src/interpreter/bytecode-interpreter.dasc"
+#line 2034 "src/interpreter/bytecode-interpreter.dasc"
       break;
 
     //|.macro comp_sv,BC,SlowPath,instr
@@ -4233,7 +4234,7 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
       dasm_put(Dst, 104, (unsigned int)(reinterpret_cast<std::uintptr_t>(PrintOP)), (unsigned int)((reinterpret_cast<std::uintptr_t>(PrintOP))>>32));
        }
       dasm_put(Dst, 9506);
-#line 2072 "src/interpreter/bytecode-interpreter.dasc"
+#line 2073 "src/interpreter/bytecode-interpreter.dasc"
       break;
     case BC_EQVS:
       //|=> bc:
@@ -4246,7 +4247,7 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
       dasm_put(Dst, 104, (unsigned int)(reinterpret_cast<std::uintptr_t>(PrintOP)), (unsigned int)((reinterpret_cast<std::uintptr_t>(PrintOP))>>32));
        }
       dasm_put(Dst, 9632);
-#line 2076 "src/interpreter/bytecode-interpreter.dasc"
+#line 2077 "src/interpreter/bytecode-interpreter.dasc"
       break;
     case BC_NESV:
       //|=>bc:
@@ -4259,7 +4260,7 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
       dasm_put(Dst, 104, (unsigned int)(reinterpret_cast<std::uintptr_t>(PrintOP)), (unsigned int)((reinterpret_cast<std::uintptr_t>(PrintOP))>>32));
        }
       dasm_put(Dst, 9506);
-#line 2080 "src/interpreter/bytecode-interpreter.dasc"
+#line 2081 "src/interpreter/bytecode-interpreter.dasc"
       break;
     case BC_NEVS:
       //|=>bc:
@@ -4272,7 +4273,7 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
       dasm_put(Dst, 104, (unsigned int)(reinterpret_cast<std::uintptr_t>(PrintOP)), (unsigned int)((reinterpret_cast<std::uintptr_t>(PrintOP))>>32));
        }
       dasm_put(Dst, 9632);
-#line 2084 "src/interpreter/bytecode-interpreter.dasc"
+#line 2085 "src/interpreter/bytecode-interpreter.dasc"
       break;
 
     /* -------------------------------------------------
@@ -4290,7 +4291,7 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
       //|  CheckNum ARG1,LREG,1,2
       //|  jmp ->InterpNegate
       dasm_put(Dst, 9857,  bc, Value::FLAG_REAL, Value::FLAG_INTEGER);
-#line 2100 "src/interpreter/bytecode-interpreter.dasc"
+#line 2101 "src/interpreter/bytecode-interpreter.dasc"
 
       // real
       //|1:
@@ -4307,13 +4308,13 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
       dasm_put(Dst, 104, (unsigned int)(reinterpret_cast<std::uintptr_t>(PrintOP)), (unsigned int)((reinterpret_cast<std::uintptr_t>(PrintOP))>>32));
        }
       dasm_put(Dst, 112);
-#line 2108 "src/interpreter/bytecode-interpreter.dasc"
+#line 2109 "src/interpreter/bytecode-interpreter.dasc"
 
       // int
       //|2:
       //|  neg dword [STK+ARG1*8]
       dasm_put(Dst, 9935);
-#line 2112 "src/interpreter/bytecode-interpreter.dasc"
+#line 2113 "src/interpreter/bytecode-interpreter.dasc"
       // TODO:: overflow ??
       //|  Dispatch
       dasm_put(Dst, 88);
@@ -4324,7 +4325,7 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
       dasm_put(Dst, 104, (unsigned int)(reinterpret_cast<std::uintptr_t>(PrintOP)), (unsigned int)((reinterpret_cast<std::uintptr_t>(PrintOP))>>32));
        }
       dasm_put(Dst, 112);
-#line 2114 "src/interpreter/bytecode-interpreter.dasc"
+#line 2115 "src/interpreter/bytecode-interpreter.dasc"
       break;
 
     case BC_NOT:
@@ -4333,7 +4334,7 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
       //|  mov LREG, qword [STK+ARG1*8]
       //|  mov RREGL, dword [STK+ARG1*8+4]
       dasm_put(Dst, 9943,  bc);
-#line 2121 "src/interpreter/bytecode-interpreter.dasc"
+#line 2122 "src/interpreter/bytecode-interpreter.dasc"
 
       // TODO::Optimize
       //
@@ -4345,44 +4346,44 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
       //|  cmp RREGL, Value::FLAG_TRUE
       //|  je >1
       dasm_put(Dst, 9957, Value::FLAG_TRUE);
-#line 2131 "src/interpreter/bytecode-interpreter.dasc"
+#line 2132 "src/interpreter/bytecode-interpreter.dasc"
 
       //|  cmp RREGL, Value::FLAG_FALSE
       //|  je >2
       dasm_put(Dst, 9966, Value::FLAG_FALSE);
-#line 2134 "src/interpreter/bytecode-interpreter.dasc"
+#line 2135 "src/interpreter/bytecode-interpreter.dasc"
 
       //|  cmp RREGL, Value::FLAG_INTEGER
       //|  je >3
       dasm_put(Dst, 9975, Value::FLAG_INTEGER);
-#line 2137 "src/interpreter/bytecode-interpreter.dasc"
+#line 2138 "src/interpreter/bytecode-interpreter.dasc"
 
       //|  cmp RREGL, Value::FLAG_REAL
       //|  jb >4
       dasm_put(Dst, 9984, Value::FLAG_REAL);
-#line 2140 "src/interpreter/bytecode-interpreter.dasc"
+#line 2141 "src/interpreter/bytecode-interpreter.dasc"
 
       //|  cmp RREGL, Value::FLAG_NULL
       //|  je >5
       dasm_put(Dst, 9993, Value::FLAG_NULL);
-#line 2143 "src/interpreter/bytecode-interpreter.dasc"
+#line 2144 "src/interpreter/bytecode-interpreter.dasc"
 
       // slow path
       //|  jmp ->InterpNot
       dasm_put(Dst, 10002);
-#line 2146 "src/interpreter/bytecode-interpreter.dasc"
+#line 2147 "src/interpreter/bytecode-interpreter.dasc"
 
       //|1: // true
       //|  mov dword [STK+ARG1*8+4], Value::FLAG_FALSE
       //|  jmp >6
       dasm_put(Dst, 10007, Value::FLAG_FALSE);
-#line 2150 "src/interpreter/bytecode-interpreter.dasc"
+#line 2151 "src/interpreter/bytecode-interpreter.dasc"
 
       //|2: // false
       //|  mov dword [STK+ARG1*8+4], Value::FLAG_TRUE
       //|  jmp >6
       dasm_put(Dst, 10020, Value::FLAG_TRUE);
-#line 2154 "src/interpreter/bytecode-interpreter.dasc"
+#line 2155 "src/interpreter/bytecode-interpreter.dasc"
 
       //|3: // int
       //|.if 0
@@ -4402,7 +4403,7 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
       //|  jmp >6
       //|.endif
       dasm_put(Dst, 10033, Value::FLAG_FALSE, Value::FLAG_TRUE);
-#line 2172 "src/interpreter/bytecode-interpreter.dasc"
+#line 2173 "src/interpreter/bytecode-interpreter.dasc"
 
       //|4: // real
       //|  movd xmm0, LREG
@@ -4414,13 +4415,13 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
       //|  mov dword [STK+ARG1*8+4],T1L
       //|  jmp >6
       dasm_put(Dst, 10058, Value::FLAG_FALSE, Value::FLAG_TRUE);
-#line 2182 "src/interpreter/bytecode-interpreter.dasc"
+#line 2183 "src/interpreter/bytecode-interpreter.dasc"
 
       //|5: // null
       //|  mov dword [STK+ARG1*8+4],Value::FLAG_TRUE
       //|  jmp >6
       dasm_put(Dst, 10094, Value::FLAG_TRUE);
-#line 2186 "src/interpreter/bytecode-interpreter.dasc"
+#line 2187 "src/interpreter/bytecode-interpreter.dasc"
 
       //|6:
       //|  Dispatch
@@ -4432,7 +4433,7 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
       dasm_put(Dst, 104, (unsigned int)(reinterpret_cast<std::uintptr_t>(PrintOP)), (unsigned int)((reinterpret_cast<std::uintptr_t>(PrintOP))>>32));
        }
       dasm_put(Dst, 112);
-#line 2189 "src/interpreter/bytecode-interpreter.dasc"
+#line 2190 "src/interpreter/bytecode-interpreter.dasc"
       break;
 
     // -------------------------------------------
@@ -4485,7 +4486,7 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
       //|  shr T1,32
       //|  do_cond_jmp InterpJmpT,LREG,LREGL,1,2, je >2
       dasm_put(Dst, 10120, bc, Value::FLAG_TRUE, Value::FLAG_FALSE, Value::FLAG_NULL, Value::FLAG_INTEGER, Value::FLAG_REAL);
-#line 2240 "src/interpreter/bytecode-interpreter.dasc"
+#line 2241 "src/interpreter/bytecode-interpreter.dasc"
       //|1:  // true branch
       //|  branch_to ARG2
       //|2:  // false branch
@@ -4498,7 +4499,7 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
       dasm_put(Dst, 104, (unsigned int)(reinterpret_cast<std::uintptr_t>(PrintOP)), (unsigned int)((reinterpret_cast<std::uintptr_t>(PrintOP))>>32));
        }
       dasm_put(Dst, 112);
-#line 2244 "src/interpreter/bytecode-interpreter.dasc"
+#line 2245 "src/interpreter/bytecode-interpreter.dasc"
       break;
 
     case BC_JMPF:
@@ -4509,7 +4510,7 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
       //|  shr T1,32
       //|  do_cond_jmp InterpJmpF,LREG,LREGL,2,1, jne >2
       dasm_put(Dst, 10246, bc, Value::FLAG_TRUE, Value::FLAG_FALSE, Value::FLAG_NULL, Value::FLAG_INTEGER, Value::FLAG_REAL);
-#line 2253 "src/interpreter/bytecode-interpreter.dasc"
+#line 2254 "src/interpreter/bytecode-interpreter.dasc"
       //|1: // false condition
       //|  branch_to ARG2
       //|2: // true condition
@@ -4522,7 +4523,7 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
       dasm_put(Dst, 104, (unsigned int)(reinterpret_cast<std::uintptr_t>(PrintOP)), (unsigned int)((reinterpret_cast<std::uintptr_t>(PrintOP))>>32));
        }
       dasm_put(Dst, 112);
-#line 2257 "src/interpreter/bytecode-interpreter.dasc"
+#line 2258 "src/interpreter/bytecode-interpreter.dasc"
       break;
 
     case BC_AND:
@@ -4533,7 +4534,7 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
       //|  shr T1,32
       //|  do_cond_jmp InterpAnd,LREG,LREGL,2,1, jne >2
       dasm_put(Dst, 10372, bc, Value::FLAG_TRUE, Value::FLAG_FALSE, Value::FLAG_NULL, Value::FLAG_INTEGER, Value::FLAG_REAL);
-#line 2266 "src/interpreter/bytecode-interpreter.dasc"
+#line 2267 "src/interpreter/bytecode-interpreter.dasc"
       //|1: // false condition
       //|  branch_to ARG1
       //|2: // true condition
@@ -4546,7 +4547,7 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
       dasm_put(Dst, 104, (unsigned int)(reinterpret_cast<std::uintptr_t>(PrintOP)), (unsigned int)((reinterpret_cast<std::uintptr_t>(PrintOP))>>32));
        }
       dasm_put(Dst, 112);
-#line 2270 "src/interpreter/bytecode-interpreter.dasc"
+#line 2271 "src/interpreter/bytecode-interpreter.dasc"
       break;
 
     case BC_OR:
@@ -4557,7 +4558,7 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
       //|  shr T1,32
       //|  do_cond_jmp InterpOr,LREG,LREGL,1,2, je >2
       dasm_put(Dst, 10502, bc, Value::FLAG_TRUE, Value::FLAG_FALSE, Value::FLAG_NULL, Value::FLAG_INTEGER, Value::FLAG_REAL);
-#line 2279 "src/interpreter/bytecode-interpreter.dasc"
+#line 2280 "src/interpreter/bytecode-interpreter.dasc"
       //|1:  // true condition
       //|  branch_to ARG1
       //|2:
@@ -4570,7 +4571,7 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
       dasm_put(Dst, 104, (unsigned int)(reinterpret_cast<std::uintptr_t>(PrintOP)), (unsigned int)((reinterpret_cast<std::uintptr_t>(PrintOP))>>32));
        }
       dasm_put(Dst, 112);
-#line 2283 "src/interpreter/bytecode-interpreter.dasc"
+#line 2284 "src/interpreter/bytecode-interpreter.dasc"
       break;
 
     case BC_JMP:
@@ -4586,14 +4587,87 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
       dasm_put(Dst, 104, (unsigned int)(reinterpret_cast<std::uintptr_t>(PrintOP)), (unsigned int)((reinterpret_cast<std::uintptr_t>(PrintOP))>>32));
        }
       dasm_put(Dst, 112);
-#line 2290 "src/interpreter/bytecode-interpreter.dasc"
+#line 2291 "src/interpreter/bytecode-interpreter.dasc"
       break;
+
+    // ----------------------------------------------------------
+    // Property/Upvalue/Global
+    // ---------------------------------------------------------*/
+
+
+    // A better way to implement property get/set is via IC (inline cache)
+    // but currently we don't have IC states at bytecode level and we will
+    // add it guide the JIT compilation phase. For interpreter, we will use
+    // something simpler but good to capture most of the cases. Since we force
+    // our internal hash use SSO's default hash value to serve as hash value
+    // of the key, so we will use a trick that is used in LuaJIT here. For
+    // key that is SSO, we will retrieve its hash value out and directly generate
+    // index to anchor its main position inside of the *chain* and if we miss
+    // we will fallback to the slow path
+
+    //|.macro find_sso_pos,SlowPath,output
+    //|  mov T2, qword [LREG]
+
+    //|| if(MapLayout::kCapacityOffset) {
+    //|    mov T2L, dword [T2+ObjectLayout::kCapacityOffset]
+    //|| } else {
+    //|    mov T2L, dword [T2]
+    //|| }
+
+    //|| if(SSOLayout::kHashOffset) {
+    //|    mov T1L, dword [RREG+SSOLayout::kHashOffset]
+    //|| } else {
+    //|    mov T1L, dword [RREG]
+    //|| }
+
+    // T2L capacity , T1L size
+    //|  dec T2L
+    //|  and T1L,T2L
+
+    // index are in T1L, now checkout the main entry
+    //|  lea T2L, [LREG+T1L*sizeof(Map::Entry)+MapLayout::kArrayOffset]
+
+    // save map's starting address
+    //|  mov T1 , [LREG+MapLayout::kArrayOffset]
+
+    // 1. check if this entry is *deleted* or *used*
+    //|1: // start of the loop
+    //|  mov LREG, dword [T2L+MapEntryLayout::kFlagOffset]
+    //|  test LREG,((1<<30))
+    //|  je >6
+
+    // 2. check if it is deleted
+    //|  test LREG,((1<<31))
+    //|  jne >6 // deleted slots
+
+    // 3. check if the key is a SSO
+    //|  mov LREG, qword [T2L]
+    //|  CheckSSO LREG,6
+    //|  mov LREG, qword [LREG]
+    //|  cmp LREG, RREG
+    //|  jne >6 // string not identical
+
+    // now we find the entry
+    //|  mov [STK+output*8],[T2L+MapEntryLayout::kValueOffset]
+    //|  Dispatch
+
+    // move to next iteration
+    //|6:
+    //|  mov LREG, dword [T2L+MapEntryLayout::kFlagOffset]
+    //|  test LREG,((1<<29))
+    //|  je ->InterpPropGetNotFound
+    //|  and LREG, ((bits::BitOn<std::uint32_t,0,29>::value))
+    //|  mov T2L , [T1+LREG*sizeof(Map::Entry)]
+    //|  jmp <1
+    //|.endmacro
+
+
 
     default:
       //|=> bc:
       //|  Break
       dasm_put(Dst, 10658,  bc);
-#line 2295 "src/interpreter/bytecode-interpreter.dasc"
+#line 2369 "src/interpreter/bytecode-interpreter.dasc"
       break;
   }
 }

@@ -802,7 +802,7 @@ INTERPRETER_REGISTER_EXTERN_SYMBOL(PrintF)
 |  mov reg, qword [T1+index*8]
 |.endmacro
 
-|.macro StUV,reg,index
+|.macro StUV,index,reg
 |  mov T1,qword [RUNTIME+RuntimeLayout::kCurClsOffset]
 |  mov T1,qword [T1+ClosureLayout::kUpValueOffset]
 |  mov qword [T1+index*8], reg
@@ -2975,7 +2975,7 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
       |=>bc:
       |  instr_C
       |  mov RREG, qword [STK+ARG2*8]
-      |  StUV RREG,ARG1
+      |  StUV ARG1,RREG
       |  Dispatch
       break;
 

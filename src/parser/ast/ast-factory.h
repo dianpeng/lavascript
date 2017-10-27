@@ -97,9 +97,12 @@ class AstFactory {
 
   inline Function* NewFunction( size_t , size_t , Variable* ,
                                                   ::lavascript::zone::Vector<Variable*>*,
-                                                  Chunk* );
+                                                  Chunk* ,
+                                                  LocVarContext* lctx );
 
-  inline Root* NewRoot( size_t , size_t , Chunk* );
+  inline Root* NewRoot( size_t , size_t , Chunk* , LocVarContext* lctx );
+
+  inline LocVarContext* NewLocVarContext();
 
  private:
   ::lavascript::zone::Zone* zone_;
@@ -273,13 +276,21 @@ inline Chunk* AstFactory::NewChunk( size_t start , size_t end ,
   return new (zone_) Chunk(start,end,b,lv,has_iterator);
 }
 
-inline Function* AstFactory::NewFunction( size_t start , size_t end , Variable* n ,
-                ::lavascript::zone::Vector<Variable*>* p,Chunk* b ) {
-  return new (zone_) Function(start,end,n,p,b);
+inline Function* AstFactory::NewFunction( size_t start , size_t end ,
+                                                         Variable* n ,
+                                                         ::lavascript::zone::Vector<Variable*>* p,
+                                                         Chunk* b ,
+                                                         LocVarContext* lctx ) {
+  return new (zone_) Function(start,end,n,p,b,lctx);
 }
 
-inline Root* AstFactory::NewRoot( size_t start , size_t end , Chunk* chunk ) {
-  return new (zone_) Root(start,end,chunk);
+inline Root* AstFactory::NewRoot( size_t start , size_t end , Chunk* chunk ,
+                                                              LocVarContext* lctx ) {
+  return new (zone_) Root(start,end,chunk,lctx);
+}
+
+inline LocVarContext* AstFactory::NewLocVarContext() {
+  return new (zone_) LocVarContext( ::lavascript::zone::Vector<Variable*>::New(zone_) );
 }
 
 } // namespace ast

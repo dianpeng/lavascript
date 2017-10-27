@@ -918,6 +918,12 @@ class Prototype final : public HeapObject {
   const std::uint32_t* code_buffer() const { return code_buffer_; }
   inline const SourceCodeInfo& GetSci( std::size_t i ) const;
 
+  // Check whether this prototype is a closure , which means have upvalues
+  bool IsClosure() const { return upvalue_table_ != NULL; }
+  // Whether this function is pure function , means we don't need a closure
+  // to interpret this function
+  bool IsPureFunction() const { return !IsClosure(); }
+
   template< typename T >
   bool Visit( T* );
  public:

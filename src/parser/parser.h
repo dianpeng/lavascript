@@ -10,6 +10,8 @@ namespace lavascript {
 namespace zone { class Zone; }
 namespace parser {
 
+class LocVarContextAdder;
+
 /* A simple recursive descent parser , nothing special since the grammar of
  * lavascript is really simple and nothing speical **/
 class Parser {
@@ -19,6 +21,7 @@ class Parser {
    zone_(zone),
    error_(error),
    nested_loop_(0),
+   lctx_(NULL),
    ast_factory_(zone)
   { lexer_.Next(); /* initialize the lexer */ }
 
@@ -63,6 +66,9 @@ class Parser {
   ::lavascript::zone::Vector<ast::Variable*>* ParseFunctionPrototype();
   bool CheckArgumentExisted( const ::lavascript::zone::Vector<ast::Variable*>& ,
                              const ::lavascript::zone::String& ) const;
+  // helper function for mutating current loc var context object
+  void AddLocVarContextVar ( ast::Variable* );
+  void AddLocVarContextIter();
 
  private:
   void Error(const char* , ...);
@@ -77,7 +83,12 @@ class Parser {
   /** Tracking status for certain lexical scope */
   int nested_loop_;                     // Nested loop number
 
+  /** Tracking current LocVarContext object */
+  ast::LocVarContext* lctx_;
+
   ast::AstFactory ast_factory_;         // AST nodes factory for creating different AST nodes
+
+  friend class LocVarContextAdder;      // RAII to change LocVarContext during parsing
 };
 
 

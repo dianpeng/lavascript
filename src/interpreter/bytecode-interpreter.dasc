@@ -1,4 +1,6 @@
 #include "bytecode-interpreter.h"
+#include "interpreter-frame.h"
+
 #include "src/trace.h"
 #include "src/os.h"
 
@@ -61,39 +63,61 @@ int HorribleCast( T* ptr ) {
   return ret;
 }
 
-
 // --------------------------------------------------------------
 // Runtime
 //
 // Used in the interpretation phase for the interpreter
 // --------------------------------------------------------------
 struct Runtime {
-  // Current function's prototype
-  Prototype** cur;
-  // Current function's closure object
-  Closure**   curcls;
+  // current interpreted frame information ----------------------
+  Prototype** cur_proto;        // current prototype
+  Closure**   cur_cls;          // current closure
+  Value*      cur_stk;          // current frame's start of stack
+  std::uint32_t* cur_pc;        // current frame's start of PC
 
+  // get current interpreted frame object
+  IFrame* cur_frame() const {
+    return reinterpret_cast<IFrame*>(
+      reinterpret_cast<char*>(cur_stk) - sizeof(IFrame));
+  }
+
+  // global interpretation information --------------------------
   Script** script;
   Object** global;
+  Context* context;
   Value ret;
   std::string* error;
-  std::uint64_t stack[1024];
 
-  Runtime( const Handle<Script>& script , const Handle<Object>& glb ,
-                                          std::string* err ):
-    cur     (script->main().ref()),
-    script  (script.ref()),
-    global  (glb.ref()),
-    ret     (),
-    error   (err),
-    stack   ()
+  Value* stack;
+  std::size_t stack_size;
+  std::size_t call_size ; // how many function call is on going
+
+  // runtime threshold/constraints ------------------------------
+  std::size_t max_stack_size;
+  std::size_t max_call_size;
+
+  Runtime( Context* context , const Handle<Script>& script ,
+                              const Handle<Object>& glb ,
+                              std::string* err ):
+    cur             (script->main().ref()),
+    script          (script.ref()),
+    global          (glb.ref()),
+    context         (context),
+    ret             (),
+    error           (err),
+    stack           (NULL),
+    stack_size      (0),
+    max_stack_size  (0),
+    max_call_size   (0)
   {}
 };
 static_assert( std::is_standard_layout<Runtime>::value );
 
 struct RuntimeLayout {
-  static const std::uint32_t kCurProtoOffset = offsetof(Runtime,cur);
-  static const std::uint32_t kCurClsOffset   = offsetof(Runtime,curcls);
+  static const std::uint32_t kCurProtoOffset = offsetof(Runtime,cur_proto);
+  static const std::uint32_t kCurClsOffset   = offsetof(Runtime,cur_cls);
+  static const std::uint32_t kCurStackOffset = offsetof(Runtime,cur_stk);
+  static const std::uint32_t kCurPCOffset    = offsetof(Runtime,cur_pc );
   static const std::uint32_t kRetOffset = offsetof(Runtime,ret);
 };
 
@@ -106,7 +130,6 @@ struct RuntimeLayout {
 // @ARG3: start of the stack
 // @ARG4: start of the code buffer for the *Prototype*
 // @ARG5: start of the dispatch table
-
 typedef bool (*Main)(Runtime*,Prototype**,void*,void*,void*);
 
 // ------------------------------------------------------------------
@@ -324,7 +347,7 @@ bool InterpreterDoLoadList2  ( Runtime* sandbox , Value* output ,
 }
 INTERPRETER_REGISTER_EXTERN_SYMBOL(InterpreterDoLoadList2)
 
-bool InterpreterDoNewList    ( Runtime* sandbox , Value* output ,
+bool InterpreterDoNewList   ( Runtime* sandbox , Value* output ,
                                                   std::uint32_t narg ) {
   (void)sandbox;
   (void)output;
@@ -553,6 +576,12 @@ inline bool CheckAddress( std::uintptr_t addr ) {
 |.define INSTR_A8,              ah
 |.define INSTR_A16,             ax
 
+// Frame -------------------------------------------------------
+// We store the frame sizeof(IFrame) above STK pointer
+static_assert( sizeof(IFrame) == 16 );
+|.define CFRAME,                STK-16
+|.define FRAMELEN,              16
+
 /** ------------------------------------------------------------
  *
  * NOTES: A notes on movzx/movsx instruction.
@@ -567,6 +596,12 @@ inline bool CheckAddress( std::uintptr_t addr ) {
 |.define ARG1_8,                bl
 |.define ARG1_16,               bx
 |.define ARG1,                  ebx  // must *not* be 64 bits due to we use ah
+
+// Used to help decode function's call argument
+|.define FARG,                  ebx  // aliased with ARG1
+|.define FARG16,                bx
+|.define FARG8L,                bl
+|.define FARG8H,                bh
 
 |.define ARG2_8,                al
 |.define ARG2_16,               ax
@@ -584,8 +619,10 @@ inline bool CheckAddress( std::uintptr_t addr ) {
 
 |.define T1,                    r11
 |.define T1L,                   r11d
+|.define T1L16,                 r11w
 |.define T2,                    r10
 |.define T2L,                   r10d
+|.define T2L16,                 r10w
 
 // registers for normal C function calling ABI
 |.define CARG1,                 rdi
@@ -866,6 +903,10 @@ INTERPRETER_REGISTER_EXTERN_SYMBOL(PrintF)
 |.endif
 |.endmacro
 
+|.macro DerefPtrFromV,v
+|  or v, qword [->ValueHeapLoadMask]
+|.endmacro
+
 // It is painful to load a string into its Value format
 |.macro LdStrV,val,index
 |  mov T1 , qword [PROTO]
@@ -892,10 +933,21 @@ INTERPRETER_REGISTER_EXTERN_SYMBOL(PrintF)
 |  CheckHeapPtrT val,pattern,fail_label
 |.endmacro
 
+// -------------------------------------------------------------------------
+// Object bit pattern
+
+#define OBJECT_BIT_PATTERN TYPE_OBJECT
+
+#define LIST_BIT_PATTERN TYPE_LIST
+
+#define SSO_BIT_PATTERN TYPE_STRING
+
+#define CLOSURE_BIT_PATTERN TYPE_CLOSURE
+
+#define EXTENSION_BIT_PATTERN TYPE_EXTENSION
 
 // -------------------------------------------------------------------------
 // Check an *GCRef* is Object or not
-#define OBJECT_BIT_PATTERN TYPE_OBJECT
 
 |.macro CheckObj,val,fail_label
 |  CheckHeapT val,OBJECT_BIT_PATTERN,fail_label
@@ -908,7 +960,6 @@ INTERPRETER_REGISTER_EXTERN_SYMBOL(PrintF)
 
 // --------------------------------------------------------------------------
 // Check an *GCRef* is List or not
-#define LIST_BIT_PATTERN TYPE_LIST
 
 |.macro CheckList,val,fail_label
 |  CheckHeapT val,LIST_BIT_PATTERN,fail_label
@@ -921,10 +972,6 @@ INTERPRETER_REGISTER_EXTERN_SYMBOL(PrintF)
 
 // --------------------------------------------------------------------------
 // Check a *GCRef* is SSO or not , not stored in Value
-
-// This is a bit pattern for SSO string , sso bit is *off* and it is a string
-// so basically just TYPE_STRING stored in the corresponding bits
-#define SSO_BIT_PATTERN TYPE_STRING
 
 // reg : pointer of String
 |.macro CheckSSO,reg,fail
@@ -1229,7 +1276,6 @@ void GenerateHelper( BuildContext* bctx ) {
   /* ----------------------------------------
    * InterpArithXXX                         |
    * ---------------------------------------*/
-
   |=> INTERP_ARITH_INTL:
   |->InterpArithIntL:
   |  mov CARG1,RUNTIME
@@ -2837,11 +2883,11 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
     |  lea T1 , [LREG+MapLayout::kArrayOffset]
 
     // 1. check if this entry is *deleted* or *used*
-    |1: // start of the loop
     |  mov LREGL, dword [T2L+MapEntryLayout::kFlagOffset]
     |  test LREGL,((1<<30))
-    |  je >6
+    |  je >7  // not found main position is empty
 
+    |1:
     // 2. check if it is deleted
     |  test LREGL,((1<<31))
     |  jne >6 // deleted slots
@@ -2862,11 +2908,15 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
     |6:
     |  mov LREGL, dword [T2L+MapEntryLayout::kFlagOffset]
     |  test LREGL,((1<<29))
-    |  je ->InterpPropGetNotFound
+    |  je >7
     |  and LREGL, ((bits::BitOn<std::uint32_t,0,29>::value))
     |  lea T2L  , [LREGL+LREGL*2]
     |  lea T2L  , [T1+T2L*8]
+    |  mov LREGL, dword [T2L*8+MapEntryLayout::kFlagOffset]
     |  jmp <1
+
+    |7:
+    |  jmp ->InterpPropGetNotFound
 
     |.endmacro
 
@@ -2887,7 +2937,7 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
       |  LdStr RREG,ARG2
       // assume RREG is an heap object since this should be guaranteed
       // by front-end
-      |  or RREG,qword [->ValueHeapMaskLoad]
+      |  DerefPtrFromV RREG
       |  CheckSSO RREG,8
 
       // find sso's position
@@ -2987,6 +3037,15 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
     case BC_GGET:
       |=>bc:
       |  jmp ->InterpGGet
+      break;
+
+    /* --------------------------------------------------
+     * Function Call
+     * -------------------------------------------------*/
+    case BC_CALL:
+    case BC_TCALL:
+      |=>bc:
+      |  do_call
       break;
 
     default:
@@ -3204,7 +3263,7 @@ bool AssemblyInterpreter::Instance::Run( Context* context , const Handle<Script>
                                                            const Handle<Object>& globals,
                                                            std::string* error,
                                                            Value* rval ) {
-  Runtime runtime(script,globals,error);
+  Runtime runtime(context,script,globals,error);
   Main m = reinterpret_cast<Main>(interp_->interp_entry_);
   bool ret = m(&runtime,runtime.cur,reinterpret_cast<void*>(runtime.stack),
                                     const_cast<void*>(

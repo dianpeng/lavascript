@@ -52,7 +52,7 @@ void BytecodeIterator::Decode() {
 void BytecodeIterator::GetNArg( std::vector<std::uint8_t>* output ) {
   std::size_t pos = cursor_ + 1;
   std::size_t step= 0;
-  std::size_t len = Align(a1_8_,static_cast<std::uint8_t>(4));
+  std::size_t len = Align(a3_8_,static_cast<std::uint8_t>(4));
 
   for( std::size_t i = 0 ; i < len ; i += 4 , ++step ) {
     std::uint32_t cd = code_buffer_[pos+step];
@@ -62,14 +62,14 @@ void BytecodeIterator::GetNArg( std::vector<std::uint8_t>* output ) {
     output->push_back( static_cast<std::uint8_t>((cd >>24) & 0xff) );
   }
 
-  std::size_t left = len - a1_8_;
+  std::size_t left = len - a3_8_;
   switch(left) {
     case 1: output->pop_back(); break;
     case 2: output->pop_back(); output->pop_back(); break;
     case 3: output->pop_back(); output->pop_back(); output->pop_back(); break;
-    default: lava_debug(NORMAL,lava_verify(len == a1_8_);); break;
+    default: lava_debug(NORMAL,lava_verify(len == a3_8_);); break;
   }
-  lava_debug(NORMAL,lava_verify(a1_8_ == output->size()););
+  lava_debug(NORMAL,lava_verify(a3_8_ == output->size()););
 }
 
 } // namespace interpreter

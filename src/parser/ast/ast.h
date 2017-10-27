@@ -402,25 +402,45 @@ struct Chunk : public Node {
   {}
 };
 
+// Help track all the variable assignment and also iterator
+// assignment for each function or root scopes. It is used
+// for bytecode generation since we could reserve all needed
+// slots for all local variables and iterator objects. This will
+// make our call instruction no need to move arguments around.
+struct LocVarContext : public zone::ZoneObject {
+  zone::Vector<Variable*>* local_vars;          // How many local variables are needed at most
+  std::size_t iterator_count;                   // How many iterators object is needed nestedly
+
+  LocVarContext( zone::Vector<Variable*>* v ):
+    local_vars(v),
+    iterator_count(0)
+  {}
+};
+
 struct Function : public Node {
   Variable* name;                  // If function has a name
   zone::Vector<Variable*>* proto;  // Prototype of the function argument list
   Chunk* body;                     // Body of the function
+  LocVarContext* lv_context;       // Local variable context
 
-  Function( size_t sp, size_t ep , Variable* n ,
-      zone::Vector<Variable*>* p , Chunk* b ):
+  Function( size_t sp, size_t ep , Variable* n , zone::Vector<Variable*>* p ,
+                                                 Chunk* b ,
+                                                 LocVarContext* lctx ):
     Node(FUNCTION,sp,ep),
     name(n),
     proto(p),
-    body(b)
+    body(b),
+    lv_context(lctx)
   {}
 };
 
 struct Root : public Node {
   Chunk* body;
-  Root( size_t sp , size_t ep , Chunk* b ):
+  LocVarContext* lv_context;
+  Root( size_t sp , size_t ep , Chunk* b , LocVarContext* lctx ):
     Node(ROOT,sp,ep),
-    body(b)
+    body(b),
+    lv_context(lctx)
   {}
 };
 

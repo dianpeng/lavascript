@@ -180,8 +180,8 @@ static const std::size_t kAllocatableBytecodeRegisterSize = 255;
   __(C,GSET   ,gset  ,GARG,REG,_)  \
   __(B,GGET   ,gget  ,REG,GARG,_)  \
   /* subroutine */ \
-  __(N,CALL, call , NARG , REG , BASE )         \
-  __(N,TCALL, tcall, NARG , REG , BASE )        \
+  __(D,CALL, call , REG , BASE , NARG )         \
+  __(D,TCALL, tcall, REG , BASE , NARG )        \
   __(X,RETNULL, retnull , _ , _ , _ )           \
   __(X,RET  , ret  , _ , _ , _ )                \
   /* forloop tag */ \

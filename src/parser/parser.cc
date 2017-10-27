@@ -12,6 +12,22 @@
 namespace lavascript {
 namespace parser {
 
+// Help to modify lctx_ field in Parser whennever a new function is setup
+class LocVarContextAdder {
+ public:
+  LocVarContextAdder( Parser* p ):
+    old_var_(p->lctx_),p_(p)
+  { p->lctx_ = p->ast_factory_.NewLocVarContext(); }
+
+  ~LocVarContextAdder() {
+    p_->lctx_ = old_var_;
+  }
+ private:
+  ast::LocVarContext* old_var_;
+  Parser* p_;
+  LAVA_DISALLOW_COPY_AND_ASSIGN(LocVarContextAdder);
+};
+
 using namespace lavascript::zone;
 
 void Parser::ErrorAtV( size_t start , size_t end , const char* format , va_list vl ) {
@@ -701,6 +717,23 @@ ast::Node* Parser::ParseStatement() {
   return ret;
 }
 
+void Parser::AddLocVarContextVar( ast::Variable* v ) {
+  lava_verify( lctx_ );
+  const std::size_t len = lctx_->local_vars->size();
+  for( std::size_t i = 0 ; i < len ; ++i ) {
+    ast::Variable* new_v = lctx_->local_vars->Index(i);
+    if(*new_v->name == *v->name) {
+      return;
+    }
+  }
+  lctx_->local_vars->Add(zone_,v);
+}
+
+void Parser::AddLocVarContextIter() {
+  lava_verify( lctx_ );
+  lctx_->iterator_count++;
+}
+
 bool Parser::AddChunkStmt( ast::Node* stmt , Vector<ast::Variable*>* lv ) {
   /**
    * Sort out all the local variable declaration and put them
@@ -711,13 +744,18 @@ bool Parser::AddChunkStmt( ast::Node* stmt , Vector<ast::Variable*>* lv ) {
   bool has_iterator = false;
   if(stmt->IsVar()) {
     lv->Add(zone_,stmt->AsVar()->var);
+    AddLocVarContextVar(stmt->AsVar()->var);
   } else if(stmt->IsFor()) {
     ast::Var* v = stmt->AsFor()->_1st;
-    if(v) lv->Add(zone_,v->var);
+    if(v) {
+      lv->Add(zone_,v->var);
+      AddLocVarContextVar(v->var);
+    }
   } else if(stmt->IsForEach()) {
     lv->Add(zone_,stmt->AsForEach()->var);
     has_iterator = true;
   }
+
   return has_iterator;
 }
 
@@ -754,6 +792,9 @@ ast::Chunk* Parser::ParseChunk() {
     expr_end = lexer_.lexeme().end;
     lexer_.Next(); // Skip the last }
 
+    // Add iterator to loc var context if we have iterator
+    if( has_iterator ) AddLocVarContextIter();
+
     return ast_factory_.NewChunk(expr_start,expr_end,ck,lv,has_iterator);
   }
 }
@@ -768,6 +809,9 @@ ast::Chunk* Parser::ParseSingleStatementOrChunk() {
     Vector<ast::Variable*>* lv = Vector<ast::Variable*>::New(zone_);
     bool has_iterator = AddChunkStmt(stmt,lv);
     ck->Add(zone_,stmt);
+
+    // Add iterator to loc var context if we have iterator
+    if( has_iterator ) AddLocVarContextIter();
 
     return ast_factory_.NewChunk(stmt->start,stmt->end,ck,lv,has_iterator);
   }
@@ -793,19 +837,27 @@ Vector<ast::Variable*>* Parser::ParseFunctionPrototype() {
 
     do {
       if( lexer_.lexeme().token == Token::kIdentifier ) {
+
         if(CheckArgumentExisted(*arg_list,*lexer_.lexeme().str_value)) {
           Error("Argument existed");
           return NULL;
         }
-        arg_list->Add(zone_,ast_factory_.NewVariable(lexer_.lexeme().start,
+
+        ast::Variable* v = ast_factory_.NewVariable(lexer_.lexeme().start,
                                                      lexer_.lexeme().end,
-                                                     lexer_.lexeme().str_value));
+                                                     lexer_.lexeme().str_value);
+        arg_list->Add(zone_,v);
 
         if(arg_list->size() > kMaxFunctionArgumentCount) {
           Error("Too many function argument, at most %zu is allowed",
                 kMaxFunctionArgumentCount);
           return NULL;
         }
+
+        // Add it into loc var context as well since argument are treated
+        // as local variables as well
+        AddLocVarContextVar(v);
+
         lexer_.Next();
       } else {
         Error("Expect a identifier to represent function argument");
@@ -834,6 +886,9 @@ ast::Function* Parser::ParseFunction() {
     Error("Expect a identifier followed by \"function\" in function definition");
     return NULL;
   }
+
+  LocVarContextAdder lctx_adder(this);
+
   ast::Variable* fname = ast_factory_.NewVariable(lexer_.lexeme().start,
                                                   lexer_.lexeme().end,
                                                   lexer_.lexeme().str_value);
@@ -857,7 +912,8 @@ ast::Function* Parser::ParseFunction() {
                                   lexer_.lexeme().start ,
                                   fname,
                                   arg_list,
-                                  body);
+                                  body,
+                                  lctx_);
 }
 
 ast::Function* Parser::ParseAnonymousFunction() {
@@ -867,6 +923,9 @@ ast::Function* Parser::ParseAnonymousFunction() {
     Error("Expect a \"(\" to start the function prototype");
     return NULL;
   }
+
+  LocVarContextAdder lctx_adder(this);
+
   Vector<ast::Variable*>* arg_list = ParseFunctionPrototype();
   if(!arg_list) return NULL;
   if(lexer_.lexeme().token != Token::kLBra) {
@@ -880,7 +939,8 @@ ast::Function* Parser::ParseAnonymousFunction() {
                                   lexer_.lexeme().start,
                                   NULL,
                                   arg_list,
-                                  body);
+                                  body,
+                                  lctx_);
 }
 
 ast::Root* Parser::Parse() {
@@ -889,6 +949,8 @@ ast::Root* Parser::Parse() {
   Vector<ast::Variable*>* lv = Vector<ast::Variable*>::New(zone_);
   bool has_iterator = false;
 
+  LocVarContextAdder lctx_adder(this);
+
   while( lexer_.lexeme().token != Token::kEof ) {
     ast::Node* stmt = ParseStatement();
     if(!stmt) return NULL;
@@ -896,10 +958,14 @@ ast::Root* Parser::Parse() {
     has_iterator = AddChunkStmt(stmt,lv);
   }
 
+  // Add iterator to loc var context if we have iterator
+  if( has_iterator ) AddLocVarContextIter();
+
   return ast_factory_.NewRoot(expr_start, lexer_.lexeme().start,
       ast_factory_.NewChunk(expr_start, lexer_.lexeme().start,main_body,
                                                               lv,
-                                                              has_iterator));
+                                                              has_iterator),
+      lctx_);
 }
 
 } // namespace parser

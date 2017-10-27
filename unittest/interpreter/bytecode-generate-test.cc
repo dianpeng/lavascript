@@ -55,8 +55,11 @@ TEST(BytecodeGenerate,Basic) {
   std::string error;
   {
     std::string script(stringify(
-          var a = 10;
-          var b = a + 10;
+          var y = 20;
+          var x = 10;
+          y = 200;
+          x = 300;
+          x = foo();
           ));
 
     ScriptBuilder sb("a",script);

@@ -203,7 +203,10 @@ class LexicalScope : public Scope {
   // We need to call this function right after the LexicalScope is
   // setup since inside of this function it reserves the registers
   // slot at very first part of the stack for local variables.
-  bool Init( const ast::Chunk& );
+  void Init( const ast::Chunk& );
+
+  // Initialize LexicalScope if this scope is the immdiet lexical scope
+  // of a certain function
   void Init( const ast::Function& );
 
   FunctionScope* func_scope() const { return func_scope_; }
@@ -295,6 +298,9 @@ class FunctionScope : public Scope {
   virtual bool IsFunctionScope()const { return true; }
 
  public:
+  // initialize all local variables register mapping
+  bool Init( const ast::LocVarContext& );
+
   // bytecode builder
   BytecodeBuilder* bb() { return &bb_; }
 
@@ -303,6 +309,7 @@ class FunctionScope : public Scope {
 
   // body node
   const ast::Chunk& body() const { return *body_; }
+
  public:
   /* --------------------------------
    * full lexical scope local var   |
@@ -332,6 +339,13 @@ class FunctionScope : public Scope {
   inline bool FindUpValue( const zone::String& , std::uint16_t* );
   inline void AddUpValue ( const zone::String& , std::uint16_t  );
 
+  // get local variable register mapping
+  Register GetLocalVarRegister( const zone::String& ) const;
+
+  // get next iterator register mapping
+  Register GetScopeBoundIterator();
+  void FreeScopeBoundIterator   ();
+
  private:
   // Bytecode builder for this Function
   BytecodeBuilder bb_;
@@ -355,6 +369,25 @@ class FunctionScope : public Scope {
 
   // function node
   const ast::Chunk* body_;
+
+  // all register mapping for local variables inside of this function
+  struct LocalVar {
+    const zone::String* name;
+    Register reg;
+    LocalVar():name(NULL),reg(){}
+    LocalVar( const zone::String* n, const Register& r ): name(n), reg(r) {}
+
+    bool operator == ( const zone::String& n ) const {
+      return (*name) == n;
+    }
+  };
+  std::vector<LocalVar> local_vars_;
+
+  // all *iterator* registers
+  std::vector<Register> iterators_;
+
+  // cursor points next avaiable iterator register
+  std::size_t next_iterator_;
 
   friend class LexicalScope;
 
@@ -516,9 +549,20 @@ class Generator {
     return Visit(node,Register::kAccReg,node.sci(),result);
   }
 
-  bool VisitExpression( const ast::Node&   , ExprResult* );
-  bool VisitExpression( const ast::Node& expr , Register* );
-  bool VisitExpression( const ast::Node& expr , ScopedRegister* );
+  bool VisitExpression( const ast::Node& , ExprResult* );
+  bool VisitExpression( const ast::Node& , Register* );
+  bool VisitExpression( const ast::Node& , ScopedRegister* );
+
+  // The following version of Expression code generation will try its
+  // best to put the final result inside of the *hint* register and this
+  // is typically a type of optimization since our code gen will allocate
+  // register on demand but this is not optimal in terms of the final
+  // code generation.
+  bool VisitExpressionWithHint( const ast::Node& , const Register& hint ,
+                                                   ScopedRegister* );
+
+  bool VisitExpressionWithHint( const ast::Node& , const Register& hint ,
+                                                   Register* );
 
   // Visit prefix like ast until end is met
   bool VisitPrefix( const ast::Prefix& pref , std::size_t end ,
@@ -528,6 +572,7 @@ class Generator {
   bool VisitPrefix( const ast::Prefix& pref , std::size_t end ,
                                               bool tcall ,
                                               ScopedRegister* );
+
 
   /* -------------------------------------------
    * Statement Code Generation                 |
@@ -563,6 +608,7 @@ class Generator {
   // Spill the Acc register to another register
   Optional<Register> SpillFromAcc( const SourceCodeInfo& );
   bool SpillToAcc( const SourceCodeInfo& , ScopedRegister* );
+  Optional<Register> SpillRegister( const SourceCodeInfo& , const Register& );
 
   // Allocate literal with in certain registers
   bool AllocateLiteral( const SourceCodeInfo& sci , const ast::Literal& ,
@@ -789,7 +835,10 @@ inline FunctionScope::FunctionScope( Generator* gen , const ast::Function& node 
   ra_  (),
   upvalue_ (),
   lexical_scope_list_(),
-  body_(node.body)
+  body_(node.body),
+  local_vars_(),
+  iterators_ (),
+  next_iterator_(0)
 {
   gen->func_scope_ = this;
   gen->lexical_scope_ = NULL;
@@ -801,7 +850,10 @@ inline FunctionScope::FunctionScope( Generator* gen , const ast::Chunk& node ):
   ra_  (),
   upvalue_ (),
   lexical_scope_list_(),
-  body_(&node)
+  body_(&node),
+  local_vars_(),
+  iterators_ (),
+  next_iterator_(0)
 {
   gen->func_scope_ = this;
   gen->lexical_scope_ = NULL;

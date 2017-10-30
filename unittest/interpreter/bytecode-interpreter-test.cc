@@ -65,11 +65,7 @@ int main() {
   Context ctx(TestGCConfig());
   std::string error;
   std::string script(stringify(
-        var a = 10;
-        var b = 20;
-        var c = true;
-        var d = c ? a + 10 : b + 10;
-        return d;
+        return a + 1 + b * 2 + c / 3 + d - f;
         ));
 
   ScriptBuilder sb("a",script);

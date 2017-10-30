@@ -68,8 +68,8 @@ void RegisterAllocator::Drop( const Register& reg ) {
     Node* n = RegisterToSlot(reg);
 
     lava_debug(NORMAL,
-        lava_verify(n->next == static_cast<Node*>(kRegUsed));
-        );
+      lava_verify(n->next == static_cast<Node*>(kRegUsed));
+    );
 
     /**
      * Ensure the register is put in order and then Grab function

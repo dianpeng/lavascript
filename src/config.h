@@ -30,6 +30,12 @@ static const std::size_t kMaxObjectEntryCount = 65536;
 
 static const std::size_t kMaxPrototypeSize = 65536;
 
+static const std::size_t kInterpreterInitStackSize = 1024;
+
+static const std::size_t kInterpreterMaxStackSize  = 1024*640;
+
+static const std::size_t kInterpreterMaxCallSize   = 1024*20;
+
 } // namespace lavascript
 
 #endif // CONFIG_H_

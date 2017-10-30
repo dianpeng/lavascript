@@ -3,6 +3,7 @@
 
 #include "src/trace.h"
 #include "src/os.h"
+#include "src/config.h"
 
 #include <algorithm>
 #include <cmath>
@@ -96,22 +97,27 @@ struct Runtime {
   std::size_t max_stack_size;
   std::size_t max_call_size;
 
-  Runtime( Context* context , const Handle<Script>& script ,
-                              const Handle<Object>& glb ,
-                              std::string* err ):
-    cur             (script->main().ref()),
-    script          (script.ref()),
-    global          (glb.ref()),
-    context         (context),
-    ret             (),
-    error           (err),
-    stack           (NULL),
-    stack_size      (0),
-    max_stack_size  (0),
-    max_call_size   (0)
-  {}
+  inline Runtime( Context* context , const Handle<Script>& script ,
+                                     const Handle<Object>& glb ,
+                                     std::string* err );
 };
 static_assert( std::is_standard_layout<Runtime>::value );
+
+
+inline Runtime::Runtime( Context* context , const Handle<Script>& script ,
+                                            const Handle<Object>& glb ,
+                                            std::string* err ):
+  cur             (script->main().ref()),
+  script          (script.ref()),
+  global          (glb.ref()),
+  context         (context),
+  ret             (),
+  error           (err),
+  stack           (NULL),
+  stack_size      (kInterpreterInitStackSize),
+  max_stack_size  (kInterpreterMaxStackSize ),
+  max_call_size   (kInterpreterMaxCallSize  )
+{}
 
 struct RuntimeLayout {
   static const std::uint32_t kCurProtoOffset = offsetof(Runtime,cur_proto);
@@ -122,7 +128,7 @@ struct RuntimeLayout {
 };
 
 
-// ----------------------------------------------------------------------
+// ------------------------------------------------------------------
 // Prototype for the main interpreter function
 //
 // @ARG1: runtime
@@ -155,9 +161,9 @@ ExternSymbolTable* GetExternSymbolTable() {
   static XX##_Registry k##XX##_Registry;
 
 
-// -------------------------------------------------------------------------
+// -------------------------------------------------------------------
 // Helper to set Value object to indicate special meaning
-// -------------------------------------------------------------------------
+// -------------------------------------------------------------------
 #define VALUE_FAIL Value::FLAG_1
 
 /* --------------------------------------------------------------------------
@@ -3260,9 +3266,9 @@ AssemblyInterpreter::Instance::Instance( const std::shared_ptr<AssemblyInterpret
 }
 
 bool AssemblyInterpreter::Instance::Run( Context* context , const Handle<Script>& script ,
-                                                           const Handle<Object>& globals,
-                                                           std::string* error,
-                                                           Value* rval ) {
+                                                            const Handle<Object>& globals,
+                                                            std::string* error,
+                                                            Value* rval ) {
   Runtime runtime(context,script,globals,error);
   Main m = reinterpret_cast<Main>(interp_->interp_entry_);
   bool ret = m(&runtime,runtime.cur,reinterpret_cast<void*>(runtime.stack),

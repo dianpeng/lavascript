@@ -20,20 +20,20 @@ namespace interpreter{
 // stack.
 
 // The IFrame is 16 bytes length what it stores is:
-// 1) Pointer (48 bits) to previous IFrame
+// 1) Pointer (32 bits) to previous IFrame ( relative offset )
 // 2) Pointer (48 bits) to the field2 object, extension/closure
 // 3) PC offset (16 bits)
 // 4) NArg , number of argument (8 bits)
 // -----------------------------------------------------------------------
-// [PC (16 bits)][ PFrame pointer (48 bits)]
-// [Narg(8 bits)][ Caller (48 bits]
+// [PC (16 bits)][Reserve (16bits)][PFrame pointer (32 bits)]
+// [Narg(8 bits)][Reserve (8 bits)][Caller (48 bits)]
 
 // To make it easy to be accessed via assembly code we wrap it as normal
 // C structure and put all the accessor outside of the structure as normal
 // functions
 struct IFrame {
-  std::uintptr_t field1;
-  std::uintptr_t field2;
+  std::uint64_t field1;
+  std::uint64_t field2;
 };
 
 static_assert( std::is_standard_layout<IFrame>::value );

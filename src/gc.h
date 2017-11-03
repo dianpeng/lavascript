@@ -45,7 +45,7 @@ static_assert( ((kAlignment +7) & ~7) == kAlignment );
 class GCRefPool final {
   struct Ref {
     Ref* next;            // Pointer to the next Ref in RefList
-    HeapObject* object;  // Actual references
+    HeapObject* object;   // Actual references
   };
  public:
   // Size of all active/alive GCRef reference
@@ -181,8 +181,8 @@ class Heap final {
   // we need at least for the new heap so no need to verify that whether we have enough
   // spaces or not.
   //
-  // It will return address where points to the HeapObjectHeader basically the start of a certain
-  // allocation
+  // It will return address where points to the HeapObjectHeader basically the start of
+  // a certain allocation
   void* RawCopyObject( const void* ptr , std::size_t raw_size );
 
   // This API is same as RawCopyObject expect it checks for whether we have enough spaces for
@@ -353,6 +353,14 @@ inline GCRefPool::Ref* GCRefPool::Delete( Ref* prev , Ref* target ) {
     front_ = ret;
   }
 
+  // NOTES: -------------------------------------------------
+  // We set the object field to be NULL to avoid GC have
+  // false positive when doing scanning. This could save
+  // us time during frame setup for resetting some registers
+  // The free list will only touch the first 8 bytes of a
+  // memory and the object field is left untouched.
+
+  target->object = NULL;
   free_list_.Drop(target);
   return ret;
 }
@@ -651,15 +659,13 @@ class GC : AllStatic {
    * Specialized New for Slice creation . It will properly construct the
    * slice array
    */
-  Slice** NewSlice( std::size_t capacity );
-  Slice** NewSlice() { return NewSlice(0); }
+  Slice** NewSlice( std::size_t capacity = 0 );
 
   /**
    * Specialized New for Map creation . It will properly construct all the
    * entry
    */
-  Map** NewMap( std::size_t capacity );
-  Map** NewMap() { return NewMap(0); }
+  Map** NewMap( std::size_t capacity = 0 );
 
   // specialized new for Prototype object creation
   Prototype** NewPrototype( String** ,
@@ -668,7 +674,8 @@ class GC : AllStatic {
                             std::size_t,
                             std::size_t,
                             std::size_t,
-                            std::size_t );
+                            std::size_t,
+                            std::size_t);
 
   // specialized new for Script object creation
   Script** NewScript( Context* ,

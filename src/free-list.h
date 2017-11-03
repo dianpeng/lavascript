@@ -8,6 +8,13 @@
 
 namespace lavascript {
 
+// A normal free list and it won't reclaim any memory during its lifetime.
+// This is crucial for us since we need to mark the memory in certain states
+// when we return the memory back. Since any memory used by freelist when
+// it's free will only use first 8 bytes (a pointer), we can safely mark any
+// states even if the memory is in free list.
+// This is helpful for GC to avoid false positive , otherwise we need to reset
+// certain field in stack whenever a function is called in interpreter.
 template< typename T > class FreeList {
  public:
   static_assert( sizeof(T) >= sizeof(std::uintptr_t) );

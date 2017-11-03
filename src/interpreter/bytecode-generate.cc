@@ -21,24 +21,17 @@ void* RegisterAllocator::kRegUsed = reinterpret_cast<void*>(0x1);
  * SEMIT is for statement  level
  * ========================================================= */
 
-#define EEMIT(XX)                                            \
-  do {                                                       \
-    auto _ret = func_scope()->bb()->XX;                      \
-    if(!_ret) {                                              \
-      Error(ERR_FUNCTION_TOO_LONG,func_scope()->body());     \
-      return false;                                          \
-    }                                                        \
+#define EEMIT(XX,...)                                                \
+  do {                                                               \
+    auto _ret = func_scope()->bb()->XX(func_scope()->ra()->base(),   \
+                                       __VA_ARGS__);                 \
+    if(!_ret) {                                                      \
+      Error(ERR_FUNCTION_TOO_LONG,func_scope()->body());             \
+      return false;                                                  \
+    }                                                                \
   } while(false)
 
-#define SEMIT(XX)                                            \
-  do {                                                       \
-    auto _ret = func_scope()->bb()->XX;                      \
-    if(!_ret) {                                              \
-      Error(ERR_FUNCTION_TOO_LONG,func_scope()->body());     \
-      return false;                                          \
-    }                                                        \
-  } while(false)
-
+#define SEMIT EEMIT
 
 /* =====================================================================
  *
@@ -496,7 +489,8 @@ Optional<Register> Generator::SpillFromAcc( const SourceCodeInfo& sci ) {
     Error(ERR_REGISTER_OVERFLOW,sci);
     return reg;
   }
-  if(!func_scope()->bb()->move(sci,reg.Get().index(),Register::kAccIndex)) {
+  if(!func_scope()->bb()->move(func_scope()->ra()->base(),
+                               sci,reg.Get().index(),Register::kAccIndex)) {
     Error(ERR_FUNCTION_TOO_LONG,sci);
     return Optional<Register>();
   }
@@ -510,7 +504,8 @@ Optional<Register> Generator::SpillRegister( const SourceCodeInfo& sci ,
     Error(ERR_REGISTER_OVERFLOW,sci);
     return r;
   }
-  if(!func_scope()->bb()->move(sci,r.Get().index(),reg.index())) {
+  if(!func_scope()->bb()->move(func_scope()->ra()->base(),
+                               sci,r.Get().index(),reg.index())) {
     Error(ERR_FUNCTION_TOO_LONG,sci);
     return Optional<Register>();
   }
@@ -519,7 +514,7 @@ Optional<Register> Generator::SpillRegister( const SourceCodeInfo& sci ,
 
 bool Generator::SpillToAcc( const SourceCodeInfo& sci , ScopedRegister* reg ) {
   lava_debug(NORMAL,lava_verify(*reg););
-  EEMIT(move(sci,Register::kAccIndex,reg->Get().index()));
+  EEMIT(move,sci,Register::kAccIndex,reg->Get().index());
   reg->Reset();
   return true;
 }
@@ -529,18 +524,18 @@ bool Generator::AllocateLiteral( const SourceCodeInfo& sci , const ast::Literal&
   switch(lit.literal_type) {
     case ast::Literal::LIT_INTEGER:
       if(lit.int_value == 0) {
-        EEMIT(load0(sci,reg.index()));
+        EEMIT(load0,sci,reg.index());
       } else if(lit.int_value == 1) {
-        EEMIT(load1(sci,reg.index()));
+        EEMIT(load1,sci,reg.index());
       } else if(lit.int_value == -1) {
-        EEMIT(loadn1(sci,reg.index()));
+        EEMIT(loadn1,sci,reg.index());
       } else {
         std::int32_t iref = func_scope()->bb()->Add(lit.int_value);
         if(iref<0) {
           Error(ERR_TOO_MANY_LITERALS,lit.sci());
           return false;
         }
-        EEMIT(loadi(sci,reg.index(),static_cast<std::uint16_t>(iref)));
+        EEMIT(loadi,sci,reg.index(),static_cast<std::uint16_t>(iref));
       }
       break;
     case ast::Literal::LIT_REAL:
@@ -550,14 +545,14 @@ bool Generator::AllocateLiteral( const SourceCodeInfo& sci , const ast::Literal&
           Error(ERR_TOO_MANY_LITERALS,lit.sci());
           return false;
         }
-        EEMIT(loadr(sci,reg.index(),static_cast<std::uint16_t>(rref)));
+        EEMIT(loadr,sci,reg.index(),static_cast<std::uint16_t>(rref));
       }
       break;
     case ast::Literal::LIT_BOOLEAN:
       if(lit.bool_value) {
-        EEMIT(loadtrue(sci,reg.index()));
+        EEMIT(loadtrue,sci,reg.index());
       } else {
-        EEMIT(loadfalse(sci,reg.index()));
+        EEMIT(loadfalse,sci,reg.index());
       }
       break;
     case ast::Literal::LIT_STRING:
@@ -567,11 +562,11 @@ bool Generator::AllocateLiteral( const SourceCodeInfo& sci , const ast::Literal&
           Error(ERR_TOO_MANY_LITERALS,lit.sci());
           return false;
         }
-        EEMIT(loadstr(sci,reg.index(),static_cast<std::uint16_t>(sref)));
+        EEMIT(loadstr,sci,reg.index(),static_cast<std::uint16_t>(sref));
       }
       break;
     default:
-      EEMIT(loadnull(sci,reg.index()));
+      EEMIT(loadnull,sci,reg.index());
       break;
   }
   return true;
@@ -585,6 +580,7 @@ Optional<Register> Generator::ExprResultToRegister( const SourceCodeInfo& sci ,
     switch(expr.kind()) {
       case KINT:
         if(!func_scope()->bb()->loadi(
+              func_scope()->ra()->base(),
               sci,Register::kAccIndex,static_cast<std::uint16_t>(expr.ref()))) {
           Error(ERR_FUNCTION_TOO_LONG,sci);
           return Optional<Register>();
@@ -592,6 +588,7 @@ Optional<Register> Generator::ExprResultToRegister( const SourceCodeInfo& sci ,
         break;
       case KREAL:
         if(!func_scope()->bb()->loadr(
+              func_scope()->ra()->base(),
               sci,Register::kAccIndex,static_cast<std::uint16_t>(expr.ref()))) {
           Error(ERR_FUNCTION_TOO_LONG,sci);
           return Optional<Register>();
@@ -599,25 +596,26 @@ Optional<Register> Generator::ExprResultToRegister( const SourceCodeInfo& sci ,
         break;
       case KSTR:
         if(!func_scope()->bb()->loadstr(
+              func_scope()->ra()->base(),
               sci,Register::kAccIndex,static_cast<std::uint16_t>(expr.ref()))) {
           Error(ERR_FUNCTION_TOO_LONG,sci);
           return Optional<Register>();
         }
         break;
       case KTRUE:
-        if(!func_scope()->bb()->loadtrue(sci,Register::kAccIndex)) {
+        if(!func_scope()->bb()->loadtrue(func_scope()->ra()->base(),sci,Register::kAccIndex)) {
           Error(ERR_FUNCTION_TOO_LONG,sci);
           return Optional<Register>();
         }
         break;
       case KFALSE:
-        if(!func_scope()->bb()->loadfalse(sci,Register::kAccIndex)) {
+        if(!func_scope()->bb()->loadfalse(func_scope()->ra()->base(),sci,Register::kAccIndex)) {
           Error(ERR_FUNCTION_TOO_LONG,sci);
           return Optional<Register>();
         }
         break;
       default:
-        if(!func_scope()->bb()->loadnull(sci,Register::kAccIndex)) {
+        if(!func_scope()->bb()->loadnull(func_scope()->ra()->base(),sci,Register::kAccIndex)) {
           Error(ERR_FUNCTION_TOO_LONG,sci);
           return Optional<Register>();
         }
@@ -698,10 +696,10 @@ bool Generator::Visit( const ast::Variable& var , ExprResult* result ) {
 
       // Hold the global value inside of Acc register for now , in the future we will
       // work out a better register allocation strategy
-      EEMIT(gget(var.sci(),Register::kAccIndex,ref));
+      EEMIT(gget,var.sci(),Register::kAccIndex,ref);
       result->SetAcc();
     } else {
-      EEMIT(uvget(var.sci(),Register::kAccIndex,upindex));
+      EEMIT(uvget,var.sci(),Register::kAccIndex,upindex);
       result->SetAcc();
     }
   }
@@ -732,14 +730,14 @@ bool Generator::VisitPrefix( const ast::Prefix& node , std::size_t end ,
             return false;
           }
           // Use PROPGET instruction
-          EEMIT(propget(c.var->sci(),var_reg.index(),ref));
+          EEMIT(propget,c.var->sci(),var_reg.index(),ref);
 
           // Since PROPGET will put its value into the Acc so afterwards
           // the value will be held in scratch registers until we meet a
           // function call since function call will just mess up the
           // scratch register. We don't have spill in register
           if(!var_reg.IsAcc()) {
-            EEMIT(move(c.var->sci(),Register::kAccIndex,var_reg.index()));
+            EEMIT(move,c.var->sci(),Register::kAccIndex,var_reg.index());
             func_scope()->ra()->Drop(var_reg);
             var_reg.SetAcc();
           }
@@ -760,7 +758,7 @@ bool Generator::VisitPrefix( const ast::Prefix& node , std::size_t end ,
 
           // Use idxgeti bytecode to get the stuff and by default value
           // are stored in ACC register
-          EEMIT(idxgeti(c.expr->sci(),var_reg.index(),ref));
+          EEMIT(idxgeti,c.expr->sci(),var_reg.index(),ref);
 
           // Drop register if it is not Acc
           if(!var_reg.IsAcc()) { func_scope()->ra()->Drop(var_reg); var_reg.SetAcc(); }
@@ -781,11 +779,11 @@ bool Generator::VisitPrefix( const ast::Prefix& node , std::size_t end ,
 
           // EEMIT the code for getting the index and the value is stored
           // inside of the ACC register
-          EEMIT(idxget(c.expr->sci(),var_reg.index(),expr_reg.Get().index()));
+          EEMIT(idxget,c.expr->sci(),var_reg.index(),expr_reg.Get().index());
 
           // Drop register if it is not in Acc
           if(!var_reg.IsAcc()) {
-            EEMIT(move(c.var->sci(),Register::kAccIndex,var_reg.index()));
+            EEMIT(move,c.var->sci(),Register::kAccIndex,var_reg.index());
             func_scope()->ra()->Drop(var_reg);
             var_reg.SetAcc();
           }
@@ -846,15 +844,15 @@ bool Generator::VisitPrefix( const ast::Prefix& node , std::size_t end ,
           // forsure generate a ret instruction afterwards
           const bool tc = tcall && (i == (len-1));
           if(tc) {
-            EEMIT(tcall(c.fc->sci(),
+            EEMIT(tcall,c.fc->sci(),
                         var_reg.index(),
                         func_scope()->ra()->base(),
-                        static_cast<std::uint8_t>(c.fc->args->size())));
+                        static_cast<std::uint8_t>(c.fc->args->size()));
           } else {
-            EEMIT(call(c.fc->sci(),
+            EEMIT(call,c.fc->sci(),
                        var_reg.index(),
                        func_scope()->ra()->base(),
-                       static_cast<std::uint8_t>(c.fc->args->size())));
+                       static_cast<std::uint8_t>(c.fc->args->size()));
           }
 
           // 4. the result will be stored inside of Acc
@@ -896,12 +894,12 @@ bool Generator::Visit( const ast::List& node , const Register& reg ,
   const std::size_t entry_size = node.entry->size();
 
   if(entry_size == 0) {
-    EEMIT(loadlist0(sci,reg.index()));
+    EEMIT(loadlist0,sci,reg.index());
     result->SetRegister(reg);
   } else if(entry_size == 1) {
     ScopedRegister r1(this);
     if(!VisitExpression(*node.entry->Index(0),&r1)) return false;
-    EEMIT(loadlist1(sci,reg.index(),r1.Get().index()));
+    EEMIT(loadlist1,sci,reg.index(),r1.Get().index());
     result->SetRegister(reg);
   } else if(entry_size == 2) {
     ScopedRegister r1(this) , r2(this);
@@ -910,8 +908,8 @@ bool Generator::Visit( const ast::List& node , const Register& reg ,
       if(!r1.Reset(SpillFromAcc(node.sci()))) return false;
     }
     if(!VisitExpression(*node.entry->Index(1),&r2)) return false;
-    EEMIT(loadlist2(sci,reg.index(),r1.Get().index(),
-                                           r2.Get().index()));
+    EEMIT(loadlist2,sci,reg.index(),r1.Get().index(),
+                                    r2.Get().index());
     result->SetRegister(reg);
   } else {
     Register r;
@@ -937,14 +935,14 @@ bool Generator::Visit( const ast::List& node , const Register& reg ,
      * allows us to use two set of instructions to perform this job. This is
      * not ideal but this allow better flexibility
      */
-    EEMIT(newlist(sci,r.index(),static_cast<std::uint16_t>(entry_size)));
+    EEMIT(newlist,sci,r.index(),static_cast<std::uint16_t>(entry_size));
 
     // Go through each list entry/element
     for( std::size_t i = 0 ; i < entry_size ; ++i ) {
       ScopedRegister r1(this);
       const ast::Node& e = *node.entry->Index(i);
       if(!VisitExpression(e,&r1)) return false;
-      EEMIT(addlist(e.sci(),r.index(),r1.Get().index()));
+      EEMIT(addlist,e.sci(),r.index(),r1.Get().index());
     }
     result->SetRegister(r);
   }
@@ -956,7 +954,7 @@ bool Generator::Visit( const ast::Object& node , const Register& reg ,
                                                  ExprResult* result ) {
   const std::size_t entry_size = node.entry->size();
   if(entry_size == 0) {
-    EEMIT(loadobj0(sci,reg));
+    EEMIT(loadobj0,sci,reg);
     result->SetRegister(reg);
   } else if(entry_size == 1) {
     ScopedRegister k(this);
@@ -967,7 +965,7 @@ bool Generator::Visit( const ast::Object& node , const Register& reg ,
       if(!k.Reset(SpillFromAcc(node.sci()))) return false;
     }
     if(!VisitExpression(*e.val,&v)) return false;
-    EEMIT(loadobj1(sci,reg.index(),k.Get().index(),v.Get().index()));
+    EEMIT(loadobj1,sci,reg.index(),k.Get().index(),v.Get().index());
     result->SetRegister(reg);
   } else {
     Register r;
@@ -981,7 +979,7 @@ bool Generator::Visit( const ast::Object& node , const Register& reg ,
     } else
       r = reg;
 
-    EEMIT(newobj(sci,reg.index(),static_cast<std::uint16_t>(entry_size)));
+    EEMIT(newobj,sci,reg.index(),static_cast<std::uint16_t>(entry_size));
 
     for( std::size_t i = 0 ; i < entry_size ; ++i ) {
       const ast::Object::Entry& e = node.entry->Index(i);
@@ -992,8 +990,8 @@ bool Generator::Visit( const ast::Object& node , const Register& reg ,
         if(!k.Reset(SpillFromAcc(e.key->sci()))) return false;
       }
       if(!VisitExpression(*e.val,&v)) return false;
-      EEMIT(addobj(e.key->sci(),r.index(),k.Get().index(),
-                                          v.Get().index()));
+      EEMIT(addobj,e.key->sci(),r.index(),k.Get().index(),
+                                          v.Get().index());
     }
 
     result->SetRegister(reg);
@@ -1005,9 +1003,9 @@ bool Generator::Visit( const ast::Unary& node , ExprResult* result ) {
   Register reg;
   if(!VisitExpression(*node.opr,&reg)) return false;
   if(node.op == Token::kSub) {
-    EEMIT(negate(node.sci(),reg.index()));
+    EEMIT(negate,node.sci(),reg.index());
   } else {
-    EEMIT(not_(node.sci(),reg.index()));
+    EEMIT(not_,node.sci(),reg.index());
   }
   result->SetRegister(reg);
   return true;
@@ -1033,9 +1031,9 @@ bool Generator::VisitLogic( const ast::Binary& node , ExprResult* result ) {
   BytecodeBuilder::Label label;
 
   if(node.op == Token::kAnd) {
-    label = func_scope()->bb()->and_(node.lhs->sci());
+    label = func_scope()->bb()->and_(func_scope()->ra()->base(), node.lhs->sci());
   } else {
-    label = func_scope()->bb()->or_(node.lhs->sci());
+    label = func_scope()->bb()->or_ (func_scope()->ra()->base(), node.lhs->sci());
   }
   if(!label) {
     Error(ERR_FUNCTION_TOO_LONG,func_scope()->body());
@@ -1085,6 +1083,7 @@ bool Generator::Visit( const ast::Binary& node , ExprResult* result ) {
           return false;
 
         if(!func_scope()->bb()->EmitC(
+              func_scope()->ra()->base(),
               node.sci(),bc,lhs_expr.ref(),rhs_reg.Get().index())) {
           Error(ERR_FUNCTION_TOO_LONG,func_scope()->body());
           return false;
@@ -1099,6 +1098,7 @@ bool Generator::Visit( const ast::Binary& node , ExprResult* result ) {
           return false;
 
         if(!func_scope()->bb()->EmitB(
+              func_scope()->ra()->base(),
               node.sci(),bc,lhs_reg.Get().index(),rhs_expr.ref())) {
           Error(ERR_FUNCTION_TOO_LONG,node);
           return false;
@@ -1120,6 +1120,7 @@ bool Generator::Visit( const ast::Binary& node , ExprResult* result ) {
       if(!VisitExpression(*node.rhs,&rhs)) return false;
 
       if(!func_scope()->bb()->EmitE(
+          func_scope()->ra()->base(),
           node.sci(),
           static_cast<Bytecode>( kBinGeneralOpLookupTable[static_cast<int>(node.op.token())] ),
           lhs.Get().index(),
@@ -1144,7 +1145,7 @@ bool Generator::Visit( const ast::Ternary& node , ExprResult* result ) {
 
   // Based on the current condition to branch
   BytecodeBuilder::Label cond_label =
-    func_scope()->bb()->jmpf(node.sci(),reg.Get().index());
+    func_scope()->bb()->jmpf( func_scope()->ra()->base() , node.sci(),reg.Get().index());
   if(!cond_label) {
     Error(ERR_FUNCTION_TOO_LONG,node);
     return false;
@@ -1158,7 +1159,8 @@ bool Generator::Visit( const ast::Ternary& node , ExprResult* result ) {
       return false;
 
   // After the 2nd expression generated it needs to jump/skip the 3rd expression
-  BytecodeBuilder::Label label_2nd = func_scope()->bb()->jmp(node._2nd->sci());
+  BytecodeBuilder::Label label_2nd = func_scope()->bb()->jmp(func_scope()->ra()->base(),
+                                                             node._2nd->sci());
   if(!label_2nd) {
     Error(ERR_FUNCTION_TOO_LONG,node);
     return false;
@@ -1254,11 +1256,11 @@ bool Generator::Visit( const ast::Var& node , Register* holder ) {
     Register reg;
     if(!VisitExpressionWithHint(*node.expr,lhs.Get(),&reg)) return false;
     if(reg != lhs.Get()) {
-      SEMIT(move(node.sci(),lhs.Get().index(),reg.index()));
+      SEMIT(move,node.sci(),lhs.Get().index(),reg.index());
     }
   } else {
     // put a null to that value as default value
-    SEMIT(loadnull(node.sci(),lhs.Get().index()));
+    SEMIT(loadnull,node.sci(),lhs.Get().index());
   }
 
   if(holder) *holder = lhs.Get();
@@ -1277,7 +1279,7 @@ bool Generator::VisitSimpleAssign( const ast::Assign& node ) {
     Register reg;
     if(!VisitExpressionWithHint(*rhs_node,r.Get(),&reg)) return false;
     if(reg != r.Get()) {
-      SEMIT(move(node.sci(),r.Get().index(),reg.index()));
+      SEMIT(move,node.sci(),r.Get().index(),reg.index());
     }
   } else {
     /**
@@ -1293,7 +1295,7 @@ bool Generator::VisitSimpleAssign( const ast::Assign& node ) {
       // set it as upvalue variable
       ScopedRegister reg(this);
       if(!VisitExpression(*node.rhs,&reg)) return false;
-      SEMIT(uvset(node.sci(),upindex,reg.Get().index()));
+      SEMIT(uvset,node.sci(),upindex,reg.Get().index());
     } else {
       // set it as global variable
       ScopedRegister reg(this);
@@ -1303,7 +1305,7 @@ bool Generator::VisitSimpleAssign( const ast::Assign& node ) {
         Error(ERR_REGISTER_OVERFLOW,node.sci());
         return false;
       }
-      SEMIT(gset(node.sci(),static_cast<std::uint16_t>(ref),reg.Get().index()));
+      SEMIT(gset,node.sci(),static_cast<std::uint16_t>(ref),reg.Get().index());
     }
   }
   return true;
@@ -1324,9 +1326,9 @@ bool Generator::VisitPrefixAssign( const ast::Assign& node ) {
           return false;
         }
         if(!rhs.Get().IsAcc()) {
-          SEMIT(move(node.sci(),Register::kAccIndex,rhs.Get().index()));
+          SEMIT(move,node.sci(),Register::kAccIndex,rhs.Get().index());
         }
-        SEMIT(propset(node.sci(),lhs.Get().index(),ref));
+        SEMIT(propset,node.sci(),lhs.Get().index(),ref);
       }
       break;
     case ast::Prefix::Component::INDEX:
@@ -1346,8 +1348,8 @@ bool Generator::VisitPrefixAssign( const ast::Assign& node ) {
         if(!VisitExpression(*last_comp.expr,&expr_reg)) return false;
 
         // idxset REG REG REG
-        SEMIT(idxset(node.sci(),lhs.Get().index(),expr_reg.Get().index(),
-                                                  rhs.Get().index()));
+        SEMIT(idxset,node.sci(),lhs.Get().index(),expr_reg.Get().index(),
+                                                  rhs.Get().index());
       }
       break;
     default:
@@ -1390,7 +1392,9 @@ bool Generator::Visit( const ast::If& node ) {
     if(br.cond) {
       ScopedRegister cond(this);
       if(!VisitExpression(*br.cond,&cond)) return false;
-      prev_jmp = func_scope()->bb()->jmpf(br.cond->sci(),cond.Get().index());
+      prev_jmp = func_scope()->bb()->jmpf(func_scope()->ra()->base(),
+                                          br.cond->sci(),
+                                          cond.Get().index());
       if(!prev_jmp) {
         Error(ERR_FUNCTION_TOO_LONG,*br.cond);
         return false;
@@ -1404,7 +1408,8 @@ bool Generator::Visit( const ast::If& node ) {
 
     // Generate the jump
     if(br.cond)
-      label_vec.push_back(func_scope()->bb()->jmp(br.cond->sci()));
+      label_vec.push_back(func_scope()->bb()->jmp(func_scope()->ra()->base(),
+                                                  br.cond->sci()));
   }
 
   // Patch prev_jmp if we need to
@@ -1423,18 +1428,18 @@ bool Generator::VisitForCondition( const ast::For& node ,
   if(!VisitExpression(*node._2nd,&cond)) return false;
   switch(cond.kind()) {
     case KINT:
-      SEMIT(ltvi(node._2nd->sci(),var.index(),cond.ref()));
+      SEMIT(ltvi,node._2nd->sci(),var.index(),cond.ref());
       break;
     case KREAL:
-      SEMIT(ltvr(node._2nd->sci(),var.index(),cond.ref()));
+      SEMIT(ltvr,node._2nd->sci(),var.index(),cond.ref());
       break;
     case KSTR:
-      SEMIT(ltvs(node._2nd->sci(),var.index(),cond.ref()));
+      SEMIT(ltvs,node._2nd->sci(),var.index(),cond.ref());
     default:
       {
         ScopedRegister r(this,ExprResultToRegister(node.sci(),cond));
         if(!r) return false;
-        SEMIT(ltvv(node._2nd->sci(),var.index(),r.Get().index()));
+        SEMIT(ltvv,node._2nd->sci(),var.index(),r.Get().index());
       }
       break;
   }
@@ -1458,14 +1463,15 @@ bool Generator::Visit( const ast::For& node ) {
     lava_verify(node._1st);
     if(!Visit(*node._1st,&induct_reg)) return false;
     if(!VisitForCondition(node,induct_reg)) return false;
-    forward = func_scope()->bb()->fstart( node.sci() , induct_reg.index() );
+    forward = func_scope()->bb()->fstart( func_scope()->ra()->base(), node.sci() ,
+                                                                      induct_reg.index() );
   } else {
     if(node._1st) {
       if(!Visit(*node._1st,&induct_reg)) return false;
     } else {
       lava_debug(NORMAL,lava_verify(!node._3rd););
     }
-    SEMIT(fevrstart(node.sci())); // Mark for JIT
+    SEMIT(fevrstart,node.sci()); // Mark for JIT
   }
 
   /* ------------------------------------------
@@ -1492,7 +1498,7 @@ bool Generator::Visit( const ast::For& node ) {
       // step the loop induction variable's register. NOTES, we use forinc
       // instead of addvv since addvv requires 2 bytecodes to do a step
       // operation. forinc will move register back to where it is
-      SEMIT(forinc(node._3rd->sci(),induct_reg.index(),r.Get().index()));
+      SEMIT(forinc,node._3rd->sci(),induct_reg.index(),r.Get().index());
     }
 
     /**
@@ -1503,9 +1509,9 @@ bool Generator::Visit( const ast::For& node ) {
       if(!VisitForCondition(node,induct_reg)) return false;
 
       // Jump back to the loop header
-      SEMIT(fend(node.sci(),header));
+      SEMIT(fend,node.sci(),header);
     } else {
-      SEMIT(fevrend(node.sci(),header));
+      SEMIT(fevrend,node.sci(),header);
     }
 
     // Patch all break to jump here , basically jumps out of
@@ -1529,11 +1535,11 @@ bool Generator::Visit( const ast::ForEach& node ) {
   ScopedRegister init_reg(this);
   if(!VisitExpression(*node.iter,&init_reg)) return false;
 
-  SEMIT(inew(node.iter->sci(),itr_reg.index(),init_reg.Get().index()));
+  SEMIT(inew,node.iter->sci(),itr_reg.index(),init_reg.Get().index());
 
   // Generate the festart
   BytecodeBuilder::Label forward =
-    func_scope()->bb()->festart(node.sci(),itr_reg.index());
+    func_scope()->bb()->festart(func_scope()->ra()->base(),node.sci(),itr_reg.index());
 
   {
     LexicalScope scope(this,true);
@@ -1546,7 +1552,7 @@ bool Generator::Visit( const ast::ForEach& node ) {
     lava_debug(NORMAL,lava_verify(v.Has()););
 
     // Deref the key from iterator register into the target register
-    SEMIT(idref(node.var->sci(),v.Get().index(),itr_reg.index()));
+    SEMIT(idref,node.var->sci(),v.Get().index(),itr_reg.index());
 
     // Visit the chunk
     if(!VisitChunk(*node.body,false)) return false;
@@ -1554,7 +1560,7 @@ bool Generator::Visit( const ast::ForEach& node ) {
     scope.PatchContinue(
         static_cast<std::uint16_t>(func_scope()->bb()->CodePosition()));
 
-    SEMIT(feend(node.sci(),itr_reg.index(),header));
+    SEMIT(feend,node.sci(),itr_reg.index(),header);
 
 
     scope.PatchBreak(
@@ -1599,7 +1605,7 @@ bool Generator::CanBeTailCallOptimized( const ast::Node& node ) const {
 
 bool Generator::Visit( const ast::Return& node ) {
   if(!node.has_return_value()) {
-    SEMIT(retnull(node.sci()));
+    SEMIT(retnull,node.sci());
   } else {
     // Look for return function-call() style code and then perform
     // tail call optimization on this case. Basically, as long as
@@ -1625,7 +1631,7 @@ bool Generator::Visit( const ast::Return& node ) {
         if(!SpillToAcc(node.expr->sci(),&ret))
           return false;
     }
-    SEMIT(ret(node.sci()));
+    SEMIT(ret,node.sci());
   }
   return true;
 }
@@ -1713,7 +1719,7 @@ bool Generator::VisitAnonymousFunction( const ast::Function& node ) {
       Error(ERR_TOO_MANY_PROTOTYPES,node);
       return false;
     }
-    EEMIT(loadcls(node.sci(),static_cast<std::uint16_t>(idx)));
+    EEMIT(loadcls,node.sci(),static_cast<std::uint16_t>(idx));
   }
   return true;
 }
@@ -1727,10 +1733,11 @@ bool Generator::Generate() {
 
   if(!VisitChunk(*root_->body,true)) return false;
 
-  EEMIT(retnull(SourceCodeInfo()));
+  EEMIT(retnull,SourceCodeInfo());
 
   Handle<Prototype> main(
-      BytecodeBuilder::NewMain(context_->gc(),*scope.bb()));
+      BytecodeBuilder::NewMain(context_->gc(),*scope.bb(),
+                                              root_->lv_context->local_variable_count()));
   if(!main) return false;
 
   script_builder_->set_main(main);

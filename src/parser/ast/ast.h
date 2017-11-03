@@ -415,6 +415,10 @@ struct LocVarContext : public zone::ZoneObject {
     local_vars(v),
     iterator_count(0)
   {}
+
+  std::size_t local_variable_count() const {
+    return local_vars->size() + iterator_count;
+  }
 };
 
 struct Function : public Node {

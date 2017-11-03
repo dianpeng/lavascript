@@ -10,7 +10,7 @@ TEST(BytecodeBuilder,AllBytecodeType) {
   // TYPE_B
   {
     BytecodeBuilder bb;
-    bb.addvi(SourceCodeInfo(),1,2);
+    bb.addvi(0,SourceCodeInfo(),1,2);
     BytecodeIterator itr(bb.GetIterator());
     ASSERT_TRUE(itr.HasNext());
     ASSERT_TRUE(itr.type() == TYPE_B);
@@ -25,7 +25,7 @@ TEST(BytecodeBuilder,AllBytecodeType) {
   // TYPE_C
   {
     BytecodeBuilder bb;
-    bb.addiv(SourceCodeInfo(),1,2);
+    bb.addiv(0,SourceCodeInfo(),1,2);
     BytecodeIterator itr(bb.GetIterator());
     ASSERT_TRUE(itr.HasNext());
     ASSERT_TRUE(itr.type() == TYPE_C);
@@ -40,7 +40,7 @@ TEST(BytecodeBuilder,AllBytecodeType) {
   // TYPE_E
   {
     BytecodeBuilder bb;
-    bb.addvv(SourceCodeInfo(),1,255);
+    bb.addvv(0,SourceCodeInfo(),1,255);
     BytecodeIterator itr(bb.GetIterator());
     ASSERT_TRUE(itr.HasNext());
     ASSERT_TRUE(itr.type() == TYPE_E);
@@ -54,7 +54,7 @@ TEST(BytecodeBuilder,AllBytecodeType) {
   // TYPE_D
   {
     BytecodeBuilder bb;
-    bb.loadobj1(SourceCodeInfo(),1,2,3);
+    bb.loadobj1(0,SourceCodeInfo(),1,2,3);
     BytecodeIterator itr(bb.GetIterator());
     ASSERT_TRUE(itr.HasNext());
     ASSERT_TRUE(itr.type() == TYPE_D);
@@ -69,7 +69,7 @@ TEST(BytecodeBuilder,AllBytecodeType) {
   // TYPE_F
   {
     BytecodeBuilder bb;
-    bb.not_(SourceCodeInfo(),1);
+    bb.not_(0,SourceCodeInfo(),1);
     BytecodeIterator itr(bb.GetIterator());
     ASSERT_TRUE(itr.HasNext());
     ASSERT_TRUE(itr.type() == TYPE_F);
@@ -82,7 +82,7 @@ TEST(BytecodeBuilder,AllBytecodeType) {
   // TYPE_G
   {
     BytecodeBuilder bb;
-    bb.fend(SourceCodeInfo(),65534);
+    bb.fend(0,SourceCodeInfo(),65534);
     BytecodeIterator itr(bb.GetIterator());
     ASSERT_TRUE(itr.HasNext());
     ASSERT_TRUE(itr.type() == TYPE_G);
@@ -100,14 +100,14 @@ TEST(BytecodeBuilder,Coverage) {
    * --------------------------------*/
 #define __(A,B,C,D,E,F) GE_##A(C);
 
-#define GE_B(FUNC) bb.FUNC(SourceCodeInfo(),1,65535)
-#define GE_C(FUNC) bb.FUNC(SourceCodeInfo(),65535,1)
-#define GE_D(FUNC) bb.FUNC(SourceCodeInfo(),1,2,3)
-#define GE_E(FUNC) bb.FUNC(SourceCodeInfo(),1,2)
-#define GE_F(FUNC) bb.FUNC(SourceCodeInfo(),1)
-#define GE_G(FUNC) bb.FUNC(SourceCodeInfo(),65535)
-#define GE_X(FUNC) bb.FUNC(SourceCodeInfo())
-#define GE_N(FUNC) bb.FUNC(SourceCodeInfo(),4,255,254,{{1,2,3,4}})
+#define GE_B(FUNC) bb.FUNC(0,SourceCodeInfo(),1,65535)
+#define GE_C(FUNC) bb.FUNC(0,SourceCodeInfo(),65535,1)
+#define GE_D(FUNC) bb.FUNC(0,SourceCodeInfo(),1,2,3)
+#define GE_E(FUNC) bb.FUNC(0,SourceCodeInfo(),1,2)
+#define GE_F(FUNC) bb.FUNC(0,SourceCodeInfo(),1)
+#define GE_G(FUNC) bb.FUNC(0,SourceCodeInfo(),65535)
+#define GE_X(FUNC) bb.FUNC(0,SourceCodeInfo())
+#define GE_N(FUNC) bb.FUNC(0,SourceCodeInfo(),4,255,254,{{1,2,3,4}})
 
   BytecodeBuilder bb;
   LAVASCRIPT_BYTECODE_LIST(__);
@@ -221,31 +221,31 @@ TEST(BytecodeBuilder,Coverage) {
 TEST(BytecodeBuilder,Patch) {
   BytecodeBuilder bb;
   BytecodeBuilder::Label l;
-  l = (bb.jmpt(SourceCodeInfo(),255));
+  l = (bb.jmpt(0,SourceCodeInfo(),255));
   l.Patch(1024);
 
-  l = (bb.jmpf(SourceCodeInfo(),255));
+  l = (bb.jmpf(0,SourceCodeInfo(),255));
   l.Patch(1024);
 
-  l = (bb.and_(SourceCodeInfo()));
+  l = (bb.and_(0,SourceCodeInfo()));
   l.Patch(1024);
 
-  l = (bb.or_ (SourceCodeInfo()));
+  l = (bb.or_ (0,SourceCodeInfo()));
   l.Patch(1024);
 
-  l = (bb.jmp(SourceCodeInfo()));
+  l = (bb.jmp(0,SourceCodeInfo()));
   l.Patch(1024);
 
-  l = (bb.brk(SourceCodeInfo()));
+  l = (bb.brk(0,SourceCodeInfo()));
   l.Patch(1024);
 
-  l = (bb.cont(SourceCodeInfo()));
+  l = (bb.cont(0,SourceCodeInfo()));
   l.Patch(1024);
 
-  l = (bb.fstart(SourceCodeInfo(),255));
+  l = (bb.fstart(0,SourceCodeInfo(),255));
   l.Patch(1024);
 
-  l = (bb.festart(SourceCodeInfo(),255));
+  l = (bb.festart(0,SourceCodeInfo(),255));
   l.Patch(1024);
 
   BytecodeIterator itr(bb.GetIterator());

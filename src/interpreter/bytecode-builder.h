@@ -80,21 +80,22 @@ class BytecodeBuilder {
     BytecodeBuilder* builder_;
   };
 
-  inline bool EmitB( const SourceCodeInfo& , Bytecode , std::uint8_t , std::uint16_t );
-  inline bool EmitC( const SourceCodeInfo& , Bytecode , std::uint16_t, std::uint8_t  );
-  inline bool EmitD( const SourceCodeInfo& , Bytecode , std::uint8_t , std::uint8_t , std::uint8_t );
-  inline bool EmitE( const SourceCodeInfo& , Bytecode , std::uint8_t , std::uint8_t );
-  inline bool EmitF( const SourceCodeInfo& , Bytecode , std::uint8_t );
-  inline bool EmitG( const SourceCodeInfo& , Bytecode , std::uint16_t );
-  inline bool EmitX( const SourceCodeInfo& , Bytecode );
-  bool EmitN( const SourceCodeInfo& , Bytecode , std::uint8_t , std::uint8_t ,
+  inline bool EmitB( std::uint8_t , const SourceCodeInfo& , Bytecode , std::uint8_t , std::uint16_t );
+  inline bool EmitC( std::uint8_t , const SourceCodeInfo& , Bytecode , std::uint16_t, std::uint8_t  );
+  inline bool EmitD( std::uint8_t , const SourceCodeInfo& , Bytecode , std::uint8_t , std::uint8_t , std::uint8_t );
+  inline bool EmitE( std::uint8_t , const SourceCodeInfo& , Bytecode , std::uint8_t , std::uint8_t );
+  inline bool EmitF( std::uint8_t , const SourceCodeInfo& , Bytecode , std::uint8_t );
+  inline bool EmitG( std::uint8_t , const SourceCodeInfo& , Bytecode , std::uint16_t );
+  inline bool EmitX( std::uint8_t , const SourceCodeInfo& , Bytecode );
+  bool EmitN( std::uint8_t , const SourceCodeInfo& , Bytecode , std::uint8_t ,
+                                                                std::uint8_t ,
                                                                 std::uint8_t ,
                                                                 const std::vector<std::uint8_t>& nargs );
 
   template< int BC , int TP , bool A1 = false , bool A2 = false , bool A3 = false >
-  inline Label EmitAt( const SourceCodeInfo& , std::uint32_t a1 = 0 ,
-                                               std::uint32_t a2 = 0 ,
-                                               std::uint32_t a3 = 0 );
+  inline Label EmitAt( std::uint8_t , const SourceCodeInfo& , std::uint32_t a1 = 0 ,
+                                                              std::uint32_t a2 = 0 ,
+                                                              std::uint32_t a3 = 0 );
 
  public:
   /** ---------------------------------------------------
@@ -102,45 +103,51 @@ class BytecodeBuilder {
    * ---------------------------------------------------*/
 
 #define IMPLB(INSTR,C)                                                     \
-  bool C(const SourceCodeInfo& si , std::uint8_t a1 , std::uint16_t a2 ) { \
-    return EmitB(si,INSTR,a1,a2);                                          \
+  bool C(std::uint8_t reg,const SourceCodeInfo& si , std::uint8_t a1 ,     \
+                                                     std::uint16_t a2 ) {  \
+    return EmitB(reg,si,INSTR,a1,a2);                                      \
   }
 
 #define IMPLC(INSTR,C)                                                     \
-  bool C(const SourceCodeInfo& si , std::uint16_t a1, std::uint8_t a2 )  { \
-    return EmitC(si,INSTR,a1,a2);                                          \
+  bool C(std::uint8_t reg,const SourceCodeInfo& si , std::uint16_t a1,     \
+                                                     std::uint8_t a2 )  {  \
+    return EmitC(reg,si,INSTR,a1,a2);                                      \
   }
 
-#define IMPLD(INSTR,C)                                                 \
-  bool C(const SourceCodeInfo& si , std::uint8_t a1, std::uint8_t a2,  \
-      std::uint8_t a3 ) {                                              \
-    return EmitD(si,INSTR,a1,a2,a3);                                   \
+#define IMPLD(INSTR,C)                                                   \
+  bool C(std::uint8_t reg,const SourceCodeInfo& si , std::uint8_t a1,    \
+                                                     std::uint8_t a2,    \
+                                                     std::uint8_t a3 ) { \
+    return EmitD(reg,si,INSTR,a1,a2,a3);                                 \
   }
 
 #define IMPLE(INSTR,C)                                                    \
-  bool C(const SourceCodeInfo& si , std::uint8_t a1 , std::uint8_t a2 ) { \
-    return EmitE(si,INSTR,a1,a2);                                         \
+  bool C(std::uint8_t reg,const SourceCodeInfo& si , std::uint8_t a1 ,    \
+                                                     std::uint8_t a2 ) {  \
+    return EmitE(reg,si,INSTR,a1,a2);                                     \
   }
 
-#define IMPLF(INSTR,C)                                                 \
-  bool C(const SourceCodeInfo& si , std::uint8_t a1 ) {                \
-    return EmitF(si,INSTR,a1);                                         \
+#define IMPLF(INSTR,C)                                                   \
+  bool C(std::uint8_t reg,const SourceCodeInfo& si , std::uint8_t a1 ) { \
+    return EmitF(reg,si,INSTR,a1);                                       \
   }
 
-#define IMPLG(INSTR,C)                                                 \
-  bool C(const SourceCodeInfo& si , std::uint16_t a1 ) {               \
-    return EmitG(si,INSTR,a1);                                         \
+#define IMPLG(INSTR,C)                                                    \
+  bool C(std::uint8_t reg,const SourceCodeInfo& si , std::uint16_t a1 ) { \
+    return EmitG(reg,si,INSTR,a1);                                        \
   }
 
 #define IMPLX(INSTR,C)                                                 \
-  bool C(const SourceCodeInfo& si) {                                   \
-    return EmitX(si,INSTR);                                            \
+  bool C(std::uint8_t reg,const SourceCodeInfo& si) {                  \
+    return EmitX(reg,si,INSTR);                                        \
   }
 
-#define IMPLN(INSTR,C)                                                                          \
-  bool C(const SourceCodeInfo& si, std::uint8_t narg , std::uint8_t reg , std::uint8_t base ,   \
-                                                       const std::vector<std::uint8_t>& vec ) { \
-    return EmitN(si,INSTR,narg,reg,base,vec);                                                        \
+#define IMPLN(INSTR,C)                                                                       \
+  bool C(std::uint8_t reg,const SourceCodeInfo& si, std::uint8_t narg ,                      \
+                                                    std::uint8_t reg ,                       \
+                                                    std::uint8_t base ,                      \
+                                                    const std::vector<std::uint8_t>& vec ) { \
+    return EmitN(reg,si,INSTR,narg,reg,base,vec);                                            \
   }
 
 #define __(A,B,C,D,E,F) IMPL##A(BC_##B,C)
@@ -159,15 +166,15 @@ class BytecodeBuilder {
   /* -----------------------------------------------------
    * Jump related isntruction                            |
    * ----------------------------------------------------*/
-  inline Label jmpt   ( const SourceCodeInfo& si , const std::uint8_t r );
-  inline Label jmpf   ( const SourceCodeInfo& si , const std::uint8_t r );
-  inline Label and_   ( const SourceCodeInfo& si );
-  inline Label or_    ( const SourceCodeInfo& si );
-  inline Label jmp    ( const SourceCodeInfo& si );
-  inline Label brk    ( const SourceCodeInfo& si );
-  inline Label cont   ( const SourceCodeInfo& si );
-  inline Label fstart ( const SourceCodeInfo& si , const std::uint8_t a1 );
-  inline Label festart( const SourceCodeInfo& si , const std::uint8_t a1 );
+  inline Label jmpt   ( std::uint8_t reg , const SourceCodeInfo& si , const std::uint8_t r );
+  inline Label jmpf   ( std::uint8_t reg , const SourceCodeInfo& si , const std::uint8_t r );
+  inline Label and_   ( std::uint8_t reg , const SourceCodeInfo& si );
+  inline Label or_    ( std::uint8_t reg , const SourceCodeInfo& si );
+  inline Label jmp    ( std::uint8_t reg , const SourceCodeInfo& si );
+  inline Label brk    ( std::uint8_t reg , const SourceCodeInfo& si );
+  inline Label cont   ( std::uint8_t reg , const SourceCodeInfo& si );
+  inline Label fstart ( std::uint8_t reg , const SourceCodeInfo& si , const std::uint8_t a1 );
+  inline Label festart( std::uint8_t reg , const SourceCodeInfo& si , const std::uint8_t a1 );
 
  public:
   // This function will create a Closure object from the BytecodeBuilder
@@ -176,21 +183,23 @@ class BytecodeBuilder {
   static Handle<Prototype> New( GC* , const BytecodeBuilder& bb ,
                                       const ::lavascript::parser::ast::Function& node );
 
-  static Handle<Prototype> NewMain( GC* , const BytecodeBuilder& bb );
+  static Handle<Prototype> NewMain( GC* , const BytecodeBuilder& bb ,
+                                          std::size_t max_local_var_size );
 
  private:
   static String** BuildFunctionPrototypeString( GC* ,
                                                 const ::lavascript::parser::ast::Function& );
-  static Handle<Prototype> New( GC* , const BytecodeBuilder& bb ,
-                                      std::size_t arg_size,
-                                      String** proto );
+
+  static Handle<Prototype> New( GC* , const BytecodeBuilder& bb , std::size_t arg_size,
+                                                                  std::size_t max_local_var_size,
+                                                                  String** proto );
 
  private:
   std::vector<std::uint32_t> code_buffer_;           // Code buffer
   std::vector<SourceCodeInfo> debug_info_;           // Debug info
   std::vector<std::int32_t> int_table_;              // Integer table
   std::vector<double> real_table_;                   // Real table
-  std::vector<Handle<String>> string_table_;                // String table
+  std::vector<Handle<String>> string_table_;         // String table
 
   struct UpValueSlot {
     std::uint16_t index;      // Can represent the register index or the slot
@@ -207,14 +216,17 @@ class BytecodeBuilder {
     }
   };
   std::vector<UpValueSlot> upvalue_slot_;
+
+  std::vector<std::uint8_t> reg_offset_table_;       // Register offset table
 };
 
 /*--------------------------------------------
  * Inline Definitions                        |
  * ------------------------------------------*/
-inline bool BytecodeBuilder::EmitB( const SourceCodeInfo& sci , Bytecode bc,
-                                                                std::uint8_t  a1,
-                                                                std::uint16_t a2) {
+inline bool BytecodeBuilder::EmitB( std::uint8_t reg , const SourceCodeInfo& sci ,
+                                                       Bytecode bc,
+                                                       std::uint8_t  a1,
+                                                       std::uint16_t a2) {
   if(code_buffer_.size() == kMaxCodeLength)
     return false;
   std::uint32_t value = static_cast<std::uint32_t>(bc) |
@@ -222,12 +234,14 @@ inline bool BytecodeBuilder::EmitB( const SourceCodeInfo& sci , Bytecode bc,
                         (static_cast<std::uint32_t>(a2) << 16);
   code_buffer_.push_back(value);
   debug_info_.push_back (sci);
+  reg_offset_table_.push_back(reg);
   return true;
 }
 
-inline bool BytecodeBuilder::EmitC( const SourceCodeInfo& sci , Bytecode bc,
-                                                                std::uint16_t a1 ,
-                                                                std::uint8_t a2 ) {
+inline bool BytecodeBuilder::EmitC( std::uint8_t reg , const SourceCodeInfo& sci ,
+                                                       Bytecode bc,
+                                                       std::uint16_t a1 ,
+                                                       std::uint8_t a2 ) {
   if(code_buffer_.size() == kMaxCodeLength)
     return false;
   std::uint32_t value = static_cast<std::uint32_t>(bc) |
@@ -235,13 +249,15 @@ inline bool BytecodeBuilder::EmitC( const SourceCodeInfo& sci , Bytecode bc,
                         (static_cast<std::uint32_t>(a2) <<24);
   code_buffer_.push_back(value);
   debug_info_.push_back(sci);
+  reg_offset_table_.push_back(reg);
   return true;
 }
 
-inline bool BytecodeBuilder::EmitD( const SourceCodeInfo& sci , Bytecode bc,
-                                                                std::uint8_t a1,
-                                                                std::uint8_t a2,
-                                                                std::uint8_t a3 ) {
+inline bool BytecodeBuilder::EmitD( std::uint8_t reg , const SourceCodeInfo& sci ,
+                                                       Bytecode bc,
+                                                       std::uint8_t a1,
+                                                       std::uint8_t a2,
+                                                       std::uint8_t a3 ) {
   if(code_buffer_.size() == kMaxCodeLength)
     return false;
 
@@ -251,12 +267,14 @@ inline bool BytecodeBuilder::EmitD( const SourceCodeInfo& sci , Bytecode bc,
                         (static_cast<std::uint32_t>(a3) << 24);
   code_buffer_.push_back(value);
   debug_info_.push_back(sci);
+  reg_offset_table_.push_back(reg);
   return true;
 }
 
-inline bool BytecodeBuilder::EmitE( const SourceCodeInfo& sci , Bytecode bc,
-                                                                std::uint8_t a1,
-                                                                std::uint8_t a2 ) {
+inline bool BytecodeBuilder::EmitE( std::uint8_t reg , const SourceCodeInfo& sci ,
+                                                       Bytecode bc,
+                                                       std::uint8_t a1,
+                                                       std::uint8_t a2 ) {
   if(code_buffer_.size() == kMaxCodeLength)
     return false;
   std::uint32_t value = static_cast<std::uint32_t>(bc) |
@@ -264,42 +282,50 @@ inline bool BytecodeBuilder::EmitE( const SourceCodeInfo& sci , Bytecode bc,
                         (static_cast<std::uint32_t>(a2) << 16);
   code_buffer_.push_back(value);
   debug_info_.push_back(sci);
+  reg_offset_table_.push_back(reg);
   return true;
 }
 
-inline bool BytecodeBuilder::EmitF( const SourceCodeInfo& sci , Bytecode bc,
-                                                                std::uint8_t a1 ) {
+inline bool BytecodeBuilder::EmitF( std::uint8_t reg , const SourceCodeInfo& sci ,
+                                                       Bytecode bc,
+                                                       std::uint8_t a1 ) {
   if(code_buffer_.size() == kMaxCodeLength)
     return false;
   std::uint32_t value = static_cast<std::uint32_t>(bc) |
                         (static_cast<std::uint32_t>(a1) << 8);
   code_buffer_.push_back(value);
   debug_info_.push_back(sci);
+  reg_offset_table_.push_back(reg);
   return true;
 }
 
-inline bool BytecodeBuilder::EmitG( const SourceCodeInfo& sci , Bytecode bc,
-                                                                std::uint16_t a1 ) {
+inline bool BytecodeBuilder::EmitG( std::uint8_t reg , const SourceCodeInfo& sci ,
+                                                       Bytecode bc,
+                                                       std::uint16_t a1 ) {
   if(code_buffer_.size() == kMaxCodeLength)
     return false;
   std::uint32_t value = static_cast<std::uint32_t>(bc) |
                         (static_cast<std::uint32_t>(a1) << 8);
   code_buffer_.push_back(value);
   debug_info_.push_back(sci);
+  reg_offset_table_.push_back(reg);
   return true;
 }
 
-inline bool BytecodeBuilder::EmitX( const SourceCodeInfo& sci , Bytecode bc ) {
+inline bool BytecodeBuilder::EmitX( std::uint8_t reg , const SourceCodeInfo& sci ,
+                                                       Bytecode bc ) {
   if(code_buffer_.size() == kMaxCodeLength)
     return false;
 
   code_buffer_.push_back(static_cast<std::uint32_t>(bc));
   debug_info_.push_back(sci);
+  reg_offset_table_.push_back(reg);
   return true;
 }
 
 template< int BC , int TP , bool A1 , bool A2 , bool A3 >
-inline BytecodeBuilder::Label BytecodeBuilder::EmitAt( const SourceCodeInfo& sci ,
+inline BytecodeBuilder::Label BytecodeBuilder::EmitAt( std::uint8_t reg ,
+                                                       const SourceCodeInfo& sci ,
                                                        std::uint32_t a1 ,
                                                        std::uint32_t a2 ,
                                                        std::uint32_t a3 ) {
@@ -337,47 +363,58 @@ inline BytecodeBuilder::Label BytecodeBuilder::EmitAt( const SourceCodeInfo& sci
 
   code_buffer_.push_back(encode);
   debug_info_.push_back(sci);
+  reg_offset_table_.push_back(reg);
+
   return Label(this,idx,static_cast<BytecodeType>(TP));
 }
 
-inline BytecodeBuilder::Label BytecodeBuilder::jmpt( const SourceCodeInfo& sci,
+inline BytecodeBuilder::Label BytecodeBuilder::jmpt( std::uint8_t reg ,
+                                                     const SourceCodeInfo& sci,
                                                      std::uint8_t a1 ) {
-  return EmitAt<BC_JMPT,TYPE_B,true,false,false>(sci,a1);
+  return EmitAt<BC_JMPT,TYPE_B,true,false,false>(reg,sci,a1);
 }
 
-inline BytecodeBuilder::Label BytecodeBuilder::jmpf( const SourceCodeInfo& sci,
+inline BytecodeBuilder::Label BytecodeBuilder::jmpf( std::uint8_t reg ,
+                                                     const SourceCodeInfo& sci,
                                                      std::uint8_t a1 ) {
-  return EmitAt<BC_JMPF,TYPE_B,true,false,false>(sci,a1);
+  return EmitAt<BC_JMPF,TYPE_B,true,false,false>(reg,sci,a1);
 }
 
-inline BytecodeBuilder::Label BytecodeBuilder::and_( const SourceCodeInfo& sci ) {
-  return EmitAt<BC_AND,TYPE_G,false,false,false>(sci);
+inline BytecodeBuilder::Label BytecodeBuilder::and_( std::uint8_t reg ,
+                                                     const SourceCodeInfo& sci ) {
+  return EmitAt<BC_AND,TYPE_G,false,false,false>(reg,sci);
 }
 
-inline BytecodeBuilder::Label BytecodeBuilder::or_ ( const SourceCodeInfo& sci ) {
-  return EmitAt<BC_OR,TYPE_G,false,false,false>(sci);
+inline BytecodeBuilder::Label BytecodeBuilder::or_ ( std::uint8_t reg ,
+                                                     const SourceCodeInfo& sci ) {
+  return EmitAt<BC_OR,TYPE_G,false,false,false>(reg,sci);
 }
 
-inline BytecodeBuilder::Label BytecodeBuilder::jmp ( const SourceCodeInfo& sci ) {
-  return EmitAt<BC_JMP,TYPE_G,false,false,false>(sci);
+inline BytecodeBuilder::Label BytecodeBuilder::jmp ( std::uint8_t reg ,
+                                                     const SourceCodeInfo& sci ) {
+  return EmitAt<BC_JMP,TYPE_G,false,false,false>(reg,sci);
 }
 
-inline BytecodeBuilder::Label BytecodeBuilder::brk ( const SourceCodeInfo& sci ) {
-  return EmitAt<BC_BRK,TYPE_G,false,false,false>(sci);
+inline BytecodeBuilder::Label BytecodeBuilder::brk ( std::uint8_t reg,
+                                                     const SourceCodeInfo& sci ) {
+  return EmitAt<BC_BRK,TYPE_G,false,false,false>(reg,sci);
 }
 
-inline BytecodeBuilder::Label BytecodeBuilder::cont( const SourceCodeInfo& sci ) {
-  return EmitAt<BC_CONT,TYPE_G,false,false,false>(sci);
+inline BytecodeBuilder::Label BytecodeBuilder::cont( std::uint8_t reg,
+                                                     const SourceCodeInfo& sci ) {
+  return EmitAt<BC_CONT,TYPE_G,false,false,false>(reg,sci);
 }
 
-inline BytecodeBuilder::Label BytecodeBuilder::fstart( const SourceCodeInfo& sci ,
+inline BytecodeBuilder::Label BytecodeBuilder::fstart( std::uint8_t reg,
+                                                       const SourceCodeInfo& sci ,
                                                        std::uint8_t a1 ) {
-  return EmitAt<BC_FSTART,TYPE_B,true,false,false>(sci,a1);
+  return EmitAt<BC_FSTART,TYPE_B,true,false,false>(reg,sci,a1);
 }
 
-inline BytecodeBuilder::Label BytecodeBuilder::festart( const SourceCodeInfo& sci ,
+inline BytecodeBuilder::Label BytecodeBuilder::festart( std::uint8_t reg,
+                                                        const SourceCodeInfo& sci ,
                                                         std::uint8_t a1 ) {
-  return EmitAt<BC_FESTART,TYPE_B,true,false,false>(sci,a1);
+  return EmitAt<BC_FESTART,TYPE_B,true,false,false>(reg,sci,a1);
 }
 
 inline bool BytecodeBuilder::AddUpValue( UpValueState state , std::uint16_t idx ,
@@ -455,7 +492,8 @@ inline BytecodeBuilder::BytecodeBuilder():
   int_table_  (),
   real_table_ (),
   string_table_(),
-  upvalue_slot_()
+  upvalue_slot_(),
+  reg_offset_table_()
 { code_buffer_.reserve(kInitialCodeBufferSize); }
 
 } // namespace interpreter

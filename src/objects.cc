@@ -112,6 +112,7 @@ Handle<Map> Map::Rehash( GC* gc , const Handle<Map>& old_map ) {
  * Prototype
  * --------------------------------------------------------------*/
 Prototype::Prototype( const Handle<String>& pp , std::size_t argument_size ,
+                                                 std::size_t max_local_var_size,
                                                  std::size_t int_table_size,
                                                  std::size_t real_table_size,
                                                  std::size_t string_table_size,
@@ -122,9 +123,11 @@ Prototype::Prototype( const Handle<String>& pp , std::size_t argument_size ,
                                                  String*** stable,
                                                  std::uint32_t* utable,
                                                  std::uint32_t* cb,
-                                                 SourceCodeInfo* sci ):
+                                                 SourceCodeInfo* sci ,
+                                                 std::uint8_t* reg_offset_table ):
   proto_string_(pp),
   argument_size_(argument_size),
+  max_local_var_size_(max_local_var_size),
   int_table_size_(int_table_size),
   real_table_size_(real_table_size),
   string_table_size_(string_table_size),
@@ -135,7 +138,8 @@ Prototype::Prototype( const Handle<String>& pp , std::size_t argument_size ,
   string_table_(stable),
   upvalue_table_(utable),
   code_buffer_(cb),
-  sci_buffer_(sci)
+  sci_buffer_(sci),
+  reg_offset_table_(reg_offset_table)
 {}
 
 std::uint16_t Prototype::GetUpValue( std::size_t index ,
@@ -195,33 +199,39 @@ void Prototype::Dump( DumpWriter* writer , const std::string& source ) const {
       switch(bi.type()) {
         case interpreter::TYPE_B:
           bi.GetOperand(&a1_8,&a2_16);
-          writer->WriteL("%zu. %s %d %d  | <%d,%d> %s",count,bi.opcode_name(),a1_8,a2_16,
+          writer->WriteL("%zu. %s %d %d  | %d <%d,%d> %s",count,bi.opcode_name(),a1_8,a2_16,
+              GetRegOffset(count),
               sci.start, sci.end, GetSourceSnippetInOneLine(source,sci).c_str());
           break;
         case interpreter::TYPE_C:
           bi.GetOperand(&a1_16,&a2_8);
-          writer->WriteL("%zu. %s %d %d  | <%d,%d> %s",count,bi.opcode_name(),a1_16,a2_8,sci.start,
-              sci.end, GetSourceSnippetInOneLine(source,sci).c_str());
+          writer->WriteL("%zu. %s %d %d  | %d <%d,%d> %s",count,bi.opcode_name(),a1_16,a2_8,
+              GetRegOffset(count),
+              sci.start, sci.end, GetSourceSnippetInOneLine(source,sci).c_str());
           break;
         case interpreter::TYPE_D:
           bi.GetOperand(&a1_8,&a2_8,&a3_8);
-          writer->WriteL("%zu. %s %d %d %d  | <%d,%d> %s",count,bi.opcode_name(),a1_8,a2_8,a3_8,sci.start,
-              sci.end,GetSourceSnippetInOneLine(source,sci).c_str());
+          writer->WriteL("%zu. %s %d %d %d  | %d <%d,%d> %s",count,bi.opcode_name(),a1_8,a2_8,a3_8,
+              GetRegOffset(count),
+              sci.start, sci.end,GetSourceSnippetInOneLine(source,sci).c_str());
           break;
         case interpreter::TYPE_E:
           bi.GetOperand(&a1_8,&a2_8);
-          writer->WriteL("%zu. %s %d %d  | <%d,%d> %s",count,bi.opcode_name(),a1_8,a2_8,sci.start,
-              sci.end,GetSourceSnippetInOneLine(source,sci).c_str());
+          writer->WriteL("%zu. %s %d %d  | %d <%d,%d> %s",count,bi.opcode_name(),a1_8,a2_8,
+              GetRegOffset(count),
+              sci.start, sci.end,GetSourceSnippetInOneLine(source,sci).c_str());
           break;
         case interpreter::TYPE_F:
           bi.GetOperand(&a1_8);
-          writer->WriteL("%zu. %s %d  | <%d,%d> %s",count,bi.opcode_name(),a1_8,sci.start,
-              sci.end,GetSourceSnippetInOneLine(source,sci).c_str());
+          writer->WriteL("%zu. %s %d  | %d <%d,%d> %s",count,bi.opcode_name(),a1_8,
+              GetRegOffset(count),
+              sci.start, sci.end,GetSourceSnippetInOneLine(source,sci).c_str());
           break;
         case interpreter::TYPE_G:
           bi.GetOperand(&a1_16);
-          writer->WriteL("%zu. %s %d  | <%d,%d> %s",count,bi.opcode_name(),a1_16,sci.start,
-              sci.end,GetSourceSnippetInOneLine(source,sci).c_str());
+          writer->WriteL("%zu. %s %d  | %d <%d,%d> %s",count,bi.opcode_name(),a1_16,
+              GetRegOffset(count),
+              sci.start, sci.end,GetSourceSnippetInOneLine(source,sci).c_str());
           break;
         case interpreter::TYPE_N:
           {
@@ -235,16 +245,23 @@ void Prototype::Dump( DumpWriter* writer , const std::string& source ) const {
             formatter<<count<<". "<<bi.opcode_name()<<' '<<static_cast<int>(a1_8)<<' '
                                                          <<static_cast<int>(a2_8)<<' '
                                                          <<static_cast<int>(a3_8)<<" ( ";
-            for( auto &e : vec )
-              formatter<< static_cast<int>(e) <<' ';
 
-            formatter<<") | <"<<sci.start<<','<<sci.end<<"> "<<GetSourceSnippetInOneLine(source,sci);
+            for( auto &e : vec ) formatter<< static_cast<int>(e) <<' ';
+
+            formatter<<") | "<< GetRegOffset(count)
+                             << "< "
+                             <<sci.start
+                             <<','
+                             <<sci.end
+                             <<"> "
+                             <<GetSourceSnippetInOneLine(source,sci);
 
             writer->WriteL(formatter.str().c_str());
           }
           break;
         default:
-          writer->WriteL("%zu. %s  | <%d,%d> %s",count,bi.opcode_name(),sci.start,sci.end,
+          writer->WriteL("%zu. %s  | %d <%d,%d> %s",count,bi.opcode_name(),sci.start,sci.end,
+              GetRegOffset(count),
               GetSourceSnippetInOneLine(source,sci).c_str());
           break;
       }

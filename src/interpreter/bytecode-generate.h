@@ -796,7 +796,7 @@ inline Optional<Register> LexicalScope::GetLocalVar( const zone::String& name ) 
 }
 
 inline bool LexicalScope::AddBreak( const ast::Break& node ) {
-  BytecodeBuilder::Label l( func_scope()->bb()->brk(node.sci()) );
+  BytecodeBuilder::Label l( func_scope()->bb()->brk(func_scope()->ra()->base(),node.sci()) );
   if(!l) return false;
   if(is_loop_)
     break_list_.push_back(l);
@@ -806,7 +806,7 @@ inline bool LexicalScope::AddBreak( const ast::Break& node ) {
 }
 
 inline bool LexicalScope::AddContinue( const ast::Continue& node ) {
-  BytecodeBuilder::Label l( func_scope()->bb()->cont(node.sci()) );
+  BytecodeBuilder::Label l( func_scope()->bb()->cont(func_scope()->ra()->base(),node.sci()) );
   if(!l) return false;
   if(is_loop_)
     continue_list_.push_back(l);

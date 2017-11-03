@@ -9,9 +9,12 @@
 namespace lavascript {
 namespace interpreter{
 
-bool BytecodeBuilder::EmitN( const SourceCodeInfo& sci , Bytecode bc ,
-    std::uint8_t narg , std::uint8_t reg , std::uint8_t base ,
-    const std::vector<std::uint8_t>& vec ) {
+bool BytecodeBuilder::EmitN( std::uint8_t roff, const SourceCodeInfo& sci ,
+                                                Bytecode bc ,
+                                                std::uint8_t narg ,
+                                                std::uint8_t reg ,
+                                                std::uint8_t base ,
+                                                const std::vector<std::uint8_t>& vec ) {
   std::uint32_t encode = static_cast<std::uint32_t>(bc);
   std::size_t before = code_buffer_.size();
 
@@ -60,6 +63,7 @@ bool BytecodeBuilder::EmitN( const SourceCodeInfo& sci , Bytecode bc ,
     std::size_t len = code_buffer_.size() - before;
     for( std::size_t i = 0 ; i < len ; ++i ) {
       debug_info_.push_back(sci);
+      reg_offset_table_.push_back(roff);
     }
   }
   return true;
@@ -103,10 +107,12 @@ String** BytecodeBuilder::BuildFunctionPrototypeString( GC* gc ,
 
 Handle<Prototype> BytecodeBuilder::New( GC* gc , const BytecodeBuilder& bb ,
                                                  std::size_t arg_size,
+                                                 std::size_t max_local_var_size,
                                                  String** proto ) {
 
   Prototype** pp = gc->NewPrototype(proto ? proto : String::New(gc,"()",2).ref(),
                                     arg_size,
+                                    max_local_var_size,
                                     bb.int_table_.size(),
                                     bb.real_table_.size(),
                                     bb.string_table_.size(),
@@ -149,16 +155,23 @@ Handle<Prototype> BytecodeBuilder::New( GC* gc , const BytecodeBuilder& bb ,
     if(arr) MemCopy(arr,bb.debug_info_);
   }
 
+  {
+    std::uint8_t* arr = const_cast<std::uint8_t*>(ret->reg_offset_table());
+    if(arr) MemCopy(arr,bb.reg_offset_table_);
+  }
+
   return Handle<Prototype>(pp);
 }
 
-Handle<Prototype> BytecodeBuilder::NewMain( GC* gc , const BytecodeBuilder& bb ) {
-  return New(gc,bb,0,NULL);
+Handle<Prototype> BytecodeBuilder::NewMain( GC* gc , const BytecodeBuilder& bb ,
+                                                     std::size_t max_local_var_size ) {
+  return New(gc,bb,0,max_local_var_size,NULL);
 }
 
 Handle<Prototype> BytecodeBuilder::New( GC* gc , const BytecodeBuilder& bb ,
                                                  const ::lavascript::parser::ast::Function& node ) {
-  return New(gc,bb,node.proto->size(),BuildFunctionPrototypeString(gc,node));
+  return New(gc,bb,node.proto->size(),node.lv_context->local_variable_count(),
+                                      BuildFunctionPrototypeString(gc,node));
 }
 
 } // namespace interpreter

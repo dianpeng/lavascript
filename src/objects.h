@@ -896,6 +896,9 @@ class Prototype final : public HeapObject {
   Handle<String> proto_string() const { return proto_string_; }
   std::size_t argument_size() const { return argument_size_; }
 
+  // Used to maintain correct GC status
+  std::size_t max_local_var_size() const { return max_local_var_size_; }
+
  public: // Mutator
   void set_proto_string( const Handle<String>& str ) { proto_string_ = str; }
   void set_argument_size( std::size_t arg) { argument_size_ = arg; }
@@ -906,6 +909,7 @@ class Prototype final : public HeapObject {
   std::size_t upvalue_size() const { return upvalue_size_; }
   std::size_t code_buffer_size() const { return code_buffer_size_; }
   std::size_t sci_size() const { return code_buffer_size_; }
+  std::size_t reg_offset_size() const { return code_buffer_size_; }
 
  public: // Constant table
   inline std::int32_t GetInteger( std::size_t ) const;
@@ -917,6 +921,7 @@ class Prototype final : public HeapObject {
   }
   const std::uint32_t* code_buffer() const { return code_buffer_; }
   inline const SourceCodeInfo& GetSci( std::size_t i ) const;
+  inline std::uint8_t GetRegOffset( std::size_t i ) const;
 
   // Check whether this prototype is a closure , which means have upvalues
   bool IsClosure() const { return upvalue_table_ != NULL; }
@@ -931,6 +936,7 @@ class Prototype final : public HeapObject {
 
  public:
   Prototype( const Handle<String>& pp , std::size_t argument_size ,
+                                        std::size_t max_local_var_size,
                                         std::size_t int_table_size,
                                         std::size_t real_table_size,
                                         std::size_t string_table_size,
@@ -941,18 +947,20 @@ class Prototype final : public HeapObject {
                                         String*** stable,
                                         std::uint32_t* utable,
                                         std::uint32_t* cb,
-                                        SourceCodeInfo* sci );
+                                        SourceCodeInfo* sci,
+                                        std::uint8_t* reg_offset_table );
  private:
   const std::int32_t* int_table() const { return int_table_; }
   const double* real_table() const { return real_table_; }
   String*** string_table() const { return string_table_; }
   const std::uint32_t* upvalue_table() const { return upvalue_table_; }
   const SourceCodeInfo* sci_buffer() const { return sci_buffer_; }
+  const std::uint8_t* reg_offset_table() const { return reg_offset_table_; }
 
  private:
   Handle<String> proto_string_;
-
   std::size_t argument_size_;
+  std::size_t max_local_var_size_;
 
   // Constant table size
   std::size_t int_table_size_;
@@ -978,6 +986,7 @@ class Prototype final : public HeapObject {
   std::uint32_t* upvalue_table_;
   std::uint32_t* code_buffer_;
   SourceCodeInfo* sci_buffer_;
+  std::uint8_t* reg_offset_table_;
 
   friend struct PrototypeLayout;
   friend class GC;
@@ -1002,6 +1011,7 @@ struct PrototypeLayout {
   static const std::uint32_t kUpValueTableOffset= offsetof(Prototype,upvalue_table_);
   static const std::uint32_t kCodeBufferOffset = offsetof (Prototype,code_buffer_);
   static const std::uint32_t kSciBufferOffset  = offsetof (Prototype,sci_buffer_);
+  static const std::uint32_t kRegOffsetTableOffset = offsetof(Prototype,reg_offset_table_);
 };
 
 /**
@@ -2419,6 +2429,11 @@ inline Handle<String> Prototype::GetString( std::size_t index ) const {
 inline const SourceCodeInfo& Prototype::GetSci( std::size_t index ) const {
   lava_debug(NORMAL,lava_verify(index < sci_size()););
   return sci_buffer()[index];
+}
+
+inline std::uint8_t Prototype::GetRegOffset( std::size_t index ) const {
+  lava_debug(NORMAL,lava_verify(index < reg_offset_size()););
+  return reg_offset_table()[index];
 }
 
 template< typename T >

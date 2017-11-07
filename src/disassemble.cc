@@ -1,7 +1,8 @@
 #include "disassemble.h"
 #include "trace.h"
 #include "util.h"
-#include <Zydis/Zydis.h>
+
+#include "Zydis/Zydis.h"
 
 namespace lavascript {
 

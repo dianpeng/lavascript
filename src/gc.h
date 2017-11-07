@@ -1,6 +1,5 @@
 #ifndef GC_H_
 #define GC_H_
-
 #include <algorithm>
 #include <vector>
 #include <string>
@@ -17,10 +16,22 @@
 #include "free-list.h"
 #include "bump-allocator.h"
 
+#include "interpreter/interpreter-runtime.h"
+
 namespace lavascript {
 
 class Context;
 class SSO;
+
+LAVA_DECLARE_INT64(GC,minimum_gap);
+LAVA_DECLARE_DOUBLE(GC,factor);
+LAVA_DECLARE_INT64(GC,heap_init_capacity);
+LAVA_DECLARE_INT64(GC,heap_capacity);
+LAVA_DECLARE_INT64(GC,gcref_init_capacity);
+LAVA_DECLARE_INT64(GC,gcref_capacity);
+LAVA_DECLARE_INT64(GC,sso_init_slot);
+LAVA_DECLARE_INT64(GC,sso_init_capacity);
+LAVA_DECLARE_INT64(GC,sso_capacity);
 
 /**
  * GC implemention for lavascript. This GC implementation is a stop-the-world
@@ -241,18 +252,13 @@ class Heap final {
 
  private:
   std::size_t alive_size_;               // Total allocated object's size
-
   std::size_t chunk_size_;               // Total memory chunk's size
-
   std::size_t allocated_bytes_;          // Totall allocated memory in bytes
-
   std::size_t total_bytes_;              // Total bytes that is used for the chunk list
-
   std::size_t chunk_capacity_;           // The capacity of the Chunk allocation. The capacity will not
                                          // change throughout the Heap
 
   Chunk* chunk_current_;                 // Current chunk
-
   Chunk* fall_back_;                     // Fallback allocation starting chunk, this will perform a
                                          // heap walk until it cannot find any chunk
 
@@ -575,32 +581,7 @@ inline SSO* SSOPool::Iterator::sso() const {
 
 class GC : AllStatic {
  public:
-  /**
-   * GC tunable argument
-   * 1. Minimum Gap    , what is the minimum gap for triggering the GC
-   * 2. Factor         , dynamic adjust the next gc trigger number
-   */
-
-  struct GCConfig {
-    std::size_t minimum_gap;
-    double factor;
-    // heap related configuration
-    std::size_t heap_init_capacity;
-    std::size_t heap_capacity;
-    // gcref related configuration
-    std::size_t gcref_init_capacity;
-    std::size_t gcref_capacity;
-    // sso related information
-    std::size_t sso_init_slot;
-    std::size_t sso_init_capacity;
-    std::size_t sso_capacity;
-
-    HeapAllocator* allocator;
-
-    inline GCConfig();
-  };
-
-  inline GC( const GCConfig& , Context* );
+  inline GC( Context* , HeapAllocator* allocator = NULL );
 
  public:
   std::size_t cycle() const { return cycle_; }
@@ -727,6 +708,8 @@ class GC : AllStatic {
   gc::Heap heap_;                                     // Current active heap
   gc::GCRefPool ref_pool_;                            // Ref pool
   gc::SSOPool sso_pool_;                              // SSO pool
+
+  interpreter::Runtime interp_runtime_;               // Interpreter runtime
   Context* context_;                                  // Context object
   HeapAllocator* allocator_;                          // Allocator
 };
@@ -746,33 +729,26 @@ T** GC::New( T** holder , ARGS ...args ) {
   return holder;
 }
 
-inline GC::GCConfig::GCConfig():
-  minimum_gap(0),
-  factor(0),
-  heap_init_capacity(1024),
-  heap_capacity(1024*1024*4),
-  gcref_init_capacity(1024),
-  gcref_capacity(4096),
-  sso_init_slot    (128),
-  sso_init_capacity(1024),
-  sso_capacity     (1024*64),
-  allocator(NULL)
-{}
-
-inline GC::GC( const GCConfig& config , Context* context ):
-  cycle_(0),
-  minimum_gap_(config.minimum_gap),
-  previous_alive_size_(0),
-  previous_dead_size_ (0),
-  factor_(config.factor),
-  heap_(config.heap_init_capacity,config.heap_capacity,config.allocator),
-  ref_pool_(config.gcref_init_capacity,config.gcref_capacity,config.allocator),
-  sso_pool_(config.sso_init_slot,
-            config.sso_init_capacity,
-            config.sso_capacity,
-            config.allocator),
-  context_(context),
-  allocator_(config.allocator)
+inline GC::GC( Context* context , HeapAllocator* allocator ):
+  cycle_                (0),
+  minimum_gap_          (LAVA_OPTION(GC,minimum_gap)),
+  previous_alive_size_  (0),
+  previous_dead_size_   (0),
+  factor_               (LAVA_OPTION(GC,factor)),
+  heap_                 (LAVA_OPTION(GC,heap_init_capacity),
+                         LAVA_OPTION(GC,heap_capacity),
+                         allocator),
+  ref_pool_             (LAVA_OPTION(GC,gcref_init_capacity),
+                         LAVA_OPTION(GC,gcref_capacity),
+                         allocator),
+  sso_pool_             (LAVA_OPTION(GC,sso_init_slot),
+                         LAVA_OPTION(GC,sso_init_capacity),
+                         LAVA_OPTION(GC,sso_capacity),
+                         allocator),
+  interp_runtime_       (context,NULL,0,LAVA_OPTION(Interpreter,max_stack_size),
+                                        LAVA_OPTION(Interpreter,max_call_size)),
+  context_              (context),
+  allocator_            (allocator)
 {}
 
 } // namespace lavascript

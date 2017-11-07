@@ -146,20 +146,8 @@ std::size_t RandRange( std::size_t start , std::size_t end ) {
   return r % range + start;
 }
 
-GC::GCConfig TestGCConfig() {
-  GC::GCConfig config;
-  config.heap_init_capacity = 1;
-  config.heap_capacity = 1;
-  config.gcref_init_capacity = 1;
-  config.gcref_capacity =1;
-  config.sso_init_slot = 2;
-  config.sso_init_capacity = 2;
-  config.sso_capacity = 2;
-  return config;
-}
-
 TEST(Objects,String) {
-  GC gc(TestGCConfig(),NULL);
+  GC gc(NULL);
 
   {
     Handle<String> empty_string(String::New(&gc));
@@ -331,7 +319,7 @@ TEST(Objects,String) {
 }
 
 TEST(Slice,Slice) {
-  GC gc(TestGCConfig(),NULL);
+  GC gc(NULL);
   {
     Handle<Slice> slice(Slice::New(&gc,8));
     ASSERT_EQ(8,slice->capacity());
@@ -361,7 +349,7 @@ TEST(Slice,Slice) {
 }
 
 TEST(List,List) {
-  GC gc(TestGCConfig(),NULL);
+  GC gc(NULL);
   {
     Handle<List> list(List::New(&gc,8));
     ASSERT_EQ(0,list->size());
@@ -439,7 +427,7 @@ struct Entry {
 };
 
 TEST(Map,Map) {
-  GC gc(TestGCConfig(),NULL);
+  GC gc(NULL);
   {
     Handle<Map> map(Map::New(&gc,1024));
     ASSERT_EQ(1024,map->capacity());
@@ -570,7 +558,7 @@ TEST(Map,Map) {
 }
 
 TEST(Object,Object) {
-  GC gc(TestGCConfig(),NULL);
+  GC gc(NULL);
   {
     Handle<Object> object(Object::New(&gc));
 

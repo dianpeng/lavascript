@@ -25,7 +25,7 @@ ZYDIS_INC:=$(PWD)/dep/$(ZYDIS)/include/
 ZYDIS_GEN:=$(PWD)/dep/$(ZYDIS)/build/
 
 CXXFLAGS += -I$(ZYDIS_INC) -I$(ZYDIS_GEN)
-LDFLAGS += -L$(ZYDIS_LIB) -lZydis
+LDFLAGS  += -L$(ZYDIS_LIB) -lZydis
 
 # -------------------------------------------------------------------------------
 #

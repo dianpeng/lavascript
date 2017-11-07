@@ -1,5 +1,10 @@
 #ifndef UTIL_H_
 #define UTIL_H_
+
+#ifndef __STDC_FORMAT_MACROS
+#define __STDC_FORMAT_MACROS
+#endif // __STDC_FORMAT_MACROS
+
 #include <cstdint>
 #include <cstdarg>
 #include <cstddef>

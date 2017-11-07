@@ -1,5 +1,6 @@
 #include "bytecode-interpreter.h"
 #include "interpreter-frame.h"
+#include "interpreter-runtime.h"
 
 #include "src/trace.h"
 #include "src/os.h"
@@ -63,69 +64,6 @@ int HorribleCast( T* ptr ) {
   lava_verify(reinterpret_cast<T*>(ret) == ptr);
   return ret;
 }
-
-// --------------------------------------------------------------
-// Runtime
-//
-// Used in the interpretation phase for the interpreter
-// --------------------------------------------------------------
-struct Runtime {
-  // current interpreted frame information ----------------------
-  Prototype** cur_proto;        // current prototype
-  Closure**   cur_cls;          // current closure
-  Value*      cur_stk;          // current frame's start of stack
-  std::uint32_t* cur_pc;        // current frame's start of PC
-
-  // get current interpreted frame object
-  IFrame* cur_frame() const {
-    return reinterpret_cast<IFrame*>(
-      reinterpret_cast<char*>(cur_stk) - sizeof(IFrame));
-  }
-
-  // global interpretation information --------------------------
-  Script** script;
-  Object** global;
-  Context* context;
-  Value ret;
-  std::string* error;
-
-  Value* stack;
-  std::size_t stack_size;
-  std::size_t call_size ; // how many function call is on going
-
-  // runtime threshold/constraints ------------------------------
-  std::size_t max_stack_size;
-  std::size_t max_call_size;
-
-  inline Runtime( Context* context , const Handle<Script>& script ,
-                                     const Handle<Object>& glb ,
-                                     std::string* err );
-};
-static_assert( std::is_standard_layout<Runtime>::value );
-
-
-inline Runtime::Runtime( Context* context , const Handle<Script>& script ,
-                                            const Handle<Object>& glb ,
-                                            std::string* err ):
-  cur             (script->main().ref()),
-  script          (script.ref()),
-  global          (glb.ref()),
-  context         (context),
-  ret             (),
-  error           (err),
-  stack           (NULL),
-  stack_size      (kInterpreterInitStackSize),
-  max_stack_size  (kInterpreterMaxStackSize ),
-  max_call_size   (kInterpreterMaxCallSize  )
-{}
-
-struct RuntimeLayout {
-  static const std::uint32_t kCurProtoOffset = offsetof(Runtime,cur_proto);
-  static const std::uint32_t kCurClsOffset   = offsetof(Runtime,cur_cls);
-  static const std::uint32_t kCurStackOffset = offsetof(Runtime,cur_stk);
-  static const std::uint32_t kCurPCOffset    = offsetof(Runtime,cur_pc );
-  static const std::uint32_t kRetOffset      = offsetof(Runtime,ret);
-};
 
 
 // ------------------------------------------------------------------
@@ -717,35 +655,35 @@ INTERPRETER_REGISTER_EXTERN_SYMBOL(PrintF)
  * decode each instruction's argument/operand                    |
  * --------------------------------------------------------------*/
 |.macro instr_B
-|  movzx ARG1,INSTR_A8
+|  movzx ARG1F,INSTR_A8
 |  shr INSTR,16
 |.endmacro
 
 |.macro instr_C
 |  shr INSTR,8
-|  movzx ARG1,INSTR_A16
+|  movzx ARG1F,INSTR_A16
 |  shr INSTR,16
 |.endmacro
 
 |.macro instr_D
 |  movzx ARG1,INSTR_A8
 |  shr INSTR,16
-|  movzx ARG3,INSTR_A8
+|  movzx ARG3F,INSTR_A8
 |  or ARG2,0xff
 |.endmacro
 
 |.macro instr_E
-|  movzx ARG1,INSTR_A8
+|  movzx ARG1F,INSTR_A8
 |  shr INSTR,16
 |.endmacro
 
 |.macro instr_F
-|  movzx ARG1,INSTR_A8
+|  movzx ARG1F,INSTR_A8
 |.endmacro
 
 |.macro instr_G
 |  shr INSTR,8
-|  movzx ARG1,INSTR_A16
+|  movzx ARG1F,INSTR_A16
 |.endmacro
 
 |.macro instr_X
@@ -1181,7 +1119,7 @@ void GenerateHelper( BuildContext* bctx ) {
   |.endmacro
 
   |.macro retbool
-  |  test al,al
+  |  test eax,eax
   |  je ->InterpFail
   |  Dispatch
   |.endmacro
@@ -2878,7 +2816,7 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
     || }
 
     // T2L capacity , T1L size
-    |  dec T2L
+    |  sub T2L,1
 
     // T1L -> index
     |  and T1L,T2L
@@ -3284,5 +3222,5 @@ bool AssemblyInterpreter::Instance::Run( Context* context , const Handle<Script>
   return ret;
 }
 
-} // namespace lavascript
 } // namespace interpreter
+} // namespace lavascript

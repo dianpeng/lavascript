@@ -18,18 +18,6 @@ using namespace lavascript;
 using namespace lavascript::parser;
 namespace {
 
-GC::GCConfig TestGCConfig() {
-  GC::GCConfig config;
-  config.heap_init_capacity = 1;
-  config.heap_capacity = 1;
-  config.gcref_init_capacity = 1;
-  config.gcref_capacity =1;
-  config.sso_init_slot = 2;
-  config.sso_init_capacity = 2;
-  config.sso_capacity = 2;
-  return config;
-}
-
 bool Compile( Context* context ,const char* source ,
     ScriptBuilder* sb , std::string* error ) {
   zone::Zone zone;
@@ -62,7 +50,7 @@ int main() {
   }
   lavascript::interpreter::AssemblyInterpreter::Instance ins(interp);
 
-  Context ctx(TestGCConfig());
+  Context ctx;
   std::string error;
   std::string script(stringify(
         return a + 1 + b * 2 + c / 3 + d - f;

@@ -18,18 +18,6 @@ using namespace ::lavascript;
 
 namespace {
 
-GC::GCConfig TestGCConfig() {
-  GC::GCConfig config;
-  config.heap_init_capacity = 1;
-  config.heap_capacity = 1;
-  config.gcref_init_capacity = 1;
-  config.gcref_capacity =1;
-  config.sso_init_slot = 2;
-  config.sso_init_capacity = 2;
-  config.sso_capacity = 2;
-  return config;
-}
-
 bool Compile( Context* context ,const char* source ,
     ScriptBuilder* sb , std::string* error ) {
   zone::Zone zone;
@@ -51,7 +39,7 @@ bool Compile( Context* context ,const char* source ,
 } // namespace
 
 TEST(BytecodeGenerate,Basic) {
-  Context ctx(TestGCConfig());
+  Context ctx;
   std::string error;
   {
     std::string script(stringify(

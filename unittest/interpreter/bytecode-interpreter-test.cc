@@ -53,7 +53,9 @@ int main() {
   Context ctx;
   std::string error;
   std::string script(stringify(
-        return a + 1 + b * 2 + c / 3 + d - f;
+        var a = 10;
+        var b = 200;
+        return a + 50;
         ));
 
   ScriptBuilder sb("a",script);

@@ -8,6 +8,7 @@
 
 namespace lavascript {
 
+LAVA_DECLARE_INT32(Interpreter,init_stack_size);
 LAVA_DECLARE_INT32(Interpreter,max_stack_size);
 LAVA_DECLARE_INT32(Interpreter,max_call_size);
 

@@ -36,6 +36,7 @@ bool GetBoolean        ( const char* , const char* );
 void AddOption ( const char* , const char* , const char* , std::int32_t );
 void AddOption ( const char* , const char* , const char* , std::int64_t );
 void AddOption ( const char* , const char* , const char* , double );
+void AddOption ( const char* , const char* , const char* , const char* );
 void AddOption ( const char* , const char* , const char* , const std::string& );
 void AddOption ( const char* , const char* , const char* , bool );
 

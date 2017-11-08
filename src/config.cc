@@ -25,56 +25,76 @@ struct OptionValue {
   };
 
   int type;
+
   union {
     std::int32_t int32_value;
     std::int64_t int64_value;
     double real_value;
-    std::int8_t string_buffer[ sizeof(std::string) ];
     bool boolean_value;
   };
-  const std::string& string_value() const {
-    lava_verify(type == OPTVAL_STRING);
-    return *reinterpret_cast<const std::string*>(
-        string_buffer);
-  }
+  std::string string_value;
 
+ public:
   void set_string_value( const char* str ) {
     type = OPTVAL_STRING;
-    ConstructFromBuffer<std::string>(
-        reinterpret_cast<void*>(string_buffer),str);
+    string_value = str;
   }
 
+  void set_int32( std::int32_t val ) {
+    type = OPTVAL_INT32;
+    int32_value = val;
+  }
+
+  void set_int64( std::int64_t val ) {
+    type = OPTVAL_INT64;
+    int64_value = val;
+  }
+
+  void set_double( double val ) {
+    type = OPTVAL_REAL;
+    real_value = val;
+  }
+
+  void set_boolean( bool val ) {
+    type = OPTVAL_BOOLEAN;
+    boolean_value = val;
+  }
+
+ public:
   OptionValue( std::int32_t ival ):
-    type(OPTVAL_INT32)
+    type(OPTVAL_INT32),
+    string_value()
   { int32_value = ival; }
 
   OptionValue( std::int64_t ival ):
-    type(OPTVAL_INT64)
+    type(OPTVAL_INT64),
+    string_value()
   { int64_value = ival; }
 
   OptionValue( double rval ):
-    type(OPTVAL_REAL)
+    type(OPTVAL_REAL),
+    string_value()
   { real_value = rval; }
 
   OptionValue( bool bval ):
-    type(OPTVAL_BOOLEAN)
+    type(OPTVAL_BOOLEAN),
+    string_value()
   { boolean_value = bval; }
 
   OptionValue( const std::string& sval ):
-    type(OPTVAL_STRING)
-  {
-    ConstructFromBuffer<std::string>(
-      reinterpret_cast<void*>(string_buffer),sval);
-  }
-
-  OptionValue():
-    type(OPTVAL_UNDEFINED)
+    type(OPTVAL_STRING),
+    string_value(sval)
   {}
 
-  ~OptionValue() {
-    if(type == OPTVAL_STRING)
-      Destruct(reinterpret_cast<std::string*>(string_buffer));
-  }
+  OptionValue( const char* sval ):
+    type(OPTVAL_STRING),
+    string_value(sval)
+  {}
+
+  OptionValue():
+    type(OPTVAL_UNDEFINED),
+    string_value()
+  {}
 };
 
 std::string MakeFullname( const std::string& section ,
@@ -95,7 +115,7 @@ std::string MakeFullname( const char* section ,
 
 std::string MakeEnvName ( const std::string& section,
                           const std::string& key ) {
-  std::string ret("LAVASCRIPT_");
+  std::string ret("LAVASCRIPT_OPTION_");
   ret.append(section);
   ret.push_back('_');
   ret.append(key);
@@ -175,6 +195,19 @@ struct OptionItem {
     default_value(val),
     command_value()
   {}
+
+  OptionItem( const std::string& sec ,
+              const std::string& k,
+              const std::string& cmt,
+              const char* val ):
+    section(sec),
+    key    (k),
+    fullname(MakeFullname(sec,k)),
+    comment(cmt),
+    default_value(val),
+    command_value()
+  {}
+
 };
 
 typedef std::map<std::string,OptionItem> OptionMap;
@@ -256,7 +289,7 @@ void CommandLineParser::GenHelp( std::string* buffer ) {
         break;
       case OptionValue::OPTVAL_STRING:
         buffer->append(
-            Format("str,%s)",e.second.default_value.string_value().c_str()));
+            Format("str,%s)",e.second.default_value.string_value.c_str()));
         break;
       case OptionValue::OPTVAL_BOOLEAN:
         buffer->append(
@@ -287,8 +320,7 @@ bool CommandLineParser::SetInt32( const char* opt , OptionValue* output ,
         str,opt);
     return false;
   }
-  output->type = OptionValue::OPTVAL_INT32;
-  output->int32_value = static_cast<std::int32_t>(val);
+  output->set_int32(static_cast<std::int32_t>(val));
   return true;
 }
 
@@ -311,8 +343,7 @@ bool CommandLineParser::SetInt64( const char* opt , OptionValue* output ,
     return false;
   }
 
-  output->type = OptionValue::OPTVAL_INT64;
-  output->int64_value = static_cast<std::int64_t>(val);
+  output->set_int64(static_cast<std::int64_t>(val));
   return true;
 }
 
@@ -334,8 +365,7 @@ bool CommandLineParser::SetReal( const char* opt, OptionValue* output ,
         str,opt);
     return false;
   }
-  output->type = OptionValue::OPTVAL_REAL;
-  output->real_value = val;
+  output->set_double(val);
   return true;
 }
 
@@ -354,19 +384,16 @@ bool CommandLineParser::SetBoolean( const char* opt, OptionValue* output ,
 
   if(str) {
     if(strcmp(str,"true") == 0) {
-      output->type = OptionValue::OPTVAL_BOOLEAN;
-      output->boolean_value = true;
+      output->set_boolean(true);
     } else if(strcmp(str,"false") == 0) {
-      output->type = OptionValue::OPTVAL_BOOLEAN;
-      output->boolean_value = false;
+      output->set_boolean(false);
     } else {
       OnError("cannot convert %s to boolean, option %s requires boolean value!",
           str,opt);
       return false;
     }
   } else {
-    output->type = OptionValue::OPTVAL_BOOLEAN;
-    output->boolean_value = false;
+    output->set_boolean(true);
   }
   return true;
 }
@@ -397,11 +424,14 @@ bool CommandLineParser::Parse() {
     if(pos) *pos = '\0';
 
     // check option existed or not
-    OptionMap::iterator itr = opt_map_->find(opt+2);
+    OptionMap::iterator itr = opt_map_->find(opt);
     if(itr == opt_map_->end()) {
       if(strcmp(opt,"help") == 0) {
         GenHelp(error_);
         return true;
+      } else {
+        OnError("unknown option %s!",opt);
+        return false;
       }
     }
 
@@ -431,7 +461,7 @@ bool CommandLineParser::Parse() {
           }
           break;
         case OptionValue::OPTVAL_BOOLEAN:
-          if(!SetString(opt,output,NULL)) {
+          if(!SetBoolean(opt,output,NULL)) {
             return false;
           }
           break;
@@ -480,8 +510,7 @@ bool CommandLineParser::Parse() {
           {
             std::int32_t val;
             if(GetEnvVar(name.c_str(),&val)) {
-              opt.command_value.type = OptionValue::OPTVAL_INT32;
-              opt.command_value.int32_value = val;
+              opt.command_value.set_int32(val);
             }
           }
           break;
@@ -489,8 +518,7 @@ bool CommandLineParser::Parse() {
           {
             std::int64_t val;
             if(GetEnvVar(name.c_str(),&val)) {
-              opt.command_value.type = OptionValue::OPTVAL_INT64;
-              opt.command_value.int64_value = val;
+              opt.command_value.set_int64(val);
             }
           }
           break;
@@ -498,8 +526,7 @@ bool CommandLineParser::Parse() {
           {
             double val;
             if(GetEnvVar(name.c_str(),&val)) {
-              opt.command_value.type = OptionValue::OPTVAL_REAL;
-              opt.command_value.real_value = val;
+              opt.command_value.set_double(val);
             }
           }
           break;
@@ -515,8 +542,7 @@ bool CommandLineParser::Parse() {
           {
             bool val;
             if(GetEnvVar(name.c_str(),&val)) {
-              opt.command_value.type = OptionValue::OPTVAL_BOOLEAN;
-              opt.command_value.boolean_value = val;
+              opt.command_value.set_boolean(val);
             }
           }
           break;
@@ -579,10 +605,10 @@ std::string GetString ( const char* section , const char* key ) {
   OptionMap::iterator itr = (opt_map->find(MakeFullname(section,key)));
   lava_verify(itr != opt_map->end());
   if(itr->second.command_value.type == OptionValue::OPTVAL_UNDEFINED) {
-    return itr->second.default_value.string_value();
+    return itr->second.default_value.string_value;
   }
   lava_verify(itr->second.command_value.type == OptionValue::OPTVAL_STRING);
-  return itr->second.command_value.string_value();
+  return itr->second.command_value.string_value;
 }
 
 void AddOption( const char* section , const char* key , const char* cmt ,
@@ -615,6 +641,13 @@ void AddOption( const char* section , const char* key , const char* cmt ,
 
 void AddOption( const char* section , const char* key , const char* cmt ,
                                                         const std::string& value ) {
+  OptionMap* opt_map = GetOptionMap();
+  lava_verify( opt_map->insert(std::make_pair(MakeFullname(section,key),
+                               OptionItem(section,key,cmt,value))).second );
+}
+
+void AddOption( const char* section , const char* key , const char* cmt ,
+                                                        const char* value ) {
   OptionMap* opt_map = GetOptionMap();
   lava_verify( opt_map->insert(std::make_pair(MakeFullname(section,key),
                                OptionItem(section,key,cmt,value))).second );

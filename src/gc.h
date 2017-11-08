@@ -674,6 +674,29 @@ class GC : AllStatic {
   // Try a GC cycle to happen
   bool TryGC();
 
+ public:
+  // For interpreter's stack/frame management
+
+
+  // Get a interpreter runtime with its initial stack memory set up for
+  // interpreter. Each GC only supports one runtime at a time, so each
+  // context must only have one on going interpreter
+  interpreter::Runtime* GetInterpreterRuntime( Script** script_object,
+                                               Object** global_object,
+                                               std::string* error );
+
+  // Free/Return the interpreter runtmie back to the GC. This just
+  // reset related field inside of the runtime which make GC mark
+  // algorithm works correct
+  void ReturnInterpreterRuntime( interpreter::Runtime* runtime );
+
+  // Grow the interpreter stack size into the next possible stack size
+  // which should not exceeds the maximum size, if so function returns
+  // false. This function will *modify* the *cur_stk* field as well and
+  // the intepreter should make change to corresponding register to reflect
+  // the cur_stk field changes.
+  bool GrowInterpreterStack( interpreter::Runtime* runtime );
+
  private: // GC related code
 
   /**

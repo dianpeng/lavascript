@@ -473,6 +473,66 @@ Script** GC::NewScript( Context* context ,
   return ref;
 }
 
+interpreter::Runtime* GC::GetInterpreterRuntime( Script** script ,
+                                                 Object** globals,
+                                                 std::string* err ) {
+  // setup the global pointer
+  interp_runtime_.script = script;
+  interp_runtime_.global = globals;
+  interp_runtime_.error  = err;
+
+  // initialize the stack if needed
+  if(interp_runtime_.stack_size == 0)
+    GrowInterpreterStack(&interp_runtime_);
+
+  // TODO:: Add correct function frame on to the evaluation stack
+  interp_runtime_.cur_proto = (*script)->main().ref();
+
+  return &interp_runtime_;
+}
+
+void GC::ReturnInterpreterRuntime( interpreter::Runtime* runtime ) {
+  lava_debug(NORMAL,lava_verify( runtime == &interp_runtime_ ););
+
+  interp_runtime_.script    = NULL;
+  interp_runtime_.global    = NULL;
+  interp_runtime_.error     = NULL;
+  interp_runtime_.cur_proto = NULL;
+  interp_runtime_.cur_cls   = NULL;
+  interp_runtime_.cur_stk   = NULL;
+  interp_runtime_.cur_pc    = NULL;
+  interp_runtime_.call_size = 0;
+}
+
+bool GC::GrowInterpreterStack( interpreter::Runtime* runtime ) {
+  lava_debug(NORMAL,lava_verify( runtime == &interp_runtime_ ););
+  if(runtime->stack_size >= runtime->max_stack_size)
+    return false;
+  std::size_t nsize = runtime->stack_size * 2;
+
+  if(nsize > runtime->max_stack_size)
+    nsize = runtime->max_stack_size;
+
+  if(!nsize) nsize = LAVA_OPTION(Interpreter,init_stack_size);
+
+  // this diff is in bytes
+  std::size_t cur_stk_diff = (char*)(runtime->cur_stk) - (char*)(runtime->stack);
+
+  // reallocate to the new pos and new value
+  void* new_stk = Realloc( allocator_ , runtime->stack , nsize * sizeof(Value) );
+
+  // update the new cur_stk pointer
+  runtime->cur_stk = reinterpret_cast<Value*>((char*)(new_stk) + cur_stk_diff);
+
+  // update start of the stack
+  runtime->stack = reinterpret_cast<Value*>(new_stk);
+
+  // update stack's size
+  runtime->stack_size = nsize;
+
+  return true;
+}
+
 /**
  * Marking phase for our GC
  *

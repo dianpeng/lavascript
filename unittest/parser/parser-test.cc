@@ -240,6 +240,8 @@ TEST(Parser,Expression) {
       for( var a = 100 ; ; 1 ) {}
       for( var a = 100 ; 200 ; ) {}
      );
+
+  positive( return a - 0; );
 }
 
 } // namespace parser

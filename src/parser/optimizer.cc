@@ -677,17 +677,17 @@ bool ExpressionOptimizer::Optimize( ast::Binary* node , Expression* expr ) {
         case Token::TK_SUB:
           if(lhs.IsInteger() && lhs.int_value == 0) {
             lava_verify( rhs.IsComplex() );
-            expr->node = rhs.node;
-          } else if(rhs.IsInteger() && rhs.int_value == 0) {
-            lava_verify( lhs.IsComplex() );
             if(node->op == Token::kAdd) {
-              expr->node = lhs.node;
+              expr->node = rhs.node;
             } else {
               expr->node = ast_factory_.NewUnary(node->start,
                                                  node->end,
                                                  Token::kSub,
                                                  lhs.node);
             }
+          } else if(rhs.IsInteger() && rhs.int_value == 0) {
+            lava_verify( lhs.IsComplex() );
+            expr->node = lhs.node;
           }
           break;
         case Token::TK_MUL:

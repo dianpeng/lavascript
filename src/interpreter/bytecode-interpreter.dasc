@@ -469,6 +469,7 @@ INTERPRETER_REGISTER_EXTERN_SYMBOL(InterpreterDoGSet)
 |.define CHECK_DIV_BY_ZERO
 |.define CHECK_NUMBER_MEMORY
 |.define TRACE_OP
+|.define USE_CMOV_COMP
 
 /* -------------------------------------------------------------------
  * 64 bits call
@@ -2164,153 +2165,163 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
     /* --------------------------------------------------------------------
      * Comparison XV                                                      |
      * -------------------------------------------------------------------*/
-    // pre-phase of each comparison
-    |.macro comp_xv_pre,BC,SlowPath
+    |.macro comp_xv,BC,slow_path,iv_real,iv_real_cmov,iv_real_jmp,iv_int,iv_int_cmov,iv_int_jmp
     |  instr_C
-    |  mov RREG,qword [STK+ARG2F*8]
-    |  CheckNum ARG2,RREG,1,2
-    |  jmp ->SlowPath
+    |  mov RREG, qword[STK+ARG2F*8]
+    |.if CHECK_NUMBER_MEMORY
+    |  mov ARG3, dword[STK+ARG2F*8+4]
+    |.else
+    |  mov ARG3F,RREG
+    |  shr ARG3F,32
+    |.endif
+    |  cmp ARG3, Value::FLAG_INTEGER
+    |  jne >2
+    |  iv_int iv_int_cmov,iv_int_jmp
+    |2:
+    |  cmp ARG3, Value::FLAG_REAL
+    |  jnb ->slow_path
+    |  iv_real iv_real_cmov,iv_real_jmp
     |.endmacro
 
     |.macro comp_cmp_real,instr
-    |  mov T1L, Value::FLAG_FALSE
-    |  mov T2L, Value::FLAG_TRUE
+    |  mov ARG1, Value::FLAG_FALSE
+    |  mov ARG2, Value::FLAG_TRUE
     |  ucomisd xmm0,xmm1
-    |  instr T1L, T2L
-    |  mov dword [STK+ACCFIDX], T1L
+    |  instr ARG1, ARG2
+    |  mov dword [STK+ACCFIDX], ARG1
     |.endmacro
 
     |.macro comp_cmp_int,instr
-    |  mov T1L, Value::FLAG_FALSE
-    |  mov T2L, Value::FLAG_TRUE
+    |  mov ARG1, Value::FLAG_FALSE
+    |  mov ARG2, Value::FLAG_TRUE
     |  cmp LREGL,RREGL
-    |  instr T1L, T2L
-    |  mov dword [STK+ACCFIDX], T1L
+    |  instr ARG1, ARG2
+    |  mov dword [STK+ACCFIDX], ARG1
     |.endmacro
 
     // real/int part for iv/rv
-    |.macro comp_iv_real,instr
+    |.macro comp_iv_real,instr,false_jmp
     |  LdInt2Real xmm0,ARG1F
     |  movd xmm1,RREG
+
+    |.if USE_CMOV_COMP
     |  comp_cmp_real,instr
     |  Dispatch
+    |.else
+    |  ucomisd xmm0,xmm1
+    |  false_jmp >8
+    |  mov dword [STK+ACCFIDX], Value::FLAG_TRUE
+    |  Dispatch
+    |8:
+    |  mov dword [STK+ACCFIDX], Value::FLAG_FALSE
+    |  Dispatch
+    |.endif
+
     |.endmacro
 
-    |.macro comp_iv_int,instr
+    |.macro comp_iv_int,instr,false_jmp
     |  LdInt LREGL,ARG1F
+
+    |.if USE_CMOV_COMP
     |  comp_cmp_int,instr
     |  Dispatch
+    |.else
+    |  cmp LREGL,RREGL
+    |  false_jmp >8
+    |  mov dword [STK+ACCFIDX], Value::FLAG_TRUE
+    |  Dispatch
+    |8:
+    |  mov dword [STK+ACCFIDX], Value::FLAG_FALSE
+    |  Dispatch
+    |.endif
+
     |.endmacro
 
-    |.macro comp_rv_real,instr
+    |.macro comp_rv_real,instr,false_jmp
     |  LdReal xmm0,ARG1F
-    |  movsd xmm1,qword [STK+ARG2F*8]
+    |  movd xmm1,RREG
+
+    |.if USE_CMOV_COMP
     |  comp_cmp_real,instr
     |  Dispatch
+    |.else
+    |  ucomisd xmm0,xmm1
+    |  false_jmp >8
+    |  mov dword [STK+ACCFIDX], Value::FLAG_TRUE
+    |  Dispatch
+    |8:
+    |  mov dword [STK+ACCFIDX], Value::FLAG_FALSE
+    |  Dispatch
+    |.endif
+
     |.endmacro
 
-    |.macro comp_rv_int,instr
+    |.macro comp_rv_int,instr,false_jmp
     |  LdReal xmm0,ARG1F
-    |  cvtsi2sd xmm1,dword [STK+ARG2F*8]
+    |  cvtsi2sd xmm1,RREGL
+
+    |.if USE_CMOV_COMP
     |  comp_cmp_real,instr
     |  Dispatch
+    |.else
+    |  ucomisd xmm0,xmm1
+    |  false_jmp >8
+    |  mov dword [STK+ACCFIDX], Value::FLAG_TRUE
+    |  Dispatch
+    |8:
+    |  mov dword [STK+ACCFIDX], Value::FLAG_FALSE
+    |  Dispatch
+    |.endif
+
     |.endmacro
 
     case BC_LTIV:
       |=> bc:
-      |  comp_xv_pre,BC_LTIV,InterpDoCompareIV
-      |1:
-      |  comp_iv_real,cmovl
-      |2:
-      |  comp_iv_int,cmovl
+      |  comp_xv BC_LTIV,InterpDoCompareIV,comp_iv_real,cmovb,jae,comp_iv_int,cmovl,jge
       break;
     case BC_LTRV:
       |=>bc:
-      |  comp_xv_pre,BC_LTRV,InterpDoCompareRV
-      |1:
-      |  comp_rv_real,cmovl
-      |2:
-      |  comp_rv_int,cmovl
+      |  comp_xv BC_LTRV,InterpDoCompareRV,comp_rv_real,cmovb,jae,comp_rv_int,cmovb,jae
       break;
     case BC_LEIV:
       |=> bc:
-      |  comp_xv_pre,BC_LEIV,InterpDoCompareIV
-      |1:
-      |  comp_iv_real,cmovle
-      |2:
-      |  comp_iv_int,cmovle
+      |  comp_xv BC_LEIV,InterpDoCompareIV,comp_iv_real,cmovbe,ja,comp_iv_int,cmovle,jg
       break;
     case BC_LERV:
       |=> bc:
-      |  comp_xv_pre,BC_LERV,InterpDoCompareRV
-      |1:
-      |  comp_rv_real,cmovle
-      |2:
-      |  comp_rv_int,cmovle
+      |  comp_xv BC_LERV,InterpDoCompareRV,comp_rv_real,cmovbe,ja,comp_rv_int,cmovbe,ja
       break;
     case BC_GTIV:
       |=> bc:
-      |  comp_xv_pre,BC_GTIV,InterpDoCompareIV
-      |1:
-      |  comp_iv_real,cmovg
-      |2:
-      |  comp_iv_int,cmovg
+      |  comp_xv BC_GTIV,InterpDoCompareIV,comp_iv_real,cmova,jbe,comp_iv_int,cmovg,jle
       break;
     case BC_GTRV:
       |=>bc:
-      |  comp_xv_pre,BC_GTRV,InterpDoCompareRV
-      |1:
-      |  comp_rv_real,cmovg
-      |2:
-      |  comp_rv_int ,cmovg
+      |  comp_xv BC_GTRV,InterpDoCompareRV,comp_rv_real,cmova,jbe,comp_rv_int,cmova,jbe
       break;
     case BC_GEIV:
       |=> bc:
-      |  comp_xv_pre,BC_GEIV,InterpDoCompareIV
-      |1:
-      |  comp_iv_real,cmovge
-      |2:
-      |  comp_iv_int,cmovge
+      |  comp_xv BC_GEIV,InterpDoCompareIV,comp_iv_real,cmovae,jb,comp_iv_int,cmovge,jl
       break;
     case BC_GERV:
       |=> bc:
-      |  comp_xv_pre,BC_GERV,InterpDoCompareRV
-      |1:
-      |  comp_rv_real ,cmovge
-      |2:
-      |  comp_rv_int  ,cmovge
+      |  comp_xv BC_GERV,InterpDoCompareRV,comp_rv_real,cmovae,jb,comp_rv_int,cmovae,jb
       break;
     case BC_EQIV:
       |=> bc:
-      |  comp_xv_pre,BC_EQIV,InterpDoCompareIV
-      |1:
-      |  comp_iv_real,cmove
-      |2:
-      |  comp_iv_int,cmove
+      |  comp_xv BC_EQIV,InterpDoCompareIV,comp_iv_real,cmove,jne,comp_iv_int,cmove,jne
       break;
     case BC_EQRV:
       |=> bc:
-      |  comp_xv_pre,BC_EQRV,InterpDoCompareRV
-      |1:
-      |  comp_rv_real,cmove
-      |2:
-      |  comp_rv_int,cmove
+      |  comp_xv BC_EQRV,InterpDoCompareRV,comp_rv_real,cmove,jne,comp_rv_int,cmove,jne
       break;
     case BC_NEIV:
       |=> bc:
-      |  comp_xv_pre,BC_NEIV,InterpDoCompareIV
-      |1:
-      |  comp_iv_real,cmovne
-      |2:
-      |  comp_iv_int,cmovne
+      |  comp_xv BC_NEIV,InterpDoCompareIV,comp_iv_real,cmovne,je,comp_iv_int,cmovne,je
       break;
     case BC_NERV:
       |=> bc:
-      |  comp_xv_pre,BC_NERV,InterpDoCompareRV
-      |1:
-      |  comp_rv_real,cmovne
-      |2:
-      |  comp_rv_int,cmovne
+      |  comp_xv BC_NERV,InterpDoCompareRV,comp_rv_real,cmovne,je,comp_rv_int,cmovne,je
       break;
 
     /* --------------------------------------------------------------------

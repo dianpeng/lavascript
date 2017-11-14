@@ -529,7 +529,8 @@ inline bool CheckAddress( std::uintptr_t addr ) {
 // Hold the decoded unit
 |.define INSTR,                 eax
 |.define INSTR_OP,              al
-|.define INSTR_A8,              ah
+|.define INSTR_A8L,             al
+|.define INSTR_A8H,             ah
 |.define INSTR_A16,             ax
 
 // Frame -------------------------------------------------------
@@ -569,6 +570,10 @@ static_assert( sizeof(IFrame) == 16 );
 |.define ARG3_16,               cx
 |.define ARG3,                  ecx
 |.define ARG3F,                 rcx
+
+// temporarily alias OP to be ARG3 because during the
+// decoding time , we don't need to hold anything there
+|.define OP,                    rcx
 
 // temporary register are r10 and r11
 |.define LREG,                  rsi
@@ -654,58 +659,54 @@ INTERPRETER_REGISTER_EXTERN_SYMBOL(PrintF)
 |.macro Dispatch
 |.if TRACE_OP
 |  mov INSTR,dword [PC]
-|  movzx T1,INSTR_OP
-|  mov CARG1,T1
+|  movzx OP,INSTR_OP
+|  mov CARG1,OP
 |  fcall PrintOP
 |.endif
-|  mov INSTR,dword [PC]
-|  movzx T1,INSTR_OP
-|  add PC,4
-|  jmp aword [DISPATCH+T1*8]
+// IFETCH starts, one of the hottest code segement
+// The top 4 instructions are ordered as 4-1-1-1 to optimize decoder so
+// it can be decoded in one cycle.
+|  mov INSTR,dword [PC]  // 2 uops
+|  movzx OP,INSTR_OP     // 1 uops
+|  add PC,4              // fused 1uops
+|  shr INSTR,8           // fused 1uops
+|  jmp aword [DISPATCH+OP*8]
 |.endmacro
 
 /* ---------------------------------------------------------------
  * decode each instruction's argument/operand                    |
  * --------------------------------------------------------------*/
 
-/**
- * Do not change any movzx's dest operand to be fully 64 bits register
- * when they are used with INSTR_A8. The INSTR_A8 uses ah register
- * alias which is not compatible with rax register due to rex prefix
- * while doing the encoding
- * Though using fully 64 bits register is better in our case.
- */
-
 |.macro instr_B
 // cannot use ARG1F due to INSTR_A8 uses ah
-|  movzx ARG1,INSTR_A8
-|  shr INSTR,16
+|  movzx ARG1F,INSTR_A8L
+|  shr INSTR,8
 |.endmacro
 
 |.macro instr_C
-|  shr INSTR,8
 |  movzx ARG1F,INSTR_A16
 |  shr INSTR,16
 |.endmacro
 
 |.macro instr_D
-|  movzx ARG1,INSTR_A8
-|  shr INSTR,16
-|  movzx ARG3,INSTR_A8
+|  movzx ARG1F,INSTR_A8L
+|  shr INSTR,8
+// do not change ARG3 --> ARG3F even if it is better, due to the fact
+// we cannot use ax register when rex prefix is used in instruction.
+|  movzx ARG3,INSTR_A8H
 |  or ARG2,0xff
 |.endmacro
 
 |.macro instr_E
-|  movzx ARG1,INSTR_A8
-|  shr INSTR,16
+|  movzx ARG1,INSTR_A8L
+|  shr INSTR,8
 |.endmacro
 
 |.macro instr_F
-|  movzx ARG1,INSTR_A8
+|  movzx ARG1,INSTR_A8L
 |.endmacro
 
 |.macro instr_G
-|  shr INSTR,8
 |  movzx ARG1F,INSTR_A16
 |.endmacro
 
@@ -748,43 +749,43 @@ INTERPRETER_REGISTER_EXTERN_SYMBOL(PrintF)
 // need to worry about GC move the reference
 |.macro LdInt,reg,index
 |  mov T1,qword [PROTO]
-|  mov T1,qword [T1+PrototypeLayout::kIntTableOffset]
-|  mov reg, [T1+index*4]
+|  mov T2,qword [T1+PrototypeLayout::kIntTableOffset]
+|  mov reg, [T2+index*4]
 |.endmacro
 
 // TODO:: Optimize this piece of shit
 |.macro LdIntV,reg,regL,index
 |  mov T1,qword [PROTO]
-|  mov T1,qword [T1+PrototypeLayout::kIntTableOffset]
+|  mov T2,qword [T1+PrototypeLayout::kIntTableOffset]
 
 |.if 0
 |  mov reg, Value::FLAG_INTEGER
 |  shl reg,32
-|  or regL,dword [T1+index*4]
+|  or regL,dword [T2+index*4]
 |.else
 |  mov64 reg, static_cast<std::uint64_t>(Value::TAG_INTEGER)
-|  or regL,dword [T1+index*4]
+|  or regL,dword [T2+index*4]
 |.endif
 
 |.endmacro
 
 |.macro LdReal,reg,index
 |  mov T1,qword [PROTO]
-|  mov T1,qword [T1+PrototypeLayout::kRealTableOffset]
-|  movsd reg,qword[T1+index*8]
+|  mov T2,qword [T1+PrototypeLayout::kRealTableOffset]
+|  movsd reg,qword[T2+index*8]
 |.endmacro
 
 |.macro LdRealV,reg,index
 |  mov T1,qword [PROTO]
-|  mov T1,qword [T1+PrototypeLayout::kRealTableOffset]
+|  mov T2,qword [T1+PrototypeLayout::kRealTableOffset]
 // not a xmm register
-|  mov reg,qword[T1+index*8]
+|  mov reg,qword[T2+index*8]
 |.endmacro
 
 |.macro LdInt2Real,reg,index
 |  mov T1,qword [PROTO]
-|  mov T1,qword [T1+PrototypeLayout::kIntTableOffset]
-|  cvtsi2sd reg, dword [T1+index*4]
+|  mov T2,qword [T1+PrototypeLayout::kIntTableOffset]
+|  cvtsi2sd reg, dword [T2+index*4]
 |.endmacro
 
 |.macro StIntACC,reg
@@ -805,14 +806,14 @@ INTERPRETER_REGISTER_EXTERN_SYMBOL(PrintF)
 // load upvalue value into register
 |.macro LdUV,reg,index
 |  mov T1,qword [RUNTIME+RuntimeLayout::kCurClsOffset]
-|  mov T1,qword [T1+ClosureLayout::kUpValueOffset]
-|  mov reg, qword [T1+index*8]
+|  mov T2,qword [T1+ClosureLayout::kUpValueOffset]
+|  mov reg, qword [T2+index*8]
 |.endmacro
 
 |.macro StUV,index,reg
 |  mov T1,qword [RUNTIME+RuntimeLayout::kCurClsOffset]
-|  mov T1,qword [T1+ClosureLayout::kUpValueOffset]
-|  mov qword [T1+index*8], reg
+|  mov T2,qword [T1+ClosureLayout::kUpValueOffset]
+|  mov qword [T2+index*8], reg
 |.endmacro
 
 |.macro CheckNum,index,val,real_label,int_label
@@ -880,15 +881,15 @@ INTERPRETER_REGISTER_EXTERN_SYMBOL(PrintF)
 // It is painful to load a string into its Value format
 |.macro LdStrV,val,index
 |  mov T1 , qword [PROTO]
-|  mov T1 , qword [T1+PrototypeLayout::kStringTableOffset]
-|  mov T1 , qword [T1+index*8]
+|  mov T2 , qword [T1+PrototypeLayout::kStringTableOffset]
+|  mov T1 , qword [T2+index*8]
 |  StHeap val,T1
 |.endmacro
 
 |.macro LdStr,val,index
 |  mov T1 , qword [PROTO]
-|  mov T1 , qword [T1+PrototypeLayout::kStringTableOffset]
-|  mov val, qword [T1+index*8]
+|  mov T2 , qword [T1+PrototypeLayout::kStringTableOffset]
+|  mov val, qword [T2+index*8]
 |.endmacro
 
 // General macro to check a heap object is certain type
@@ -1995,8 +1996,8 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
      * ========================================================*/
     |.macro arith_vv_do_div
     |  shr RREG,32
-    |  shr LREG,32
     |  mov ARG3,RREGL
+    |  shr LREG,32
     |  mov eax,LREGL
     |.if 1
     |  test eax,eax
@@ -2010,14 +2011,14 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
     |.macro arith_vv,BC,instrI,setterI,instrR,setterR
     |=> BC:
     |  instr_E
-    |  mov LREG,qword [STK+ARG1F*8]
-    |  mov RREG,qword [STK+ARG2F*8]
 
-    // here we will do a type check and also promotion
+    // check the lhs to be integer or not
+    |  mov LREG,qword [STK+ARG1F*8]
     |  cmp LREGL,Value::FLAG_INTEGER
     |  jne >1
 
     | // int && xx
+    |  mov RREG,qword [STK+ARG2F*8]
     |  cmp RREGL,Value::FLAG_INTEGER
     |  jne >4
     // int && int
@@ -2037,6 +2038,7 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
     |  Dispatch
 
     |1:
+    |  mov RREG,qword [STK+ARG2F*8]
     |  cmp RREGL,Value::FLAG_REAL
     |  jnb ->InterpArithVV
 

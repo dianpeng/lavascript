@@ -118,7 +118,6 @@ bool PrimitiveComp( const char* source , const Value& primitive , int op ) {
 namespace lavascript {
 namespace interpreter {
 
-#if 0
 TEST(Interpreter,ArithXV) {
   PRIMITIVE_EQ(10,var a = 50; return 60-a;);
   PRIMITIVE_EQ(30,var a = 10; return 20+a;);
@@ -181,7 +180,6 @@ TEST(Interpreter,ArithPow) {
   PRIMITIVE_EQ(static_cast<double>(std::pow(2,4)),var a = 2; return a ^ 4.0;);
   PRIMITIVE_EQ(static_cast<double>(std::pow(2,4)),var a = 2.0; return a ^ 4.0;);
 }
-#endif
 
 TEST(Interpreter,CompXV) {
   // < or >
@@ -214,6 +212,64 @@ TEST(Interpreter,CompXV) {
   PRIMITIVE_EQ(true,var a = 2 ; return 3.0 != a; );
   PRIMITIVE_EQ(false,var a = 3; return 2.0 == a; );
 
+}
+
+
+TEST(Interpreter,CompVX) {
+  PRIMITIVE_EQ(true,var a = 4; return a > 2;);
+  PRIMITIVE_EQ(true,var a = 4.0; return a > 2.0;);
+  PRIMITIVE_EQ(true,var a = 4; return a > 2.0;);
+  PRIMITIVE_EQ(true,var a= 4.0; return a > 2; );
+  PRIMITIVE_EQ(false, var a= 2; return a > 4;);
+  PRIMITIVE_EQ(false, var a=2.0; return a > 4.0;);
+  PRIMITIVE_EQ(false, var a=2  ; return a > 4.0;);
+  PRIMITIVE_EQ(false, var a=2.0; return a > 4; );
+
+  PRIMITIVE_EQ(true,var a = 2; return a < 4; );
+  PRIMITIVE_EQ(true,var a =2.0; return a < 4.0;);
+  PRIMITIVE_EQ(true,var a =2.0; return a < 4; );
+  PRIMITIVE_EQ(true,var a = 2 ; return a <4.0;);
+  PRIMITIVE_EQ(false,var a = 4; return a < 2;);
+  PRIMITIVE_EQ(false,var a = 4.0; return a < 2.0;);
+  PRIMITIVE_EQ(false,var a = 4; return a < 2.0; );
+  PRIMITIVE_EQ(false,var a = 4.0; return a < 2; );
+
+  PRIMITIVE_EQ(true,var a = 4; return a >= 2;);
+  PRIMITIVE_EQ(true,var a = 4.0; return a >= 2.0;);
+  PRIMITIVE_EQ(true,var a = 4; return a >= 2.0;);
+  PRIMITIVE_EQ(true,var a= 4.0; return a >= 2; );
+  PRIMITIVE_EQ(false, var a= 2; return a >= 4;);
+  PRIMITIVE_EQ(false, var a=2.0; return a >= 4.0;);
+  PRIMITIVE_EQ(false, var a=2  ; return a >= 4.0;);
+  PRIMITIVE_EQ(false, var a=2.0; return a >= 4; );
+
+  PRIMITIVE_EQ(true,var a = 2; return a <= 4; );
+  PRIMITIVE_EQ(true,var a =2.0; return a <= 4.0;);
+  PRIMITIVE_EQ(true,var a =2.0; return a <= 4; );
+  PRIMITIVE_EQ(true,var a = 2 ; return a <= 4.0;);
+  PRIMITIVE_EQ(false,var a = 4; return a <= 2;);
+  PRIMITIVE_EQ(false,var a = 4.0; return a <= 2.0;);
+  PRIMITIVE_EQ(false,var a = 4; return a <= 2.0; );
+  PRIMITIVE_EQ(false,var a = 4.0; return a <= 2; );
+
+  PRIMITIVE_EQ(true,var a = 4; return a == 4;);
+  PRIMITIVE_EQ(true,var a = 4.0; return a == 4.0;);
+  PRIMITIVE_EQ(true,var a = 4; return a == 4.0;);
+  PRIMITIVE_EQ(true,var a= 4.0; return a == 4; );
+
+  PRIMITIVE_EQ(false, var a= 2; return a == 4;);
+  PRIMITIVE_EQ(false, var a=2.0; return a == 4.0;);
+  PRIMITIVE_EQ(false, var a=2  ; return a == 4.0;);
+  PRIMITIVE_EQ(false, var a=2.0; return a == 4; );
+
+  PRIMITIVE_EQ(true,var a = 2; return a != 4; );
+  PRIMITIVE_EQ(true,var a =2.0; return a != 4.0;);
+  PRIMITIVE_EQ(true,var a =2.0; return a != 4; );
+  PRIMITIVE_EQ(true,var a = 2 ; return a != 4.0;);
+  PRIMITIVE_EQ(false,var a = 4; return a != 4;);
+  PRIMITIVE_EQ(false,var a = 4.0; return a != 4.0;);
+  PRIMITIVE_EQ(false,var a = 4; return a != 4.0; );
+  PRIMITIVE_EQ(false,var a = 4.0; return a != 4; );
 }
 
 } // namespace lavascript

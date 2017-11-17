@@ -74,7 +74,6 @@ inline void* BufferOffset( void* buffer , std::size_t offset ) {
 
 bool StringToInt    ( const char* , int* );
 bool StringToReal   ( const char* , double* );
-bool StringToBoolean( const char* , bool* );
 
 /**
  * pretty print the real number. The issue with std::to_string is that

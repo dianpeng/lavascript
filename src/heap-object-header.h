@@ -31,7 +31,7 @@ const char* GetGCStateName( GCState );
   __( TYPE_PROTOTYPE, Prototype,"prototype")                          \
   __( TYPE_CLOSURE ,  Closure , "closure" )                           \
   __( TYPE_EXTENSION, Extension,"extension")                          \
-  __( TYPE_SCRIPT  ,  Script , "script"   )
+  __( TYPE_SCRIPT  ,  Script ,  "script"   )
 
 #define LAVASCRIPT_PRIMITIVE_TYPE_LIST(__)                            \
   __( TYPE_REAL    , Real    , "real"    )                            \

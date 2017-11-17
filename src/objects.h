@@ -141,10 +141,12 @@ class Value final {
   enum {
     TAG_REAL   = 0xfff8000000000000,                        // Real
     TAG_INTEGER= 0xfff9000000000000,                        // Integer
-    TAG_TRUE   = 0xfffa000000000000,                        // True
-    TAG_FALSE  = 0xfffa100000000000,                        // False
-    TAG_NULL   = 0xfffb000000000000,                        // Null
-    TAG_HEAP   = 0xfffc000000000000                         // Heap
+    TAG_HEAP   = 0xfffa000000000000,                        // Heap
+    TAG_TRUE   = 0xfffb000000000000,                        // True
+
+    // All false here
+    TAG_FALSE  = 0xfffb100000000000,                        // False
+    TAG_NULL   = 0xfffc000000000000                         // Null
   };
 
   // The flag that avoids the lower 32 bits . It is mainly used in
@@ -152,18 +154,26 @@ class Value final {
   enum {
     FLAG_REAL   = 0xfff80000,
     FLAG_INTEGER= 0xfff90000,
-    FLAG_TRUE   = 0xfffa0000,
-    FLAG_FALSE  = 0xfffa1000,
-    FLAG_NULL   = 0xfffb0000,
-    FLAG_HEAP   = 0xfffc    ,       // pointer is 48 bits , so we only test the upper 16 bits
+    FLAG_HEAP   = 0xfffa    ,       // pointer is 48 bits , so we only test the upper 16 bits
     FLAG_HEAP_UNMASK = ~FLAG_HEAP,  // used to extract pointer from assembly
+
+    FLAG_TRUE   = 0xfffb0000,
+    FLAG_FALSE  = 0xfffb1000,
+    FLAG_NULL   = 0xfffc0000,
+
     // reserved flag used by interpreter
     FLAG_1      = 0xfffd    ,
     FLAG_2      = 0xfffe
   };
 
+  // A flag used to help assembly interpreter to decide which value should be treated
+  // as *TRUE* regardless
   enum {
-    TAG_HEAP_STORE_MASK_HIGHER = 0xfffc0000,
+    FLAG_FALSECOND = FLAG_TRUE
+  };
+
+  enum {
+    TAG_HEAP_STORE_MASK_HIGHER = 0xfffa0000,
     TAG_HEAP_STORE_MASK_LOWER  = 0x00000000,
     TAG_HEAP_LOAD_MASK_HIGHER  = ~(TAG_HEAP_STORE_MASK_HIGHER),
     TAG_HEAP_LOAD_MASK_LOWER   = ~(TAG_HEAP_STORE_MASK_LOWER)
@@ -1233,13 +1243,19 @@ inline void Value::SetHeapObject( HeapObject** ptr ) {
 }
 
 inline ValueType Value::type() const {
-  if(IsTagHeap()) {
-    return (*heap_object())->type();
-  } else if(IsTagReal()) {
+  if(IsTagReal()) {
     return TYPE_REAL;
   } else {
     static const std::uint64_t kMask = 0x000f000000000000;
     static const std::uint32_t kShift= 48;
+    static const std::uint64_t kBase = 9;
+    // Order sensitive , if change other parts this needs to be changed
+    static const ValueType kFlags[] = {
+      TYPE_INTEGER,
+      SIZE_OF_VALUE_TYPES,
+      TYPE_BOOLEAN,
+      TYPE_NULL
+    };
 
     /**
      * NOTES:
@@ -1251,8 +1267,14 @@ inline ValueType Value::type() const {
      * chain. Branch may not be very expensive but expensive for inline
      * Be care for the TYPE_REAL which cannot be tested via raw_ flag
      */
-    return static_cast<ValueType>(
-        ((raw_ & kMask) >> kShift) - 8 + SIZE_OF_HEAP_OBJECT);
+    const std::size_t idx = (((raw_ & kMask) >> kShift) - kBase);
+    ValueType flag = kFlags[idx];
+    if(flag == SIZE_OF_VALUE_TYPES) {
+      lava_debug(NORMAL,lava_verify(IsHeapObject()););
+      return (*heap_object())->type();
+    } else {
+      return flag;
+    }
   }
 }
 

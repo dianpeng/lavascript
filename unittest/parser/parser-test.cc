@@ -198,7 +198,7 @@ TEST(Parser,ConstantFolding) {
   ConstExprCheck(true,a=boolean("true"););
   ConstExprCheck(true,a=boolean(1););
   ConstExprCheck(true,a=boolean(1.1););
-  ConstExprCheck(false,a=boolean("false"););
+  ConstExprCheck(true,a=boolean("false"););
   ConstExprCheck("1",a=string(1););
   ConstExprCheck("1.234",a=string(1.234););
   ConstExprCheck(1,a=len("a"););

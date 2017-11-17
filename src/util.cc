@@ -40,17 +40,6 @@ bool StringToReal( const char* source, double* output ) {
   return true;
 }
 
-bool StringToBoolean( const char* source , bool* output ) {
-  if(strcmp(source,"true") ==0) {
-    *output = true;
-  } else if(strcmp(source,"false") == 0) {
-    *output = false;
-  } else {
-    return false;
-  }
-  return true;
-}
-
 std::string PrettyPrintReal( double real ) {
   std::string result = std::to_string(real);
   /**

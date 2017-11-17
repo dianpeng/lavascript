@@ -75,32 +75,26 @@ inline bool Expression::IsLiteral() const {
 }
 
 inline bool Expression::ToBoolean( bool* output ) const {
-  switch(ekind) {
-    case EBOOLEAN: *output = bool_value; return true;
-    case ENULL: *output = false; return true;
-    case ECOMPLEX:
-      if(node->IsList() || node->IsObject()) {
-        *output = true;
-        return true;
-      }
-      else
-        return false;
-    default:
-      *output = true;
-      return true;
+  if(ekind == EBOOLEAN) {
+    *output = bool_value;
+    return true;
+  } else if(ekind == ECOMPLEX) {
+    *output = true;
+    return (node->IsList() || node->IsObject());
+  } else {
+    *output = true;
+    return true;
   }
 }
 
 inline bool Expression::AsBoolean( bool* output ) const {
   lava_verify( IsLiteral() );
-  switch(ekind) {
-    case EREAL:    *output = (real_value ? true : false); return true;
-    case EINTEGER: *output = (int_value ? true : false); return true;
-    case EBOOLEAN: *output = bool_value; return true;
-    case ESTRING: return ::lavascript::StringToBoolean( str_value->data(),
-                                                              output );
-    default: *output = false; return true;
+  if(ekind == EBOOLEAN) {
+    *output = bool_value;
+  } else {
+    *output = true;
   }
+  return true;
 }
 
 inline bool Expression::AsInteger( int* output ) const {
@@ -109,8 +103,7 @@ inline bool Expression::AsInteger( int* output ) const {
     case EREAL: *output = static_cast<int>(real_value); return true;
     case EINTEGER: *output = int_value; return true;
     case EBOOLEAN: *output = bool_value ? 1 : 0; return true;
-    case ESTRING: return ::lavascript::StringToInt( str_value->data() ,
-                                                          output );
+    case ESTRING: return ::lavascript::StringToInt( str_value->data() , output );
     default: return false;
   }
 }
@@ -121,8 +114,7 @@ inline bool Expression::AsReal( double* output ) const {
     case EREAL: *output = real_value; return true;
     case EINTEGER: *output = static_cast<double>(int_value); return true;
     case EBOOLEAN: *output = bool_value ? 1.0 : 0.0; return true;
-    case ESTRING: return ::lavascript::StringToReal( str_value->data() ,
-                                                           output );
+    case ESTRING: return ::lavascript::StringToReal( str_value->data() , output );
     default: return false;
   }
 }
@@ -469,7 +461,7 @@ bool ExpressionOptimizer::Optimize( ast::Unary* node , Expression* expr ) {
           expr->int_value = -a.int_value;
         } else {
           expr->ekind = EBOOLEAN;
-          expr->bool_value= a.int_value ? true : false;
+          expr->bool_value= false;
         }
         break;
       case EREAL:
@@ -478,7 +470,7 @@ bool ExpressionOptimizer::Optimize( ast::Unary* node , Expression* expr ) {
           expr->real_value = -a.real_value;
         } else {
           expr->ekind = EBOOLEAN;
-          expr->bool_value= a.real_value ? true : false;
+          expr->bool_value= false;
         }
         break;
       case EBOOLEAN:

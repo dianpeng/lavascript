@@ -167,8 +167,6 @@ class HeapObjectHeader : DoNotAllocateOnNormalHeap {
     set_high<1>(v);
   }
 
-  // These two functions doesn't test whether the HeapObjectType is a TYPE_STRING but
-  // assume it is a string
   bool IsSSO() const { return type() == TYPE_STRING && !(high<1>() & kLongStringMask); }
   bool IsLongString() const  { return type() == TYPE_STRING && (high<1>() & kLongStringMask); }
 

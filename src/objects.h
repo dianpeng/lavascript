@@ -140,30 +140,41 @@ class Value final {
   // NOTES: The following *ORDER* matters and also the *VALUE* matters.
   enum {
     TAG_REAL   = 0xfff8000000000000,                        // Real
-    TAG_INTEGER= 0xfff9000000000000,                        // Integer
-    TAG_HEAP   = 0xfffa000000000000,                        // Heap
-    TAG_TRUE   = 0xfffb000000000000,                        // True
+    TAG_INTEGER= 0xfff8100000000000,                        // Integer
+    TAG_TRUE   = 0xfff8200000000000,                        // True
+    TAG_HEAP   = 0xfff9000000000000,                        // Heap ( normal heap pointer )
+    /*
+    TAG_SSO    = 0xfffa000000000000,                        // SSO
+    TAG_LIST   = 0xfffb000000000000,                        // List
+    TAG_OBJECT = 0xfffc000000000000,                        // Object
+    */
+    TAG_FALSE  = 0xfffd000000000000,                        // False
+    TAG_NULL   = 0xfffd100000000000,                        // NULL
 
-    // All false here
-    TAG_FALSE  = 0xfffb100000000000,                        // False
-    TAG_NULL   = 0xfffc000000000000                         // Null
+    TAG_FLAGS  = 0xfffe000000000000                         // Used for internal flags
   };
 
   // The flag that avoids the lower 32 bits . It is mainly used in
   // assembly to set and test flag.
   enum {
     FLAG_REAL   = 0xfff80000,
-    FLAG_INTEGER= 0xfff90000,
-    FLAG_HEAP   = 0xfffa    ,       // pointer is 48 bits , so we only test the upper 16 bits
-    FLAG_HEAP_UNMASK = ~FLAG_HEAP,  // used to extract pointer from assembly
+    FLAG_INTEGER= 0xfff81000,
+    FLAG_TRUE   = 0xfff82000,
 
-    FLAG_TRUE   = 0xfffb0000,
-    FLAG_FALSE  = 0xfffb1000,
-    FLAG_NULL   = 0xfffc0000,
+    FLAG_HEAP   = 0xfff9   ,       // pointer is 48 bits , so we only test the upper 16 bits
+    FLAG_HEAP_UNMASK = ~FLAG_HEAP, // used to extract pointer from assembly
+    /*
+    FLAG_SSO    = 0xfffa    ,
+    FLAG_LIST   = 0xfffb    ,
+    FLAG_OBJECT = 0xfffc    ,   
+    */
+
+    FLAG_FALSE  = 0xfffd0000,
+    FLAG_NULL   = 0xfffd1000,
 
     // reserved flag used by interpreter
-    FLAG_1      = 0xfffd    ,
-    FLAG_2      = 0xfffe
+    FLAG_1      = 0xfffe0000,
+    FLAG_2      = 0xfffe1000
   };
 
   // A flag used to help assembly interpreter to decide which value should be treated
@@ -173,10 +184,10 @@ class Value final {
   };
 
   enum {
-    TAG_HEAP_STORE_MASK_HIGHER = 0xfffa0000,
+    TAG_HEAP_STORE_MASK_HIGHER = 0xfff90000,
     TAG_HEAP_STORE_MASK_LOWER  = 0x00000000,
-    TAG_HEAP_LOAD_MASK_HIGHER  = ~(TAG_HEAP_STORE_MASK_HIGHER),
-    TAG_HEAP_LOAD_MASK_LOWER   = ~(TAG_HEAP_STORE_MASK_LOWER)
+    TAG_HEAP_LOAD_MASK_HIGHER  = 0x0000ffff,
+    TAG_HEAP_LOAD_MASK_LOWER   = 0xffffffff
   };
 
  private:
@@ -230,7 +241,7 @@ class Value final {
   inline bool IsExtension() const;
   inline bool IsIterator() const;
 
-  // Getters --------------------------------------------
+  // Getters
   inline std::int32_t GetInteger() const;
   inline bool GetBoolean() const;
   inline double GetReal() const;
@@ -250,7 +261,7 @@ class Value final {
   template< typename T >
   inline Handle<T> GetHandle() const { return Handle<T>(GetHeapObject()); }
 
-  // Setters ---------------------------------------------
+  // Setters
   inline void SetInteger( std::uint32_t );
   inline void SetBoolean( bool );
   inline void SetReal   ( double );
@@ -1246,34 +1257,50 @@ inline ValueType Value::type() const {
   if(IsTagReal()) {
     return TYPE_REAL;
   } else {
+    /**
+     * The code here is extreamly sensitive since it is coded based on
+     * the order of the type and actual number literal of each type defined
+     * above.
+     *
+     * This function has some simple optimization to avoid too much comparison
+     * but it is of best efforts and not really importantant. This function should
+     * be avoided to use IsXXX test function to decide the type instead of calling
+     * *type()*.
+     */
     static const std::uint64_t kMask = 0x000f000000000000;
+    static const std::uint64_t kSMask= 0x0000f00000000000;
     static const std::uint32_t kShift= 48;
-    static const std::uint64_t kBase = 9;
+    static const std::uint32_t kSShift=44;
+    static const std::uint64_t kBase = 8;
     // Order sensitive , if change other parts this needs to be changed
     static const ValueType kFlags[] = {
-      TYPE_INTEGER,
-      SIZE_OF_VALUE_TYPES,
-      TYPE_BOOLEAN,
-      TYPE_NULL
+      SIZE_OF_VALUE_TYPES, // not used
+      SIZE_OF_VALUE_TYPES, // 1
+      TYPE_STRING,         // 2
+      TYPE_LIST,           // 3
+      TYPE_OBJECT,         // 4
+      SIZE_OF_VALUE_TYPES  // 5
     };
 
-    /**
-     * NOTES:
-     * Here I use a small trick to generate ValueType enumeration.
-     * The TAG_XXX are ordered same as PRIMITIVE_TYPE enumeration,
-     * except the TAG_TRUE/TAG_FALSE ,they share same 0xfffb prefix.
-     *
-     * The following code should be cheaper than a large if/else
-     * chain. Branch may not be very expensive but expensive for inline
-     * Be care for the TYPE_REAL which cannot be tested via raw_ flag
-     */
-    const std::size_t idx = (((raw_ & kMask) >> kShift) - kBase);
-    ValueType flag = kFlags[idx];
-    if(flag == SIZE_OF_VALUE_TYPES) {
-      lava_debug(NORMAL,lava_verify(IsHeapObject()););
-      return (*heap_object())->type();
+    static const ValueType kSFlags[] = {
+      SIZE_OF_VALUE_TYPES,
+      TYPE_INTEGER,
+      TYPE_BOOLEAN 
+    };
+    const std::size_t idx = ((raw_ & kMask) >> kShift) - kBase;
+    if(idx ==0) {
+      const std::size_t subidx = ((raw_ & kSMask) >> kSShift);
+      return kSFlags[subidx];
+    } else if(idx == 5) {
+      return IsTagNull() ? TYPE_NULL : TYPE_BOOLEAN;
     } else {
-      return flag;
+      ValueType flag = kFlags[idx];
+      if(flag == SIZE_OF_VALUE_TYPES) {
+        lava_debug(NORMAL,lava_verify(IsHeapObject()););
+        return (*heap_object())->type();
+      } else {
+        return flag;
+      }
     }
   }
 }

@@ -97,6 +97,8 @@ bool PrimitiveComp( const char* source , const Value& primitive , int op ) {
         case COMP_NE: return primitive.IsBoolean() && (primitive.GetBoolean() == ret.GetBoolean());
         default: lava_unreach("boolean cannot be compared!"); return false; // You cannot compare boolean
       }
+    } else if(ret.IsString()) {
+      return primitive.IsString() ? (*ret.GetString() == *primitive.GetString()) : false;
     } else {
       lava_unreachF("not primitive type at all %s|%s",ret.type_name(),primitive.type_name());
       return false;
@@ -270,6 +272,18 @@ TEST(Interpreter,CompVX) {
   PRIMITIVE_EQ(false,var a = 4.0; return a != 4.0;);
   PRIMITIVE_EQ(false,var a = 4; return a != 4.0; );
   PRIMITIVE_EQ(false,var a = 4.0; return a != 4; );
+}
+
+TEST(Interpreter,String) {
+  PRIMITIVE_EQ(true,var a = "a"; return a == "a"; );
+  PRIMITIVE_EQ(false,var a = "f"; return a == "a";);
+  PRIMITIVE_EQ(true,var a = "f" ; return a != "a";);
+  PRIMITIVE_EQ(false,var a = "a"; return a != "a";);
+
+  PRIMITIVE_EQ(true,var a = "a"; return "a" == a; );
+  PRIMITIVE_EQ(false,var a = "f"; return "a" == a;);
+  PRIMITIVE_EQ(true,var a = "f" ; return "a" != a;);
+  PRIMITIVE_EQ(false,var a = "a"; return "a" != a;);
 }
 
 } // namespace lavascript

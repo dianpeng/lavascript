@@ -535,16 +535,6 @@ static_assert( sizeof(IFrame) == 16 );
 |.define CFRAME,                STK-16
 |.define FRAMELEN,              16
 
-/** ------------------------------------------------------------
- *
- * NOTES: A notes on movzx/movsx instruction.
- *
- *        The movzx/movsx zero out or sign out the *whole* 64 bit
- *        register regardless the dest is a 32 bits or 64 bits
- *        register
- *
- * --------------------------------------------------------------*/
-
 // Instruction's argument
 |.define ARG1_8,                bl
 |.define ARG1_16,               bx
@@ -648,6 +638,19 @@ void PrintF( double v ) {
   lava_error("Value:%f",v);
 }
 INTERPRETER_REGISTER_EXTERN_SYMBOL(PrintF)
+
+void Print64( std::uint64_t a , std::uint64_t b ) {
+  lava_error("%" LAVA_FMTU64 ":%" LAVA_FMTU64,a,b);
+}
+INTERPRETER_REGISTER_EXTERN_SYMBOL(Print64)
+
+void PrintPtr( HeapObject** ptr ) {
+  if((*ptr)->IsString()) {
+    String* str = static_cast<String*>(*ptr);
+    lava_error("%s\n",str->ToStdString().c_str());
+  }
+}
+INTERPRETER_REGISTER_EXTERN_SYMBOL(PrintPtr)
 
 /* ---------------------------------------------------------------
  * dispatch table                                                |
@@ -812,22 +815,12 @@ INTERPRETER_REGISTER_EXTERN_SYMBOL(PrintF)
 |  mov qword [T2+index*8], reg
 |.endmacro
 
-|.macro CheckNum,index,val,real_label,int_label
-// TODO:: profile these 2 implementations
-|.if 1
-|  cmp dword[STK+index*8+4],Value::FLAG_REAL
-|  jb >real_label
-|  cmp dword[STK+index*8+4],Value::FLAG_INTEGER
-|  je >int_label
-|.else
-|  mov T1,val
-|  shr T1,32
-|  cmp T1L,Value::FLAG_REAL
-|  jb >real_label
-|  cmp T1L,Value::FLAG_INTEGER
-|  je >int_label
-|.endif
-|.endmacro
+// ----------------------------------------------
+// Heap value related stuff
+
+// This byte offset in little endian for type pattern inside of
+// heap object header
+#define HOH_TYPE_OFFSET 7
 
 // Check whether a Value is a HeapObject
 |.macro CheckHeap,val,fail_label
@@ -838,23 +831,16 @@ INTERPRETER_REGISTER_EXTERN_SYMBOL(PrintF)
 |.endmacro
 
 // Set a pointer into a register , this is really painful
-|.macro StHeap,reg,val
+|.macro StHeap,val
 
-|.if 1
-|  mov reg,Value::FLAG_HEAP
-|  shl reg,48
-|  or reg ,val
+|.if 0
+|  mov T1,Value::FLAG_HEAP
+|  shl T1,48
+|  or val,T1
 |.else
-|  mov reg,val
-|  or  reg,qword [->ValueHeapMaskStore]
+|  or  val,qword [->ValueHeapMaskStore]
 |.endif
 
-|.endmacro
-
-// Store a pointer into memory pointed by index
-|.macro StHeapMem,index,ptr
-|  mov qword[STK+index*8]  ,ptr
-|  mov word [STK+index*8+6],Value::FLAG_HEAP
 |.endmacro
 
 // Load a pointer from Value object , assume this object
@@ -871,15 +857,15 @@ INTERPRETER_REGISTER_EXTERN_SYMBOL(PrintF)
 |.endmacro
 
 |.macro DerefPtrFromV,v
-|  or v, qword [->ValueHeapLoadMask]
+|  and v, qword [->ValueHeapLoadMask]
 |.endmacro
 
 // It is painful to load a string into its Value format
 |.macro LdStrV,val,index
 |  mov T1 , qword [PROTO]
 |  mov T2 , qword [T1+PrototypeLayout::kStringTableOffset]
-|  mov T1 , qword [T2+index*8]
-|  StHeap val,T1
+|  mov val, qword [T2+index*8]
+|  StHeap val
 |.endmacro
 
 |.macro LdStr,val,index
@@ -890,12 +876,12 @@ INTERPRETER_REGISTER_EXTERN_SYMBOL(PrintF)
 
 // General macro to check a heap object is certain type
 |.macro CheckHeapPtrT,val,pattern,fail_label
-|  cmp byte [val-(HeapObjectHeader::kHeapObjectHeaderSize+6)], pattern
+|  cmp byte [val-HOH_TYPE_OFFSET], pattern
 |  jne >fail_label
 |.endmacro
 
 |.macro CheckHeapT,val,pattern,fail_label
-|  or val,qword [->ValueHeapMaskLoad]
+|  and val,qword [->ValueHeapMaskLoad]
 |  mov val, qword [val]
 |  CheckHeapPtrT val,pattern,fail_label
 |.endmacro
@@ -980,17 +966,6 @@ INTERPRETER_REGISTER_EXTERN_SYMBOL(PrintF)
   __(INTERP_COMPAREVV,InterpCompareVV)       \
   __(INTERP_COMPARESV,InterpCompareSV)       \
   __(INTERP_COMPAREVS,InterpCompareVS)       \
-  /* loading obj/list/cls */                 \
-  __(INTERP_LOADOBJ0 ,InterpLoadObj0)        \
-  __(INTERP_LOADOBJ1 ,InterpLoadObj1)        \
-  __(INTERP_NEWOBJ   ,InterpNewObj  )        \
-  __(INTERP_ADDOBJ   ,InterpAddObj  )        \
-  __(INTERP_LOADLIST0,InterpLoadList0)       \
-  __(INTERP_LOADLIST1,InterpLoadList1)       \
-  __(INTERP_LOADLIST2,InterpLoadList2)       \
-  __(INTERP_NEWLIST  ,InterpNewList  )       \
-  __(INTERP_ADDLIST  ,InterpAddList  )       \
-  __(INTERP_LOADCLS  ,InterpLoadCls  )       \
   /* unary */                                \
   __(INTERP_NEGATE,InterpNegate)             \
   __(INTERP_NOT,InterpNot)                   \
@@ -998,16 +973,14 @@ INTERPRETER_REGISTER_EXTERN_SYMBOL(PrintF)
   __(INTERP_PROPGET_NOTFOUND,InterpPropGetNotFound)      \
   __(INTERP_PROPGET_NOTOBJECT,InterpPropGetNotObject)    \
   __(INTERP_PROPGET,InterpPropGet)           \
-  __(INTERP_PROPSET,InterpPropSet)           \
   __(INTERP_IDXGETI,InterpIdxGetI)           \
   __(INTERP_IDXGET ,InterpIdxGet )           \
-  __(INTERP_IDXSET ,InterpIdxSet )           \
-  __(INTERP_GSET   ,InterpGGset  )           \
-  __(INTERP_GGET   ,InterpGGet   )           \
   /* ---- debug helper ---- */               \
   __(PRINT_OP,PrintOP)                       \
   __(PRINT2  ,Print2 )                       \
-  __(PRINTF  ,PrintF )
+  __(PRINT64 ,Print64)                       \
+  __(PRINTF  ,PrintF )                       \
+  __(PRINTPTR,PrintPtr)
 
 enum {
   INTERP_HELPER_DUMMY = SIZE_OF_BYTECODE,
@@ -1048,10 +1021,10 @@ void GenerateInterpMisc( BuildContext* bctx ) {
   // Align with cache line ???
   |.data
   |->ValueHeapMaskStore:
-  |.dword Value::TAG_HEAP_STORE_MASK_HIGHER,Value::TAG_HEAP_STORE_MASK_LOWER // 8bytes
+  |.dword Value::TAG_HEAP_STORE_MASK_LOWER,Value::TAG_HEAP_STORE_MASK_HIGHER // 8 bytes
 
   |->ValueHeapMaskLoad:
-  |.dword Value::TAG_HEAP_LOAD_MASK_HIGHER,Value::TAG_HEAP_LOAD_MASK_LOWER   // 8 bytes
+  |.dword Value::TAG_HEAP_LOAD_MASK_LOWER,Value::TAG_HEAP_LOAD_MASK_HIGHER // 8 bytes
 
   |->FlagTrueConst:
   |.dword Value::FLAG_TRUE // 4 bytes
@@ -1131,137 +1104,33 @@ void GenerateInterpMisc( BuildContext* bctx ) {
 /* ------------------------------------------
  * helper functions/routines generation     |
  * -----------------------------------------*/
+
+// ----------------------------------------
+// helper macros
+// ----------------------------------------
+|.macro ret2acc
+|  mov T1,rax
+|  shr T1,32
+|  cmp T1,VALUE_FAIL
+|  je ->InterpFail
+|  mov qword [ACC], rax
+|  Dispatch
+|.endmacro
+
+|.macro retbool
+|  test eax,eax
+|  je ->InterpFail
+|  Dispatch
+|.endmacro
+
+// saving the current PC into the Runtime object, this is
+// needed for GC to figure out the correct active register
+// layout during the GC marking phase
+|.macro savepc
+|  mov qword [RUNTIME+RuntimeLayout::kCurPCOffset], PC
+|.endmacro
+
 void GenerateHelper( BuildContext* bctx ) {
-  // ----------------------------------------
-  // helper macros
-  // ----------------------------------------
-  |.macro ret2acc
-  |  mov T1,rax
-  |  shr T1,32
-  |  cmp T1,VALUE_FAIL
-  |  je ->InterpFail
-  |  mov qword [ACC], rax
-  |  Dispatch
-  |.endmacro
-
-  |.macro retbool
-  |  test eax,eax
-  |  je ->InterpFail
-  |  Dispatch
-  |.endmacro
-
-  // saving the current PC into the Runtime object, this is
-  // needed for GC to figure out the correct active register
-  // layout during the GC marking phase
-  |.macro savepc
-  |  mov qword [RUNTIME+RuntimeLayout::kCurPCOffset], PC
-  |.endmacro
-
-  /* ----------------------------------------
-   * Load object/list/closure               |
-   * ---------------------------------------*/
-  |=> INTERP_LOADLIST0:
-  |->InterpLoadList0:
-  |  instr_F
-  |  savepc
-  |  mov CARG1,RUNTIME
-  |  lea CARG2,[STK+ARG1F*8]
-  |  fcall InterpreterDoLoadList0
-  |  retbool
-
-
-  |=> INTERP_LOADLIST1:
-  |->InterpLoadList1:
-  |  instr_E
-  |  savepc
-  |  mov CARG1, RUNTIME
-  |  lea CARG2, [STK+ARG1F*8]
-  |  mov CARG2, qword [STK+ARG2F*8]
-  |  fcall InterpreterDoLoadList1
-  |  retbool
-
-  |=> INTERP_LOADLIST2:
-  |->InterpLoadList2:
-  |  instr_D
-  |  savepc
-  |  mov CARG1, RUNTIME
-  |  lea CARG2, [STK+ARG1F*8]
-  |  mov CARG3, qword [STK+ARG2F*8]
-  |  mov CARG4, qword [STK+ARG3F*8]
-  |  fcall InterpreterDoLoadList2
-  |  retbool
-
-  |=> INTERP_NEWLIST:
-  |->InterpNewList:
-  |  instr_B
-  |  savepc
-  |  mov CARG1, RUNTIME
-  |  lea CARG2, [STK+ARG1F*8]
-  |  mov CARG3L, ARG2
-  |  fcall InterpreterDoNewList
-  |  retbool
-
-  |=> INTERP_ADDLIST:
-  |->InterpAddList:
-  |  instr_E
-  |  savepc
-  |  mov CARG1, RUNTIME
-  |  lea CARG2, [STK+ARG1F*8]
-  |  mov CARG3, qword [STK+ARG2F*8]
-  |  fcall InterpreterDoAddList
-  |  retbool
-
-
-  |=> INTERP_LOADOBJ0:
-  |->InterpLoadObj0:
-  |  instr_F
-  |  savepc
-  |  mov CARG1, RUNTIME
-  |  lea CARG2, [STK+ARG1F*8]
-  |  fcall InterpreterDoLoadObj0
-  |  retbool
-
-  |=> INTERP_LOADOBJ1:
-  |->InterpLoadObj1:
-  |  instr_D
-  |  savepc
-  |  mov CARG1, RUNTIME
-  |  lea CARG2, [STK+ARG1F*8]
-  |  mov CARG3, qword [STK+ARG2F*8]
-  |  mov CARG4, qword [STK+ARG3F*8]
-  |  fcall InterpreterDoLoadObj1
-  |  retbool
-
-  |=> INTERP_NEWOBJ:
-  |->InterpNewObj:
-  |  instr_B
-  |  savepc
-  |  mov CARG1, RUNTIME
-  |  lea CARG2, [STK+ARG1F*8]
-  |  mov CARG3L, ARG2
-  |  fcall InterpreterDoNewObj
-  |  retbool
-
-  |=> INTERP_ADDOBJ:
-  |->InterpAddObj:
-  |  instr_D
-  |  savepc
-  |  mov CARG1, RUNTIME
-  |  lea CARG2, [STK+ARG1F*8]
-  |  mov CARG3, qword [STK+ARG2F*8]
-  |  mov CARG4, qword [STK+ARG3F*8]
-  |  fcall InterpreterDoAddObj
-  |  retbool
-
-  |=> INTERP_LOADCLS:
-  |->InterpLoadCls:
-  |  instr_G
-  |  savepc
-  |  mov CARG1, RUNTIME
-  |  mov CARG2, STK
-  |  mov CARG3L, ARG1
-  |  fcall InterpreterDoLoadCls
-  |  retbool
 
   /* ----------------------------------------
    * InterpArithXXX                         |
@@ -1488,27 +1357,6 @@ void GenerateHelper( BuildContext* bctx ) {
   |  fcall InterpreterPropGetNotObject
   |  jmp ->InterpFail
 
-  |=> INTERP_PROPSET:
-  |->InterpPropSet:
-  |  instr_B
-  |  savepc
-  |  mov CARG1, RUNTIME
-  |  mov CARG2, qword [ACC]
-  |  mov CARG3, qword [STK+ARG1F*8]
-  |  LdStr CARG4, ARG2F
-  |  fcall InterpreterDoPropSet
-  |  retbool
-
-  |=> INTERP_IDXGET:
-  |->InterpIdxGet:
-  |  instr_E
-  |  savepc
-  |  mov CARG1, RUNTIME
-  |  mov CARG2, qword [STK+ARG1F*8]
-  |  mov CARG3, qword [STK+ARG2F*8]
-  |  fcall InterpreterDoIdxGet
-  |  retbool
-
   |=> INTERP_IDXGETI:
   |->InterpIdxGetI:
   |  savepc
@@ -1516,26 +1364,6 @@ void GenerateHelper( BuildContext* bctx ) {
   |  mov CARG2, qword [STK+ARG1F*8]
   |  LdInt CARG3L,ARG2F
   |  fcall InterpreterDoIdxGetI
-  |  retbool
-
-  |=> INTERP_GSET:
-  |->InterpGSet:
-  |  instr_C
-  |  savepc
-  |  mov CARG1, RUNTIME
-  |  LdStr CARG2,ARG1F
-  |  mov CARG3, qword [STK+ARG2F*8]
-  |  fcall InterpreterDoGSet
-  |  retbool
-
-  |=> INTERP_GGET:
-  |->InterpGGet:
-  |  instr_B
-  |  savepc
-  |  mov CARG1, RUNTIME
-  |  lea CARG2, [STK+ARG1F*8]
-  |  LdStr CARG3, ARG2F
-  |  fcall InterpreterDoGGet
   |  retbool
 }
 
@@ -1662,43 +1490,105 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
     // ------------------------------------------------*/
     case BC_LOADLIST0:
       |=> bc:
-      |  jmp ->InterpLoadList0
+      |  instr_F
+      |  savepc
+      |  mov CARG1,RUNTIME
+      |  lea CARG2,[STK+ARG1F*8]
+      |  fcall InterpreterDoLoadList0
+      |  retbool
       break;
     case BC_LOADLIST1:
       |=>bc:
-      |  jmp ->InterpLoadList1
+      |  instr_E
+      |  savepc
+      |  mov CARG1, RUNTIME
+      |  lea CARG2, [STK+ARG1F*8]
+      |  mov CARG3, qword [STK+ARG2F*8]
+      |  fcall InterpreterDoLoadList1
+      |  retbool
       break;
     case BC_LOADLIST2:
       |=>bc:
-      |  jmp ->InterpLoadList2
+      |  instr_D
+      |  savepc
+      |  mov CARG1, RUNTIME
+      |  lea CARG2, [STK+ARG1F*8]
+      |  mov CARG3, qword [STK+ARG2F*8]
+      |  mov CARG4, qword [STK+ARG3F*8]
+      |  fcall InterpreterDoLoadList2
+      |  retbool
       break;
     case BC_NEWLIST:
       |=>bc:
       |  jmp ->InterpNewList
+      |  instr_B
+      |  savepc
+      |  mov CARG1, RUNTIME
+      |  lea CARG2, [STK+ARG1F*8]
+      |  mov CARG3L, ARG2
+      |  fcall InterpreterDoNewList
+      |  retbool
       break;
     case BC_ADDLIST:
       |=>bc:
-      |  jmp ->InterpAddList
+      |  instr_E
+      |  savepc
+      |  mov CARG1, RUNTIME
+      |  lea CARG2, [STK+ARG1F*8]
+      |  mov CARG3, qword [STK+ARG2F*8]
+      |  fcall InterpreterDoAddList
+      |  retbool
       break;
     case BC_LOADOBJ0:
       |=>bc:
-      |  jmp ->InterpLoadObj0
+      |  instr_F
+      |  savepc
+      |  mov CARG1, RUNTIME
+      |  lea CARG2, [STK+ARG1F*8]
+      |  fcall InterpreterDoLoadObj0
+      |  retbool
       break;
     case BC_LOADOBJ1:
       |=>bc:
-      |  jmp ->InterpLoadObj1
+      |  instr_D
+      |  savepc
+      |  mov CARG1, RUNTIME
+      |  lea CARG2, [STK+ARG1F*8]
+      |  mov CARG3, qword [STK+ARG2F*8]
+      |  mov CARG4, qword [STK+ARG3F*8]
+      |  fcall InterpreterDoLoadObj1
+      |  retbool
       break;
     case BC_NEWOBJ:
       |=>bc:
-      |  jmp ->InterpNewObj
+      |  instr_B
+      |  savepc
+      |  mov CARG1, RUNTIME
+      |  lea CARG2, [STK+ARG1F*8]
+      |  mov CARG3L, ARG2
+      |  fcall InterpreterDoNewObj
+      |  retbool
       break;
     case BC_ADDOBJ:
       |=>bc:
-      |  jmp ->InterpAddObj
+      |  instr_D
+      |  savepc
+      |  mov CARG1, RUNTIME
+      |  lea CARG2, [STK+ARG1F*8]
+      |  mov CARG3, qword [STK+ARG2F*8]
+      |  mov CARG4, qword [STK+ARG3F*8]
+      |  fcall InterpreterDoAddObj
+      |  retbool
       break;
     case BC_LOADCLS:
       |=>bc:
-      |  jmp ->InterpLoadCls
+      |  instr_G
+      |  savepc
+      |  mov CARG1,RUNTIME
+      |  mov CARG2, STK
+      |  mov CARG3L, ARG1
+      |  fcall InterpreterDoLoadCls
+      |  retbool
       break;
 
     /** =====================================================
@@ -2485,7 +2375,7 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
     |  shr RREG,32
     |  mov ARG1, Value::FLAG_TRUE
     |  cmp LREGL,RREGL
-    |  instr_int ARG1,dowrd [->FlagFalseConst]
+    |  instr_int ARG1,dword [->FlagFalseConst]
     |  mov dword [STK+ACCFIDX], ARG1
     |  jmp >7
     |.else
@@ -2608,20 +2498,20 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
 
     // For string equality comparison , we inline SSO comparison since
     // they are just checking the address are equal or not
-    |.macro comp_sv,BC,SlowPath,instr,false_jmp
-    |  instr_B
+    |.macro eq_sv,BC,SlowPath,instr,false_jmp
+    |  instr_C
     |  LdStr LREG,ARG1F
     |  mov RREG  ,qword [STK+ARG2F*8]
     |  CheckSSO LREG,1
     |  CheckSSOV RREG,1
 
     |.if USE_CMOV_COMP
-    |  mov T1L, Value::FLAG_FALSE
-    |  test LREG,RREG
-    |  instr T1L,dword [->FlagTrueConst]
-    |  mov dword [STK+ACCFIDX],T1L
+    |  mov ARG1, Value::FLAG_FALSE
+    |  cmp LREG,RREG
+    |  instr ARG1,dword [->FlagTrueConst]
+    |  mov dword [STK+ACCFIDX],ARG1
     |.else
-    |  test LREG,RREG
+    |  cmp LREG,RREG
     |  false_jmp >8
     |  mov dword [STK+ACCFIDX],Value::FLAG_TRUE
     |  jmp >7
@@ -2636,20 +2526,20 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
     |  jmp ->SlowPath
     |.endmacro
 
-    |.macro comp_vs,BC,SlowPath,instr,false_jmp
-    |  instr_C
+    |.macro eq_vs,BC,SlowPath,instr,false_jmp
+    |  instr_B
     |  mov LREG, qword [STK+ARG1F*8]
     |  LdStr RREG,ARG2F
     |  CheckSSOV LREG,1
     |  CheckSSO  RREG,1
 
     |.if USE_CMOV_COMP
-    |  mov T1L, Value::FLAG_FALSE
-    |  test LREG,RREG
-    |  instr T1L,dword [->FlagTrueConst]
-    |  mov dword [STK+ACCFIDX],T1L
+    |  mov ARG1, Value::FLAG_FALSE
+    |  cmp LREG,RREG
+    |  instr ARG1,dword [->FlagTrueConst]
+    |  mov dword [STK+ACCFIDX],ARG1
     |.else
-    |  test LREG,RREG
+    |  cmp LREG,RREG
     |  false_jmp >8
     |  mov dword [STK+ACCFIDX],Value::FLAG_TRUE
     |  jmp >7
@@ -2666,19 +2556,19 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
 
     case BC_EQSV:
       |=> bc:
-      |  comp_sv BC_EQSV,InterpCompareSV,cmove,jne
+      |  eq_sv BC_EQSV,InterpCompareSV,cmove,jne
       break;
     case BC_EQVS:
       |=> bc:
-      |  comp_vs BC_EQVS,InterpCompareVS,cmove,jne
+      |  eq_vs BC_EQVS,InterpCompareVS,cmove,jne
       break;
     case BC_NESV:
       |=>bc:
-      |  comp_sv BC_NESV,InterpCompareSV,cmovne,je
+      |  eq_sv BC_NESV,InterpCompareSV,cmovne,je
       break;
     case BC_NEVS:
       |=>bc:
-      |  comp_vs BC_NEVS,InterpCompareVS,cmovne,je
+      |  eq_vs BC_NEVS,InterpCompareVS,cmovne,je
       break;
 
     /* -------------------------------------------------
@@ -2803,17 +2693,9 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
     |.macro find_sso_pos,output
     |  mov T2,LREG
 
-    || if(MapLayout::kCapacityOffset) {
-    |    mov T2L, dword [T2+MapLayout::kCapacityOffset]
-    || } else {
-    |    mov T2L, dword [T2]
-    || }
+    |  mov T2L, dword [T2+MapLayout::kCapacityOffset]
 
-    || if(SSOLayout::kHashOffset) {
-    |    mov T1L, dword [RREG+SSOLayout::kHashOffset]
-    || } else {
-    |    mov T1L, dword [RREG]
-    || }
+    |  mov T1L, dword [RREG+SSOLayout::kHashOffset]
 
     // T2L capacity , T1L size
     |  sub T2L,1
@@ -2900,16 +2782,36 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
     case BC_PROPSET:
       // propset is directly yielded back to C++ functions
       |=>bc:
-      |  jmp ->InterpPropSet
+      |  instr_B
+      |  savepc
+      |  mov CARG1, RUNTIME
+      |  mov CARG2, qword [ACC]
+      |  mov CARG3, qword [STK+ARG1F*8]
+      |  LdStr CARG4,ARG2F
+      |  fcall InterpreterDoPropSet
+      |  retbool
       break;
 
     case BC_IDXGET:
       |=>bc:
-      |  jmp ->InterpIdxGet
+      |  instr_E
+      |  savepc
+      |  mov CARG1, RUNTIME
+      |  mov CARG2, qword [STK+ARG1F*8]
+      |  mov CARG3, qword [STK+ARG2F*8]
+      |  fcall InterpreterDoIdxGet
+      |  retbool
       break;
     case BC_IDXSET:
       |=>bc:
-      |  jmp ->InterpIdxSet
+      |  instr_D
+      |  savepc
+      |  mov CARG1, RUNTIME
+      |  mov CARG2, qword [STK+ARG1F*8]
+      |  mov CARG3, qword [STK+ARG2F*8]
+      |  mov CARG4, qword [STK+ARG3F*8]
+      |  fcall InterpreterDoIdxSet
+      |  retbool
       break;
 
     // IDXGETI means using integer index to fetch a value from object
@@ -2978,12 +2880,24 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
 
     case BC_GSET:
       |=>bc:
-      |  jmp ->InterpGSet
+      |  instr_C
+      |  savepc
+      |  mov CARG1, RUNTIME
+      |  LdStr CARG2, ARG1F
+      |  mov CARG3, qword [STK+ARG2F*8]
+      |  fcall InterpreterDoGSet
+      |  retbool
       break;
 
     case BC_GGET:
       |=>bc:
-      |  jmp ->InterpGGet
+      |  instr_B
+      |  savepc
+      |  mov CARG1, RUNTIME
+      |  lea CARG2, [STK+ARG1F*8]
+      |  LdStr CARG3, ARG2F
+      |  fcall InterpreterDoGGet
+      |  retbool
       break;
 
     default:
@@ -3069,7 +2983,9 @@ std::shared_ptr<AssemblyInterpreter> AssemblyInterpreter::Generate() {
   bctx.tag = DASM_GROWABLE_PC_SIZE;
   dasm_growpc(&(bctx.dasm_ctx), DASM_GROWABLE_PC_SIZE );
 
+  // ----------------------------------------------------------
   // Order matters, it may change profile of our icache
+  // ----------------------------------------------------------
 
   // build the helper
   GenerateHelper(&bctx);

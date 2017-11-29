@@ -119,21 +119,10 @@ INTERPRETER_REGISTER_EXTERN_SYMBOL(pow)
  * Interpreter C++ Part Function Implementation
  *
  * -------------------------------------------------------------------------*/
-
-// ----------------------------------------------------------------------------
-// Type Conversion
-// ----------------------------------------------------------------------------
-inline Value InterpreterToBoolean  ( Runtime* sandbox , Value val ) {
-  (void)sandbox;
-  (void)val;
-  {
-    Value r;
-    SetValueFlag( &r, VALUE_FAIL );
-    return r;
-  }
+inline Bytecode PrevOpcode( Runtime* sandbox ) {
+  std::uint32_t pbc = sandbox->cur_pc[-1];
+  return static_cast<Bytecode>( pbc & 0xff );
 }
-INTERPRETER_REGISTER_EXTERN_SYMBOL(InterpreterToBoolean)
-
 
 // --------------------------------------------------------------------------
 // Arithmetic Helper
@@ -445,6 +434,18 @@ bool InterpreterDoGSet       ( Runtime* sandbox , String** key , Value value ) {
 INTERPRETER_REGISTER_EXTERN_SYMBOL(InterpreterDoGSet)
 
 
+// ----------------------------------------------------------------------------
+// Loop
+// ----------------------------------------------------------------------------
+bool InterpreterForInc      ( Runtime* sandbox , Value* lhs , const Value& rhs ) {
+  (void)sandbox;
+  (void)lhs;
+  (void)rhs;
+  return false;
+}
+INTERPRETER_REGISTER_EXTERN_SYMBOL(InterpreterForInc)
+
+
 /* ---------------------------------------------------------------------
  *
  * Implementation of AssemblyIntepreter
@@ -462,8 +463,8 @@ INTERPRETER_REGISTER_EXTERN_SYMBOL(InterpreterDoGSet)
  * ------------------------------------------------------------------*/
 |.define CHECK_DIV_BY_ZERO
 |.define CHECK_NUMBER_MEMORY
-|.define TRACE_OP
-|.define USE_CMOV_COMP
+|.define TRACE_OP, 0
+|.define USE_CMOV_COMP,0
 |.define USE_CMOV_NEG
 
 /* -------------------------------------------------------------------
@@ -514,6 +515,7 @@ inline bool CheckAddress( std::uintptr_t addr ) {
 |.define STK,                   r14   // callee saved
 |.define ACCIDX,                2040
 |.define ACCFIDX,               2044
+|.define ACCFHIDX,              2046  // for heap flag
 |.define ACC,                   STK+ACCIDX
 
 // Dispatch table pointer
@@ -2261,7 +2263,7 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
     |  mov dword [STK+ACCFIDX], Value::FLAG_TRUE
     |  jmp >7
     |8:
-    |  mov dword [STK+ACCFDIX], Value::FLAG_FALSE
+    |  mov dword [STK+ACCFIDX], Value::FLAG_FALSE
     |  jmp >7
     |.endif
 
@@ -2363,24 +2365,21 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
     |  instr_E
 
     |  mov LREG, qword [STK+ARG1F*8]
-    |  cmp LREGL, Value::FLAG_INTEGER
+    |  cmp dword [STK+ARG1F*8+4], Value::FLAG_INTEGER
     |  jne >1 // int && xx
 
     |  mov RREG, qword [STK+ARG2F*8]
-    |  cmp RREGL, Value::FLAG_INTEGER
+    |  cmp dword [STK+ARG2F*8+4], Value::FLAG_INTEGER
     |  jne >2 // int && xx
 
     |.if USE_CMOV_COMP
-    |  shr LREG,32
-    |  shr RREG,32
-    |  mov ARG1, Value::FLAG_TRUE
+    |  mov ARG1, Value::FLAG_FALSE
     |  cmp LREGL,RREGL
-    |  instr_int ARG1,dword [->FlagFalseConst]
+    |  instr_int ARG1,dword [->FlagTrueConst]
     |  mov dword [STK+ACCFIDX], ARG1
     |  jmp >7
     |.else
-    |  shr LREG,32
-    |  cmp LREGL, dword [STK+ARG2F*8]
+    |  cmp LREGL, RREGL
     |  jmp_int >8
     |  mov dword [STK+ACCFIDX], Value::FLAG_TRUE
     |  jmp >7
@@ -2391,33 +2390,31 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
 
     |1:
     |  mov RREG, qword [STK+ARG2F*8]
-    |  cmp LREGL, Value::FLAG_REAL
+    |  cmp dword [STK+ARG1F*8+4], Value::FLAG_REAL
     |  jnb ->InterpCompareVV
 
     //  real && xx
-    |  cmp RREGL, Value::FLAG_REAL
+    |  cmp dword [STK+ARG2F*8+4], Value::FLAG_REAL
     |  jb >3
     |  cmp RREGL, Value::FLAG_INTEGER
     |  jne ->InterpCompareVV
     // promotion real && int
     |  movd xmm0,LREG
-    |  shr RREG,32
     |  cvtsi2sd xmm1,RREGL
     |  jmp >3
 
     |2:
-    |  cmp RREGL, Value::FLAG_REAL
+    |  cmp dword [STK+ARG2F*8+4], Value::FLAG_REAL
     |  jnb ->InterpCompareVV
     // promotion int && real
-    |  shr LREG,32
     |  cvtsi2sd xmm0,LREGL
     |  movd xmm1, RREGL
 
     |3: // real && real
     |.if USE_CMOV_COMP
-    |  mov ARG1, Value::FLAG_TRUE
+    |  mov ARG1, Value::FLAG_FALSE
     |  ucomisd xmm0,xmm1
-    |  instr_real ARG1,dword [->FlagFalseConst]
+    |  instr_real ARG1,dword [->FlagTrueConst]
     |  mov dword [STK+ACCFIDX], ARG1
     |.else
     |  ucomisd xmm0,xmm1
@@ -2594,7 +2591,7 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
       |  cmp dword [STK+ARG1F*8+4], Value::FLAG_REAL
       |  jnb ->InterpNegate
 
-      |  movsd, xmm0, qword [STK+ARG1F*8+4]
+      |  movsd, xmm0, qword [STK+ARG1F*8]
       |  LdRConst_sign xmm1
       |  xorpd xmm0, xmm1
       |  movsd qword [STK+ARG1F*8], xmm0
@@ -2604,14 +2601,14 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
     case BC_NOT:
       |=> bc:
       |  instr_F
-      // we arrange our type based on the fact that before
-      // FLAG_TRUE/FLAG_FALSECOND are type that should be
-      // always evaluated to be *true* and rest to be always
-      // *false*
       |  mov ARG3, Value::FLAG_FALSE
+      // check if the value is a heap object
+      |  cmp word [STK+ARG1F*8+6], Value::FLAG_HEAP
+      |  je >1
       |  cmp dword [STK+ARG1F*8+4], Value::FLAG_FALSECOND
-      |  cmovc ARG3, dword [->FlagTrueConst]
-      |  mov dword [STK+ACCFIDX],ARG3
+      |  cmova ARG3, dword [->FlagTrueConst]
+      |1:
+      |  mov dword [STK+ARG1F*8+4], ARG3
       |  Dispatch
       break;
 
@@ -2628,8 +2625,11 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
     case BC_JMPT:
       |=>bc:
       |  instr_B
+      |  cmp word  [STK+ARG1F*8+6], Value::FLAG_HEAP
+      |  je >2
       |  cmp dword [STK+ARG1F*8+4], Value::FLAG_FALSECOND
-      |  jc >1
+      |  ja >1
+      |2:
       |  branch_to ARG2F,ARG3F
       |1:  // fallthrough
       |  Dispatch
@@ -2638,9 +2638,10 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
     case BC_JMPF:
       |=>bc:
       |  instr_B
+      |  cmp word  [STK+ARG1F*8+6], Value::FLAG_HEAP
+      |  je >2
       |  cmp dword [STK+ARG1F*8+4], Value::FLAG_FALSECOND
-      |  jnc >1
-      |1:
+      |  jbe >2
       |  branch_to ARG2F,ARG3F
       |2: // fallthrough
       |  Dispatch
@@ -2649,8 +2650,10 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
     case BC_AND:
       |=>bc:
       |  instr_G
+      |  cmp word  [STK+ACCFHIDX], Value::FLAG_HEAP
+      |  je >1
       |  cmp dword [STK+ACCFIDX], Value::FLAG_FALSECOND
-      |  jnc >1
+      |  jbe >1
       |  branch_to ARG1F,ARG3F
       |1: // fallthrough
       |  Dispatch
@@ -2659,8 +2662,11 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
     case BC_OR:
       |=>bc:
       |  instr_G
+      |  cmp word  [STK+ACCFHIDX], Value::FLAG_HEAP
+      |  je >2
       |  cmp dword [STK+ACCFIDX], Value::FLAG_FALSECOND
-      |  jc >1
+      |  ja >1
+      |2:
       |  branch_to ARG1F,ARG3F
       |1: // fallthrough
       |  Dispatch
@@ -2676,7 +2682,6 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
     // ----------------------------------------------------------
     // Property/Upvalue/Global
     // ---------------------------------------------------------*/
-    static_assert( sizeof(Map::Entry) == 24 );
 
     // A better way to implement property get/set is via IC (inline cache)
     // but currently we don't have IC states at bytecode level and we will
@@ -2900,6 +2905,104 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
       |  retbool
       break;
 
+    /* ========================================================
+     * Loop instructions
+     * =======================================================*/
+    case BC_FSTART:
+      |=>bc:
+      |  instr_B
+      // must be boolean flag here
+      |  cmp dword [STK+ACCFIDX], Value::FLAG_FALSE
+      |  je >1
+      |2:
+      |  Dispatch
+      |1:
+      |  branch_to ARG2F,ARG3F
+      |  jmp >2
+      break;
+
+    case BC_FEND:
+      |=>bc:
+      |  instr_G
+      |  cmp dword [STK+ACCFIDX], Value::FLAG_FALSE
+      |  je >1
+      |  branch_to ARG1F,ARG3F
+      |1:
+      |  Dispatch
+      break;
+
+    case BC_FORINC:
+      |=>bc:
+      // We still need to support none numeric type.
+      // But we inline situation for numeric type right
+      // after the label
+      |  instr_E
+      |  cmp dword [STK+ARG1F*8+4], Value::FLAG_INTEGER
+      |  jne >1
+
+      // int && xx
+      |  cmp dword [STK+ARG2F*8+4], Value::FLAG_INTEGER
+      |  je >2
+
+      // try real
+      |  cmp dword [STK+ARG2F*8+4], Value::FLAG_REAL
+      |  jnb >7
+      // promotion of real number
+      |  cvtsi2sd xmm0, dword [STK+ARG1F*8]
+      |  addsd xmm0, qword [STK+ARG2F*8]
+      |  movsd qword [STK+ARG1F*8], xmm0
+      |  jmp >9
+
+      // int && int
+      |2:
+      |  mov ARG3 , dword [STK+ARG2F*8]
+      |  add dword [STK+ARG1F*8] , ARG3
+      |9:
+      |  Dispatch
+
+      |1:
+      |  cmp dword [STK+ARG1F*8+4], Value::FLAG_REAL
+      |  jnb >7
+      // real && xx
+      |  cmp dword [STK+ARG2F*8+4], Value::FLAG_REAL
+      |  jnb >3
+      // real && real
+      |  movsd xmm0, qword [STK+ARG1F*8]
+      |  addsd xmm0, qword [STK+ARG2F*8]
+      |  movsd qword [STK+ARG1F*8],xmm0
+      |  jmp <9
+      |3:
+      // check whether RHS is a integer
+      |  cmp dword [STK+ARG2F*8+4], Value::FLAG_INTEGER
+      |  jne >7
+      |  cvtsi2sd xmm1, dword [STK+ARG2F*8]
+      |  movsd xmm0, qword [STK+ARG1F*8]
+      |  addsd xmm0, xmm1
+      |  movsd qword [STK+ARG1F*8], xmm0
+      |  jmp <9
+
+      |7:
+      // Fallback case since we cannot handle the stuff here
+      |  mov CARG1,RUNTIME
+      |  lea CARG2,[STK+ARG1F*8]
+      |  mov CARG3,qword [STK+ARG2F*8]
+      |  fcall InterpreterForInc
+      |  retbool
+      break;
+
+    case BC_FEVRSTART:
+      |=>bc:
+      |  instr_X
+      |  Dispatch
+      break;
+
+    case BC_FEVREND:
+      |=>bc:
+      |  instr_G
+      |  branch_to ARG1F,ARG3F
+      |  Dispatch
+      break;
+
     default:
       |=> bc:
       |  Break
@@ -3117,9 +3220,7 @@ bool AssemblyInterpreter::Instance::Run( Context* context , const Handle<Script>
                                                             std::string* error,
                                                             Value* rval ) {
 
-  Runtime* rt = context->gc()->GetInterpreterRuntime(script.ref(),
-                                                     globals.ref(),
-                                                      error);
+  Runtime* rt = context->gc()->GetInterpreterRuntime(script.ref(), globals.ref(), error);
   // Entry of our assembly interpreter
   Main m = reinterpret_cast<Main>(interp_->interp_entry_);
 

@@ -197,9 +197,8 @@ void LexicalScope::Init( const ast::Chunk& node ) {
         LocalVar(name,func_scope()->GetLocalVarRegister(*name).index()));
   }
 
-  if(node.has_iterator) {
-    iterator_.Set(func_scope()->GetScopeBoundIterator());
-  }
+  for( std::size_t i = 0 ; i < node.iterator_count ; ++i )
+    loop_iter_.push_back(func_scope()->GetScopeBoundIterator());
 }
 
 void LexicalScope::Init( const ast::Function& node ) {
@@ -235,7 +234,8 @@ LexicalScope::LexicalScope( Generator* gen , bool loop ):
   break_list_(),
   continue_list_(),
   func_scope_(gen->func_scope()),
-  iterator_  () {
+  loop_iter_ () ,
+  loop_iter_avail_(0) {
 
   lava_debug(NORMAL,
       if(!func_scope()->lexical_scope_list_.empty()) {
@@ -256,9 +256,7 @@ LexicalScope::~LexicalScope() {
   func_scope()->lexical_scope_list_.pop_back();
   generator()->lexical_scope_ = parent()->IsFunctionScope() ? NULL :
                                                               parent()->AsLexicalScope();
-  if(iterator_.Has()) {
-    func_scope()->FreeScopeBoundIterator();
-  }
+  func_scope()->FreeScopeBoundIterator(loop_iter_.size());
 }
 
 LexicalScope* LexicalScope::GetNearestLoopScope() {
@@ -379,8 +377,8 @@ Register FunctionScope::GetScopeBoundIterator() {
   return iterators_[next_iterator_++];
 }
 
-void FunctionScope::FreeScopeBoundIterator() {
-  --next_iterator_;
+void FunctionScope::FreeScopeBoundIterator( std::size_t cnt ) {
+  next_iterator_ -= cnt;
 }
 
 std::uint8_t kBinSpecialOpLookupTable [][3][3] = {
@@ -1241,6 +1239,14 @@ bool Generator::VisitExpressionWithHint( const ast::Node& node , const Register&
   return true;
 }
 
+bool Generator::VisitExpressionWithHint( const ast::Node& node , const Register& hint ,
+                                                                 ScopedRegister* output ) {
+  Register reg;
+  if(!VisitExpressionWithHint(node,hint,&reg)) return false;
+  output->Reset(reg);
+  return true;
+}
+
 /* ---------------------------------
  * Statement                       |
  * --------------------------------*/
@@ -1422,33 +1428,11 @@ bool Generator::Visit( const ast::If& node ) {
   return true;
 }
 
-bool Generator::VisitForCondition( const ast::For& node ,
-                                   const Register& var  ) {
-  ExprResult cond;
-  if(!VisitExpression(*node._2nd,&cond)) return false;
-  switch(cond.kind()) {
-    case KINT:
-      SEMIT(ltvi,node._2nd->sci(),var.index(),cond.ref());
-      break;
-    case KREAL:
-      SEMIT(ltvr,node._2nd->sci(),var.index(),cond.ref());
-      break;
-    case KSTR:
-      SEMIT(ltvs,node._2nd->sci(),var.index(),cond.ref());
-    default:
-      {
-        ScopedRegister r(this,ExprResultToRegister(node.sci(),cond));
-        if(!r) return false;
-        SEMIT(ltvv,node._2nd->sci(),var.index(),r.Get().index());
-      }
-      break;
-  }
-  return true;
-}
-
 bool Generator::Visit( const ast::For& node ) {
   BytecodeBuilder::Label forward;
   Register induct_reg;
+  Register second_reg;
+  Register third_reg;
 
   lava_debug(NORMAL,
       if(!node._1st) {
@@ -1459,19 +1443,47 @@ bool Generator::Visit( const ast::For& node ) {
       }
     );
 
+  // handle 1st expression , induction variable
+  if(node._1st) {
+    if(!Visit(*node._1st,&induct_reg))
+      return false;
+  }
+
+  // handle 2nd expression, condition variable
   if(node._2nd) {
-    lava_verify(node._1st);
-    if(!Visit(*node._1st,&induct_reg)) return false;
-    if(!VisitForCondition(node,induct_reg)) return false;
+    ScopedRegister result(this);
+    second_reg = lexical_scope()->GetLoopCondIterator();
+    if(!VisitExpressionWithHint(*node._2nd,second_reg,&result))
+      return false;
+    if(result.Get() != second_reg) {
+      SEMIT(move,node._2nd->sci(),second_reg.index(),result.Get().index());
+    }
+  }
+
+  // handle 3rd/step variable
+  if(node._3rd) {
+    ScopedRegister result(this);
+    third_reg = lexical_scope()->GetLoopStepIterator();
+    if(!VisitExpressionWithHint(*node._3rd,third_reg,&result))
+      return false;
+    if(third_reg != result.Get()) {
+      SEMIT(move,node._3rd->sci(),third_reg.index(),result.Get().index());
+    }
+  }
+
+  // loop condition comparison , basically a loop inversion
+  if(node._2nd) {
+    SEMIT(ltvv,node._2nd->sci(),induct_reg.index(),second_reg.index());
+  }
+
+  // mark the start of the loop
+  if(node._2nd) {
+    lava_debug(NORMAL,lava_verify(node._1st););
     forward = func_scope()->bb()->fstart( func_scope()->ra()->base(), node.sci() ,
                                                                       induct_reg.index() );
   } else {
-    if(node._1st) {
-      if(!Visit(*node._1st,&induct_reg)) return false;
-    } else {
-      lava_debug(NORMAL,lava_verify(!node._3rd););
-    }
-    SEMIT(fevrstart,node.sci()); // Mark for JIT
+    lava_debug(NORMAL,if(!node._1st) lava_verify(!node._3rd););
+    SEMIT(fevrstart,node.sci());
   }
 
   /* ------------------------------------------
@@ -1492,13 +1504,10 @@ bool Generator::Visit( const ast::For& node ) {
 
     // Generate loop step
     if(node._3rd) {
-      ScopedRegister r(this);
-      if(!VisitExpression(*node._3rd,&r)) return false;
-
       // step the loop induction variable's register. NOTES, we use forinc
       // instead of addvv since addvv requires 2 bytecodes to do a step
       // operation. forinc will move register back to where it is
-      SEMIT(forinc,node._3rd->sci(),induct_reg.index(),r.Get().index());
+      SEMIT(forinc,node._3rd->sci(),induct_reg.index(),third_reg.index());
     }
 
     /**
@@ -1506,7 +1515,7 @@ bool Generator::Visit( const ast::For& node ) {
      * we have a simple loop inversion for the for loop
      */
     if(node._2nd) {
-      if(!VisitForCondition(node,induct_reg)) return false;
+      SEMIT(ltvv,node._2nd->sci(),induct_reg.index(),second_reg.index());
 
       // Jump back to the loop header
       SEMIT(fend,node.sci(),header);
@@ -1529,7 +1538,7 @@ bool Generator::Visit( const ast::For& node ) {
 
 bool Generator::Visit( const ast::ForEach& node ) {
   // Get the iterator register
-  Register itr_reg(lexical_scope()->GetIterator());
+  Register itr_reg(lexical_scope()->GetLoopVarIterator());
 
   // Evaluate the interator initial value
   ScopedRegister init_reg(this);

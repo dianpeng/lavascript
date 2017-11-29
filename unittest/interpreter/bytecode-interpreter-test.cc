@@ -5,6 +5,8 @@
 #include <src/parser/parser.h>
 #include <src/parser/ast/ast.h>
 #include <src/trace.h>
+#include <src/os.h>
+
 #include <gtest/gtest.h>
 #include <cassert>
 #include <iostream>
@@ -38,7 +40,7 @@ bool Compile( Context* context ,const char* source ,
   return true;
 }
 
-static const bool kShowBytecode = false;
+static const bool kShowBytecode = true;
 
 enum { COMP_LE , COMP_LT , COMP_GT , COMP_GE , COMP_EQ , COMP_NE };
 
@@ -52,6 +54,44 @@ template < typename T > bool PrimitiveComp( const T& a1 , const T& a2 , int op )
     case COMP_NE : return a1 != a2;
     default: lava_unreach(""); return false;
   }
+}
+
+bool Bench( const char* source ) {
+  // Generate assembler everytime, this is kind of slow but nothing hurts
+  std::shared_ptr<lavascript::interpreter::AssemblyInterpreter>
+    interp( lavascript::interpreter::AssemblyInterpreter::Generate() );
+  lava_verify(interp);
+  lavascript::interpreter::AssemblyInterpreter::Instance ins(interp);
+
+  Context ctx;
+  std::string error;
+  std::string script(source);
+  ScriptBuilder sb("a",script);
+  lava_verify(Compile(&ctx,script.c_str(),&sb,&error));
+
+  if(kShowBytecode) {
+    DumpWriter dw;
+    sb.Dump(&dw);
+  }
+
+  Handle<Script> scp( Script::New(ctx.gc(),&ctx,sb) );
+  Handle<Object> obj( Object::New(ctx.gc()) );
+  Value ret;
+  bool r;
+
+  {
+    static const std::size_t kTimes = 100;
+    std::uint64_t start = ::lavascript::OS::NowInMicroSeconds();
+    for ( std::size_t i = 0 ; i < kTimes ; ++i ) {
+      r = ins.Run(&ctx,scp,obj,&error,&ret);
+    }
+    std::uint64_t end   = ::lavascript::OS::NowInMicroSeconds();
+    if(r) {
+      std::cerr<<"Benchmark result:"<<(end-start)/kTimes<<'\n';
+    }
+  }
+  (void)ret;
+  return r;
 }
 
 bool PrimitiveComp( const char* source , const Value& primitive , int op ) {
@@ -114,12 +154,16 @@ bool PrimitiveComp( const char* source , const Value& primitive , int op ) {
 #define PRIMITIVE_NE(VALUE,...) \
   ASSERT_TRUE(PrimitiveComp(#__VA_ARGS__,::lavascript::Value(VALUE),COMP_NE))
 
+#define BENCHMARK(...) \
+  ASSERT_TRUE(Bench(#__VA_ARGS__))
+
 
 } // namespace
 
 namespace lavascript {
 namespace interpreter {
 
+#if 0
 TEST(Interpreter,ArithXV) {
   PRIMITIVE_EQ(10,var a = 50; return 60-a;);
   PRIMITIVE_EQ(30,var a = 10; return 20+a;);
@@ -274,7 +318,7 @@ TEST(Interpreter,CompVX) {
   PRIMITIVE_EQ(false,var a = 4.0; return a != 4; );
 }
 
-TEST(Interpreter,String) {
+TEST(Interpreter,SSOEQ) {
   PRIMITIVE_EQ(true,var a = "a"; return a == "a"; );
   PRIMITIVE_EQ(false,var a = "f"; return a == "a";);
   PRIMITIVE_EQ(true,var a = "f" ; return a != "a";);
@@ -285,6 +329,50 @@ TEST(Interpreter,String) {
   PRIMITIVE_EQ(true,var a = "f" ; return "a" != a;);
   PRIMITIVE_EQ(false,var a = "a"; return "a" != a;);
 }
+
+TEST(Interpreter,Neg) {
+  PRIMITIVE_EQ(-1,var a = 1; return -a;);
+  PRIMITIVE_EQ(-1.0,var a = 1.0; return -a;);
+}
+
+TEST(Interpreter,Not) {
+  PRIMITIVE_EQ(true,var a = false; return !a;);
+  PRIMITIVE_EQ(false,var a = true; return !a;);
+  PRIMITIVE_EQ(true, var a = null; return !a;);
+  PRIMITIVE_EQ(false,var a = "a"; return !a;);
+  PRIMITIVE_EQ(false,var a = 0; return !a;);
+  PRIMITIVE_EQ(false, var a = 1.0; return !a;);
+}
+
+TEST(Interpreter,Logic) {
+  PRIMITIVE_EQ(false,var a = true; var b = false; return a && b;);
+  PRIMITIVE_EQ(true,var a = true; var b = true; return a && b;);
+  PRIMITIVE_EQ(false,var a = false;var b= null; return a && b;);
+  PRIMITIVE_EQ(,var a = null; var b = true; return a&&b;);
+  PRIMITIVE_EQ(true,var a = 0; return a && true; );
+  PRIMITIVE_EQ(false,var a = 1.0; return a && false; );
+
+  PRIMITIVE_EQ(true,var a = false; return a || true; );
+  PRIMITIVE_EQ(false,var a = false; return a || false; );
+  PRIMITIVE_EQ(0, var a = 0; return a || false; );
+  PRIMITIVE_EQ(2.0,var a = 2.0; return a || false; );
+  PRIMITIVE_EQ(1, var a = 1; return false || a; );
+  PRIMITIVE_EQ(2.0,var a = 2.0; return false || a; );
+}
+
+TEST(Interpreter,SimpleLoop) {
+  PRIMITIVE_EQ(10,var a = 0; for( var i = 0.0 ; 10.0 ; 1.0 ) { a = a + 1; } return a;);
+  PRIMITIVE_EQ(10,var a = 0; for( var i = 0 ; 10 ; 1 ) { a = a + 1; } return a;);
+  PRIMITIVE_EQ(10,var a = 0; for( var i = 0 ; 10 ; 1.0 ) { a = a + 1; } return a;);
+  PRIMITIVE_EQ(10,var a = 0; for( var i = 0.0 ; 10 ; 1 ) { a = a + 1; } return a;);
+  PRIMITIVE_EQ(10,var a = 0; for( var i = 0 ; 10.0 ; 1 ) { a = a + 1; } return a;);
+}
+#endif
+
+TEST(Interpreter,SimpleLoopBench) {
+  BENCHMARK(var a = 0; for( var i = 0 ; 1000000; 1 ) { } return a;);
+}
+
 
 } // namespace lavascript
 } // namespace interpreter

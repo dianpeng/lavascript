@@ -166,7 +166,7 @@ class Value final {
     /*
     FLAG_SSO    = 0xfffa    ,
     FLAG_LIST   = 0xfffb    ,
-    FLAG_OBJECT = 0xfffc    ,   
+    FLAG_OBJECT = 0xfffc    ,
     */
 
     FLAG_FALSE  = 0xfffd0000,
@@ -1078,6 +1078,27 @@ struct ClosureLayout {
 
 class Extension : public HeapObject {
  public:
+   // Arithmetic handler for extension.
+   virtual bool Add( const Value& , const Value& , Value* , std::string* );
+   virtual bool Sub( const Value& , const Value& , Value* , std::string* );
+   virtual bool Mul( const Value& , const Value& , Value* , std::string* );
+   virtual bool Div( const Value& , const Value& , Value* , std::string* );
+   virtual bool Mod( const Value& , const Value& , Value* , std::string* );
+   virtual bool Pow( const Value& , const Value& , Value* , std::string* );
+   // Comparison handler for extension
+   virtual bool Lt ( const Value& , const Value& , Value* , std::string* );
+   virtual bool Le ( const Value& , const Value& , Value* , std::string* );
+   virtual bool Gt ( const Value& , const Value& , Value* , std::string* );
+   virtual bool Ge ( const Value& , const Value& , Value* , std::string* );
+   virtual bool Eq ( const Value& , const Value& , Value* , std::string* );
+   virtual bool Ne ( const Value& , const Value& , Value* , std::string* );
+   // Accessor
+   virtual bool GetIndex( const Value& , Value* , std::string* ) const;
+   virtual bool GetProp ( const Value& , Value* , std::string* ) const;
+   virtual bool SetIndex( const Value& , const Value& , std::string* ) const;
+   virtual bool SetProp ( const Value& , const Value& , std::string* ) const;
+   // Iterator
+   // Call
 };
 
 /**
@@ -1285,7 +1306,7 @@ inline ValueType Value::type() const {
     static const ValueType kSFlags[] = {
       SIZE_OF_VALUE_TYPES,
       TYPE_INTEGER,
-      TYPE_BOOLEAN 
+      TYPE_BOOLEAN
     };
     const std::size_t idx = ((raw_ & kMask) >> kShift) - kBase;
     if(idx ==0) {

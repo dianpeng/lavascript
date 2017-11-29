@@ -388,17 +388,15 @@ struct Chunk : public Node {
   zone::Vector<Node*>* body;
   zone::Vector<Variable*>* local_vars;     // All the local variable definition , includes
                                            // those defined inside of the for/foreach stmt
-  bool has_iterator;                       // Indicate whether this scope has iterator
-                                           // introduced. As long as there is at least
-                                           // one foreach statement, then we have a iterator
+  std::size_t iterator_count;              // Maximum iterator count, at most will be 3
 
   Chunk( size_t sp , size_t ep , zone::Vector<Node*>* b ,
                                  zone::Vector<Variable*>* lv ,
-                                 bool hi ):
+                                 std::size_t itr_count ):
     Node(CHUNK,sp,ep),
     body(b),
     local_vars(lv),
-    has_iterator(hi)
+    iterator_count(itr_count)
   {}
 };
 

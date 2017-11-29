@@ -93,7 +93,7 @@ class AstFactory {
 
   inline Chunk* NewChunk( size_t , size_t , ::lavascript::zone::Vector<Node*>* ,
                                             ::lavascript::zone::Vector<Variable*>*,
-                                            bool );
+                                            std::size_t );
 
   inline Function* NewFunction( size_t , size_t , Variable* ,
                                                   ::lavascript::zone::Vector<Variable*>*,
@@ -272,8 +272,8 @@ inline Return* AstFactory::NewReturn( size_t start , size_t end , Node* e ) {
 inline Chunk* AstFactory::NewChunk( size_t start , size_t end ,
     ::lavascript::zone::Vector<Node*>* b ,
     ::lavascript::zone::Vector<Variable*>* lv ,
-    bool has_iterator ) {
-  return new (zone_) Chunk(start,end,b,lv,has_iterator);
+    std::size_t itr_count ) {
+  return new (zone_) Chunk(start,end,b,lv,itr_count);
 }
 
 inline Function* AstFactory::NewFunction( size_t start , size_t end ,

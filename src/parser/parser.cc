@@ -729,19 +729,20 @@ void Parser::AddLocVarContextVar( ast::Variable* v ) {
   lctx_->local_vars->Add(zone_,v);
 }
 
-void Parser::AddLocVarContextIter() {
+void Parser::AddLocVarContextIter( std::size_t cnt ) {
   lava_verify( lctx_ );
-  lctx_->iterator_count++;
+  lctx_->iterator_count += cnt;
 }
 
-bool Parser::AddChunkStmt( ast::Node* stmt , Vector<ast::Variable*>* lv ) {
+std::size_t Parser::AddChunkStmt( ast::Node* stmt , Vector<ast::Variable*>* lv ) {
   /**
    * Sort out all the local variable declaration and put them
    * into the local_vars list. The code generator will first
    * reserve the needed register for those local variable to
    * maintain register allocation in order
    */
-  bool has_iterator = false;
+  std::size_t ret = 0;
+
   if(stmt->IsVar()) {
     lv->Add(zone_,stmt->AsVar()->var);
     AddLocVarContextVar(stmt->AsVar()->var);
@@ -751,12 +752,22 @@ bool Parser::AddChunkStmt( ast::Node* stmt , Vector<ast::Variable*>* lv ) {
       lv->Add(zone_,v->var);
       AddLocVarContextVar(v->var);
     }
+
+    // Figure out how much reserved iterator needs to be in this chunk
+    // for this loop. We reserve loop condition and step variable to
+    // have very simple loop bytecode.
+    {
+      std::size_t cnt = 0;
+      if(stmt->AsFor()->_2nd) cnt++;
+      if(stmt->AsFor()->_3rd) cnt++;
+      if(cnt > ret) ret = cnt;
+    }
   } else if(stmt->IsForEach()) {
     lv->Add(zone_,stmt->AsForEach()->var);
-    has_iterator = true;
+    if(!ret) ret = 0;
   }
 
-  return has_iterator;
+  return ret;
 }
 
 ast::Chunk* Parser::ParseChunk() {
@@ -766,21 +777,22 @@ ast::Chunk* Parser::ParseChunk() {
 
   Vector<ast::Node*>* ck = Vector<ast::Node*>::New(zone_);
   Vector<ast::Variable*>* lv = Vector<ast::Variable*>::New(zone_);
-  bool has_iterator = false;
 
   if(lexer_.Next().token == Token::kRBra) {
     lexer_.Next(); // Eat '}'
     return ast_factory_.NewChunk( expr_start , lexer_.lexeme().end ,
                                                                ck ,
                                                                lv ,
-                                                               has_iterator );
+                                                               0 );
   } else {
+    std::size_t cnt = 0;
     do {
       ast::Node* stmt = ParseStatement();
       if(!stmt) return NULL;
-      has_iterator = AddChunkStmt(stmt,lv);
-      ck->Add(zone_,stmt);
+      std::size_t n = AddChunkStmt(stmt,lv);
+      if(cnt <n) cnt = n;
 
+      ck->Add(zone_,stmt);
     } while( lexer_.lexeme().token != Token::kEof &&
              lexer_.lexeme().token != Token::kRBra );
 
@@ -793,9 +805,9 @@ ast::Chunk* Parser::ParseChunk() {
     lexer_.Next(); // Skip the last }
 
     // Add iterator to loc var context if we have iterator
-    if( has_iterator ) AddLocVarContextIter();
+    AddLocVarContextIter(cnt);
 
-    return ast_factory_.NewChunk(expr_start,expr_end,ck,lv,has_iterator);
+    return ast_factory_.NewChunk(expr_start,expr_end,ck,lv,cnt);
   }
 }
 
@@ -807,13 +819,13 @@ ast::Chunk* Parser::ParseSingleStatementOrChunk() {
     ast::Node* stmt = ParseStatement();
     if(!stmt) return NULL;
     Vector<ast::Variable*>* lv = Vector<ast::Variable*>::New(zone_);
-    bool has_iterator = AddChunkStmt(stmt,lv);
+    std::size_t cnt = AddChunkStmt(stmt,lv);
     ck->Add(zone_,stmt);
 
     // Add iterator to loc var context if we have iterator
-    if( has_iterator ) AddLocVarContextIter();
+    AddLocVarContextIter(cnt);
 
-    return ast_factory_.NewChunk(stmt->start,stmt->end,ck,lv,has_iterator);
+    return ast_factory_.NewChunk(stmt->start,stmt->end,ck,lv,cnt);
   }
 }
 
@@ -947,7 +959,7 @@ ast::Root* Parser::Parse() {
   size_t expr_start = lexer_.lexeme().start;
   Vector<ast::Node*>* main_body = Vector<ast::Node*>::New(zone_);
   Vector<ast::Variable*>* lv = Vector<ast::Variable*>::New(zone_);
-  bool has_iterator = false;
+  std::size_t cnt = 0;
 
   LocVarContextAdder lctx_adder(this);
 
@@ -955,16 +967,17 @@ ast::Root* Parser::Parse() {
     ast::Node* stmt = ParseStatement();
     if(!stmt) return NULL;
     main_body->Add(zone_,stmt);
-    has_iterator = AddChunkStmt(stmt,lv);
+    std::size_t n = AddChunkStmt(stmt,lv);
+    if( cnt < n ) cnt = n;
   }
 
   // Add iterator to loc var context if we have iterator
-  if( has_iterator ) AddLocVarContextIter();
+  AddLocVarContextIter(cnt);
 
   return ast_factory_.NewRoot(expr_start, lexer_.lexeme().start,
       ast_factory_.NewChunk(expr_start, lexer_.lexeme().start,main_body,
                                                               lv,
-                                                              has_iterator),
+                                                              cnt),
       lctx_);
 }
 

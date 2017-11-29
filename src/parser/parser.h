@@ -58,7 +58,7 @@ class Parser {
   /** Chunk and Statement **/
   ast::Chunk* ParseSingleStatementOrChunk();
   ast::Chunk* ParseChunk();
-  bool AddChunkStmt( ast::Node* , ::lavascript::zone::Vector<ast::Variable*>* );
+  std::size_t AddChunkStmt( ast::Node* , ::lavascript::zone::Vector<ast::Variable*>* );
 
   /** Function definition */
   ast::Function* ParseFunction();
@@ -68,7 +68,7 @@ class Parser {
                              const ::lavascript::zone::String& ) const;
   // helper function for mutating current loc var context object
   void AddLocVarContextVar ( ast::Variable* );
-  void AddLocVarContextIter();
+  void AddLocVarContextIter( std::size_t cnt );
 
  private:
   void Error(const char* , ...);

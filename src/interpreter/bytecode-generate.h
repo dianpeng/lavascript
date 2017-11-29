@@ -220,10 +220,21 @@ class LexicalScope : public Scope {
 
   inline Optional<Register> GetLocalVar( const zone::String& );
 
-  // Get a loop variable in current scope and it *must* be in this loop.
-  Register GetIterator() const {
-    lava_debug(NORMAL,lava_verify(iterator_.Has()););
-    return iterator_.Get();
+  // Loop bounded iterator
+  Register GetLoopVarIterator() {
+    lava_debug(NORMAL,lava_verify(loop_iter_avail_ < loop_iter_.size()););
+    lava_debug(NORMAL,lava_verify(loop_iter_[loop_iter_avail_].Has()););
+    Register r(loop_iter_[loop_iter_avail_].Get());
+    ++loop_iter_avail_;
+    return r;
+  }
+
+  Register GetLoopCondIterator() {
+    return GetLoopVarIterator();
+  }
+
+  Register GetLoopStepIterator() {
+    return GetLoopVarIterator();
   }
 
   // Size of variables defined in *this* scope
@@ -281,7 +292,8 @@ class LexicalScope : public Scope {
   FunctionScope* func_scope_;
 
   // Iterator that is used for the loops right inside of this loops
-  Optional<Register> iterator_;
+  std::vector<Optional<Register>> loop_iter_;
+  std::size_t loop_iter_avail_;
 
   friend class FunctionScope;
 
@@ -344,7 +356,7 @@ class FunctionScope : public Scope {
 
   // get next iterator register mapping
   Register GetScopeBoundIterator();
-  void FreeScopeBoundIterator   ();
+  void FreeScopeBoundIterator   ( std::size_t cnt );
 
  private:
   // Bytecode builder for this Function
@@ -583,7 +595,7 @@ class Generator {
   bool VisitPrefixAssign( const ast::Assign& );
   bool Visit( const ast::Call& );
   bool Visit( const ast::If& );
-  bool VisitForCondition( const ast::For& , const Register& var );
+
   bool Visit( const ast::For& );
   bool Visit( const ast::ForEach& );
   bool Visit( const ast::Break& );

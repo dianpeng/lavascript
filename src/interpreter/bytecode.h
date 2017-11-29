@@ -25,6 +25,10 @@
  * | OP |  A           | xxxx |             type G
  * ----------------------------
  * | OP | xxxxxxxxxxxxxxxxxxxx|             type X
+ * ---------------------------
+ * | OP | A    |  B    |  C   |             type H
+ * ----------------------------
+ * |           D              |
  * ----------------------------
  * | OP | A    |  B    |  C   |             type N
  * ----------------------------
@@ -139,8 +143,8 @@ static const std::size_t kAllocatableBytecodeRegisterSize = 255;
   __(B,NEVS  , nevs  , _ , REG , SREF ) \
   __(E,NEVV  , nevv  , _ , REG , REG)   \
   /* unary */ \
-  __(F,NEGATE, negate, REG,_,_) \
-  __(F,NOT   , not_  , REG,_,_) \
+  __(E,NEGATE, negate, REG,REG,_) \
+  __(E,NOT   , not_  , REG,REG,_) \
   /* branch */ \
   __(B,JMPT , jmpt ,REG,PC,_   ) \
   __(B,JMPF , jmpf ,REG,PC,_   ) \
@@ -186,8 +190,8 @@ static const std::size_t kAllocatableBytecodeRegisterSize = 255;
   __(X,RET  , ret  , _ , _ , _ )                \
   /* forloop tag */ \
   __(B,FSTART,fstart,REG,PC,_)     \
-  __(G,FEND  ,fend  ,PC,_,_)       \
-  __(E,FORINC ,forinc ,REG,REG,_)  \
+  __(H,FEND1,fend1 ,REG,REG,REG)   \
+  __(H,FEND2,fend2 ,REG,REG,REG)   \
   __(X,FEVRSTART,fevrstart,_,_,_)  \
   __(G,FEVREND,fevrend,PC,_,_ )    \
   __(E,INEW,inew,REG,REG,_)        \
@@ -218,6 +222,7 @@ enum BytecodeType {
   TYPE_E,
   TYPE_F,
   TYPE_G,
+  TYPE_H,
   TYPE_N,
   TYPE_X,
 

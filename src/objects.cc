@@ -194,6 +194,8 @@ void Prototype::Dump( DumpWriter* writer , const std::string& source ) const {
     std::size_t count = 0;
     std::uint8_t a1_8, a2_8, a3_8;
     std::uint16_t a1_16 , a2_16;
+    std::uint32_t a4;
+
     for( ; bi.HasNext() ; bi.Next() ) {
       const SourceCodeInfo& sci = GetSci(count);
       switch(bi.type()) {
@@ -230,6 +232,13 @@ void Prototype::Dump( DumpWriter* writer , const std::string& source ) const {
         case interpreter::TYPE_G:
           bi.GetOperand(&a1_16);
           writer->WriteL("%zu. %s %d  | %d <%d,%d> %s",count,bi.opcode_name(),a1_16,
+              GetRegOffset(count),
+              sci.start, sci.end,GetSourceSnippetInOneLine(source,sci).c_str());
+          break;
+        case interpreter::TYPE_H:
+          bi.GetOperand(&a1_8,&a2_8,&a3_8,&a4);
+          writer->WriteL("%zu. %s %d %d %d %d | %d <%d,%d> %s",count,bi.opcode_name(),
+              a1_8,a2_8,a3_8,a4,
               GetRegOffset(count),
               sci.start, sci.end,GetSourceSnippetInOneLine(source,sci).c_str());
           break;

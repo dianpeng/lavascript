@@ -69,11 +69,11 @@ TEST(BytecodeBuilder,AllBytecodeType) {
   // TYPE_F
   {
     BytecodeBuilder bb;
-    bb.not_(0,SourceCodeInfo(),1);
+    bb.load0(0,SourceCodeInfo(),1);
     BytecodeIterator itr(bb.GetIterator());
     ASSERT_TRUE(itr.HasNext());
     ASSERT_TRUE(itr.type() == TYPE_F);
-    ASSERT_EQ(BC_NOT,itr.opcode()) << itr.opcode_name();
+    ASSERT_EQ(BC_LOAD0,itr.opcode()) << itr.opcode_name();
     std::uint8_t a1;
     itr.GetOperand(&a1);
     ASSERT_EQ(1,a1);
@@ -82,11 +82,11 @@ TEST(BytecodeBuilder,AllBytecodeType) {
   // TYPE_G
   {
     BytecodeBuilder bb;
-    bb.fend(0,SourceCodeInfo(),65534);
+    bb.and_(0,SourceCodeInfo(),65534);
     BytecodeIterator itr(bb.GetIterator());
     ASSERT_TRUE(itr.HasNext());
     ASSERT_TRUE(itr.type() == TYPE_G);
-    ASSERT_EQ(BC_FEND,itr.opcode()) << itr.opcode_name();
+    ASSERT_EQ(BC_AND,itr.opcode()) << itr.opcode_name();
     std::uint16_t a1;
     itr.GetOperand(&a1);
     ASSERT_EQ(65534,a1);
@@ -106,6 +106,7 @@ TEST(BytecodeBuilder,Coverage) {
 #define GE_E(FUNC) bb.FUNC(0,SourceCodeInfo(),1,2)
 #define GE_F(FUNC) bb.FUNC(0,SourceCodeInfo(),1)
 #define GE_G(FUNC) bb.FUNC(0,SourceCodeInfo(),65535)
+#define GE_H(FUNC)
 #define GE_X(FUNC) bb.FUNC(0,SourceCodeInfo())
 #define GE_N(FUNC) bb.FUNC(0,SourceCodeInfo(),4,255,254,{{1,2,3,4}})
 
@@ -117,6 +118,7 @@ TEST(BytecodeBuilder,Coverage) {
 #undef GE_D
 #undef GE_F
 #undef GE_G
+#undef GE_H
 #undef GE_X
 #undef GE_N
 #undef __ // __
@@ -181,6 +183,8 @@ TEST(BytecodeBuilder,Coverage) {
     ASSERT_EQ(65535,a1);                    \
   } while(false)
 
+#define BCTEST_H() do {} while(false)
+
 #define BCTEST_N() \
   do {                                      \
     std::uint8_t a1,a2,a3;                  \
@@ -215,6 +219,7 @@ TEST(BytecodeBuilder,Coverage) {
 #undef BCTEST_G
 #undef BCTEST_X
 #undef BCTEST_N
+#undef BCTEST_H
 #undef __
 }
 

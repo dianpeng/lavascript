@@ -33,6 +33,7 @@ class BytecodeIterator {
   inline const char* opcode_name() const;
   inline BytecodeType type() const;
   inline std::size_t offset() const { return offset_; }
+  inline void GetOperand( std::uint8_t* , std::uint8_t* , std::uint8_t* , std::uint32_t* );
   inline void GetOperand( std::uint8_t* , std::uint8_t* , std::uint8_t* );
   inline void GetOperand( std::uint8_t* , std::uint8_t* );
   inline void GetOperand( std::uint8_t* );
@@ -60,6 +61,7 @@ class BytecodeIterator {
     std::uint16_t a2_16_;
   };
   std::uint8_t a3_8_;
+  std::uint32_t a4_;
 };
 
 /* ---------------------------------------------
@@ -76,7 +78,8 @@ inline BytecodeIterator::BytecodeIterator( const std::uint32_t* code_buffer ,
   offset_     (0),
   type_       (TYPE_X),
   opcode_     (),
-  a3_8_       ()
+  a3_8_       (),
+  a4_         ()
 {
   if(HasNext()) {
     Decode();
@@ -117,6 +120,19 @@ inline void BytecodeIterator::GetOperand( std::uint8_t* a1 , std::uint8_t* a2 ,
   *a1 = a1_8_;
   *a2 = a2_8_;
   *a3 = a3_8_;
+}
+
+inline void BytecodeIterator::GetOperand( std::uint8_t* a1, std::uint8_t* a2,
+                                                            std::uint8_t* a3,
+                                                            std::uint32_t* a4 ) {
+  lava_debug(NORMAL,
+      lava_verify(HasNext());
+      lava_verify(type_ == TYPE_H);
+      );
+  *a1 = a1_8_;
+  *a2 = a2_8_;
+  *a3 = a3_8_;
+  *a4 = a4_;
 }
 
 inline void BytecodeIterator::GetOperand( std::uint8_t* a1 , std::uint8_t* a2 ) {

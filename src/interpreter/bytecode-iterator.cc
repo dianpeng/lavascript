@@ -37,6 +37,13 @@ void BytecodeIterator::Decode() {
       a1_16_= static_cast<std::uint16_t> ((raw>>8));
       offset_ = 1;
       break;
+    case TYPE_H:
+      a1_8_ = static_cast<std::uint8_t> ((raw>>8));
+      a2_8_ = static_cast<std::uint8_t> ((raw>>16));
+      a3_8_ = static_cast<std::uint8_t> ((raw>>24));
+      a4_   = code_buffer_[cursor_+1];
+      offset_ = 2;
+      break;
     case TYPE_N:
       a1_8_ = static_cast<std::uint8_t>((raw>>8) & 0xff);
       a2_8_ = static_cast<std::uint8_t>((raw>>16)& 0xff);

@@ -187,19 +187,14 @@ INTERPRETER_REGISTER_EXTERN_SYMBOL(InterpreterDoCompare)
 // ----------------------------------------------------------------------------
 // Unary Helper
 // ----------------------------------------------------------------------------
-bool InterpreterDoNegate   ( Runtime* sandbox , Value* operand ) {
+bool InterpreterDoNegate   ( Runtime* sandbox , const Value& operand ,
+                                                Value* result ) {
   (void)sandbox;
   (void)operand;
+  (void)result;
   return false;
 }
 INTERPRETER_REGISTER_EXTERN_SYMBOL(InterpreterDoNegate)
-
-bool InterpreterDoNot      ( Runtime* sandbox , Value* operand ) {
-  (void)sandbox;
-  (void)operand;
-  return false;
-}
-INTERPRETER_REGISTER_EXTERN_SYMBOL(InterpreterDoNot)
 
 // ----------------------------------------------------------------------------
 // Jump Helper
@@ -437,13 +432,24 @@ INTERPRETER_REGISTER_EXTERN_SYMBOL(InterpreterDoGSet)
 // ----------------------------------------------------------------------------
 // Loop
 // ----------------------------------------------------------------------------
-bool InterpreterForInc      ( Runtime* sandbox , Value* lhs , const Value& rhs ) {
+bool InterpreterForEnd1     ( Runtime* sandbox , const Value& lhs , const Value& rhs ,
+                                                                    std::uint32_t offset ) {
   (void)sandbox;
   (void)lhs;
   (void)rhs;
   return false;
 }
-INTERPRETER_REGISTER_EXTERN_SYMBOL(InterpreterForInc)
+INTERPRETER_REGISTER_EXTERN_SYMBOL(InterpreterForEnd1)
+
+bool InterpreterForEnd2     ( Runtime* sandbox , const Value& lhs , const Value& rhs ,
+                                                                    const Value& cond ,
+                                                                    std::uint32_t offset ) {
+  (void)sandbox;
+  (void)lhs;
+  (void)rhs;
+  return false;
+}
+INTERPRETER_REGISTER_EXTERN_SYMBOL(InterpreterForEnd2)
 
 
 /* ---------------------------------------------------------------------
@@ -695,7 +701,7 @@ INTERPRETER_REGISTER_EXTERN_SYMBOL(PrintPtr)
 // do not change ARG3 --> ARG3F even if it is better, due to the fact
 // we cannot use ax register when rex prefix is used in instruction.
 |  movzx ARG3,INSTR_A8H
-|  or ARG2,0xff
+|  and ARG2,0xff
 |.endmacro
 
 |.macro instr_E
@@ -968,9 +974,6 @@ INTERPRETER_REGISTER_EXTERN_SYMBOL(PrintPtr)
   __(INTERP_COMPAREVV,InterpCompareVV)       \
   __(INTERP_COMPARESV,InterpCompareSV)       \
   __(INTERP_COMPAREVS,InterpCompareVS)       \
-  /* unary */                                \
-  __(INTERP_NEGATE,InterpNegate)             \
-  __(INTERP_NOT,InterpNot)                   \
   /* property get/set */                     \
   __(INTERP_PROPGET_NOTFOUND,InterpPropGetNotFound)      \
   __(INTERP_PROPGET_NOTOBJECT,InterpPropGetNotObject)    \
@@ -1310,26 +1313,6 @@ void GenerateHelper( BuildContext* bctx ) {
   |  ret2acc
 
   /* -------------------------------------------------
-   * Unary                                           |
-   * ------------------------------------------------*/
-  |=> INTERP_NEGATE:
-  |->InterpNegate:
-  |  savepc
-  |  mov CARG1, RUNTIME
-  |  lea CARG2, qword [STK+ARG1F*8]
-  |  fcall InterpreterDoNegate
-  // return value is a *boolean*
-  |  retbool
-
-  |=> INTERP_NOT:
-  |->InterpNot:
-  |  savepc
-  |  mov CARG1, RUNTIME
-  |  lea CARG2, qword [STK+ARG1F*8]
-  |  fcall InterpreterDoNot
-  |  retbool
-
-  /* -------------------------------------------------
    * Property Get/Set                                |
    * ------------------------------------------------*/
   |=> INTERP_PROPGET:
@@ -1399,8 +1382,8 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
     case BC_MOVE:
       |=> bc:
       |  instr_E
-      |  mov T1,qword [STK+ARG2F*8]
-      |  mov qword [STK+ARG1F*8],T1
+      |  mov ARG3F,qword [STK+ARG2F*8]
+      |  mov qword [STK+ARG1F*8],ARG3F
       |  Dispatch
       break;
 
@@ -2578,34 +2561,42 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
     // function in the future
     case BC_NEGATE:
       |=> bc:
-      |  instr_F
-      |  cmp dword [STK+ARG1F*8+4], Value::FLAG_INTEGER
+      |  instr_E
+      |  cmp dword [STK+ARG2F*8+4], Value::FLAG_INTEGER
       |  jne >1
-      |  neg dword [STK+ARG1F*8]
-      // TODO:: Overflow ??
+      |  mov ARG3, dword [STK+ARG2F*8]
+      |  neg ARG3  // TODO:: Overflow ??
+      |  StInt ARG1F,ARG3
       |7:
       |  Dispatch
 
       // real
       |1:
-      |  cmp dword [STK+ARG1F*8+4], Value::FLAG_REAL
-      |  jnb ->InterpNegate
+      |  cmp dword [STK+ARG2F*8+4], Value::FLAG_REAL
+      |  jnb >8
 
-      |  movsd, xmm0, qword [STK+ARG1F*8]
+      |  movsd, xmm0, qword [STK+ARG2F*8]
       |  LdRConst_sign xmm1
       |  xorpd xmm0, xmm1
       |  movsd qword [STK+ARG1F*8], xmm0
       |  jmp <7
+
+      |8:
+      |  mov CARG1, RUNTIME
+      |  mov CARG2, qword [STK+ARG2F*8]
+      |  lea CARG3, [STK+ARG1F*8]
+      |  fcall InterpreterDoNegate
+      |  retbool
       break;
 
     case BC_NOT:
       |=> bc:
-      |  instr_F
+      |  instr_E
       |  mov ARG3, Value::FLAG_FALSE
       // check if the value is a heap object
-      |  cmp word [STK+ARG1F*8+6], Value::FLAG_HEAP
+      |  cmp word [STK+ARG2F*8+6], Value::FLAG_HEAP
       |  je >1
-      |  cmp dword [STK+ARG1F*8+4], Value::FLAG_FALSECOND
+      |  cmp dword [STK+ARG2F*8+4], Value::FLAG_FALSECOND
       |  cmova ARG3, dword [->FlagTrueConst]
       |1:
       |  mov dword [STK+ARG1F*8+4], ARG3
@@ -2907,6 +2898,9 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
 
     /* ========================================================
      * Loop instructions
+     *
+     * Loop is optimized for situation that condition/step and
+     * induction variable are all *integer* value
      * =======================================================*/
     case BC_FSTART:
       |=>bc:
@@ -2921,73 +2915,79 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
       |  jmp >2
       break;
 
-    case BC_FEND:
+    case BC_FEND1:
       |=>bc:
-      |  instr_G
-      |  cmp dword [STK+ACCFIDX], Value::FLAG_FALSE
-      |  je >1
+      |  instr_E // actually TYPE_H instruction
+      |  cmp dword [STK+ARG1F*8+4], Value::FLAG_INTEGER
+      |  jne >6
+      |  cmp dword [STK+ARG2F*8+4], Value::FLAG_INTEGER
+      |  jne >6
+
+      // int && int
+      |  mov ARG3, dword [STK+ARG1F*8]
+      |  cmp ARG3, dword [STK+ARG2F*8]
+      |  jge >8 // exit the loop
+
+      |9:
+      |  mov ARG1, dword [PC]
       |  branch_to ARG1F,ARG3F
-      |1:
+      |8:
+      |  Dispatch
+      |7:
+      |  // skip the 4th argument
+      |  add PC,4
+      |  jmp <8
+
+      |6: // fallback for situation that is not integer
+      |  mov CARG1, RUNTIME
+      |  mov CARG2, qword [STK+ARG1F*8]
+      |  mov CARG3, qword [STK+ARG2F*8]
+      |  mov CARG4L, dword [PC]
+      |  fcall InterpreterForEnd1
+      // handle return value
+      |  test eax,eax
+      |  je ->InterpFail
+      |  mov PC, qword [RUNTIME+RuntimeLayout::kCurPCOffset]
       |  Dispatch
       break;
 
-    case BC_FORINC:
+    case BC_FEND2:
       |=>bc:
-      // We still need to support none numeric type.
-      // But we inline situation for numeric type right
-      // after the label
-      |  instr_E
+      |  instr_D
       |  cmp dword [STK+ARG1F*8+4], Value::FLAG_INTEGER
-      |  jne >1
-
-      // int && xx
+      |  jne >6
       |  cmp dword [STK+ARG2F*8+4], Value::FLAG_INTEGER
-      |  je >2
+      |  jne >6
+      |  cmp dword [STK+ARG3F*8+4], Value::FLAG_INTEGER
+      |  jne >6
 
-      // try real
-      |  cmp dword [STK+ARG2F*8+4], Value::FLAG_REAL
-      |  jnb >7
-      // promotion of real number
-      |  cvtsi2sd xmm0, dword [STK+ARG1F*8]
-      |  addsd xmm0, qword [STK+ARG2F*8]
-      |  movsd qword [STK+ARG1F*8], xmm0
-      |  jmp >9
+      // int && int && int
+      |  mov T1L, dword [STK+ARG1F*8]
+      |  add T1L, dword [STK+ARG3F*8]
+      |  mov dword [STK+ARG1F*8], T1L
+      |  cmp T1L, dword [STK+ARG2F*8]
+      |  jge >8
 
-      // int && int
-      |2:
-      |  mov ARG3 , dword [STK+ARG2F*8]
-      |  add dword [STK+ARG1F*8] , ARG3
-      |9:
-      |  Dispatch
-
-      |1:
-      |  cmp dword [STK+ARG1F*8+4], Value::FLAG_REAL
-      |  jnb >7
-      // real && xx
-      |  cmp dword [STK+ARG2F*8+4], Value::FLAG_REAL
-      |  jnb >3
-      // real && real
-      |  movsd xmm0, qword [STK+ARG1F*8]
-      |  addsd xmm0, qword [STK+ARG2F*8]
-      |  movsd qword [STK+ARG1F*8],xmm0
-      |  jmp <9
-      |3:
-      // check whether RHS is a integer
-      |  cmp dword [STK+ARG2F*8+4], Value::FLAG_INTEGER
-      |  jne >7
-      |  cvtsi2sd xmm1, dword [STK+ARG2F*8]
-      |  movsd xmm0, qword [STK+ARG1F*8]
-      |  addsd xmm0, xmm1
-      |  movsd qword [STK+ARG1F*8], xmm0
-      |  jmp <9
-
+      // fallthrough
+      |  mov ARG1, dword [PC]
+      |  branch_to ARG1F,ARG3F
       |7:
-      // Fallback case since we cannot handle the stuff here
-      |  mov CARG1,RUNTIME
-      |  lea CARG2,[STK+ARG1F*8]
-      |  mov CARG3,qword [STK+ARG2F*8]
-      |  fcall InterpreterForInc
-      |  retbool
+      |  Dispatch
+      |8:
+      |  add PC,4
+      |  jmp <7
+
+      |6:
+      |  mov CARG1, RUNTIME
+      |  lea CARG2, [STK+ARG1F*8]
+      |  mov CARG3, qword [STK+ARG2F*8]
+      |  mov CARG4, qword [STK+ARG3F*8]
+      |  mov CARG5L, dword [PC]
+      |  fcall InterpreterForEnd2
+      |  test eax,eax
+      |  je ->InterpFail
+      |  mov PC, qword [RUNTIME+RuntimeLayout::kCurPCOffset]
+      |  Dispatch
       break;
 
     case BC_FEVRSTART:

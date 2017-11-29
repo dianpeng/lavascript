@@ -998,14 +998,23 @@ bool Generator::Visit( const ast::Object& node , const Register& reg ,
 }
 
 bool Generator::Visit( const ast::Unary& node , ExprResult* result ) {
-  Register reg;
-  if(!VisitExpression(*node.opr,&reg)) return false;
-  if(node.op == Token::kSub) {
-    EEMIT(negate,node.sci(),reg.index());
-  } else {
-    EEMIT(not_,node.sci(),reg.index());
+  Optional<Register> dst(func_scope()->ra()->Grab());
+  if(!dst) {
+    Error(ERR_REGISTER_OVERFLOW,node.sci());
+    return false;
   }
-  result->SetRegister(reg);
+
+  {
+    ScopedRegister reg(this);
+    if(!VisitExpression(*node.opr,&reg)) return false;
+    if(node.op == Token::kSub) {
+      EEMIT(negate,node.sci(),dst.Get().index(),reg.Get().index());
+    } else {
+      EEMIT(not_,node.sci()  ,dst.Get().index(),reg.Get().index());
+    }
+  }
+
+  result->SetRegister(dst.Get());
   return true;
 }
 
@@ -1502,24 +1511,21 @@ bool Generator::Visit( const ast::For& node ) {
     scope.PatchContinue(
         static_cast<std::uint16_t>(func_scope()->bb()->CodePosition()));
 
-    // Generate loop step
-    if(node._3rd) {
-      // step the loop induction variable's register. NOTES, we use forinc
-      // instead of addvv since addvv requires 2 bytecodes to do a step
-      // operation. forinc will move register back to where it is
-      SEMIT(forinc,node._3rd->sci(),induct_reg.index(),third_reg.index());
-    }
-
-    /**
-     * Now generate loop header at the bottom of the loop. Basically
-     * we have a simple loop inversion for the for loop
-     */
     if(node._2nd) {
-      SEMIT(ltvv,node._2nd->sci(),induct_reg.index(),second_reg.index());
-
-      // Jump back to the loop header
-      SEMIT(fend,node.sci(),header);
+      if(node._3rd) {
+        // 1. We have step and condition variable, use fend2 instruction
+        SEMIT(fend2,node.sci(),induct_reg.index(),second_reg.index(), 
+                                                  third_reg.index(),
+                                                  header);
+      } else {
+        // 2. We only have condition variable, no stepping
+        SEMIT(fend1,node.sci(),induct_reg.index(),second_reg.index(),
+                                                  0,
+                                                  header);
+      }
     } else {
+      // don't have 2nd and also don't have 3rd( guaranteed by the parser ).
+      // this is a forever loop, use fevrend instruction
       SEMIT(fevrend,node.sci(),header);
     }
 

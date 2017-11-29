@@ -370,7 +370,27 @@ TEST(Interpreter,SimpleLoop) {
 #endif
 
 TEST(Interpreter,SimpleLoopBench) {
-  BENCHMARK(var a = 0; for( var i = 0 ; 1000000; 1 ) { } return a;);
+  BENCHMARK(var a = 0; for( var i = 0 ; 1000000; 1 ) {
+      a = a + 1;
+      a = a - 2;
+      a = a * 3;
+
+      a = a + 1;
+      a = a - 2;
+      a = a * 3;
+
+      a = a + 1;
+      a = a - 2;
+      a = a * 3;
+
+      a = a + 1;
+      a = a - 2;
+      a = a * 3;
+
+      a = a + 1;
+      a = a - 2;
+      a = a * 3;
+  } return a;);
 }
 
 

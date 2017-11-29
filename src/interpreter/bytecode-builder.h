@@ -86,7 +86,13 @@ class BytecodeBuilder {
   inline bool EmitE( std::uint8_t , const SourceCodeInfo& , Bytecode , std::uint8_t , std::uint8_t );
   inline bool EmitF( std::uint8_t , const SourceCodeInfo& , Bytecode , std::uint8_t );
   inline bool EmitG( std::uint8_t , const SourceCodeInfo& , Bytecode , std::uint16_t );
+
+  inline bool EmitH( std::uint8_t , const SourceCodeInfo& , Bytecode , std::uint8_t ,
+                                                                       std::uint8_t ,
+                                                                       std::uint8_t ,
+                                                                       std::uint32_t );
   inline bool EmitX( std::uint8_t , const SourceCodeInfo& , Bytecode );
+
   bool EmitN( std::uint8_t , const SourceCodeInfo& , Bytecode , std::uint8_t ,
                                                                 std::uint8_t ,
                                                                 std::uint8_t ,
@@ -150,6 +156,9 @@ class BytecodeBuilder {
     return EmitN(reg,si,INSTR,narg,reg,base,vec);                                            \
   }
 
+#define IMPLH(INSTR,C) /* null body */
+
+
 #define __(A,B,C,D,E,F) IMPL##A(BC_##B,C)
   LAVASCRIPT_BYTECODE_LIST(__)
 #undef __           // __
@@ -161,20 +170,35 @@ class BytecodeBuilder {
 #undef IMPLG        // IMPLG
 #undef IMPLX        // IMPLX
 #undef IMPLN        // IMPLN
+#undef IMPLH        // IMPLH
 
+ public:
+  /* -----------------------------------------------------
+   * TypeH instructions                                  |
+   * ----------------------------------------------------*/
+  inline bool fend1( std::uint8_t reg , const SourceCodeInfo& si , std::uint8_t a1,
+                                                                   std::uint8_t a2,
+                                                                   std::uint8_t a3,
+                                                                   std::uint16_t a4 );
+
+  inline bool fend2( std::uint8_t reg , const SourceCodeInfo& si , std::uint8_t a1,
+                                                                   std::uint8_t a2,
+                                                                   std::uint8_t a3,
+                                                                   std::uint16_t a4 );
+    
  public:
   /* -----------------------------------------------------
    * Jump related isntruction                            |
    * ----------------------------------------------------*/
-  inline Label jmpt   ( std::uint8_t reg , const SourceCodeInfo& si , const std::uint8_t r );
-  inline Label jmpf   ( std::uint8_t reg , const SourceCodeInfo& si , const std::uint8_t r );
+  inline Label jmpt   ( std::uint8_t reg , const SourceCodeInfo& si , std::uint8_t r );
+  inline Label jmpf   ( std::uint8_t reg , const SourceCodeInfo& si , std::uint8_t r );
   inline Label and_   ( std::uint8_t reg , const SourceCodeInfo& si );
   inline Label or_    ( std::uint8_t reg , const SourceCodeInfo& si );
   inline Label jmp    ( std::uint8_t reg , const SourceCodeInfo& si );
   inline Label brk    ( std::uint8_t reg , const SourceCodeInfo& si );
   inline Label cont   ( std::uint8_t reg , const SourceCodeInfo& si );
-  inline Label fstart ( std::uint8_t reg , const SourceCodeInfo& si , const std::uint8_t a1 );
-  inline Label festart( std::uint8_t reg , const SourceCodeInfo& si , const std::uint8_t a1 );
+  inline Label fstart ( std::uint8_t reg , const SourceCodeInfo& si , std::uint8_t a1 );
+  inline Label festart( std::uint8_t reg , const SourceCodeInfo& si , std::uint8_t a1 );
 
  public:
   // This function will create a Closure object from the BytecodeBuilder
@@ -323,6 +347,31 @@ inline bool BytecodeBuilder::EmitX( std::uint8_t reg , const SourceCodeInfo& sci
   return true;
 }
 
+inline bool BytecodeBuilder::EmitH( std::uint8_t reg , const SourceCodeInfo& sci ,
+                                                       Bytecode bc,
+                                                       std::uint8_t a1,
+                                                       std::uint8_t a2,
+                                                       std::uint8_t a3,
+                                                       std::uint32_t a4 ) {
+  if(code_buffer_.size() + 2 > kMaxCodeLength)
+    return false;
+
+  std::uint32_t value = static_cast<std::uint32_t>(bc) |
+                        (static_cast<std::uint32_t>(a1) << 8)  |
+                        (static_cast<std::uint32_t>(a2) << 16) |
+                        (static_cast<std::uint32_t>(a3) << 24);
+  code_buffer_.push_back(value);
+  code_buffer_.push_back(a4);
+
+  // This is a 2 dword instruction
+  for( std::size_t i = 0 ; i < 2 ; ++i ) {
+    debug_info_.push_back(sci);
+    reg_offset_table_.push_back(reg);
+  }
+
+  return true;
+}
+
 template< int BC , int TP , bool A1 , bool A2 , bool A3 >
 inline BytecodeBuilder::Label BytecodeBuilder::EmitAt( std::uint8_t reg ,
                                                        const SourceCodeInfo& sci ,
@@ -366,6 +415,24 @@ inline BytecodeBuilder::Label BytecodeBuilder::EmitAt( std::uint8_t reg ,
   reg_offset_table_.push_back(reg);
 
   return Label(this,idx,static_cast<BytecodeType>(TP));
+}
+
+inline bool BytecodeBuilder::fend1(std::uint8_t reg ,
+                                   const SourceCodeInfo& sci ,
+                                   std::uint8_t a1,
+                                   std::uint8_t a2,
+                                   std::uint8_t a3,
+                                   std::uint16_t a4 ) {
+  return EmitH(reg,sci,BC_FEND1,a1,a2,a3,a4);
+}
+
+inline bool BytecodeBuilder::fend2(std::uint8_t reg ,
+                                   const SourceCodeInfo& sci ,
+                                   std::uint8_t a1,
+                                   std::uint8_t a2,
+                                   std::uint8_t a3,
+                                   std::uint16_t a4 ) {
+  return EmitH(reg,sci,BC_FEND2,a1,a2,a3,a4);
 }
 
 inline BytecodeBuilder::Label BytecodeBuilder::jmpt( std::uint8_t reg ,

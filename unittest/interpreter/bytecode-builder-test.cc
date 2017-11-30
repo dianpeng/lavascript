@@ -10,11 +10,11 @@ TEST(BytecodeBuilder,AllBytecodeType) {
   // TYPE_B
   {
     BytecodeBuilder bb;
-    bb.addvi(0,SourceCodeInfo(),1,2);
+    bb.feend(0,SourceCodeInfo(),1,2);
     BytecodeIterator itr(bb.GetIterator());
     ASSERT_TRUE(itr.HasNext());
     ASSERT_TRUE(itr.type() == TYPE_B);
-    ASSERT_EQ(BC_ADDVI,itr.opcode()) << itr.opcode_name();
+    ASSERT_EQ(BC_FEEND,itr.opcode()) << itr.opcode_name();
     std::uint8_t a1;
     std::uint16_t a2;
     itr.GetOperand(&a1,&a2);
@@ -25,11 +25,11 @@ TEST(BytecodeBuilder,AllBytecodeType) {
   // TYPE_C
   {
     BytecodeBuilder bb;
-    bb.addiv(0,SourceCodeInfo(),1,2);
+    bb.loadcls(0,SourceCodeInfo(),1,2);
     BytecodeIterator itr(bb.GetIterator());
     ASSERT_TRUE(itr.HasNext());
     ASSERT_TRUE(itr.type() == TYPE_C);
-    ASSERT_EQ(BC_ADDIV,itr.opcode()) << itr.opcode_name();
+    ASSERT_EQ(BC_LOADCLS,itr.opcode()) << itr.opcode_name();
     std::uint16_t a1;
     std::uint8_t a2;
     itr.GetOperand(&a1,&a2);
@@ -40,11 +40,11 @@ TEST(BytecodeBuilder,AllBytecodeType) {
   // TYPE_E
   {
     BytecodeBuilder bb;
-    bb.addvv(0,SourceCodeInfo(),1,255);
+    bb.move(0,SourceCodeInfo(),1,255);
     BytecodeIterator itr(bb.GetIterator());
     ASSERT_TRUE(itr.HasNext());
     ASSERT_TRUE(itr.type() == TYPE_E);
-    ASSERT_EQ(BC_ADDVV,itr.opcode()) << itr.opcode_name();
+    ASSERT_EQ(BC_MOVE,itr.opcode()) << itr.opcode_name();
     std::uint8_t a1,a2;
     itr.GetOperand(&a1,&a2);
     ASSERT_EQ(1,a1);
@@ -82,14 +82,16 @@ TEST(BytecodeBuilder,AllBytecodeType) {
   // TYPE_G
   {
     BytecodeBuilder bb;
-    bb.and_(0,SourceCodeInfo(),65534);
+    bb.and_(0,SourceCodeInfo(),1,65534);
     BytecodeIterator itr(bb.GetIterator());
     ASSERT_TRUE(itr.HasNext());
     ASSERT_TRUE(itr.type() == TYPE_G);
     ASSERT_EQ(BC_AND,itr.opcode()) << itr.opcode_name();
-    std::uint16_t a1;
-    itr.GetOperand(&a1);
-    ASSERT_EQ(65534,a1);
+    std::uint8_t a1;
+    std::uint16_t a2;
+    itr.GetOperand(&a1,&a2);
+    ASSERT_EQ(1,a1);
+    ASSERT_EQ(65534,a2);
   }
 }
 
@@ -232,10 +234,10 @@ TEST(BytecodeBuilder,Patch) {
   l = (bb.jmpf(0,SourceCodeInfo(),255));
   l.Patch(1024);
 
-  l = (bb.and_(0,SourceCodeInfo()));
+  l = (bb.and_(0,SourceCodeInfo(),255));
   l.Patch(1024);
 
-  l = (bb.or_ (0,SourceCodeInfo()));
+  l = (bb.or_ (0,SourceCodeInfo(),255));
   l.Patch(1024);
 
   l = (bb.jmp(0,SourceCodeInfo()));

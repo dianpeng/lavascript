@@ -15,12 +15,22 @@ namespace lavascript {
 static const std::size_t kSSOMaxSize               = 32;
 static const std::size_t kDefaultListSize          = 4;
 static const std::size_t kDefaultObjectSize        = 8;
-static const std::size_t kMaxLiteralCount          = 65536;
-static const std::size_t kMaxPrototypeCont         = 65535;
-static const std::size_t kMaxFunctionArgumentCount = 256;
 static const std::size_t kMaxListEntryCount        = 65536;
 static const std::size_t kMaxObjectEntryCount      = 65536;
 static const std::size_t kMaxPrototypeSize         = 65536;
+static const std::size_t kMaxPrototypeCount        = 65535;
+
+
+// Interpreter related confugration options
+namespace interpreter {
+
+static const std::size_t kMaxCodeLength            = 65536;
+static const std::size_t kMaxFunctionArgumentCount = 256;
+static const std::size_t kMaxLiteralSize           = 256;
+static const std::size_t kMaxUpValueSize           = 256;
+
+} // namespace interpreter
+
 
 // Initialize the dynamic configuration via command line options
 bool DConfigInit( int argc , char** argv , std::string* error );

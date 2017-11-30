@@ -28,9 +28,6 @@ namespace interpreter {
 class BytecodeBuilder {
  public:
   static const std::size_t kInitialCodeBufferSize = 1024;
-  static const std::size_t kMaxCodeLength = 65536;
-  static const std::size_t kMaxLiteralSize= 65536;
-  static const std::size_t kMaxUpValueSize= 65536;
   static void DecodeUpValue( std::uint32_t code , std::uint16_t* index ,
                                                   UpValueState* state ) {
     *index = static_cast<std::uint16_t>(code & 0x0000ffff);
@@ -185,15 +182,15 @@ class BytecodeBuilder {
                                                                    std::uint8_t a2,
                                                                    std::uint8_t a3,
                                                                    std::uint16_t a4 );
-    
+
  public:
   /* -----------------------------------------------------
    * Jump related isntruction                            |
    * ----------------------------------------------------*/
   inline Label jmpt   ( std::uint8_t reg , const SourceCodeInfo& si , std::uint8_t r );
   inline Label jmpf   ( std::uint8_t reg , const SourceCodeInfo& si , std::uint8_t r );
-  inline Label and_   ( std::uint8_t reg , const SourceCodeInfo& si );
-  inline Label or_    ( std::uint8_t reg , const SourceCodeInfo& si );
+  inline Label and_   ( std::uint8_t reg , const SourceCodeInfo& si , std::uint8_t r );
+  inline Label or_    ( std::uint8_t reg , const SourceCodeInfo& si , std::uint8_t r );
   inline Label jmp    ( std::uint8_t reg , const SourceCodeInfo& si );
   inline Label brk    ( std::uint8_t reg , const SourceCodeInfo& si );
   inline Label cont   ( std::uint8_t reg , const SourceCodeInfo& si );
@@ -448,13 +445,15 @@ inline BytecodeBuilder::Label BytecodeBuilder::jmpf( std::uint8_t reg ,
 }
 
 inline BytecodeBuilder::Label BytecodeBuilder::and_( std::uint8_t reg ,
-                                                     const SourceCodeInfo& sci ) {
-  return EmitAt<BC_AND,TYPE_G,false,false,false>(reg,sci);
+                                                     const SourceCodeInfo& sci ,
+                                                     std::uint8_t a1 ) {
+  return EmitAt<BC_AND,TYPE_B,true,false,false>(reg,sci,a1);
 }
 
 inline BytecodeBuilder::Label BytecodeBuilder::or_ ( std::uint8_t reg ,
-                                                     const SourceCodeInfo& sci ) {
-  return EmitAt<BC_OR,TYPE_G,false,false,false>(reg,sci);
+                                                     const SourceCodeInfo& sci ,
+                                                     std::uint8_t a1 ) {
+  return EmitAt<BC_OR,TYPE_B,true,false,false>(reg,sci,a1);
 }
 
 inline BytecodeBuilder::Label BytecodeBuilder::jmp ( std::uint8_t reg ,

@@ -201,75 +201,49 @@ void Prototype::Dump( DumpWriter* writer , const std::string& source ) const {
       switch(bi.type()) {
         case interpreter::TYPE_B:
           bi.GetOperand(&a1_8,&a2_16);
-          writer->WriteL("%zu. %s %d %d  | %d <%d,%d> %s",count,bi.opcode_name(),a1_8,a2_16,
+          writer->WriteL("%-10zu. %-10s %d %d  | %d <%d,%d> %s",count,bi.opcode_name(),a1_8,a2_16,
               GetRegOffset(count),
               sci.start, sci.end, GetSourceSnippetInOneLine(source,sci).c_str());
           break;
         case interpreter::TYPE_C:
           bi.GetOperand(&a1_16,&a2_8);
-          writer->WriteL("%zu. %s %d %d  | %d <%d,%d> %s",count,bi.opcode_name(),a1_16,a2_8,
+          writer->WriteL("%-10zu. %-10s %d %d  | %d <%d,%d> %s",count,bi.opcode_name(),a1_16,a2_8,
               GetRegOffset(count),
               sci.start, sci.end, GetSourceSnippetInOneLine(source,sci).c_str());
           break;
         case interpreter::TYPE_D:
           bi.GetOperand(&a1_8,&a2_8,&a3_8);
-          writer->WriteL("%zu. %s %d %d %d  | %d <%d,%d> %s",count,bi.opcode_name(),a1_8,a2_8,a3_8,
+          writer->WriteL("%-10zu. %-10s %d %d %d  | %d <%d,%d> %s",count,bi.opcode_name(),a1_8,a2_8,a3_8,
               GetRegOffset(count),
               sci.start, sci.end,GetSourceSnippetInOneLine(source,sci).c_str());
           break;
         case interpreter::TYPE_E:
           bi.GetOperand(&a1_8,&a2_8);
-          writer->WriteL("%zu. %s %d %d  | %d <%d,%d> %s",count,bi.opcode_name(),a1_8,a2_8,
+          writer->WriteL("%-10zu. %-10s %d %d  | %d <%d,%d> %s",count,bi.opcode_name(),a1_8,a2_8,
               GetRegOffset(count),
               sci.start, sci.end,GetSourceSnippetInOneLine(source,sci).c_str());
           break;
         case interpreter::TYPE_F:
           bi.GetOperand(&a1_8);
-          writer->WriteL("%zu. %s %d  | %d <%d,%d> %s",count,bi.opcode_name(),a1_8,
+          writer->WriteL("%-10zu. %-10s %d  | %d <%d,%d> %s",count,bi.opcode_name(),a1_8,
               GetRegOffset(count),
               sci.start, sci.end,GetSourceSnippetInOneLine(source,sci).c_str());
           break;
         case interpreter::TYPE_G:
           bi.GetOperand(&a1_16);
-          writer->WriteL("%zu. %s %d  | %d <%d,%d> %s",count,bi.opcode_name(),a1_16,
+          writer->WriteL("%-10zu. %-10s %d  | %d <%d,%d> %s",count,bi.opcode_name(),a1_16,
               GetRegOffset(count),
               sci.start, sci.end,GetSourceSnippetInOneLine(source,sci).c_str());
           break;
         case interpreter::TYPE_H:
           bi.GetOperand(&a1_8,&a2_8,&a3_8,&a4);
-          writer->WriteL("%zu. %s %d %d %d %d | %d <%d,%d> %s",count,bi.opcode_name(),
+          writer->WriteL("%-10zu. %-10s %d %d %d %d | %d <%d,%d> %s",count,bi.opcode_name(),
               a1_8,a2_8,a3_8,a4,
               GetRegOffset(count),
               sci.start, sci.end,GetSourceSnippetInOneLine(source,sci).c_str());
           break;
-        case interpreter::TYPE_N:
-          {
-            // need to format it here since writer doesn't support dumpping the vector type
-            // maybe a better formatter designed specifically for C++ constructs ??
-            std::stringstream formatter;
-            std::vector<std::uint8_t> vec;
-            bi.GetOperand(&a1_8,&a2_8,&a3_8);
-            bi.GetNArg(&vec);
-
-            formatter<<count<<". "<<bi.opcode_name()<<' '<<static_cast<int>(a1_8)<<' '
-                                                         <<static_cast<int>(a2_8)<<' '
-                                                         <<static_cast<int>(a3_8)<<" ( ";
-
-            for( auto &e : vec ) formatter<< static_cast<int>(e) <<' ';
-
-            formatter<<") | "<< GetRegOffset(count)
-                             << "< "
-                             <<sci.start
-                             <<','
-                             <<sci.end
-                             <<"> "
-                             <<GetSourceSnippetInOneLine(source,sci);
-
-            writer->WriteL(formatter.str().c_str());
-          }
-          break;
         default:
-          writer->WriteL("%zu. %s  | %d <%d,%d> %s",count,bi.opcode_name(),sci.start,sci.end,
+          writer->WriteL("%-10zu. %-10s  | %d <%d,%d> %s",count,bi.opcode_name(),sci.start,sci.end,
               GetRegOffset(count),
               GetSourceSnippetInOneLine(source,sci).c_str());
           break;

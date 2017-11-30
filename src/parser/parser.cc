@@ -227,9 +227,9 @@ ast::FuncCall* Parser::ParseFuncCall() {
       if(!expr) return NULL;
 
       arg_list->Add(zone_,expr);
-      if(arg_list->size() > kMaxFunctionArgumentCount) {
+      if(arg_list->size() > interpreter::kMaxFunctionArgumentCount) {
         Error("Too many function argument, at most %zu is allowed",
-              kMaxFunctionArgumentCount);
+              interpreter::kMaxFunctionArgumentCount);
         return NULL;
       }
 
@@ -860,9 +860,9 @@ Vector<ast::Variable*>* Parser::ParseFunctionPrototype() {
                                                      lexer_.lexeme().str_value);
         arg_list->Add(zone_,v);
 
-        if(arg_list->size() > kMaxFunctionArgumentCount) {
+        if(arg_list->size() > interpreter::kMaxFunctionArgumentCount) {
           Error("Too many function argument, at most %zu is allowed",
-                kMaxFunctionArgumentCount);
+                interpreter::kMaxFunctionArgumentCount);
           return NULL;
         }
 

@@ -485,10 +485,22 @@ class ExprResult {
   }
   void SetAcc() { kind_ = KREG; reg_ = Register::kAccReg; }
 
+ public:
+  void SetHint( const Register& reg ) {
+    lava_debug(NORMAL,lava_verify(!reg.IsAcc()););
+    hint_.Set(reg);
+  }
+  Optional<Register> GetHint() const { return hint_; }
+
  private:
   ExprResultKind kind_;
   std::int32_t ref_;
   Register reg_;
+  Optional<Register> hint_;  // Hint register used to tell the generation function to
+                             // better put its result into the hint. The hint is not
+                             // mandatory, user can call function EnsureRegisterHint
+                             // inside of generator to *move* the value from stored
+                             // register to hint register
 };
 
 
@@ -520,13 +532,13 @@ class Generator {
   /* --------------------------------------------
    * Helper for specialized binary instruction  |
    * -------------------------------------------*/
-  enum BinOperandType{ TINT = 0 , TREAL , TSTR };
+  enum BinOperandType{ TINT = 0 , TREAL  };
 
-  bool CanBeSpecializedLiteral( ast::Literal& lit ) const {
-    return lit.IsInteger() || lit.IsReal() || lit.IsString();
+  bool CanBeSpecializedString ( ast::Node* node ) const {
+    return node->IsLiteral() && node->AsLiteral()->IsString();
   }
-  bool CanBeSpecializedLiteral( const ExprResult& expr ) const {
-    return expr.IsInteger() || expr.IsReal() || expr.IsString();
+  bool CanBeSpecializedLiteral( const ast::Literal& lit ) const {
+    return lit.IsInteger() || lit.IsReal();
   }
   bool SpecializedLiteralToExprResult( const ast::Literal& lit ,
                                        ExprResult* result ) {
@@ -535,7 +547,7 @@ class Generator {
 
   inline BinOperandType GetBinOperandType( const ast::Literal& ) const;
   inline const char* GetBinOperandTypeName( BinOperandType t ) const;
-  inline bool GetBinaryOperatorBytecode( const SourceCodeInfo& , const Token& tk ,
+  bool GetBinaryOperatorBytecode( const SourceCodeInfo& , const Token& tk ,
                                                       BinOperandType type ,
                                                       bool lhs ,
                                                       bool rhs ,
@@ -545,46 +557,33 @@ class Generator {
    * Expression Code Generation                 |
    * -------------------------------------------*/
   bool Visit( const ast::Literal& lit , ExprResult* );
-  bool Visit( const ast::Variable& var, ExprResult* );
+  bool Visit( const ast::Variable& var , ExprResult* );
   bool Visit( const ast::Prefix& pref , ExprResult* );
   bool Visit( const ast::Unary&  , ExprResult* );
   bool Visit( const ast::Binary& , ExprResult* );
   bool VisitLogic( const ast::Binary& , ExprResult* );
   bool Visit( const ast::Ternary&, ExprResult* );
-  bool Visit( const ast::List&   , const Register& , const SourceCodeInfo& sci , ExprResult* );
-  bool Visit( const ast::Object& , const Register& , const SourceCodeInfo& sci , ExprResult* );
+  bool Visit( const ast::List&   , const SourceCodeInfo& sci , ExprResult* );
+  bool Visit( const ast::Object& , const SourceCodeInfo& sci , ExprResult* );
 
   bool Visit( const ast::List&  node , ExprResult* result ) {
-    return Visit(node,Register::kAccReg,node.sci(),result);
+    return Visit(node,node.sci(),result);
   }
   bool Visit( const ast::Object& node , ExprResult* result ) {
-    return Visit(node,Register::kAccReg,node.sci(),result);
+    return Visit(node,node.sci(),result);
   }
 
   bool VisitExpression( const ast::Node& , ExprResult* );
   bool VisitExpression( const ast::Node& , Register* );
   bool VisitExpression( const ast::Node& , ScopedRegister* );
 
-  // The following version of Expression code generation will try its
-  // best to put the final result inside of the *hint* register and this
-  // is typically a type of optimization since our code gen will allocate
-  // register on demand but this is not optimal in terms of the final
-  // code generation.
-  bool VisitExpressionWithHint( const ast::Node& , const Register& hint ,
-                                                   ScopedRegister* );
-
-  bool VisitExpressionWithHint( const ast::Node& , const Register& hint ,
-                                                   Register* );
+  // This may introduce a *move*
+  bool VisitExpressionWithOutputRegister( const ast::Node& , const Register& );
 
   // Visit prefix like ast until end is met
   bool VisitPrefix( const ast::Prefix& pref , std::size_t end ,
                                               bool tcall ,
-                                              Register* );
-
-  bool VisitPrefix( const ast::Prefix& pref , std::size_t end ,
-                                              bool tcall ,
-                                              ScopedRegister* );
-
+                                              const Register& output );
 
   /* -------------------------------------------
    * Statement Code Generation                 |
@@ -614,7 +613,7 @@ class Generator {
   Handle<Prototype> VisitFunction( const ast::Function& );
 
   bool VisitNamedFunction( const ast::Function& );
-  bool VisitAnonymousFunction( const ast::Function& );
+  bool VisitAnonymousFunction( const Register& , const ast::Function& );
 
  private: // Misc helpers --------------------------------------
   // Spill the Acc register to another register
@@ -901,7 +900,6 @@ Generator::GetBinOperandType( const ast::Literal& node ) const {
   switch(node.literal_type) {
     case ast::Literal::LIT_INTEGER: return TINT;
     case ast::Literal::LIT_REAL: return TREAL;
-    case ast::Literal::LIT_STRING: return TSTR;
     default: lava_unreach(""); return TINT;
   }
 }
@@ -909,8 +907,7 @@ Generator::GetBinOperandType( const ast::Literal& node ) const {
 inline const char* Generator::GetBinOperandTypeName( BinOperandType t ) const {
   switch(t) {
     case TINT : return "int";
-    case TREAL: return "real";
-    default:    return "string";
+    default:    return "real";
   }
 }
 

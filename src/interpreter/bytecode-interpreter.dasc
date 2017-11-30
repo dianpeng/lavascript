@@ -143,10 +143,12 @@ INTERPRETER_REGISTER_EXTERN_SYMBOL(InterpreterDoArithmetic)
 
 Value InterpreterPow         ( Runtime* sandbox ,
                                Value left,
-                               Value right ) {
+                               Value right ,
+                               Value* output ) {
   (void)sandbox;
   (void)left;
   (void)right;
+  (void)output;
   {
     Value r;
     SetValueFlag( &r, VALUE_FAIL );
@@ -331,10 +333,12 @@ bool InterpreterDoAddObj    ( Runtime* sandbox , Value* output ,
 INTERPRETER_REGISTER_EXTERN_SYMBOL(InterpreterDoAddObj)
 
 bool InterpreterDoLoadCls   ( Runtime* sandbox , Value* start_of_stack ,
-                                                 std::uint32_t prototype_id ) {
+                                                 std::uint32_t prototype_id ,
+                                                 Value* dest ) {
   (void)sandbox;
   (void)start_of_stack;
   (void)prototype_id;
+  (void)dest;
   return false;
 }
 INTERPRETER_REGISTER_EXTERN_SYMBOL(InterpreterDoLoadCls)
@@ -546,7 +550,7 @@ static_assert( sizeof(IFrame) == 16 );
 // Instruction's argument
 |.define ARG1_8,                bl
 |.define ARG1_16,               bx
-|.define ARG1,                  ebx  // must *not* be 64 bits due to we use ah
+|.define ARG1,                  ebx  // must *not* be 64 bits due to we use ah and it MUST be callee saved
 |.define ARG1F,                 rbx
 
 // Used to help decode function's call argument
@@ -575,9 +579,20 @@ static_assert( sizeof(IFrame) == 16 );
 |.define RREG,                  rdx
 |.define RREGL,                 edx
 
+// absolute safe temporary variables
+//
+//
+// In most places , prefer T0 as temporary register if ARGX
+// is not free since it doesn't require REX encoding. But it
+// alias with CARG1 , use with cautious
+|.define T0,                    rdi
+|.define T0L,                   edi
+|.define T0L16,                 di
+
 |.define T1,                    r11
 |.define T1L,                   r11d
 |.define T1L16,                 r11w
+
 |.define T2,                    r10
 |.define T2L,                   r10d
 |.define T2L16,                 r10w
@@ -795,18 +810,22 @@ INTERPRETER_REGISTER_EXTERN_SYMBOL(PrintPtr)
 |  cvtsi2sd reg, dword [T2+index*4]
 |.endmacro
 
-|.macro StIntACC,reg
-|  mov dword [STK+ACCIDX],reg
-|  mov dword [STK+ACCFIDX],Value::FLAG_INTEGER
-|.endmacro
-
 |.macro StInt,index,reg
 |  mov dword [STK+index*8],reg
 |  mov dword [STK+index*8+4],Value::FLAG_INTEGER
 |.endmacro
 
+|.macro StIntACC,reg
+|  mov dword [STK+ACCIDX],reg
+|  mov dword [STK+ACCFIDX],Value::FLAG_INTEGER
+|.endmacro
+
 |.macro StRealACC,reg
 |  movsd qword [ACC],reg
+|.endmacro
+
+|.macro StReal,idx,reg
+|  movsd qword [STK+idx*8], reg
 |.endmacro
 
 // --------------------------------------------
@@ -972,8 +991,6 @@ INTERPRETER_REGISTER_EXTERN_SYMBOL(PrintPtr)
   __(INTERP_COMPARERV,InterpCompareRV)       \
   __(INTERP_COMPAREVR,InterpCompareVR)       \
   __(INTERP_COMPAREVV,InterpCompareVV)       \
-  __(INTERP_COMPARESV,InterpCompareSV)       \
-  __(INTERP_COMPAREVS,InterpCompareVS)       \
   /* property get/set */                     \
   __(INTERP_PROPGET_NOTFOUND,InterpPropGetNotFound)      \
   __(INTERP_PROPGET_NOTOBJECT,InterpPropGetNotObject)    \
@@ -1185,8 +1202,9 @@ void GenerateHelper( BuildContext* bctx ) {
   |->InterpPowSlowIV:
   |  savepc
   |  mov CARG1, RUNTIME
-  |  LdIntV CARG2,CARG2L,ARG1F
-  |  mov CARG3,qword [STK+ARG2F*8]
+  |  LdIntV CARG2,CARG2L,ARG2F
+  |  mov CARG3,qword [STK+ARG3F*8]
+  |  lea CARG4, [STK+ARG1F*8]
   |  fcall InterpreterPow
   |  ret2acc
 
@@ -1194,8 +1212,9 @@ void GenerateHelper( BuildContext* bctx ) {
   |->InterpPowSlowRV:
   |  savepc
   |  mov CARG1, RUNTIME
-  |  LdRealV CARG2,ARG1F
-  |  mov CARG3,qword [STK+ARG2F*8]
+  |  LdRealV CARG2,ARG2F
+  |  mov CARG3,qword [STK+ARG3F*8]
+  |  lea CARG4, [STK+ARG1F*8]
   |  fcall InterpreterPow
   |  ret2acc
 
@@ -1203,8 +1222,9 @@ void GenerateHelper( BuildContext* bctx ) {
   |->InterpPowSlowVI:
   |  savepc
   |  mov CARG1, RUNTIME
-  |  mov CARG2, qword [STK+ARG1F*8]
-  |  LdIntV CARG3,CARG3L,ARG2F
+  |  mov CARG2, qword [STK+ARG2F*8]
+  |  LdIntV CARG3,CARG3L,ARG3F
+  |  lea CARG4, [STK+ARG1F*8]
   |  fcall InterpreterPow
   |  ret2acc
 
@@ -1212,17 +1232,20 @@ void GenerateHelper( BuildContext* bctx ) {
   |->InterpPowSlowVR:
   |  savepc
   |  mov CARG1, RUNTIME
-  |  mov CARG2, qword [STK+ARG1F*8]
-  |  LdRealV CARG3,ARG2F
+  |  mov CARG2, qword [STK+ARG2F*8]
+  |  LdRealV CARG3,ARG3F
+  |  lea CARG4, [STK+ARG1F*8]
   |  fcall InterpreterPow
   |  ret2acc
 
   |=> INTERP_POW_SLOWVV:
   |->InterpPowSlowVV:
   |  savepc
+  |  instr_D
   |  mov CARG1, RUNTIME
-  |  mov CARG2,qword [STK+ARG1F*8]
-  |  LdRealV CARG3,ARG2F
+  |  mov CARG2, qword [STK+ARG2F*8]
+  |  mov CARG3, qword [STK+ARG3F*8]
+  |  lea CARG4, [STK+ARG1F*8]
   |  fcall InterpreterPow
   |  ret2acc
 
@@ -1289,26 +1312,6 @@ void GenerateHelper( BuildContext* bctx ) {
   |  mov CARG1, RUNTIME
   |  mov CARG2, qword [STK+ARG1F*8]
   |  mov CARG3, qword [STK+ARG2F*8]
-  |  fcall InterpreterDoCompare
-  |  ret2acc
-
-  |=> INTERP_COMPARESV:
-  |->InterpCompareSV:
-  |  instr_C
-  |  savepc
-  |  mov CARG1, RUNTIME
-  |  LdStrV CARG2,ARG1F
-  |  mov CARG2, qword [STK+ARG2F*8]
-  |  fcall InterpreterDoCompare
-  |  ret2acc
-
-  |=> INTERP_COMPAREVS:
-  |->InterpCompareVS:
-  |  instr_B
-  |  savepc
-  |  mov CARG1, RUNTIME
-  |  mov CARG2, qword [STK+ARG1F*8]
-  |  LdStrV CARG3,ARG2F
   |  fcall InterpreterDoCompare
   |  ret2acc
 
@@ -1392,7 +1395,7 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
      *  ====================================================*/
     case BC_LOADI:
       |=> bc:
-      |  instr_B
+      |  instr_E
       |  LdInt LREGL,ARG2F
       |  StInt ARG1F,LREGL
       |  Dispatch
@@ -1421,7 +1424,7 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
 
     case BC_LOADR:
       |=> bc:
-      |  instr_B
+      |  instr_E
       |  LdReal xmm0,ARG2F
       |  movsd qword [STK+ARG1F*8],xmm0
       |  Dispatch
@@ -1450,7 +1453,7 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
 
     case BC_LOADSTR:
       |=> bc:
-      |  instr_B
+      |  instr_E
       |  LdStrV LREG,ARG2F
       |  mov qword [STK+ARG1F*8],LREG
       |  Dispatch
@@ -1567,11 +1570,12 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
       break;
     case BC_LOADCLS:
       |=>bc:
-      |  instr_G
+      |  instr_C
       |  savepc
       |  mov CARG1,RUNTIME
       |  mov CARG2, STK
-      |  mov CARG3L, ARG1
+      |  mov CARG3L, ARG2
+      |  lea CARG4 , [STK+ARG1F*8]
       |  fcall InterpreterDoLoadCls
       |  retbool
       break;
@@ -1580,24 +1584,24 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
      *  Arith XV                                            |
      *  ====================================================*/
     |.macro arith_xv,BC,slow_path,int_handler,int_instr,real_handler,real_instr
-    |  instr_C
-    |  mov RREG, qword [STK+ARG2F*8]
+    |  instr_D
+    |  mov RREG, qword [STK+ARG3F*8]
 
     // Use arg3 as temporary in favoer over T1/T2
     |.if CHECK_NUMBER_MEMORY
-    |  mov ARG3, dword[STK+ARG2F*8+4]
+    |  mov T0L, dword[STK+ARG3F*8+4]
     |.else
-    |  mov ARG3F,RREG
-    |  shr ARG3F,32
+    |  mov T0,RREG
+    |  shr T0,32
     |.endif
 
-    |  cmp ARG3, Value::FLAG_INTEGER
+    |  cmp T0L, Value::FLAG_INTEGER
     |  jne >2
     // v --> integer
     |  int_handler int_instr
     |  jmp >8
     |2:
-    |  cmp ARG3, Value::FLAG_REAL
+    |  cmp T0L, Value::FLAG_REAL
     |  jnb ->slow_path
     // v --> real
     |  real_handler real_instr
@@ -1606,46 +1610,46 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
     |.endmacro
 
     |.macro arith_iv_real,instr
-    |  LdInt2Real xmm0,ARG1F
+    |  LdInt2Real xmm0,ARG2F
     |  movd xmm1,RREG
     |  instr xmm0,xmm1
-    |  StRealACC xmm0
+    |  StReal ARG1F,xmm0
     |.endmacro
 
     |.macro arith_rv_real,instr
-    |  LdReal xmm0,ARG1F
+    |  LdReal xmm0,ARG2F
     |  movd xmm1,RREG
     |  instr xmm0,xmm1
-    |  StRealACC xmm0
+    |  StReal ARG1F,xmm0
     |.endmacro
 
     |.macro arith_iv_do_div
-    |  mov ARG3 ,dword [STK+ARG2F*8]
-    |  LdInt eax,ARG1F
+    |  mov T0L,dword [STK+ARG3F*8]
+    |  LdInt eax,ARG2F // ARG2F == rax
     |.if CHECK_DIV_BY_ZERO
     |  test eax,eax
     |  je ->DivByZero
     |.endif
     |  cdq
-    |  idiv ARG3
+    |  idiv T0L
     |.endmacro
 
     |.macro arith_iv_int,instr
     || if( arith_div ) {
     |    arith_iv_do_div
-    |    StIntACC eax
+    |    StInt ARG1F,eax
     || } else {
-    |    LdInt LREGL,ARG1F
+    |    LdInt LREGL,ARG2F
     |    instr LREGL,RREGL
-    |    StIntACC LREGL
+    |    StInt ARG1F,LREGL
     || }
     |.endmacro
 
     |.macro arith_rv_int,instr
-    |  LdReal xmm0,ARG1F
+    |  LdReal xmm0,ARG2F
     |  cvtsi2sd xmm1, RREGL
     |  instr xmm0,xmm1
-    |  StRealACC xmm0
+    |  StReal ARG1F,xmm0
     |.endmacro
 
     case BC_ADDIV:
@@ -1692,13 +1696,13 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
 
     case BC_MODIV:
       |=>bc:
-      |  instr_C
-      |  cmp dword [STK+ARG2F*8+4], Value::FLAG_INTEGER
+      |  instr_D
+      |  cmp dword [STK+ARG3F*8+4], Value::FLAG_INTEGER
       |  jne ->ModByReal
 
       // do the integer mod
-      |  mov ARG3, dword [STK+ARG2F*8]
-      |  LdInt eax,ARG1F
+      |  mov T0L, dword [STK+ARG3F*8]
+      |  LdInt eax,ARG2F // ARG2F == rax
 
       |.if CHECK_DIV_BY_ZERO
       |  test eax,eax
@@ -1706,8 +1710,8 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
       |.endif
 
       |  cdq
-      |  idiv ARG3
-      |  StIntACC edx
+      |  idiv T0L
+      |  StInt ARG1F,edx
       |  Dispatch
       break;
 
@@ -1715,24 +1719,24 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
      * Arith VX                                                |
      * ========================================================*/
     |.macro arith_vx,BC,slow_path,int_handler,int_instr,real_handler,real_instr
-    |  instr_B
-    |  mov LREG,qword [STK+ARG1F*8]
+    |  instr_D
+    |  mov LREG,qword [STK+ARG2F*8]
 
     |.if CHECK_NUMBER_MEMORY
-    |  mov ARG3,dword [STK+ARG1F*8+4]
+    |  mov T0L ,dword [STK+ARG2F*8+4]
     |.else
-    |  mov ARG3F,LREG
-    |  shr ARG3F,32
+    |  mov T0,LREG
+    |  shr T0,32
     |.endif
 
-    |  cmp ARG3,Value::FLAG_INTEGER
+    |  cmp T0L,Value::FLAG_INTEGER
     |  jne >2
 
     // v --> integer
     |  int_handler int_instr
     |  jmp >8
     |2:
-    |  cmp ARG3,Value::FLAG_REAL
+    |  cmp T0L,Value::FLAG_REAL
     |  jnb ->slow_path
 
     // v --> real
@@ -1743,46 +1747,46 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
     |.endmacro
 
     |.macro arith_vi_real,instr
-    |  LdInt2Real xmm1,ARG2F
+    |  LdInt2Real xmm1,ARG3F
     |  movd xmm0,LREG
     |  instr xmm0,xmm1
-    |  StRealACC xmm0
+    |  StReal ARG1F,xmm0
     |.endmacro
 
     |.macro arith_vi_do_div
-    |  LdInt ARG3,ARG2F
+    |  LdInt T0L,ARG3F
     |  mov eax,LREGL
     |.if 1
     |  test eax,eax
     |  je ->DivByZero
     |.endif
     |  cdq
-    |  idiv ARG3
+    |  idiv T0L
     |.endmacro
 
     |.macro arith_vi_int,instr
     || if( arith_div ) {
     |    arith_vi_do_div
-    |    StIntACC eax
+    |    StInt ARG1F,eax
     || } else {
-    |    LdInt RREGL,ARG2F
+    |    LdInt RREGL,ARG3F
     |    instr LREGL,RREGL
-    |    StIntACC LREGL
+    |    StInt ARG1F,LREGL
     || }
     |.endmacro
 
     |.macro arith_vr_real,instr
-    |  LdReal xmm1, ARG2F
+    |  LdReal xmm1, ARG3F
     |  movd xmm0,LREG
     |  instr xmm0,xmm1
-    |  StRealACC xmm0
+    |  StReal ARG1F,xmm0
     |.endmacro
 
     |.macro arith_vr_int,instr
-    |  LdReal xmm1,ARG2F
+    |  LdReal xmm1,ARG3F
     |  cvtsi2sd xmm0, LREGL
     |  instr xmm0,xmm1
-    |  StRealACC xmm0
+    |  StReal ARG1F,xmm0
     |.endmacro
 
     case BC_ADDVI:
@@ -1829,22 +1833,22 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
 
     case BC_MODVI:
       |=>bc:
-      |  instr_B
-      |  cmp dword [STK+ARG1F*8+4], Value::FLAG_INTEGER
+      |  instr_D
+      |  cmp dword [STK+ARG2F*8+4], Value::FLAG_INTEGER
       |  jne ->ModByReal
 
       // do the division
-      |  LdInt ARG3,ARG2F
+      |  LdInt T0L,ARG3F
       |.if CHECK_DIV_BY_ZERO
-      |  test ARG3,ARG3
+      |  test T0L,T0L
       |  je ->DivByZero
       |.endif
 
-      |  mov eax,dword [STK+ARG1F*8]
+      |  mov eax,dword [STK+ARG2F*8]
 
       |  cdq
-      |  idiv ARG3
-      |  StIntACC edx
+      |  idiv T0L
+      |  StInt ARG1F,edx
       |  Dispatch
       break;
 
@@ -1858,7 +1862,7 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
      * ========================================================*/
     |.macro arith_vv_do_div
     |  shr RREG,32
-    |  mov ARG3,RREGL
+    |  mov T0L,RREGL
     |  shr LREG,32
     |  mov eax,LREGL
     |.if 1
@@ -1866,41 +1870,41 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
     |  je ->DivByZero
     |.endif
     |  cdq
-    |  idiv ARG3
+    |  idiv T0L
     |.endmacro
 
     // perform VV calaculation based on instruction
     |.macro arith_vv,BC,instrI,setterI,instrR,setterR
     |=> BC:
-    |  instr_E
+    |  instr_D
 
     // check the lhs to be integer or not
-    |  mov LREG,qword [STK+ARG1F*8]
+    |  mov LREG,qword [STK+ARG2F*8]
     |  cmp LREGL,Value::FLAG_INTEGER
     |  jne >1
 
     | // int && xx
-    |  mov RREG,qword [STK+ARG2F*8]
+    |  mov RREG,qword [STK+ARG3F*8]
     |  cmp RREGL,Value::FLAG_INTEGER
     |  jne >4
     // int && int
     || if( arith_div ) {
          // order matters
     |    arith_vv_do_div
-    |    setterI eax
+    |    setterI ARG1F,eax
     || } else if (arith_mod) {
          // order matters
     |    arith_vv_do_div
-    |    setterI edx
+    |    setterI ARG1F,edx
     || } else {
-    |    mov     LREGL,dword [STK+ARG1F*8]
-    |    instrI  LREGL,dword [STK+ARG2F*8]
-    |    setterI LREGL
+    |    mov     LREGL,dword [STK+ARG2F*8]
+    |    instrI  LREGL,dword [STK+ARG3F*8]
+    |    setterI ARG1F,LREGL
     || }
     |  jmp >8
 
     |1:
-    |  mov RREG,qword [STK+ARG2F*8]
+    |  mov RREG,qword [STK+ARG3F*8]
     |  cmp RREGL,Value::FLAG_REAL
     |  jnb ->InterpArithVV
 
@@ -1931,7 +1935,7 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
     |    jmp ->ModByReal
     || } else {
     |    instrR  xmm0,xmm1
-    |    setterR xmm0
+    |    setterR ARG1F,xmm0
     || }
 
     |8:
@@ -1940,21 +1944,21 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
     |.endmacro
 
     case BC_ADDVV:
-      |  arith_vv BC_ADDVV,add,StIntACC,addsd,StRealACC
+      |  arith_vv BC_ADDVV,add,StInt,addsd,StReal
       break;
     case BC_SUBVV:
-      |  arith_vv BC_SUBVV,sub,StIntACC,subsd,StRealACC
+      |  arith_vv BC_SUBVV,sub,StInt,subsd,StReal
       break;
     case BC_MULVV:
-      |  arith_vv BC_MULVV,imul,StIntACC,mulsd,StRealACC
+      |  arith_vv BC_MULVV,imul,StInt,mulsd,StReal
       break;
     case BC_DIVVV:
       arith_div = true;
-      |  arith_vv BC_DIVVV,imul,StIntACC,divsd,StRealACC
+      |  arith_vv BC_DIVVV,imul,StInt,divsd,StReal
       break;
     case BC_MODVV:
       arith_mod = true;
-      |  arith_vv BC_MODVV,imul,StIntACC,divsd,StRealACC
+      |  arith_vv BC_MODVV,imul,StInt,divsd,StReal
       break;
 
     /* ==============================================================
@@ -1967,7 +1971,7 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
 
     |.macro call_pow
     |  fcall pow
-    |  movsd qword [ACC], xmm0
+    |  movsd qword [STK+ARG1F*8], xmm0  // ARG1F is callee saved , heck!
     |.endmacro
 
     |.macro arith_pow,REGL,XREG,ARG,slow_pow
@@ -1988,35 +1992,34 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
 
     case BC_POWIV:
       |=> bc:
-      |  instr_C
-      |  LdInt2Real,xmm0,ARG1F
-      |  arith_pow RREGL,xmm1,ARG2F,InterpPowSlowIV
+      |  instr_D
+      |  LdInt2Real,xmm0,ARG2F
+      |  arith_pow RREGL,xmm1,ARG3F,InterpPowSlowIV
       break;
 
     case BC_POWVI:
       |=> bc:
-      |  instr_B
-      |  LdInt2Real,xmm1,ARG2F
-      |  arith_pow LREGL,xmm0,ARG1F,InterpPowSlowVI
+      |  instr_D
+      |  LdInt2Real,xmm1,ARG3F
+      |  arith_pow LREGL,xmm0,ARG2F,InterpPowSlowVI
       break;
 
     case BC_POWRV:
       |=> bc:
-      |  instr_C
-      |  LdReal xmm0,ARG1F
-      |  arith_pow RREGL,xmm1,ARG2F,InterpPowSlowRV
+      |  instr_D
+      |  LdReal xmm0,ARG2F
+      |  arith_pow RREGL,xmm1,ARG3F,InterpPowSlowRV
       break;
 
     case BC_POWVR:
       |=> bc:
-      |  instr_B
-      |  LdReal xmm1,ARG2F
-      |  arith_pow LREGL,xmm0,ARG1F,InterpPowSlowVR
+      |  instr_D
+      |  LdReal xmm1,ARG3F
+      |  arith_pow LREGL,xmm0,ARG2F,InterpPowSlowVR
       break;
 
     case BC_POWVV:
       |=> bc:
-      |  instr_C
       |  jmp ->InterpPowSlowVV
       break;
 
@@ -2032,36 +2035,36 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
     // very optimal to use cmov since a jcc instruction will execute less
     // instruction although it has a branch , need to profile
     |.macro comp_cmp_real,instr
-    |  mov ARG1, Value::FLAG_FALSE
+    |  mov ARG2, Value::FLAG_FALSE
     |  ucomisd xmm0,xmm1
-    |  instr ARG1, dword [->FlagTrueConst]
-    |  mov dword [STK+ACCFIDX], ARG1
+    |  instr ARG2, dword [->FlagTrueConst]
+    |  mov dword [STK+ARG1F*8+4], ARG2
     |.endmacro
 
     |.macro comp_cmp_int,instr
-    |  mov ARG1, Value::FLAG_FALSE
+    |  mov ARG2, Value::FLAG_FALSE
     |  cmp LREGL,RREGL
-    |  instr ARG1, dword [->FlagTrueConst]
-    |  mov dword [STK+ACCFIDX], ARG1
+    |  instr ARG2, dword [->FlagTrueConst]
+    |  mov dword [STK+ARG1F*8+4], ARG2
     |.endmacro
 
     /* --------------------------------------------------------------------
      * Comparison XV                                                      |
      * -------------------------------------------------------------------*/
     |.macro comp_xv,BC,slow_path,iv_real,iv_real_cmov,iv_real_jmp,iv_int,iv_int_cmov,iv_int_jmp
-    |  instr_C
-    |  mov RREG, qword[STK+ARG2F*8]
+    |  instr_D
+    |  mov RREG, qword[STK+ARG3F*8]
     |.if CHECK_NUMBER_MEMORY
-    |  mov ARG3, dword[STK+ARG2F*8+4]
+    |  mov T0L , dword[STK+ARG3F*8+4]
     |.else
-    |  mov ARG3F,RREG
-    |  shr ARG3F,32
+    |  mov T0,RREG
+    |  shr T0,32
     |.endif
-    |  cmp ARG3, Value::FLAG_INTEGER
+    |  cmp T0, Value::FLAG_INTEGER
     |  jne >2
     |  iv_int iv_int_cmov,iv_int_jmp
     |2:
-    |  cmp ARG3, Value::FLAG_REAL
+    |  cmp T0, Value::FLAG_REAL
     |  jnb ->slow_path
     |  iv_real iv_real_cmov,iv_real_jmp
 
@@ -2071,7 +2074,7 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
 
     // real/int part for iv/rv
     |.macro comp_iv_real,instr,false_jmp
-    |  LdInt2Real xmm0,ARG1F
+    |  LdInt2Real xmm0,ARG2F
     |  movd xmm1,RREG
 
     |.if USE_CMOV_COMP
@@ -2079,16 +2082,16 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
     |.else
     |  ucomisd xmm0,xmm1
     |  false_jmp >8
-    |  mov dword [STK+ACCFIDX], Value::FLAG_TRUE
+    |  mov dword [STK+ARG1F*8+4], Value::FLAG_TRUE
     |  jmp >7
     |8:
-    |  mov dword [STK+ACCFIDX], Value::FLAG_FALSE
+    |  mov dword [STK+ARG1F*8+4], Value::FLAG_FALSE
     |.endif
 
     |.endmacro
 
     |.macro comp_iv_int,instr,false_jmp
-    |  LdInt LREGL,ARG1F
+    |  LdInt LREGL,ARG2F
 
     |.if USE_CMOV_COMP
     |  comp_cmp_int,instr
@@ -2096,17 +2099,17 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
     |.else
     |  cmp LREGL,RREGL
     |  false_jmp >8
-    |  mov dword [STK+ACCFIDX], Value::FLAG_TRUE
+    |  mov dword [STK+ARG1F*8+4], Value::FLAG_TRUE
     |  jmp >7
     |8:
-    |  mov dword [STK+ACCFIDX], Value::FLAG_FALSE
+    |  mov dword [STK+ARG1F*8+4], Value::FLAG_FALSE
     |  jmp >7
     |.endif
 
     |.endmacro
 
     |.macro comp_rv_real,instr,false_jmp
-    |  LdReal xmm0,ARG1F
+    |  LdReal xmm0,ARG2F
     |  movd xmm1,RREG
 
     |.if USE_CMOV_COMP
@@ -2114,16 +2117,16 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
     |.else
     |  ucomisd xmm0,xmm1
     |  false_jmp >8
-    |  mov dword [STK+ACCFIDX], Value::FLAG_TRUE
+    |  mov dword [STK+ARG1F*8+4], Value::FLAG_TRUE
     |  jmp >7
     |8:
-    |  mov dword [STK+ACCFIDX], Value::FLAG_FALSE
+    |  mov dword [STK+ARG1F*8+4], Value::FLAG_FALSE
     |.endif
 
     |.endmacro
 
     |.macro comp_rv_int,instr,false_jmp
-    |  LdReal xmm0,ARG1F
+    |  LdReal xmm0,ARG2F
     |  cvtsi2sd xmm1,RREGL
 
     |.if USE_CMOV_COMP
@@ -2132,10 +2135,10 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
     |.else
     |  ucomisd xmm0,xmm1
     |  false_jmp >8
-    |  mov dword [STK+ACCFIDX], Value::FLAG_TRUE
+    |  mov dword [STK+ARG1F*8+4], Value::FLAG_TRUE
     |  jmp >7
     |8:
-    |  mov dword [STK+ACCFIDX], Value::FLAG_FALSE
+    |  mov dword [STK+ARG1F*8+4], Value::FLAG_FALSE
     |  jmp >7
     |.endif
 
@@ -2435,45 +2438,6 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
     case BC_NEVV:
       |=>bc:
       |  comp_vv,BC_NEVV,cmovne,je,cmovne,je
-      break;
-
-    /* ------------------------------------------------------------
-     * Comparison SV/VS
-     *
-     * For this sort of cases, we don't inline anything for none EQ/NE
-     * comparison but just call the function to perform the comparison
-     * -----------------------------------------------------------*/
-    case BC_LTSV:
-      |=> bc:
-      |  jmp ->InterpCompareSV
-      break;
-    case BC_LTVS:
-      |=> bc:
-      |  jmp ->InterpCompareVS
-      break;
-    case BC_LESV:
-      |=> bc:
-      |  jmp ->InterpCompareSV
-      break;
-    case BC_LEVS:
-      |=> bc:
-      |  jmp ->InterpCompareVS
-      break;
-    case BC_GTSV:
-      |=> bc:
-      |  jmp ->InterpCompareSV
-      break;
-    case BC_GTVS:
-      |=> bc:
-      |  jmp ->InterpCompareVS
-      break;
-    case BC_GESV:
-      |=> bc:
-      |  jmp ->InterpCompareSV
-      break;
-    case BC_GEVS:
-      |=> bc:
-      |  jmp ->InterpCompareVS
       break;
 
     // For string equality comparison , we inline SSO comparison since

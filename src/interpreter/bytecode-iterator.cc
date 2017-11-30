@@ -44,39 +44,10 @@ void BytecodeIterator::Decode() {
       a4_   = code_buffer_[cursor_+1];
       offset_ = 2;
       break;
-    case TYPE_N:
-      a1_8_ = static_cast<std::uint8_t>((raw>>8) & 0xff);
-      a2_8_ = static_cast<std::uint8_t>((raw>>16)& 0xff);
-      a3_8_ = static_cast<std::uint8_t>((raw>>24)& 0xff);
-      offset_ = 1 + Align(a1_8_,static_cast<std::uint8_t>(4)) / 4;
-      break;
     default:
       offset_ = 1;
       break;
   }
-}
-
-void BytecodeIterator::GetNArg( std::vector<std::uint8_t>* output ) {
-  std::size_t pos = cursor_ + 1;
-  std::size_t step= 0;
-  std::size_t len = Align(a3_8_,static_cast<std::uint8_t>(4));
-
-  for( std::size_t i = 0 ; i < len ; i += 4 , ++step ) {
-    std::uint32_t cd = code_buffer_[pos+step];
-    output->push_back( static_cast<std::uint8_t>(cd & 0xff) );
-    output->push_back( static_cast<std::uint8_t>((cd >>8) & 0xff) );
-    output->push_back( static_cast<std::uint8_t>((cd >>16) & 0xff) );
-    output->push_back( static_cast<std::uint8_t>((cd >>24) & 0xff) );
-  }
-
-  std::size_t left = len - a3_8_;
-  switch(left) {
-    case 1: output->pop_back(); break;
-    case 2: output->pop_back(); output->pop_back(); break;
-    case 3: output->pop_back(); output->pop_back(); output->pop_back(); break;
-    default: lava_debug(NORMAL,lava_verify(len == a3_8_);); break;
-  }
-  lava_debug(NORMAL,lava_verify(a3_8_ == output->size()););
 }
 
 } // namespace interpreter

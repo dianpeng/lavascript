@@ -367,32 +367,45 @@ TEST(Interpreter,SimpleLoop) {
   PRIMITIVE_EQ(10,var a = 0; for( var i = 0.0 ; 10 ; 1 ) { a = a + 1; } return a;);
   PRIMITIVE_EQ(10,var a = 0; for( var i = 0 ; 10.0 ; 1 ) { a = a + 1; } return a;);
 }
-#endif
 
 TEST(Interpreter,SimpleLoopBench) {
   BENCHMARK(var a = 0; for( var i = 0 ; 1000000; 1 ) {
-      a = a + 1;
-      a = a - 2;
-      a = a * 3;
-
-      a = a + 1;
-      a = a - 2;
-      a = a * 3;
-
-      a = a + 1;
-      a = a - 2;
-      a = a * 3;
-
-      a = a + 1;
-      a = a - 2;
-      a = a * 3;
-
-      a = a + 1;
-      a = a - 2;
-      a = a * 3;
   } return a;);
 }
+#endif
 
+TEST(Interpreter,CompXV) {
+  // < or >
+  PRIMITIVE_EQ(true,var a = 4; return 2 < a;);
+  PRIMITIVE_EQ(false,var b= 3; return 2 > b;);
+  PRIMITIVE_EQ(true,var a = 4.0; return 2.0 < a; );
+  PRIMITIVE_EQ(false,var b= 3.0; return 2.0 > b; );
+  PRIMITIVE_EQ(true,var a = 4; return 2.0 < a; );
+  PRIMITIVE_EQ(true,var a= 4.0;return 2  < a;  );
+  PRIMITIVE_EQ(false,var b =3; return 2.0 > b; );
+  PRIMITIVE_EQ(false,var b =3.0;return 2 > b;  );
+
+  // <= or >=
+  PRIMITIVE_EQ(true,var a = 2; return 2 <=a;);
+  PRIMITIVE_EQ(true,var a = 2; return 2 >=a;);
+  PRIMITIVE_EQ(false,var a =4.0; return 5.0 <=a;);
+  PRIMITIVE_EQ(true,var a =4.0; return 5.0 >=a;);
+  PRIMITIVE_EQ(true,var a = 2; return 2.0 <=a;);
+  PRIMITIVE_EQ(true,var a = 2; return 2.0 >=a;);
+  PRIMITIVE_EQ(false,var a= 4.0; return 5 <=a;);
+  PRIMITIVE_EQ(true,var a = 4.0; return 5 >=a;);
+
+  // == or !=
+  PRIMITIVE_EQ(true,var a = 2; return 3 !=a; );
+  PRIMITIVE_EQ(false,var a= 3; return 2 ==a; );
+  PRIMITIVE_EQ(true,var a = 2.0; return 3.0 != a; );
+  PRIMITIVE_EQ(false,var a = 3.0; return 2.0 == a; );
+  PRIMITIVE_EQ(true,var a = 2 ; return 3.0 != a; );
+  PRIMITIVE_EQ(false,var a = 3; return 2.0 == a; );
+  PRIMITIVE_EQ(true,var a = 2 ; return 3.0 != a; );
+  PRIMITIVE_EQ(false,var a = 3; return 2.0 == a; );
+
+}
 
 } // namespace lavascript
 } // namespace interpreter

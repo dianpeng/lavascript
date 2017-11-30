@@ -1116,7 +1116,7 @@ bool Generator::Visit( const ast::Binary& node , ExprResult* result ) {
         if(!VisitExpression(*node.lhs,&lhs_reg)) return false;
 
         if(node.op.IsEQ()) {
-          if(!func_scope()->bb()->eqsv(func_scope()->ra()->base(),node.sci(),
+          if(!func_scope()->bb()->eqvs(func_scope()->ra()->base(),node.sci(),
                                                                   output.index(),
                                                                   lhs_reg.Get().index(),
                                                                   rhs_result.ref())) {
@@ -1124,7 +1124,7 @@ bool Generator::Visit( const ast::Binary& node , ExprResult* result ) {
             return false;
           }
         } else {
-          if(!func_scope()->bb()->nesv(func_scope()->ra()->base(),node.sci(),
+          if(!func_scope()->bb()->nevs(func_scope()->ra()->base(),node.sci(),
                                                                   output.index(),
                                                                   lhs_reg.Get().index(),
                                                                   rhs_result.ref())) {

@@ -40,7 +40,7 @@ bool Compile( Context* context ,const char* source ,
   return true;
 }
 
-static const bool kShowBytecode = true;
+static const bool kShowBytecode = false;
 
 enum { COMP_LE , COMP_LT , COMP_GT , COMP_GE , COMP_EQ , COMP_NE };
 
@@ -62,6 +62,7 @@ bool Bench( const char* source ) {
     interp( lavascript::interpreter::AssemblyInterpreter::Generate() );
   lava_verify(interp);
   lavascript::interpreter::AssemblyInterpreter::Instance ins(interp);
+
 
   Context ctx;
   std::string error;
@@ -90,7 +91,13 @@ bool Bench( const char* source ) {
       std::cerr<<"Benchmark result:"<<(end-start)/kTimes<<'\n';
     }
   }
-  (void)ret;
+  if(ret.IsInteger()) {
+    std::cerr<<"Integer:"<<ret.GetInteger()<<std::endl;
+  } else if(ret.IsReal()) {
+    std::cerr<<"Real:"<<static_cast<int>(ret.GetReal())<<std::endl;
+  } else {
+    std::cerr<<"Type:"<<ret.type_name()<<std::endl;
+  }
   return r;
 }
 
@@ -374,38 +381,17 @@ TEST(Interpreter,SimpleLoopBench) {
 }
 #endif
 
-TEST(Interpreter,CompXV) {
-  // < or >
-  PRIMITIVE_EQ(true,var a = 4; return 2 < a;);
-  PRIMITIVE_EQ(false,var b= 3; return 2 > b;);
-  PRIMITIVE_EQ(true,var a = 4.0; return 2.0 < a; );
-  PRIMITIVE_EQ(false,var b= 3.0; return 2.0 > b; );
-  PRIMITIVE_EQ(true,var a = 4; return 2.0 < a; );
-  PRIMITIVE_EQ(true,var a= 4.0;return 2  < a;  );
-  PRIMITIVE_EQ(false,var b =3; return 2.0 > b; );
-  PRIMITIVE_EQ(false,var b =3.0;return 2 > b;  );
-
-  // <= or >=
-  PRIMITIVE_EQ(true,var a = 2; return 2 <=a;);
-  PRIMITIVE_EQ(true,var a = 2; return 2 >=a;);
-  PRIMITIVE_EQ(false,var a =4.0; return 5.0 <=a;);
-  PRIMITIVE_EQ(true,var a =4.0; return 5.0 >=a;);
-  PRIMITIVE_EQ(true,var a = 2; return 2.0 <=a;);
-  PRIMITIVE_EQ(true,var a = 2; return 2.0 >=a;);
-  PRIMITIVE_EQ(false,var a= 4.0; return 5 <=a;);
-  PRIMITIVE_EQ(true,var a = 4.0; return 5 >=a;);
-
-  // == or !=
-  PRIMITIVE_EQ(true,var a = 2; return 3 !=a; );
-  PRIMITIVE_EQ(false,var a= 3; return 2 ==a; );
-  PRIMITIVE_EQ(true,var a = 2.0; return 3.0 != a; );
-  PRIMITIVE_EQ(false,var a = 3.0; return 2.0 == a; );
-  PRIMITIVE_EQ(true,var a = 2 ; return 3.0 != a; );
-  PRIMITIVE_EQ(false,var a = 3; return 2.0 == a; );
-  PRIMITIVE_EQ(true,var a = 2 ; return 3.0 != a; );
-  PRIMITIVE_EQ(false,var a = 3; return 2.0 == a; );
-
+TEST(Interpreter,SimpleLoopBench) {
+  BENCHMARK(var a = 0.0;for( var i = 0 ; 1000000; 1 ) {
+      a = a + 1.0;
+      a = a * 2;
+      a = a * 2;
+      a = a * 2;
+      a = a * 2;
+      a = a - 16.0;
+  } return 1;);
 }
+
 
 } // namespace lavascript
 } // namespace interpreter

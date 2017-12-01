@@ -35,7 +35,6 @@ const char* GetGCStateName( GCState );
 
 #define LAVASCRIPT_PRIMITIVE_TYPE_LIST(__)                            \
   __( TYPE_REAL    , Real    , "real"    )                            \
-  __( TYPE_INTEGER , Integer , "integer" )                            \
   __( TYPE_BOOLEAN , Boolean , "boolean" )                            \
   __( TYPE_NULL    , Null    , "null"    )                            \
 

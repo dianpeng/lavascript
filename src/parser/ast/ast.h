@@ -108,7 +108,6 @@ struct Node : zone::ZoneObject {
 struct Literal : public Node {
   /** Literal related information **/
   enum {
-    LIT_INTEGER,
     LIT_REAL,
     LIT_BOOLEAN,
     LIT_STRING,
@@ -117,7 +116,6 @@ struct Literal : public Node {
   int literal_type;
 
   union {
-    std::int32_t int_value;
     double real_value;
     bool bool_value;
     zone::String* str_value;
@@ -125,7 +123,6 @@ struct Literal : public Node {
 
   /** diagnostic information for this Literal Node **/
 
-  bool IsInteger() const { return literal_type == LIT_INTEGER; }
   bool IsReal   () const { return literal_type == LIT_REAL; }
   bool IsBoolean() const { return literal_type == LIT_BOOLEAN; }
   bool IsString () const { return literal_type == LIT_STRING; }
@@ -141,11 +138,6 @@ struct Literal : public Node {
     Node( LITERAL , sp , ep ) ,
     literal_type( LIT_BOOLEAN )
   { bool_value = bval; }
-
-  Literal( size_t sp , size_t ep , int ival ) :
-    Node( LITERAL , sp , ep ) ,
-    literal_type( LIT_INTEGER )
-  { int_value = ival; }
 
   Literal( size_t sp , size_t ep , double rval ):
     Node( LITERAL , sp , ep ) ,

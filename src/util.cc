@@ -54,6 +54,11 @@ std::string PrettyPrintReal( double real ) {
     if(npos != std::string::npos) {
       result.erase(npos+1,std::string::npos);
     }
+
+    // remove the trailing dot if we need to
+    if(result[result.size()-1] == '.') {
+      result.pop_back();
+    }
     return result;
   }
 }

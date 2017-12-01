@@ -22,7 +22,6 @@ using namespace ::lavascript::zone;
 
 enum ExpressionKind {
   EREAL,
-  EINTEGER,
   EBOOLEAN,
   ESTRING,
   ENULL,
@@ -34,7 +33,6 @@ struct Expression {
   ExpressionKind ekind;     // What type of expression this Expression object holds
   union {
     double real_value;
-    int    int_value ;
     bool   bool_value;
     String* str_value;
     ast::Node* node;
@@ -43,16 +41,13 @@ struct Expression {
 
  public:
   bool IsString () const { return ekind == ESTRING; }
-  bool IsInteger() const { return ekind == EINTEGER;}
   bool IsReal   () const { return ekind == EREAL; }
-  bool IsNumber () const { return IsInteger() || IsReal(); }
   bool IsNull   () const { return ekind == ENULL; }
   bool IsBoolean() const { return ekind == EBOOLEAN; }
   bool IsComplex() const { return ekind == ECOMPLEX; }
 
   inline bool   IsLiteral() const;
   inline bool   AsBoolean ( bool* ) const;
-  inline bool   AsInteger ( int* ) const;
   inline bool   AsReal    ( double* ) const;
   inline void   AsString  ( Zone* , String** ) const;
   inline void   AsString  ( std::string* ) const;
@@ -60,6 +55,10 @@ struct Expression {
   // This function is used inside of boolean context , not for converting
   // the type to boolean
   inline bool   ToBoolean ( bool* ) const;
+
+  // Narrow a real/double value into the integer. If it cannot be narrowed
+  // it fails with false
+  inline bool   NarrowReal( std::int32_t* ival ) const;
 
  public:
   Expression():
@@ -70,8 +69,10 @@ struct Expression {
 };
 
 inline bool Expression::IsLiteral() const {
-  return IsString() || IsInteger()||
-         IsReal()   || IsNull()   || IsBoolean();
+  return IsString() ||
+         IsReal()   ||
+         IsNull()   ||
+         IsBoolean();
 }
 
 inline bool Expression::ToBoolean( bool* output ) const {
@@ -97,22 +98,15 @@ inline bool Expression::AsBoolean( bool* output ) const {
   return true;
 }
 
-inline bool Expression::AsInteger( int* output ) const {
-  lava_verify( IsLiteral() );
-  switch(ekind) {
-    case EREAL: *output = static_cast<int>(real_value); return true;
-    case EINTEGER: *output = int_value; return true;
-    case EBOOLEAN: *output = bool_value ? 1 : 0; return true;
-    case ESTRING: return ::lavascript::StringToInt( str_value->data() , output );
-    default: return false;
-  }
+inline bool Expression::NarrowReal( std::int32_t* output ) const {
+  if(!IsReal()) return false;
+  return ::lavascript::NarrowReal<std::int32_t>(real_value,output);
 }
 
 inline bool Expression::AsReal( double* output ) const {
   lava_verify( IsLiteral() );
   switch(ekind) {
     case EREAL: *output = real_value; return true;
-    case EINTEGER: *output = static_cast<double>(int_value); return true;
     case EBOOLEAN: *output = bool_value ? 1.0 : 0.0; return true;
     case ESTRING: return ::lavascript::StringToReal( str_value->data() , output );
     default: return false;
@@ -124,8 +118,6 @@ inline void Expression::AsString( Zone* zone , String** output ) const {
   switch(ekind) {
     case EREAL:
       *output = String::New(zone,PrettyPrintReal(real_value)); break;
-    case EINTEGER:
-      *output = String::New(zone,std::to_string(int_value)); break;
     case EBOOLEAN:
       *output = String::New(zone,bool_value ? "true" : "false"); break;
     case ESTRING:
@@ -139,7 +131,6 @@ inline void Expression::AsString( std::string* output ) const {
   lava_verify( IsLiteral() );
   switch(ekind) {
     case EREAL: *output = PrettyPrintReal(real_value); break;
-    case EINTEGER: *output = std::to_string(int_value); break;
     case EBOOLEAN: output->assign( bool_value ? "true" : "false" ); break;
     case ESTRING: output->assign( str_value->data() ); break;
     default: output->assign("null"); break;
@@ -201,9 +192,7 @@ void ExpressionOptimizer::Error( const ast::Node& node , const char* format , ..
 }
 
 inline int ExpressionOptimizer::NumberTypePromotion( int l , int r ) {
-  if( l == EINTEGER && r == EINTEGER )
-    return EINTEGER;
-  else if( l == EREAL || r == EREAL )
+  if( l == EREAL || r == EREAL )
     return EREAL;
   else
     lava_die();
@@ -212,8 +201,6 @@ inline int ExpressionOptimizer::NumberTypePromotion( int l , int r ) {
 
 ast::Literal* ExpressionOptimizer::NewLiteralNode( const Expression& node ) {
   switch(node.ekind) {
-    case EINTEGER:
-      return ast_factory_.NewLiteral( node.start , node.end , node.int_value );
     case EREAL:
       return ast_factory_.NewLiteral( node.start , node.end , node.real_value);
     case EBOOLEAN:
@@ -243,9 +230,6 @@ bool ExpressionOptimizer::Optimize( ast::Literal* node , Expression* expr ) {
   switch(node->literal_type) {
     case ast::Literal::LIT_REAL:
       expr->real_value = node->real_value; expr->ekind = EREAL;
-      break;
-    case ast::Literal::LIT_INTEGER:
-      expr->int_value = node->int_value; expr->ekind = EINTEGER;
       break;
     case ast::Literal::LIT_BOOLEAN:
       expr->bool_value = node->bool_value; expr->ekind = EBOOLEAN;
@@ -286,16 +270,8 @@ bool ExpressionOptimizer::Optimize( ast::Prefix* node, Expression* expr ) {
       Expression a1,a2;
       if(!Optimize(call.args->Index(0),&a1) || !Optimize(call.args->Index(1),&a2))
         return false;
-      if(a1.ekind == EINTEGER && a2.ekind == EINTEGER) {
-        expr->start = node->start; expr->end = node->end;
-        expr->ekind = EINTEGER;
-        if(name == "min")
-          expr->int_value = std::min(a1.int_value,a2.int_value);
-        else
-          expr->int_value = std::max(a1.int_value,a2.int_value);
 
-        return true;
-      } else if(a1.ekind == EREAL && a2.ekind == EREAL) {
+      if(a1.ekind == EREAL && a2.ekind == EREAL) {
         expr->start = node->start; expr->end = node->end;
         expr->ekind = EREAL;
 
@@ -310,7 +286,6 @@ bool ExpressionOptimizer::Optimize( ast::Prefix* node, Expression* expr ) {
       Expression a;
       if(!Optimize(call.args->Index(0),&a)) return false;
       switch(a.ekind) {
-        case EINTEGER: type = String::New(zone_,"integer"); break;
         case EREAL:    type = String::New(zone_,"real"   ); break;
         case EBOOLEAN: type = String::New(zone_,"boolean"); break;
         case ENULL:    type = String::New(zone_,"null");    break;
@@ -325,18 +300,6 @@ bool ExpressionOptimizer::Optimize( ast::Prefix* node, Expression* expr ) {
         expr->ekind = ESTRING;
         expr->start = node->start; expr->end = node->end;
         expr->str_value = type;
-        return true;
-      }
-    } else if((name == "int" && call.args->size() ==1)) {
-      Expression a;
-      if(!Optimize(call.args->Index(0),&a)) return false;
-      if(a.IsLiteral()) {
-        expr->start = node->start; expr->end = node->end;
-        expr->ekind = EINTEGER;
-        if(!a.AsInteger(&(expr->int_value))) {
-          Error(*node,"int(): cannot convert argument to integer");
-          return false;
-        }
         return true;
       }
     } else if((name == "real" && call.args->size() ==1)) {
@@ -378,19 +341,18 @@ bool ExpressionOptimizer::Optimize( ast::Prefix* node, Expression* expr ) {
       switch(a.ekind) {
         case ESTRING:
           expr->start = node->start; expr->end = node->end;
-          expr->ekind = EINTEGER;
-          expr->int_value = static_cast<int>(a.str_value->size());
+          expr->ekind = EREAL;
+          expr->real_value = static_cast<double>(a.str_value->size());
           break;
         case ECOMPLEX:
           if(a.node->IsList() || a.node->IsObject()) {
             expr->start = node->start; expr->end = node->end;
-            expr->ekind = EINTEGER;
-            expr->int_value = static_cast<int>(
+            expr->ekind = EREAL;
+            expr->real_value = static_cast<double>(
                 a.node->IsList() ? a.node->AsList()->entry->size() :
                                    a.node->AsObject()->entry->size());
           }
           break;
-        case EINTEGER:
         case EREAL:
         case EBOOLEAN:
           Error(*node,"len(): argument cannot be integer/real/boolean");
@@ -455,15 +417,6 @@ bool ExpressionOptimizer::Optimize( ast::Unary* node , Expression* expr ) {
   if(a.IsLiteral()) {
     expr->start = node->start; expr->end = node->end;
     switch(a.ekind) {
-      case EINTEGER:
-        if(node->op == Token::kSub) {
-          expr->ekind = EINTEGER;
-          expr->int_value = -a.int_value;
-        } else {
-          expr->ekind = EBOOLEAN;
-          expr->bool_value= false;
-        }
-        break;
       case EREAL:
         if(node->op == Token::kSub) {
           expr->ekind = EREAL;
@@ -522,91 +475,49 @@ bool ExpressionOptimizer::Optimize( ast::Binary* node , Expression* expr ) {
       // numeric operations , arithmetic operation only appy on numeric
       // operations and we don't do implicit conversion here. So no
       // boolean --> integer/real , just numbers here.
-      if(lhs.IsNumber()) {
-        if(!rhs.IsNumber()) {
+      if(lhs.IsReal()) {
+        if(!rhs.IsReal()) {
           Error(*node,"Binary operator \"%s\" can only be used between integer/real type",
                 node->op.token_name());
           return false;
         }
-        int t = NumberTypePromotion(lhs.ekind,rhs.ekind);
-        if(t == EREAL) {
-          double ld = (lhs.ekind == EINTEGER ? static_cast<int>(lhs.int_value) :
-                                               lhs.real_value);
+        double ld = lhs.real_value;
+        double rd = rhs.real_value;
 
-          double rd = (rhs.ekind == EINTEGER ? static_cast<int>(rhs.int_value) :
-                                               rhs.real_value);
+        expr->start = node->start; expr->end = node->end;
 
-          expr->start = node->start; expr->end = node->end;
+        if(node->op.IsArithmetic())
+          expr->ekind = EREAL;
+        else
+          expr->ekind = EBOOLEAN;
 
-          if(node->op.IsArithmetic())
-            expr->ekind = EREAL;
-          else
-            expr->ekind = EBOOLEAN;
-
-          switch(node->op) {
-            case Token::TK_ADD: expr->real_value = ld + rd; break;
-            case Token::TK_SUB: expr->real_value = ld - rd; break;
-            case Token::TK_MUL: expr->real_value = ld * rd; break;
-            case Token::TK_DIV:
-              if(!rd) {
-                Error(*node,"Divide by 0");
-                return false;
-              }
-              expr->real_value = ld / rd;
-              break;
-            case Token::TK_MOD:
-              Error(*node,"binary operator \"%%\" cannot be used between real number");
+        switch(node->op) {
+          case Token::TK_ADD: expr->real_value = ld + rd; break;
+          case Token::TK_SUB: expr->real_value = ld - rd; break;
+          case Token::TK_MUL: expr->real_value = ld * rd; break;
+          case Token::TK_DIV:
+            if(!rd) {
+              Error(*node,"Divide by 0");
               return false;
-            case Token::TK_POW: expr->real_value = std::pow(ld,rd); break;
-            case Token::TK_LT: expr->bool_value = (ld < rd); break;
-            case Token::TK_LE: expr->bool_value = (ld <=rd); break;
-            case Token::TK_GT: expr->bool_value = (ld > rd); break;
-            case Token::TK_GE: expr->bool_value = (ld >=rd); break;
-            case Token::TK_EQ: expr->bool_value = (ld ==rd); break;
-            case Token::TK_NE: expr->bool_value = (ld !=rd); break;
-            default: lava_die(); break;
-          }
-        } else {
-          int li = (lhs.ekind == EINTEGER ? lhs.int_value :
-                                            static_cast<int>(lhs.real_value));
-
-          int ri = (rhs.ekind == EINTEGER ? rhs.int_value :
-                                            static_cast<int>(rhs.real_value));
-
-          expr->start = node->start; expr->end = node->end;
-
-          if(node->op.IsArithmetic())
-            expr->ekind = EINTEGER;
-          else
-            expr->ekind = EBOOLEAN;
-
-          switch(node->op) {
-            case Token::TK_ADD: expr->int_value = li + ri; break;
-            case Token::TK_SUB: expr->int_value = li - ri; break;
-            case Token::TK_MUL: expr->int_value = li * ri; break;
-            case Token::TK_DIV:
-              if(!ri) {
-                Error(*node,"Divide by 0");
-                return false;
-              }
-              expr->int_value = li / ri;
-              break;
-            case Token::TK_MOD:
-              if(!ri) {
-                Error(*node,"Divide by 0");
-                return false;
-              }
-              expr->int_value = li % ri;
-              break;
-            case Token::TK_POW : expr->int_value = std::pow(li,ri); break;
-            case Token::TK_LT: expr->bool_value = (li < ri); break;
-            case Token::TK_LE: expr->bool_value = (li <=ri); break;
-            case Token::TK_GT: expr->bool_value = (li > ri); break;
-            case Token::TK_GE: expr->bool_value = (li >=ri); break;
-            case Token::TK_EQ: expr->bool_value = (li ==ri); break;
-            case Token::TK_NE: expr->bool_value = (li !=ri); break;
-            default: lava_die(); break;
-          }
+            }
+            expr->real_value = ld / rd;
+            break;
+          case Token::TK_MOD:
+            // TODO:: Is it good ??
+            {
+              std::int64_t lhs = static_cast<std::int64_t>(ld);
+              std::int64_t rhs = static_cast<std::int64_t>(rd);
+              expr->real_value = lhs % rhs;
+            }
+            break;
+          case Token::TK_POW: expr->real_value = std::pow(ld,rd); break;
+          case Token::TK_LT: expr->bool_value = (ld < rd); break;
+          case Token::TK_LE: expr->bool_value = (ld <=rd); break;
+          case Token::TK_GT: expr->bool_value = (ld > rd); break;
+          case Token::TK_GE: expr->bool_value = (ld >=rd); break;
+          case Token::TK_EQ: expr->bool_value = (ld ==rd); break;
+          case Token::TK_NE: expr->bool_value = (ld !=rd); break;
+          default: lava_die(); break;
         }
       } else if(lhs.IsString() && rhs.IsString()) {
         if(node->op.IsArithmetic()) {
@@ -644,81 +555,117 @@ bool ExpressionOptimizer::Optimize( ast::Binary* node , Expression* expr ) {
             expr->bool_value = (lhs.IsNull() ^ rhs.IsNull()); break;
         }
       }
-    } else if(lhs.IsInteger() || rhs.IsInteger()) {
+    } else if(lhs.IsReal() || rhs.IsReal()) {
 
       /*
-       * When we reach here it means one of rhs and lhs must be literal
+       * The strength reduction that we gonna perform. The old lavascript internally
+       * supports integer type and transfer it automatically however it is relatively
+       * expensive to maintain this so I transfer all the numeric type to one single
+       * type real.
        *
-       * The strength reduction we have here is pretty simple , only for
-       * integer.
+       * Here we can do a simple *narrowling* to get the narrowed integer number to
+       * do strength reduction:
        *
        * x+0 = x ; 0+x = x;
        * x-0 = x ; 0-x = -x;
        * 1*x = x ; x*1 = x;
        * 0*x = 0 ; x*0 = 0;
+       * -1*x= -x; x*-1= -x;
        * 0/x = 0 ; 0%x = 0;
        * x/1 = x ;
+       * x/-1= -x;
        * 0^x = 0 ;
        *
+       * TODO:: Add more ? Is it worth since we definitly gonna have a JIT compiler ?
+       * TODO:: Really messy function , split it ??
        */
 
-      expr->start = node->start; expr->end = node->end;
+      expr->start = node->start;
+      expr->end = node->end;
       expr->ekind = ECOMPLEX;
-      switch(node->op) {
-        case Token::TK_ADD:
-        case Token::TK_SUB:
-          if(lhs.IsInteger() && lhs.int_value == 0) {
-            lava_verify( rhs.IsComplex() );
-            if(node->op == Token::kAdd) {
-              expr->node = rhs.node;
-            } else {
-              expr->node = ast_factory_.NewUnary(node->start,
-                                                 node->end,
-                                                 Token::kSub,
-                                                 lhs.node);
-            }
-          } else if(rhs.IsInteger() && rhs.int_value == 0) {
-            lava_verify( lhs.IsComplex() );
-            expr->node = lhs.node;
-          }
-          break;
-        case Token::TK_MUL:
-          if(lhs.IsInteger() && lhs.int_value == 1) {
-            lava_verify(rhs.IsComplex());
+
+      if(node->op == Token::TK_ADD || node->op == Token::TK_SUB) {
+        std::int32_t i1,i2;
+
+        if(lhs.NarrowReal(&i1) && i1 == 0) {
+          lava_debug(NORMAL,lava_verify( rhs.IsComplex() ););
+
+          if(node->op == Token::kAdd) {
             expr->node = rhs.node;
-          } else if(rhs.IsInteger() && rhs.int_value == 1) {
-            lava_verify(lhs.IsComplex());
+          } else {
+            expr->node = ast_factory_.NewUnary(node->start,
+                node->end,
+                Token::kSub,
+                lhs.node);
+          }
+        } else if(rhs.NarrowReal(&i2) && i2 == 0) {
+          lava_debug(NORMAL,lava_verify( lhs.IsComplex() ););
+
+          expr->node = lhs.node;
+        }
+      } else if(node->op == Token::TK_MUL) {
+        std::int32_t ival;
+
+        if(lhs.NarrowReal(&ival)) {
+          lava_debug(NORMAL,lava_verify(rhs.IsComplex()););
+          if(ival == 1) {
+            expr->node = rhs.node;
+          } else if(ival == 0) {
+            expr->ekind = EREAL;
+            expr->real_value = 0.0;
+          } else if(ival == -1) {
+            expr->node = ast_factory_.NewUnary(node->start,
+                node->end,
+                Token::kSub,
+                rhs.node);
+          }
+        } else if(rhs.NarrowReal(&ival)) {
+          lava_debug(NORMAL,lava_verify(lhs.IsComplex()););
+          if(ival == 1) {
             expr->node = lhs.node;
-          } else if(lhs.IsInteger() && lhs.int_value == 0) {
-            expr->ekind = EINTEGER;
-            expr->int_value = 0;
-          } else if(rhs.IsInteger() && rhs.int_value == 0) {
-            expr->ekind = EINTEGER;
-            expr->int_value = 0;
+          } else if(ival == 0) {
+            expr->ekind = EREAL;
+            expr->real_value = 0.0;
+          } else if(ival == -1) {
+            expr->node = ast_factory_.NewUnary(node->start,
+                node->end,
+                Token::kSub,
+                lhs.node);
           }
-          break;
-        case Token::TK_DIV:
-          if(rhs.IsInteger() && rhs.int_value == 1) {
-            lava_verify(lhs.IsComplex());
+        }
+      } else if(node->op == Token::TK_DIV) {
+        std::int32_t ival;
+        if(lhs.NarrowReal(&ival)) {
+          if(ival == 0) {
+            expr->ekind = EREAL;
+            expr->real_value = 0.0;
+          }
+
+        } else if(rhs.NarrowReal(&ival)) {
+          if(ival == 1) {
             expr->node = lhs.node;
-          } else if((lhs.IsInteger() && lhs.int_value ==0)) {
-            expr->ekind = EINTEGER;
-            expr->int_value = 0;
+          } else if(ival == -1) {
+            expr->node = ast_factory_.NewUnary(node->start,
+                node->end,
+                Token::kSub,
+                lhs.node);
+          } else if(ival == 0) {
+            Error(*node,"Divide by 0");
+            return false;
           }
-          break;
-        case Token::TK_MOD:
-          if(lhs.IsInteger() && lhs.int_value == 0) {
-            expr->ekind = EINTEGER;
-            expr->int_value = 0;
-          }
-          break;
-        case Token::TK_POW:
-          if(lhs.IsInteger() && lhs.int_value == 0) {
-            expr->ekind = EINTEGER;
-            expr->int_value = 0;
-          }
-          break;
-        default: break;
+        }
+      } else if(node->op == Token::TK_MOD) {
+        std::int32_t ival;
+        if(lhs.NarrowReal(&ival) && ival == 0) {
+          expr->ekind = EREAL;
+          expr->real_value = 0.0;
+        }
+      } else if(node->op == Token::TK_POW) {
+        std::int32_t ival;
+        if(lhs.NarrowReal(&ival) && ival == 0) {
+          expr->ekind = EREAL;
+          expr->real_value = 0.0;
+        }
       }
     }
   } else if( node->op.IsConcat() ) {

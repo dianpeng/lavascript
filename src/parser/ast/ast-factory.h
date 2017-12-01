@@ -25,9 +25,6 @@ class AstFactory {
  public:
   AstFactory( ::lavascript::zone::Zone* zone ): zone_(zone) {}
 
-  inline Literal* NewLiteral( size_t start , size_t end , std::int32_t ival );
-  inline Literal* NewLiteral( const Lexer& l , std::int32_t ival );
-
   inline Literal* NewLiteral( size_t start , size_t end , double rval );
   inline Literal* NewLiteral( const Lexer& l , double rval );
 
@@ -109,14 +106,6 @@ class AstFactory {
 
   LAVA_DISALLOW_COPY_AND_ASSIGN(AstFactory);
 };
-
-inline Literal* AstFactory::NewLiteral( size_t start , size_t end , std::int32_t ival ) {
-  return new (zone_) Literal(start,end,ival);
-}
-
-inline Literal* AstFactory::NewLiteral( const Lexer& l , std::int32_t ival ) {
-  return NewLiteral( l.lexeme().start , l.lexeme().end, ival );
-}
 
 inline Literal* AstFactory::NewLiteral( size_t start , size_t end , double rval ) {
   return new (zone_) Literal(start,end,rval);

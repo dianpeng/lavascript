@@ -655,7 +655,6 @@ class GC : AllStatic {
                             std::size_t,
                             std::size_t,
                             std::size_t,
-                            std::size_t,
                             std::size_t);
 
   // specialized new for Script object creation

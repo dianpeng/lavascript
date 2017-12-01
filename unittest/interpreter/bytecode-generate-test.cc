@@ -45,7 +45,7 @@ TEST(BytecodeGenerate,Basic) {
     std::string script(stringify(
           var bv = 10;
           for( var a = 0 ;  1000; 1 ) {
-            a= b.c.d(a,e).g(h)(p)(q);
+            bv = bv + 1;
           }
           ));
 

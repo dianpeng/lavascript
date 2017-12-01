@@ -62,7 +62,6 @@ namespace parser {
   __( TK_TRUE , "true" , _ , True, LITERAL ) \
   __( TK_FALSE, "false", _ , False,LITERAL ) \
   __( TK_NULL , "null",  _ , Null ,LITERAL ) \
-  __( TK_INTEGER,"integer",_,Integer,LITERAL) \
   __( TK_REAL , "real" , _ , Real , LITERAL) \
   __( TK_STRING,"string",_ , String,LITERAL) \
   /* Others */ \

@@ -82,16 +82,14 @@ TEST(BytecodeBuilder,AllBytecodeType) {
   // TYPE_G
   {
     BytecodeBuilder bb;
-    bb.and_(0,SourceCodeInfo(),1,65534);
+    bb.jmp(0,SourceCodeInfo(),65534);
     BytecodeIterator itr(bb.GetIterator());
     ASSERT_TRUE(itr.HasNext());
     ASSERT_TRUE(itr.type() == TYPE_G);
-    ASSERT_EQ(BC_AND,itr.opcode()) << itr.opcode_name();
-    std::uint8_t a1;
-    std::uint16_t a2;
-    itr.GetOperand(&a1,&a2);
-    ASSERT_EQ(1,a1);
-    ASSERT_EQ(65534,a2);
+    ASSERT_EQ(BC_JMP,itr.opcode()) << itr.opcode_name();
+    std::uint16_t a;
+    itr.GetOperand(&a);
+    ASSERT_EQ(65534,a);
   }
 }
 
@@ -110,7 +108,6 @@ TEST(BytecodeBuilder,Coverage) {
 #define GE_G(FUNC) bb.FUNC(0,SourceCodeInfo(),65535)
 #define GE_H(FUNC)
 #define GE_X(FUNC) bb.FUNC(0,SourceCodeInfo())
-#define GE_N(FUNC) bb.FUNC(0,SourceCodeInfo(),4,255,254,{{1,2,3,4}})
 
   BytecodeBuilder bb;
   LAVASCRIPT_BYTECODE_LIST(__);
@@ -122,7 +119,6 @@ TEST(BytecodeBuilder,Coverage) {
 #undef GE_G
 #undef GE_H
 #undef GE_X
-#undef GE_N
 #undef __ // __
 
   /* ----------------------------------------
@@ -133,9 +129,10 @@ TEST(BytecodeBuilder,Coverage) {
   do {                                      \
     ++count;                                \
     ASSERT_TRUE(itr.HasNext());             \
-    ASSERT_EQ(BC_##B,itr.opcode()) << itr.opcode_name(); \
+    if(BC_##B != BC_FEND1 && BC_##B != BC_FEND2) { \
+      ASSERT_EQ(BC_##B,itr.opcode()) << itr.opcode_name();     \
+   }                                                           \
     BCTEST_##A();                           \
-    itr.Next();                             \
   } while(false);
 
 #define BCTEST_B() \
@@ -144,6 +141,7 @@ TEST(BytecodeBuilder,Coverage) {
     itr.GetOperand(&a1,&a2);                \
     ASSERT_EQ(1,a1);                        \
     ASSERT_EQ(65535,a2);                    \
+    itr.Next();                             \
   } while(false)
 
 #define BCTEST_C() \
@@ -152,6 +150,7 @@ TEST(BytecodeBuilder,Coverage) {
     itr.GetOperand(&a1,&a2);                \
     ASSERT_EQ(65535,a1);                    \
     ASSERT_EQ(1,a2);                        \
+    itr.Next();                             \
   } while(false)
 
 #define BCTEST_D() \
@@ -161,6 +160,7 @@ TEST(BytecodeBuilder,Coverage) {
     ASSERT_EQ(1,a1);                        \
     ASSERT_EQ(2,a2);                        \
     ASSERT_EQ(3,a3);                        \
+    itr.Next();                             \
   } while(false)
 
 #define BCTEST_E() \
@@ -169,6 +169,7 @@ TEST(BytecodeBuilder,Coverage) {
     itr.GetOperand(&a1,&a2);                \
     ASSERT_EQ(1,a1);                        \
     ASSERT_EQ(2,a2);                        \
+    itr.Next();                             \
   } while(false)
 
 #define BCTEST_F() \
@@ -176,6 +177,7 @@ TEST(BytecodeBuilder,Coverage) {
     std::uint8_t a1;                        \
     itr.GetOperand(&a1);                    \
     ASSERT_EQ(1,a1);                        \
+    itr.Next();                             \
   } while(false)
 
 #define BCTEST_G() \
@@ -183,28 +185,12 @@ TEST(BytecodeBuilder,Coverage) {
     std::uint16_t a1;                       \
     itr.GetOperand(&a1);                    \
     ASSERT_EQ(65535,a1);                    \
+    itr.Next();                             \
   } while(false)
 
 #define BCTEST_H() do {} while(false)
 
-#define BCTEST_N() \
-  do {                                      \
-    std::uint8_t a1,a2,a3;                  \
-    std::vector<std::uint8_t> vec;          \
-    itr.GetOperand(&a1,&a2,&a3);            \
-    itr.GetNArg(&vec);                      \
-    ASSERT_EQ(1,vec[0]);                    \
-    ASSERT_EQ(2,vec[1]);                    \
-    ASSERT_EQ(3,vec[2]);                    \
-    ASSERT_EQ(4,vec[3]);                    \
-    ASSERT_EQ(4,vec.size());                \
-    ASSERT_EQ(4,a1);                        \
-    ASSERT_EQ(255,a2);                      \
-    ASSERT_EQ(254,a3);                      \
-  } while(false)
-
-
-#define BCTEST_X() do {} while(false)
+#define BCTEST_X() do { itr.Next(); } while(false)
 
   BytecodeIterator itr(bb.GetIterator());
   std::size_t count = 0;
@@ -220,7 +206,6 @@ TEST(BytecodeBuilder,Coverage) {
 #undef BCTEST_F
 #undef BCTEST_G
 #undef BCTEST_X
-#undef BCTEST_N
 #undef BCTEST_H
 #undef __
 }
@@ -278,8 +263,8 @@ TEST(BytecodeBuilder,Patch) {
 
   TEST2(BC_JMPT); ASSERT_TRUE(itr.Next());
   TEST2(BC_JMPF); ASSERT_TRUE(itr.Next());
-  TEST1(BC_AND) ; ASSERT_TRUE(itr.Next());
-  TEST1(BC_OR)  ; ASSERT_TRUE(itr.Next());
+  TEST2(BC_AND) ; ASSERT_TRUE(itr.Next());
+  TEST2(BC_OR)  ; ASSERT_TRUE(itr.Next());
   TEST1(BC_JMP) ; ASSERT_TRUE(itr.Next());
   TEST1(BC_BRK) ; ASSERT_TRUE(itr.Next());
   TEST1(BC_CONT); ASSERT_TRUE(itr.Next());

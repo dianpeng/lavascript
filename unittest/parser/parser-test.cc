@@ -61,14 +61,14 @@ bool ExprCheckLiteral( const char* source , ast::Node** output,
   return false;
 }
 
-bool ExprCheckLiteral( const char* source , int ival ,
+bool ExprCheckLiteral( const char* source , int ival,
                        Zone* zone , std::string* error ) {
   ast::Node* ou;
   if(!ExprCheckLiteral(source,&ou,zone,error)) return false;
   if(!ou->IsLiteral()) return false;
 
   ast::Literal* output = ou->AsLiteral();
-  return (output->IsInteger() && ival == output->int_value);
+  return (output->IsReal() && static_cast<double>(ival) == output->real_value);
 }
 
 bool ExprCheckLiteral( const char* source , double rval,
@@ -188,11 +188,8 @@ TEST(Parser,ConstantFolding) {
   ConstExprCheck("boolean",a = type(true););
   ConstExprCheck("boolean",a = type(false););
   ConstExprCheck("null",a = type(null););
-  ConstExprCheck("integer",a = type(1););
+  ConstExprCheck("real",a = type(1););
   ConstExprCheck("real",a = type(1.0););
-  ConstExprCheck(1,a=int(1););
-  ConstExprCheck(1,a=int(1.0););
-  ConstExprCheck(1234,a=int("1234"););
   ConstExprCheck(true,a=boolean(true););
   ConstExprCheck(false,a=boolean(false););
   ConstExprCheck(true,a=boolean("true"););

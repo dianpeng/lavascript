@@ -79,37 +79,6 @@ namespace {
 
 // Helper class for handling string to *double* or *integer* via normal
 // C functions strtol and strtod
-
-bool Str2Int( const std::string& str , std::int32_t* value ) {
-  char* pend = NULL;
-  errno = 0;
-  long int v = ::strtol( str.c_str() , &pend , 10 );
-
-  static_assert( sizeof(long int) >= sizeof(std::int32_t) );
-
-  if(errno || pend != (str.c_str()+str.size())) {
-    return false; // Overflow
-  } else {
-    if( sizeof(long int) == sizeof(std::int32_t) ) {
-      *value = v;
-      return true;
-    } else {
-      // Okay ,target machine has long int larger than a int
-      long int min = static_cast<long int>(
-          std::numeric_limits<std::int32_t>::min());
-
-      long int max = static_cast<long int>(
-          std::numeric_limits<std::int32_t>::max());
-
-      if( v < min || v > max ) return false; // Overflow
-
-      *value = v;
-      return true;
-    }
-  }
-}
-
-
 bool Str2Double( const std::string& str , double* value ) {
   char* pend = NULL;
   errno = 0;
@@ -123,10 +92,7 @@ bool Str2Double( const std::string& str , double* value ) {
 
 const Lexeme& Lexer::LexNumber() {
   /*
-   * Lexing number from :
-   *   1) integer
-   *   2) real number's floating point rerepsentation
-   *
+   * Lexing number from : real number's floating point rerepsentation
    *
    * Here we do a cheap implementation by using strtol and strtod. This is
    * eaiser for us to do the number lexing here. What we do is we simply
@@ -180,20 +146,10 @@ const Lexeme& Lexer::LexNumber() {
   }
 
 done:
-  switch(st) {
-    case kNeedDigit: buffer.pop_back(); // fallthrough
-    case kNeedEndOrDigitOrDot:
-      if(!Str2Int(buffer,&(lexeme_.int_value)))
-        return Error("integer literal %s overflow!",buffer.c_str());
-      lexeme_.token = Token::kInteger;
-      break;
-    default:
-      if(!Str2Double(buffer,&(lexeme_.real_value)))
-        return Error("real literal %s overflow!",buffer.c_str());
-      lexeme_.token = Token::kReal;
-      break;
-  }
+  if(!Str2Double(buffer,&(lexeme_.real_value)))
+    return Error("real literal %s overflow!",buffer.c_str());
 
+  lexeme_.token = Token::kReal;
   lexeme_.start = start;
   lexeme_.token_length = (position_ - start);
   lexeme_.end = position_;

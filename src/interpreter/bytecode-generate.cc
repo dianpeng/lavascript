@@ -381,57 +381,21 @@ void FunctionScope::FreeScopeBoundIterator( std::size_t cnt ) {
   next_iterator_ -= cnt;
 }
 
-std::uint8_t kBinSpecialOpLookupTable [][3][3] = {
+std::uint8_t kBinSpecialOpLookupTable [][3] = {
   /* arithmetic operator */
-  {
-    {BC_HLT,BC_ADDIV,BC_ADDVI},
-    {BC_HLT,BC_ADDRV,BC_ADDVR}
-  },
-  {
-    {BC_HLT,BC_SUBIV,BC_SUBVI},
-    {BC_HLT,BC_SUBRV,BC_SUBVR}
-  },
-  {
-    {BC_HLT,BC_MULIV,BC_MULVI},
-    {BC_HLT,BC_MULRV,BC_MULVR}
-  },
-  {
-    {BC_HLT,BC_DIVIV,BC_DIVVI},
-    {BC_HLT,BC_DIVRV,BC_DIVVR}
-  },
-  {
-    {BC_HLT,BC_MODIV,BC_MODVI},
-    {BC_HLT,BC_HLT,BC_HLT}
-  },
-  {
-    {BC_HLT,BC_POWIV,BC_POWVI},
-    {BC_HLT,BC_POWRV,BC_POWVR}
-  },
+  {BC_HLT,BC_ADDRV,BC_ADDVR},
+  {BC_HLT,BC_SUBRV,BC_SUBVR},
+  {BC_HLT,BC_MULRV,BC_MULVR},
+  {BC_HLT,BC_DIVRV,BC_DIVVR},
+  {BC_HLT,BC_MODRV,BC_MODVR},
+  {BC_HLT,BC_POWRV,BC_POWVR},
   /* comparison operator */
-  {
-    {BC_HLT,BC_LTIV,BC_LTVI},
-    {BC_HLT,BC_LTRV,BC_LTVR}
-  },
-  {
-    {BC_HLT,BC_LEIV,BC_LEVI},
-    {BC_HLT,BC_LERV,BC_LEVR}
-  },
-  {
-    {BC_HLT,BC_GTIV,BC_GTVI},
-    {BC_HLT,BC_GTRV,BC_GTVR}
-  },
-  {
-    {BC_HLT,BC_GEIV,BC_GEVI},
-    {BC_HLT,BC_GERV,BC_GEVR}
-  },
-  {
-    {BC_HLT,BC_EQIV,BC_EQVI},
-    {BC_HLT,BC_EQRV,BC_EQVR}
-  },
-  {
-    {BC_HLT,BC_NEIV,BC_NEVI},
-    {BC_HLT,BC_NERV,BC_NEVR}
-  }
+  {BC_HLT,BC_LTRV,BC_LTVR},
+  {BC_HLT,BC_LERV,BC_LEVR},
+  {BC_HLT,BC_GTRV,BC_GTVR},
+  {BC_HLT,BC_GERV,BC_GEVR},
+  {BC_HLT,BC_EQRV,BC_EQVR},
+  {BC_HLT,BC_NERV,BC_NEVR}
 };
 
 static int kBinGeneralOpLookupTable [] = {
@@ -451,7 +415,6 @@ static int kBinGeneralOpLookupTable [] = {
 
 bool Generator::GetBinaryOperatorBytecode( const SourceCodeInfo& sci ,
                                            const Token& tk ,
-                                           BinOperandType type ,
                                            bool lhs ,
                                            bool rhs ,
                                            Bytecode* output ) const {
@@ -459,15 +422,8 @@ bool Generator::GetBinaryOperatorBytecode( const SourceCodeInfo& sci ,
 
   int index = static_cast<int>(rhs) << 1 | static_cast<int>(lhs);
   int opindex = static_cast<int>(tk.token());
-  Bytecode bc = static_cast<Bytecode>(
-      kBinSpecialOpLookupTable[opindex][static_cast<int>(type)][index]);
-  if(bc == BC_HLT) {
-    Error(sci,"binary operator %s cannot be used between type %s",
-          tk.token_name(),GetBinOperandTypeName(type));
-
-    return false;
-  }
-
+  Bytecode bc = static_cast<Bytecode>(kBinSpecialOpLookupTable[opindex][index]);
+  lava_debug(NORMAL, lava_verify(bc != BC_HLT););
   lava_debug(NORMAL, lava_verify(bc >= 0 && bc <= BC_NEVV); );
 
   *output = bc;
@@ -514,30 +470,26 @@ bool Generator::SpillToAcc( const SourceCodeInfo& sci , ScopedRegister* reg ) {
 bool Generator::AllocateLiteral( const SourceCodeInfo& sci , const ast::Literal& lit ,
                                                              const Register& reg ) {
   switch(lit.literal_type) {
-    case ast::Literal::LIT_INTEGER:
-      if(lit.int_value == 0) {
-        EEMIT(load0,sci,reg.index());
-      } else if(lit.int_value == 1) {
-        EEMIT(load1,sci,reg.index());
-      } else if(lit.int_value == -1) {
-        EEMIT(loadn1,sci,reg.index());
-      } else {
-        std::int32_t iref = func_scope()->bb()->Add(lit.int_value);
-        if(iref<0) {
-          Error(ERR_TOO_MANY_LITERALS,lit.sci());
-          return false;
-        }
-        EEMIT(loadi,sci,reg.index(),static_cast<std::uint16_t>(iref));
-      }
-      break;
     case ast::Literal::LIT_REAL:
       {
-        std::int32_t rref = func_scope()->bb()->Add(lit.real_value);
-        if(rref<0) {
-          Error(ERR_TOO_MANY_LITERALS,lit.sci());
-          return false;
+        // Try to narrow the *REAL* to take advantage of LOAD0/LOAD1/LOADN1
+        std::int32_t ival;
+        if(NarrowReal(lit.real_value,&ival)) {
+          switch(ival) {
+            case 0: EEMIT(load0,sci, reg.index()); break;
+            case 1: EEMIT(load1,sci, reg.index()); break;
+            case -1:EEMIT(loadn1,sci,reg.index());break;
+            default: goto fallback;
+          }
+        } else {
+fallback:
+          std::int32_t rref = func_scope()->bb()->Add(lit.real_value);
+          if(rref<0) {
+            Error(ERR_TOO_MANY_LITERALS,lit.sci());
+            return false;
+          }
+          EEMIT(loadr,sci,reg.index(),static_cast<std::uint16_t>(rref));
         }
-        EEMIT(loadr,sci,reg.index(),static_cast<std::uint16_t>(rref));
       }
       break;
     case ast::Literal::LIT_BOOLEAN:
@@ -570,14 +522,6 @@ Optional<Register> Generator::ExprResultToRegister( const SourceCodeInfo& sci ,
     return Optional<Register>(expr.reg());
   else {
     switch(expr.kind()) {
-      case KINT:
-        if(!func_scope()->bb()->loadi(
-              func_scope()->ra()->base(),
-              sci,Register::kAccIndex,static_cast<std::uint16_t>(expr.ref()))) {
-          Error(ERR_FUNCTION_TOO_LONG,sci);
-          return Optional<Register>();
-        }
-        break;
       case KREAL:
         if(!func_scope()->bb()->loadr(
               func_scope()->ra()->base(),
@@ -633,13 +577,6 @@ const char* Generator::GetErrorCategoryDescription( ErrorCategory ec ) const {
 bool Generator::Visit( const ast::Literal& lit , ExprResult* result ) {
   std::int32_t ref;
   switch(lit.literal_type) {
-    case ast::Literal::LIT_INTEGER:
-      if((ref=func_scope()->bb()->Add(lit.int_value))<0) {
-        Error(ERR_REGISTER_OVERFLOW,lit);
-        return false;
-      }
-      result->SetIRef(ref);
-      return true;
     case ast::Literal::LIT_REAL:
       if((ref=func_scope()->bb()->Add(lit.real_value))<0) {
         Error(ERR_REGISTER_OVERFLOW,lit);
@@ -752,29 +689,39 @@ bool Generator::VisitPrefix( const ast::Prefix& node , std::size_t end ,
         }
         break;
       case ast::Prefix::Component::INDEX:
-        // Specialize the integer literal if we can do so
-        if(c.expr->IsLiteral() && c.expr->AsLiteral()->IsInteger()) {
-          // Okay it is a index looks like this : a[100]
-          // so we gonna specialize this one with 100 be a direct ref
-          // no register shuffling here
-          std::int32_t ref = func_scope()->bb()->Add(
-              c.expr->AsLiteral()->int_value);
-          if(ref<0) {
-            Error(ERR_FUNCTION_TOO_LONG,*c.expr);
-            return false;
-          }
 
-          if(i == end-1) {
-            EEMIT(idxgeti,c.expr->sci(),hint.index(),var_reg.index(),ref);
-          } else {
-            EEMIT(idxgeti,c.expr->sci(),var_reg.index(),var_reg.index(),ref);
+        // Optimize to use idxgeti instruction which takes an embed integer part
+        // of the instruction to avoid constant table lookup and loading. Also
+        // it bypass the type check since we only have real type as number type
+        // internally
+        if(c.expr->IsLiteral() && c.expr->AsLiteral()->IsReal()) {
+          // Try to narrow the implementation to find out whether we
+          // can embed the index into bc idxgeti which saves us time
+          std::int32_t iref;
+          if(NarrowReal(c.expr->AsLiteral()->real_value,&iref)) {
+            if(iref >= std::numeric_limits<std::uint8_t>::min() &&
+               iref <= std::numeric_limits<std::uint8_t>::max()) {
+
+              if(i == end-1) {
+                EEMIT(idxgeti,c.expr->sci(),hint.index(),var_reg.index(),
+                    static_cast<std::uint8_t>(iref));
+              } else {
+                EEMIT(idxgeti,c.expr->sci(),var_reg.index(),var_reg.index(),
+                    static_cast<std::uint8_t>(iref));
+              }
+              break;
+            }
           }
-        } else {
+        }
+
+        // fallthrough here to handle common cases
+        {
           // Register used to hold the expression
           ScopedRegister expr_reg(this);
 
           // Get the register for the expression
-          if(!VisitExpression(*c.expr,&expr_reg)) return false;
+          if(!VisitExpression(*c.expr,&expr_reg))
+            return false;
 
           if(i == end-1) {
             // Emit the idxget instruction for indexing
@@ -1027,20 +974,18 @@ bool Generator::Visit( const ast::Binary& node , ExprResult* result ) {
   lava_debug(NORMAL,lava_verify(result->GetHint()););
   Register output(result->GetHint().Get());
 
-  if(node.op.IsArithmetic() || node.op.IsComparison()) {
+  if((node.op.IsArithmetic() || node.op.IsComparison())) {
+
     if((node.lhs->IsLiteral() && CanBeSpecializedLiteral(*node.lhs->AsLiteral())) ||
        (node.rhs->IsLiteral() && CanBeSpecializedLiteral(*node.rhs->AsLiteral())) ) {
 
-      lava_debug(NORMAL,
-          lava_verify(!(node.lhs->IsLiteral() && node.rhs->IsLiteral())); );
+      lava_debug(NORMAL,lava_verify(!(node.lhs->IsLiteral() && node.rhs->IsLiteral())); );
 
-      BinOperandType t = node.lhs->IsLiteral() ? GetBinOperandType(*node.lhs->AsLiteral()) :
-                                                 GetBinOperandType(*node.rhs->AsLiteral());
       Bytecode bc;
 
       // Get the bytecode for this expression
-      if(!GetBinaryOperatorBytecode(node.sci(),node.op,t,node.lhs->IsLiteral(),
-                                              node.rhs->IsLiteral(),&bc))
+      if(!GetBinaryOperatorBytecode(node.sci(),node.op,node.lhs->IsLiteral(),
+                                                       node.rhs->IsLiteral(),&bc))
         return false;
 
       // Evaluate each operand and its literal value
@@ -1135,6 +1080,7 @@ bool Generator::Visit( const ast::Binary& node , ExprResult* result ) {
       }
 
     } else {
+
       // Well will have to use VV type instruction which is a slow path.
       // This can be anything from using boolean and null for certain
       // arithmetic and comparsion ( which is not allowed ) to using
@@ -1389,23 +1335,33 @@ bool Generator::VisitPrefixAssign( const ast::Assign& node ) {
       break;
     case ast::Prefix::Component::INDEX:
       {
-        /**
-         * Since we need to evaluate the component expression inside of
-         * the IDXSET instruction to feed it. And the evaluation can
-         * result in Acc to be scratched. So we need to move the result
-         * from the rhs to be in a temporary register and then evaluate
-         * the stuff
-         */
-        if(rhs.Get().IsAcc()) {
-          if(rhs.Reset(SpillFromAcc(last_comp.expr->sci()))) return false;
+        if(last_comp.expr->IsLiteral() && last_comp.expr->AsLiteral()->IsReal()) {
+          // try to narrow the real index to take advantage of idxseti instruction
+          std::int32_t iref;
+          if(NarrowReal(last_comp.expr->AsLiteral()->real_value,&iref)) {
+            if(std::numeric_limits<std::uint8_t>::max() >= iref &&
+               std::numeric_limits<std::uint8_t>::min() <= iref) {
+              SEMIT(idxseti,node.sci(),lhs.Get().index(),iref,rhs.Get().index());
+              break;
+            }
+          }
         }
 
-        ScopedRegister expr_reg(this);
-        if(!VisitExpression(*last_comp.expr,&expr_reg)) return false;
+        // fallthrough to handle common case
+        {
+          if(rhs.Get().IsAcc()) {
+            if(rhs.Reset(SpillFromAcc(last_comp.expr->sci()))) return false;
+          }
 
-        // idxset REG REG REG
-        SEMIT(idxset,node.sci(),lhs.Get().index(),expr_reg.Get().index(),
-                                                  rhs.Get().index());
+          {
+            ScopedRegister expr_reg(this);
+            if(!VisitExpression(*last_comp.expr,&expr_reg)) return false;
+
+            // idxset REG REG REG
+            SEMIT(idxset,node.sci(),lhs.Get().index(),expr_reg.Get().index(),
+                                                      rhs.Get().index());
+          }
+        }
       }
       break;
     default:
@@ -1463,8 +1419,7 @@ bool Generator::Visit( const ast::If& node ) {
 
     // Generate the jump
     if(br.cond)
-      label_vec.push_back(func_scope()->bb()->jmp(func_scope()->ra()->base(),
-                                                  br.cond->sci()));
+      label_vec.push_back(func_scope()->bb()->jmp(func_scope()->ra()->base(),br.cond->sci()));
   }
 
   // Patch prev_jmp if we need to

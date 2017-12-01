@@ -40,7 +40,7 @@ bool Compile( Context* context ,const char* source ,
   return true;
 }
 
-static const bool kShowBytecode = false;
+static const bool kShowBytecode = true;
 
 enum { COMP_LE , COMP_LT , COMP_GT , COMP_GE , COMP_EQ , COMP_NE };
 
@@ -91,9 +91,7 @@ bool Bench( const char* source ) {
       std::cerr<<"Benchmark result:"<<(end-start)/kTimes<<'\n';
     }
   }
-  if(ret.IsInteger()) {
-    std::cerr<<"Integer:"<<ret.GetInteger()<<std::endl;
-  } else if(ret.IsReal()) {
+  if(ret.IsReal()) {
     std::cerr<<"Real:"<<static_cast<int>(ret.GetReal())<<std::endl;
   } else {
     std::cerr<<"Type:"<<ret.type_name()<<std::endl;
@@ -135,9 +133,8 @@ bool PrimitiveComp( const char* source , const Value& primitive , int op ) {
         default: lava_unreach("null comparison!"); return false; // You cannot compare NULL
       }
     } else if(ret.IsReal()) {
+      std::cerr<<"PRI:"<<ret.GetReal()<<std::endl;
       return primitive.IsReal() ? (PrimitiveComp(ret.GetReal(),primitive.GetReal(),op)) : false;
-    } else if(ret.IsInteger()) {
-      return primitive.IsInteger() ? (PrimitiveComp(ret.GetInteger(),primitive.GetInteger(),op)) : false;
     } else if(ret.IsBoolean()) {
       switch(op) {
         case COMP_EQ: return primitive.IsBoolean() && (primitive.GetBoolean() == ret.GetBoolean());
@@ -171,6 +168,14 @@ namespace lavascript {
 namespace interpreter {
 
 #if 0
+
+TEST(Interpreter,Load) {
+  PRIMITIVE_EQ(0,return 0;);
+  PRIMITIVE_EQ(-1,return -1;);
+  PRIMITIVE_EQ(1,return 1;);
+}
+
+
 TEST(Interpreter,ArithXV) {
   PRIMITIVE_EQ(10,var a = 50; return 60-a;);
   PRIMITIVE_EQ(30,var a = 10; return 20+a;);
@@ -368,30 +373,31 @@ TEST(Interpreter,Logic) {
 }
 
 TEST(Interpreter,SimpleLoop) {
-  PRIMITIVE_EQ(10,var a = 0; for( var i = 0.0 ; 10.0 ; 1.0 ) { a = a + 1; } return a;);
-  PRIMITIVE_EQ(10,var a = 0; for( var i = 0 ; 10 ; 1 ) { a = a + 1; } return a;);
-  PRIMITIVE_EQ(10,var a = 0; for( var i = 0 ; 10 ; 1.0 ) { a = a + 1; } return a;);
-  PRIMITIVE_EQ(10,var a = 0; for( var i = 0.0 ; 10 ; 1 ) { a = a + 1; } return a;);
+	PRIMITIVE_EQ(10,var a = 0; for( var i = 0.0 ; 10.0 ; 1.0 ) { a = a + 1; } return a;);
+	PRIMITIVE_EQ(10,var a = 0; for( var i = 0 ; 10 ; 1 ) { a = a + 1; } return a;);
+	PRIMITIVE_EQ(10,var a = 0; for( var i = 0 ; 10 ; 1.0 ) { a = a + 1; } return a;);
+	PRIMITIVE_EQ(10,var a = 0; for( var i = 0.0 ; 10 ; 1 ) { a = a + 1; } return a;);
   PRIMITIVE_EQ(10,var a = 0; for( var i = 0 ; 10.0 ; 1 ) { a = a + 1; } return a;);
 }
 
 TEST(Interpreter,SimpleLoopBench) {
-  BENCHMARK(var a = 0; for( var i = 0 ; 1000000; 1 ) {
-  } return a;);
-}
-#endif
-
-TEST(Interpreter,SimpleLoopBench) {
   BENCHMARK(var a = 0.0;for( var i = 0 ; 1000000; 1 ) {
-      a = a + 1.0;
+      a = a + 1;
       a = a * 2;
       a = a * 2;
       a = a * 2;
       a = a * 2;
-      a = a - 16.0;
+      a = a - 16;
   } return 1;);
 }
 
+#endif
+TEST(Interpreter,SimpleLoopBench) {
+  BENCHMARK(var a = 0.0;for( var i = 0 ; 1000000; 1 ) {
+      a = 7.9;
+      a = a % 3.1;
+  } return 1;);
+}
 
 } // namespace lavascript
 } // namespace interpreter

@@ -53,10 +53,6 @@ void Parser::ErrorAt( size_t start , size_t end , const char* format , ... ) {
 ast::Node* Parser::ParseAtomic() {
   ast::Node* ret;
   switch(lexer_.lexeme().token) {
-    case Token::TK_INTEGER:
-      ret = ast_factory_.NewLiteral( lexer_ , lexer_.lexeme().int_value );
-      lexer_.Next();
-      return ret;
     case Token::TK_REAL:
       ret = ast_factory_.NewLiteral( lexer_ , lexer_.lexeme().real_value );
       lexer_.Next();

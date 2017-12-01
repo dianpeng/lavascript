@@ -120,11 +120,11 @@ TEST(Lexer,String) {
 TEST(Lexer,Number) {
   Zone zone;
   Lexer lexer(&zone,stringify(123 0 1.0 0.0 1.234 1.));
-  ASSERT_EQ( Token::kInteger , lexer.Next().token );
-  ASSERT_EQ( 123 , lexer.lexeme().int_value );
+  ASSERT_EQ( Token::kReal , lexer.Next().token );
+  ASSERT_EQ( 123 , lexer.lexeme().real_value );
 
-  ASSERT_EQ( Token::kInteger , lexer.Next().token );
-  ASSERT_EQ( 0 , lexer.lexeme().int_value );
+  ASSERT_EQ( Token::kReal , lexer.Next().token );
+  ASSERT_EQ( 0 , lexer.lexeme().real_value );
 
   ASSERT_EQ( Token::kReal , lexer.Next().token);
   ASSERT_EQ( 1.0 , lexer.lexeme().real_value );
@@ -135,8 +135,8 @@ TEST(Lexer,Number) {
   ASSERT_EQ( Token::kReal , lexer.Next().token );
   ASSERT_EQ( 1.234,lexer.lexeme().real_value );
 
-  ASSERT_EQ( Token::kInteger , lexer.Next().token );
-  ASSERT_EQ( 1 , lexer.lexeme().int_value );
+  ASSERT_EQ( Token::kReal , lexer.Next().token );
+  ASSERT_EQ( 1 , lexer.lexeme().real_value );
 
   ASSERT_EQ( Token::kDot , lexer.Next().token );
   ASSERT_EQ( Token::kEof , lexer.Next().token );

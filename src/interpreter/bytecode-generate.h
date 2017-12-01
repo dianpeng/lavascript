@@ -412,7 +412,6 @@ class FunctionScope : public Scope {
 
 enum ExprResultKind {
   KREG,               // Okay, the result is been held by an register
-  KINT,               // It is a integer literal
   KREAL,              // It is a real literal
   KSTR,               // It is a string literal
   KTRUE,              // It is a true
@@ -447,8 +446,7 @@ class ExprResult {
    * testers            |
    * -------------------*/
   bool IsLiteral() const { return !IsReg(); }
-  bool IsRefType() const { return kind_ == KINT || kind_ == KREAL || kind_ == KSTR; }
-  bool IsInteger() const { return kind_ == KINT; }
+  bool IsRefType() const { return kind_ == KREAL || kind_ == KSTR; }
   bool IsReal()const { return kind_ == KREAL;}
   bool IsString() const { return kind_ == KSTR; }
   bool IsReg() const { return kind_ == KREG; }
@@ -460,11 +458,6 @@ class ExprResult {
   /* --------------------
    * setters            |
    * -------------------*/
-  void SetIRef( std::int32_t iref ) {
-    ref_ = iref;
-    kind_ = KINT;
-  }
-
   void SetRRef( std::int32_t rref ) {
     ref_ = rref;
     kind_ = KREAL;
@@ -532,26 +525,21 @@ class Generator {
   /* --------------------------------------------
    * Helper for specialized binary instruction  |
    * -------------------------------------------*/
-  enum BinOperandType{ TINT = 0 , TREAL  };
-
   bool CanBeSpecializedString ( ast::Node* node ) const {
     return node->IsLiteral() && node->AsLiteral()->IsString();
   }
   bool CanBeSpecializedLiteral( const ast::Literal& lit ) const {
-    return lit.IsInteger() || lit.IsReal();
+    return lit.IsReal();
   }
   bool SpecializedLiteralToExprResult( const ast::Literal& lit ,
                                        ExprResult* result ) {
     return Visit(lit,result);
   }
 
-  inline BinOperandType GetBinOperandType( const ast::Literal& ) const;
-  inline const char* GetBinOperandTypeName( BinOperandType t ) const;
   bool GetBinaryOperatorBytecode( const SourceCodeInfo& , const Token& tk ,
-                                                      BinOperandType type ,
-                                                      bool lhs ,
-                                                      bool rhs ,
-                                                      Bytecode* ) const;
+                                                          bool lhs ,
+                                                          bool rhs ,
+                                                          Bytecode* ) const;
  private:
   /* --------------------------------------------
    * Expression Code Generation                 |
@@ -894,22 +882,6 @@ inline Generator::Generator( Context* context , const ast::Root& root ,
   root_(&root),
   error_(error)
 {}
-
-inline Generator::BinOperandType
-Generator::GetBinOperandType( const ast::Literal& node ) const {
-  switch(node.literal_type) {
-    case ast::Literal::LIT_INTEGER: return TINT;
-    case ast::Literal::LIT_REAL: return TREAL;
-    default: lava_unreach(""); return TINT;
-  }
-}
-
-inline const char* Generator::GetBinOperandTypeName( BinOperandType t ) const {
-  switch(t) {
-    case TINT : return "int";
-    default:    return "real";
-  }
-}
 
 inline void Generator::Error( const SourceCodeInfo& sci , const char* fmt , ... ) const {
   va_list vl;

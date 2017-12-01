@@ -65,64 +65,42 @@ static const std::size_t kAllocatableBytecodeRegisterSize = 255;
 /** NOTES: Order matters **/
 #define LAVASCRIPT_BYTECODE_LIST(__) \
   /* arithmetic bytecode , if cannot hold , then spill */ \
-  __(D,ADDIV , addiv , REG , IREF , REG ) \
-  __(D,ADDVI , addvi , REG , REG , IREF ) \
   __(D,ADDRV , addrv , REG , RREF , REG ) \
   __(D,ADDVR , addvr , REG , REG , RREF ) \
   __(D,ADDVV , addvv , REG , REG , REG)   \
-  __(D,SUBIV , subiv , REG , IREF , REG ) \
-  __(D,SUBVI , subvi , REG , REG , IREF ) \
   __(D,SUBRV , subrv , REG , RREF , REG ) \
   __(D,SUBVR , subvr , REG , REG  , RREF) \
   __(D,SUBVV , subvv , REG , REG , REG )  \
-  __(D,MULIV , muliv , REG , IREF , REG ) \
-  __(D,MULVI , mulvi , REG , REG , IREF ) \
   __(D,MULRV , mulrv , REG , RREF , REG ) \
   __(D,MULVR , mulvr , REG , REG  , RREF) \
   __(D,MULVV , mulvv , REG , REG , REG)   \
-  __(D,DIVIV , diviv , REG , IREF , REG ) \
-  __(D,DIVVI , divvi , REG , REG , IREF ) \
   __(D,DIVRV , divrv , REG , RREF , REG ) \
   __(D,DIVVR , divvr , REG , REG , RREF ) \
   __(D,DIVVV , divvv , REG , REG , REG)   \
-  __(D,MODIV , modiv , REG , IREF , REG ) \
-  __(D,MODVI , modvi , REG , REG , IREF ) \
+  __(D,MODVR , modvr , REG , REG , REG )  \
+  __(D,MODRV , modrv , REG , REG , REG )  \
   __(D,MODVV , modvv , REG , REG , REG )  \
-  __(D,POWIV , powiv , REG , IREF , REG ) \
-  __(D,POWVI , powvi , REG , REG , IREF ) \
   __(D,POWRV , powrv , REG , RREF , REG ) \
   __(D,POWVR , powvr , REG , REG , RREF ) \
   __(D,POWVV , powvv , REG , REG , REG)   \
   /* comparison */                        \
-  __(D,LTIV  , ltiv  , REG , IREF , REG ) \
-  __(D,LTVI  , ltvi  , REG , REG , IREF ) \
   __(D,LTRV  , ltrv  , REG , RREF, REG  ) \
   __(D,LTVR  , ltvr  , REG , REG , RREF ) \
   __(D,LTVV  , ltvv  , REG , REG , REG)   \
-  __(D,LEIV  , leiv  , REG , IREF , REG ) \
-  __(D,LEVI  , levi  , REG , REG , IREF ) \
   __(D,LERV  , lerv  , REG , RREF , REG ) \
   __(D,LEVR  , levr  , REG , REG , RREF ) \
   __(D,LEVV  , levv  , REG , REG , REG)   \
-  __(D,GTIV  , gtiv  , REG , IREF , REG ) \
-  __(D,GTVI  , gtvi  , REG , REG , IREF ) \
   __(D,GTRV  , gtrv  , REG , RREF , REG ) \
   __(D,GTVR  , gtvr  , REG , REG , RREF ) \
   __(D,GTVV  , gtvv  , REG , REG , REG )  \
-  __(D,GEIV  , geiv  , REG , IREF , REG ) \
-  __(D,GEVI  , gevi  , REG , REG , IREF ) \
   __(D,GERV  , gerv  , REG , RREF , REG ) \
   __(D,GEVR  , gevr  , REG , REG , RREF ) \
   __(D,GEVV  , gevv  , REG , REG , REG )  \
-  __(D,EQIV  , eqiv  , REG , IREF , REG ) \
-  __(D,EQVI  , eqvi  , REG , IREF , REG ) \
   __(D,EQRV  , eqrv  , REG , RREF , REG ) \
   __(D,EQVR  , eqvr  , REG , REG  , RREF) \
   __(D,EQSV  , eqsv  , REG , SREF , REG ) \
   __(D,EQVS  , eqvs  , REG , REG , SREF ) \
   __(D,EQVV  , eqvv  , REG , REG  , REG)  \
-  __(D,NEIV  , neiv  , REG , IREF , REG ) \
-  __(D,NEVI  , nevi  , REG , REG , IREF ) \
   __(D,NERV  , nerv  , REG , RREF, REG  ) \
   __(D,NEVR  , nevr  , REG , REG , RREF ) \
   __(D,NESV  , nesv  , REG , SREF , REG ) \
@@ -140,7 +118,6 @@ static const std::size_t kAllocatableBytecodeRegisterSize = 255;
   /* register move */ \
   __(E,MOVE , move , REG, REG, _ )              \
   /* constant loading */                        \
-  __(E,LOADI , loadi , REG , IREF , _ )         \
   __(F,LOAD0 , load0 , REG , _ , _    )         \
   __(F,LOAD1 , load1 , REG , _ , _    )         \
   __(F,LOADN1, loadn1, REG , _ , _    )         \
@@ -164,7 +141,8 @@ static const std::size_t kAllocatableBytecodeRegisterSize = 255;
   __(D,PROPSET,propset,REG,SREF,REG) \
   __(D,IDXGET ,idxget,REG,REG,REG)   \
   __(D,IDXSET ,idxset,REG,REG,REG)   \
-  __(D,IDXGETI,idxgeti,REG,REG,IREF) \
+  __(D,IDXSETI,idxseti,REG,IMM,REG)  \
+  __(D,IDXGETI,idxgeti,REG,REG,IMM)  \
   __(E,UVGET  ,uvget ,REG,GARG,_)    \
   __(E,UVSET  ,uvset ,GARG,REG,_)    \
   __(E,GSET   ,gset  ,SREF,REG,_)    \
@@ -189,6 +167,8 @@ static const std::size_t kAllocatableBytecodeRegisterSize = 255;
   /* always the last one */        \
   __(X,HLT,hlt,_,_,_)
 
+// Used to emit IdxGetI instruction
+static const std::size_t kIdxGetIMaxImm = 256; // 2^8
 
 /** bytecode **/
 enum Bytecode {

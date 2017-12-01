@@ -395,7 +395,6 @@ Map** GC::NewMap( std::size_t capacity ) {
 Prototype** GC::NewPrototype( String** proto,
                               std::size_t argument_size ,
                               std::size_t max_local_var_size,
-                              std::size_t int_table_size,
                               std::size_t real_table_size,
                               std::size_t string_table_size,
                               std::size_t upvalue_size,
@@ -403,7 +402,6 @@ Prototype** GC::NewPrototype( String** proto,
 
   // Highly sensitive to the layout of the Prototype object
 
-  std::size_t itable_bytes = Align(int_table_size*sizeof(std::int32_t),gc::kAlignment);
   std::size_t rtable_bytes = Align(real_table_size*sizeof(double),gc::kAlignment);
   std::size_t stable_bytes = Align(string_table_size*sizeof(String**),gc::kAlignment);
   std::size_t utable_bytes = Align(upvalue_size*sizeof(std::uint32_t),gc::kAlignment);
@@ -411,8 +409,7 @@ Prototype** GC::NewPrototype( String** proto,
   std::size_t sci_bytes    = Align(code_buffer_size*sizeof(SourceCodeInfo),gc::kAlignment);
   std::size_t roff_bytes   = Align(code_buffer_size*sizeof(std::uint8_t),gc::kAlignment);
 
-  void* proto_buffer = heap_.Grab( sizeof(Prototype) + itable_bytes +
-                                                       rtable_bytes +
+  void* proto_buffer = heap_.Grab( sizeof(Prototype) + rtable_bytes +
                                                        stable_bytes +
                                                        utable_bytes +
                                                        cb_bytes     +
@@ -422,8 +419,10 @@ Prototype** GC::NewPrototype( String** proto,
   // now , figure out each buffer's starting address
   std::size_t acc = 0;
   void* base = BufferOffset<Prototype>(proto_buffer,1);
-  void* itable = itable_bytes ? base : NULL; acc += itable_bytes;
-  void* rtable = rtable_bytes ? BufferOffset<char>(base,acc) : NULL; acc += rtable_bytes;
+
+  // NOTES: always put rtable at very first since it is always used at very first
+  void* rtable = rtable_bytes ? base : NULL; acc += rtable_bytes;
+
   void* stable = stable_bytes ? BufferOffset<char>(base,acc) : NULL; acc += stable_bytes;
   void* utable = utable_bytes ? BufferOffset<char>(base,acc) : NULL; acc += utable_bytes;
   void* cb     = cb_bytes     ? BufferOffset<char>(base,acc) : NULL; acc += cb_bytes;
@@ -434,12 +433,10 @@ Prototype** GC::NewPrototype( String** proto,
   Prototype* p = ConstructFromBuffer<Prototype>(proto_buffer, Handle<String>(proto),
                                                               argument_size,
                                                               max_local_var_size,
-                                                              int_table_size,
                                                               real_table_size,
                                                               string_table_size,
                                                               upvalue_size,
                                                               code_buffer_size,
-                                                              static_cast<std::int32_t*>(itable),
                                                               static_cast<double*>(rtable),
                                                               static_cast<String***>(stable),
                                                               static_cast<std::uint32_t*>(utable),

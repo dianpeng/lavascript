@@ -10,7 +10,6 @@ class PrinterVisitor : public AstVisitor<PrinterVisitor> {
  private:
   void Visit( const Literal& node ) {
     switch(node.literal_type) {
-      case Literal::LIT_INTEGER: output_ << node.int_value; break;
       case Literal::LIT_REAL:    output_ << node.real_value;break;
       case Literal::LIT_NULL:    output_ << "null"; break;
       case Literal::LIT_BOOLEAN: output_ << (node.bool_value ? "true" : "false"); break;

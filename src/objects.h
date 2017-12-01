@@ -140,8 +140,7 @@ class Value final {
   // NOTES: The following *ORDER* matters and also the *VALUE* matters.
   enum {
     TAG_REAL   = 0xfff8000000000000,                        // Real
-    TAG_INTEGER= 0xfff8100000000000,                        // Integer
-    TAG_TRUE   = 0xfff8200000000000,                        // True
+    TAG_TRUE   = 0xfff8100000000000,                        // True
     TAG_HEAP   = 0xfff9000000000000,                        // Heap ( normal heap pointer )
     /*
     TAG_SSO    = 0xfffa000000000000,                        // SSO
@@ -158,8 +157,7 @@ class Value final {
   // assembly to set and test flag.
   enum {
     FLAG_REAL   = 0xfff80000,
-    FLAG_INTEGER= 0xfff81000,
-    FLAG_TRUE   = 0xfff82000,
+    FLAG_TRUE   = 0xfff81000,
 
     FLAG_HEAP   = 0xfff9   ,       // pointer is 48 bits , so we only test the upper 16 bits
     FLAG_HEAP_UNMASK = ~FLAG_HEAP, // used to extract pointer from assembly
@@ -192,7 +190,6 @@ class Value final {
 
  private:
   // Masks
-  static const std::uint64_t kIntMask = 0x00000000ffffffff;
   static const std::uint64_t kPtrMask = 0x0000ffffffffffff;
   static const std::uint64_t kTagMask = 0xffff000000000000;
 
@@ -204,7 +201,6 @@ class Value final {
   std::uint32_t flag()const { return static_cast<std::uint32_t>(raw_ >> 32); }
 
   bool IsTagReal()    const { return tag()  <  TAG_REAL; }
-  bool IsTagInteger() const { return flag() == FLAG_INTEGER; }
   bool IsTagTrue()    const { return flag() == FLAG_TRUE; }
   bool IsTagFalse()   const { return flag() == FLAG_FALSE; }
   bool IsTagNull()    const { return flag() == FLAG_NULL; }
@@ -224,7 +220,6 @@ class Value final {
   // Primitive types
   bool IsNull() const       { return IsTagNull(); }
   bool IsReal() const       { return IsTagReal(); }
-  bool IsInteger() const    { return IsTagInteger(); }
   bool IsTrue() const       { return IsTagTrue(); }
   bool IsFalse()const       { return IsTagFalse();}
   bool IsBoolean() const    { return IsTagTrue() || IsTagFalse(); }
@@ -242,7 +237,6 @@ class Value final {
   inline bool IsIterator() const;
 
   // Getters
-  inline std::int32_t GetInteger() const;
   inline bool GetBoolean() const;
   inline double GetReal() const;
 
@@ -262,9 +256,8 @@ class Value final {
   inline Handle<T> GetHandle() const { return Handle<T>(GetHeapObject()); }
 
   // Setters
-  inline void SetInteger( std::uint32_t );
-  inline void SetBoolean( bool );
   inline void SetReal   ( double );
+  inline void SetBoolean( bool );
   void SetNull   () { raw_ = TAG_NULL; }
   void SetTrue   () { raw_ = TAG_TRUE; }
   void SetFalse  () { raw_ = TAG_FALSE;}
@@ -287,7 +280,7 @@ class Value final {
  public:
   Value() { SetNull(); }
   explicit Value( double v ) { SetReal(v); }
-  explicit Value( std::int32_t v ) { SetInteger(v); }
+  explicit Value( std::int32_t v ) { SetReal( static_cast<double>(v) ); }
   explicit Value( bool v ) { SetBoolean(v); }
   explicit Value( HeapObject** v ) { SetHeapObject(v); }
   Value( const Value& that ): raw_(that.raw_) {}
@@ -924,7 +917,6 @@ class Prototype final : public HeapObject {
   void set_proto_string( const Handle<String>& str ) { proto_string_ = str; }
   void set_argument_size( std::size_t arg) { argument_size_ = arg; }
 
-  std::size_t int_table_size() const { return int_table_size_; }
   std::size_t real_table_size() const { return real_table_size_; }
   std::size_t string_table_size() const { return string_table_size_; }
   std::size_t upvalue_size() const { return upvalue_size_; }
@@ -933,7 +925,6 @@ class Prototype final : public HeapObject {
   std::size_t reg_offset_size() const { return code_buffer_size_; }
 
  public: // Constant table
-  inline std::int32_t GetInteger( std::size_t ) const;
   inline double GetReal( std::size_t ) const;
   inline Handle<String> GetString( std::size_t ) const;
   std::uint16_t GetUpValue( std::size_t , interpreter::UpValueState* ) const;
@@ -958,12 +949,10 @@ class Prototype final : public HeapObject {
  public:
   Prototype( const Handle<String>& pp , std::size_t argument_size ,
                                         std::size_t max_local_var_size,
-                                        std::size_t int_table_size,
                                         std::size_t real_table_size,
                                         std::size_t string_table_size,
                                         std::size_t upvalue_size,
                                         std::size_t code_buffer_size,
-                                        std::int32_t* itable ,
                                         double* rtable,
                                         String*** stable,
                                         std::uint32_t* utable,
@@ -971,8 +960,7 @@ class Prototype final : public HeapObject {
                                         SourceCodeInfo* sci,
                                         std::uint8_t* reg_offset_table );
  private:
-  const std::int32_t* int_table() const { return int_table_; }
-  const double* real_table() const { return real_table_; }
+  inline const double* real_table() const;
   String*** string_table() const { return string_table_; }
   const std::uint32_t* upvalue_table() const { return upvalue_table_; }
   const SourceCodeInfo* sci_buffer() const { return sci_buffer_; }
@@ -984,7 +972,6 @@ class Prototype final : public HeapObject {
   std::size_t max_local_var_size_;
 
   // Constant table size
-  std::size_t int_table_size_;
   std::size_t real_table_size_;
   std::size_t string_table_size_;
 
@@ -999,10 +986,14 @@ class Prototype final : public HeapObject {
    * too many members here and also it is hard to maintain this
    * kind of code when the member is too many. We need to adjust
    * alignment in between
+   *
+   *
+   * NOTE: real_table is *stored* implicitly not due to the fact
+   *       this saves me one memory hit instruction in interpreter
+   *       for loading the real number. Obviously real number loading
+   *       is a hot code path
    */
 
-  std::int32_t* int_table_;
-  double*  real_table_;
   String*** string_table_;
   std::uint32_t* upvalue_table_;
   std::uint32_t* code_buffer_;
@@ -1021,18 +1012,24 @@ static_assert( std::is_standard_layout<Prototype>::value );
 struct PrototypeLayout {
   static const std::uint32_t kProtoStringOffset = offsetof(Prototype,proto_string_);
   static const std::uint32_t kArgumentSizeOffset= offsetof(Prototype,argument_size_);
-  static const std::uint32_t kIntTableSizeOffset = offsetof(Prototype,int_table_size_);
+  static const std::uint32_t kMaxLocalVarSizeOffset = offsetof(Prototype,max_local_var_size_);
   static const std::uint32_t kRealTableSizeOffset = offsetof(Prototype,real_table_size_);
   static const std::uint32_t kStringTableSizeOffset = offsetof(Prototype,string_table_size_);
   static const std::uint32_t kUpValueSizeOffset  = offsetof(Prototype,upvalue_size_);
   static const std::uint32_t kCodeBufferSizeOffset = offsetof(Prototype,code_buffer_size_);
-  static const std::uint32_t kIntTableOffset = offsetof(Prototype,int_table_);
-  static const std::uint32_t kRealTableOffset= offsetof(Prototype,real_table_);
   static const std::uint32_t kStringTableOffset = offsetof(Prototype,string_table_);
   static const std::uint32_t kUpValueTableOffset= offsetof(Prototype,upvalue_table_);
   static const std::uint32_t kCodeBufferOffset = offsetof (Prototype,code_buffer_);
   static const std::uint32_t kSciBufferOffset  = offsetof (Prototype,sci_buffer_);
   static const std::uint32_t kRegOffsetTableOffset = offsetof(Prototype,reg_offset_table_);
+
+  // GC will guarantee this , always put the constant table for real right after the
+  // object in terms of memory layout
+  //
+  // Currently we don't have one single literal table, we may be able to do that since
+  // this will save string loading and real number loading at same time , but I am not
+  // sure whether worth it or not.
+  static const std::uint32_t kRealTableOffset = sizeof(Prototype);
 };
 
 /**
@@ -1305,7 +1302,6 @@ inline ValueType Value::type() const {
 
     static const ValueType kSFlags[] = {
       SIZE_OF_VALUE_TYPES,
-      TYPE_INTEGER,
       TYPE_BOOLEAN
     };
     const std::size_t idx = ((raw_ & kMask) >> kShift) - kBase;
@@ -1366,27 +1362,6 @@ inline bool Value::IsIterator() const {
   return IsHeapObject() && (*heap_object())->IsIterator();
 }
 
-inline std::int32_t Value::GetInteger() const {
-  lava_debug(NORMAL,lava_verify(IsInteger()););
-
-  /**
-   * This can be optimized out by defineing a structure which is
-   * properly aligned on this 64 bits machine word with things like:
-   * struct {
-   *   int32_t high;
-   *   int32_t low;
-   * };
-   *
-   * Then based on endianess you can return low or high accordingly
-   *
-   * Here we just use a mask , hopefully compiler will optimize it out
-   * for case like Value is in register than we know that we have high
-   * and low alias for this register instead of wasting cycle to do the
-   * bitmask
-   */
-  return static_cast<std::int32_t>(raw_ & kIntMask);
-}
-
 inline bool Value::GetBoolean() const {
   lava_debug(NORMAL,lava_verify(IsBoolean()););
   return IsTagTrue();
@@ -1445,10 +1420,6 @@ inline Handle<Extension> Value::GetExtension() const {
 inline Handle<Iterator> Value::GetIterator() const {
   lava_debug(NORMAL,lava_verify(IsHeapObject()););
   return Handle<Iterator>(heap_object());
-}
-
-inline void Value::SetInteger( std::uint32_t value ) {
-  raw_ = value | TAG_INTEGER;
 }
 
 inline void Value::SetReal( double value ) {
@@ -2478,10 +2449,11 @@ template< typename T > bool Map::Visit( T* visitor ) {
 /* --------------------------------------------------------------------
  * Prototype
  * ------------------------------------------------------------------*/
-inline std::int32_t Prototype::GetInteger( std::size_t index ) const {
-  const std::int32_t* arr = int_table();
-  lava_debug(NORMAL,lava_verify(arr && index < int_table_size_ ););
-  return arr[index];
+inline const double* Prototype::real_table() const {
+  lava_debug(NORMAL,lava_verify(real_table_size() !=0););
+
+  const char* p = reinterpret_cast<const char*>(this);
+  return reinterpret_cast<const double*>(p+sizeof(Prototype));
 }
 
 inline double Prototype::GetReal( std::size_t index ) const {

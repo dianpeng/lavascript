@@ -12,6 +12,8 @@
 #include <string.h>
 #include <vector>
 #include <new>
+#include <cmath>
+#include <limits>
 
 #include "trace.h"
 
@@ -74,6 +76,23 @@ inline void* BufferOffset( void* buffer , std::size_t offset ) {
 
 bool StringToInt    ( const char* , int* );
 bool StringToReal   ( const char* , double* );
+
+// Try to narrow a real number into a 32 bits integer. It will fail
+// if the double has exponent part , and also fail if its size cannot
+// be put into the int32_t value.
+template< typename T >
+bool NarrowReal     ( double real , T* output ) {
+  double ipart;
+  double rpart = std::modf(real,&ipart);
+  if(rpart == 0.0) {
+    if( static_cast<double>( std::numeric_limits<T>::max() ) >= ipart &&
+        static_cast<double>( std::numeric_limits<T>::min() ) <= ipart ) {
+      *output = static_cast<T>(ipart);
+      return true;
+    }
+  }
+  return false;
+}
 
 /**
  * pretty print the real number. The issue with std::to_string is that

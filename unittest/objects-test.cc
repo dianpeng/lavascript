@@ -24,16 +24,12 @@ bool NaNEqual( double l , double r ) {
 
 TEST(Objects,ValuePrimitive) {
   ASSERT_TRUE(Value().IsNull());
-  ASSERT_TRUE(Value(1).IsInteger());
   ASSERT_TRUE(Value(1.1).IsReal());
   ASSERT_TRUE(Value(true).IsBoolean());
   {
     Value v(true);
     ASSERT_TRUE(v.IsBoolean());
     ASSERT_TRUE(v.IsTrue());
-    v.SetInteger(1);
-    ASSERT_TRUE(v.IsInteger());
-    ASSERT_EQ(1,v.GetInteger());
     v.SetReal(1.5);
     ASSERT_TRUE(v.IsReal());
     ASSERT_EQ(1.5,v.GetReal());
@@ -41,14 +37,6 @@ TEST(Objects,ValuePrimitive) {
     ASSERT_FALSE(v.GetBoolean());
   }
 
-  {
-    /* Integer max and min */
-    Value v(std::numeric_limits<std::int32_t>::min());
-    ASSERT_TRUE(v.IsInteger());
-    ASSERT_EQ(std::numeric_limits<std::int32_t>::min(),v.GetInteger());
-    v.SetInteger(std::numeric_limits<std::int32_t>::max());
-    ASSERT_EQ(std::numeric_limits<std::int32_t>::max(),v.GetInteger());
-  }
   {
     Value v(std::numeric_limits<double>::min());
     ASSERT_TRUE(v.IsReal());
@@ -62,9 +50,7 @@ TEST(Objects,ValuePrimitive) {
     Value v(std::numeric_limits<double>::min());
     ASSERT_TRUE(v.IsReal());
     ASSERT_EQ(std::numeric_limits<double>::min(),v.GetReal());
-    v.SetInteger(std::numeric_limits<std::int32_t>::max());
-    ASSERT_TRUE(v.IsInteger());
-    ASSERT_EQ(std::numeric_limits<std::int32_t>::max(),v.GetInteger());
+
     v.SetReal(std::numeric_limits<double>::max());
     ASSERT_EQ(std::numeric_limits<double>::max(),v.GetReal());
   }
@@ -72,8 +58,6 @@ TEST(Objects,ValuePrimitive) {
   {
     Value v;
     ASSERT_TRUE(v.type() == TYPE_NULL) << v.type();
-    v.SetInteger(1);
-    ASSERT_TRUE(v.type() == TYPE_INTEGER) << v.type();
     v.SetReal(2.0);
     ASSERT_TRUE(v.type() == TYPE_REAL) << v.type();
     v.SetBoolean(true);
@@ -357,15 +341,15 @@ TEST(List,List) {
     ASSERT_TRUE(list->IsEmpty());
 
     for( std::size_t i = 0 ; i < 1000 ; ++i ) {
-      list->Push(&gc,Value(static_cast<int>(i)));
+      list->Push(&gc,Value(static_cast<double>(i)));
     }
 
     ASSERT_EQ(1000,list->size());
     ASSERT_FALSE(list->IsEmpty());
 
     for( std::size_t i = 0 ; i < 1000 ; ++i ) {
-      ASSERT_TRUE(list->Index(i).IsInteger());
-      ASSERT_EQ(i,list->Index(i).GetInteger());
+      ASSERT_TRUE(list->Index(i).IsReal());
+      ASSERT_EQ(i,list->Index(i).GetReal());
     }
   }
 
@@ -451,8 +435,8 @@ TEST(Map,Map) {
     for( auto &e : vec ) {
       Value v;
       ASSERT_TRUE(map->Get(e.key,&v))<<e.key<<std::endl;
-      ASSERT_TRUE(v.IsInteger());
-      ASSERT_EQ(v.GetInteger() , e.value.GetInteger());
+      ASSERT_TRUE(v.IsReal());
+      ASSERT_EQ(v.GetReal() , e.value.GetReal());
     }
 
     for( std::size_t i = 0 ; i < 1024 ; ++i ) {
@@ -460,7 +444,7 @@ TEST(Map,Map) {
       Value v;
       const Entry& e = vec[index];
       ASSERT_TRUE(map->Get(e.key,&v));
-      ASSERT_EQ(v.GetInteger(),e.value.GetInteger());
+      ASSERT_EQ(v.GetReal(),e.value.GetReal());
     }
   }
 
@@ -534,7 +518,7 @@ TEST(Map,Map) {
     for( auto& e : vec ) {
       Value v;
       ASSERT_TRUE(map->Get(e.key,&v));
-      ASSERT_EQ(v.GetInteger(),1);
+      ASSERT_EQ(v.GetReal(),1);
     }
   }
 
@@ -576,7 +560,7 @@ TEST(Object,Object) {
     for( auto &e : vec ) {
       Value v;
       ASSERT_TRUE(object->Get(e.key,&v));
-      ASSERT_EQ(v.GetInteger(),e.value.GetInteger());
+      ASSERT_EQ(v.GetReal(),e.value.GetReal());
     }
   }
 
@@ -597,7 +581,7 @@ TEST(Object,Object) {
     for( auto &e : vec ) {
       Value v;
       ASSERT_TRUE(object->Get(e.key,&v));
-      ASSERT_EQ(v.GetInteger(),e.value.GetInteger());
+      ASSERT_EQ(v.GetReal(),e.value.GetReal());
     }
   }
 }

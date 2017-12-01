@@ -37,11 +37,9 @@ class BytecodeBuilder {
   inline BytecodeBuilder();
 
   inline bool AddUpValue( UpValueState , std::uint16_t , std::uint16_t* );
-  inline std::int32_t Add( std::int32_t );
   inline std::int32_t Add( double );
   std::int32_t Add( const ::lavascript::zone::String& , GC* );
 
-  std::size_t int_table_size() const { return int_table_.size(); }
   std::size_t real_table_size() const { return real_table_.size(); }
   std::size_t string_table_size() const { return string_table_.size(); }
   std::size_t upvalue_size() const { return upvalue_slot_.size(); }
@@ -89,11 +87,6 @@ class BytecodeBuilder {
                                                                        std::uint8_t ,
                                                                        std::uint32_t );
   inline bool EmitX( std::uint8_t , const SourceCodeInfo& , Bytecode );
-
-  bool EmitN( std::uint8_t , const SourceCodeInfo& , Bytecode , std::uint8_t ,
-                                                                std::uint8_t ,
-                                                                std::uint8_t ,
-                                                                const std::vector<std::uint8_t>& nargs );
 
   template< int BC , int TP , bool A1 = false , bool A2 = false , bool A3 = false >
   inline Label EmitAt( std::uint8_t , const SourceCodeInfo& , std::uint32_t a1 = 0 ,
@@ -145,14 +138,6 @@ class BytecodeBuilder {
     return EmitX(reg,si,INSTR);                                        \
   }
 
-#define IMPLN(INSTR,C)                                                                       \
-  bool C(std::uint8_t reg,const SourceCodeInfo& si, std::uint8_t narg ,                      \
-                                                    std::uint8_t reg ,                       \
-                                                    std::uint8_t base ,                      \
-                                                    const std::vector<std::uint8_t>& vec ) { \
-    return EmitN(reg,si,INSTR,narg,reg,base,vec);                                            \
-  }
-
 #define IMPLH(INSTR,C) /* null body */
 
 
@@ -166,7 +151,6 @@ class BytecodeBuilder {
 #undef IMPLF        // IMPLF
 #undef IMPLG        // IMPLG
 #undef IMPLX        // IMPLX
-#undef IMPLN        // IMPLN
 #undef IMPLH        // IMPLH
 
  public:
@@ -218,7 +202,6 @@ class BytecodeBuilder {
  private:
   std::vector<std::uint32_t> code_buffer_;           // Code buffer
   std::vector<SourceCodeInfo> debug_info_;           // Debug info
-  std::vector<std::int32_t> int_table_;              // Integer table
   std::vector<double> real_table_;                   // Real table
   std::vector<Handle<String>> string_table_;         // String table
 
@@ -499,19 +482,6 @@ inline bool BytecodeBuilder::AddUpValue( UpValueState state , std::uint16_t idx 
   return true;
 }
 
-inline std::int32_t BytecodeBuilder::Add( std::int32_t ival ) {
-  auto ret = std::find(int_table_.begin(),int_table_.end(),ival);
-  if(ret == int_table_.end()) {
-    if(int_table_.size() == kMaxLiteralSize) {
-      return -1;
-    }
-    int_table_.push_back(ival);
-    return static_cast<std::int32_t>(int_table_.size()-1);
-  }
-  return (static_cast<std::int32_t>(
-      std::distance(int_table_.begin(),ret)));
-}
-
 inline std::int32_t BytecodeBuilder::Add( double rval ) {
   auto ret = std::find(real_table_.begin(),real_table_.end(),rval);
   if(ret == real_table_.end()) {
@@ -555,7 +525,6 @@ inline void BytecodeBuilder::Label::Patch( std::uint16_t pc ) {
 inline BytecodeBuilder::BytecodeBuilder():
   code_buffer_(),
   debug_info_ (),
-  int_table_  (),
   real_table_ (),
   string_table_(),
   upvalue_slot_(),

@@ -503,11 +503,11 @@ bool ExpressionOptimizer::Optimize( ast::Binary* node , Expression* expr ) {
             expr->real_value = ld / rd;
             break;
           case Token::TK_MOD:
-            // TODO:: Is it good ??
             {
+              // Should match whatever we did in our assembly interpreter
               std::int64_t lhs = static_cast<std::int64_t>(ld);
               std::int64_t rhs = static_cast<std::int64_t>(rd);
-              expr->real_value = lhs % rhs;
+              expr->real_value = static_cast<double>(lhs % rhs);
             }
             break;
           case Token::TK_POW: expr->real_value = std::pow(ld,rd); break;

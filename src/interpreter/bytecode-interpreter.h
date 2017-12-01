@@ -39,7 +39,8 @@ class AssemblyInterpreter {
 
     // Execute the *script* starting from its *main* function with *environment*
     bool Run( Context* context , const Handle<Script>& , const Handle<Object>& ,
-                                                         std::string* , Value* );
+                                                         std::string* ,
+                                                         Value* );
 
    private:
     // Purposely duplicate these 3 fields to ease the pain of access them

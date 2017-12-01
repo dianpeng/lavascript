@@ -221,7 +221,7 @@ class LexicalScope : public Scope {
   inline Optional<Register> GetLocalVar( const zone::String& );
 
   // Loop bounded iterator
-  Register GetLoopVarIterator() {
+  Register GetLoopIter1() {
     lava_debug(NORMAL,lava_verify(loop_iter_avail_ < loop_iter_.size()););
     lava_debug(NORMAL,lava_verify(loop_iter_[loop_iter_avail_].Has()););
     Register r(loop_iter_[loop_iter_avail_].Get());
@@ -229,12 +229,13 @@ class LexicalScope : public Scope {
     return r;
   }
 
-  Register GetLoopCondIterator() {
-    return GetLoopVarIterator();
+  // These 2 functions are sololy for readability purpose
+  Register GetLoopIter2() {
+    return GetLoopIter1();
   }
 
-  Register GetLoopStepIterator() {
-    return GetLoopVarIterator();
+  Register GetLoopIter3() {
+    return GetLoopIter1();
   }
 
   // Size of variables defined in *this* scope

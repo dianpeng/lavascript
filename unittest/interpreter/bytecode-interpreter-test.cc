@@ -133,7 +133,6 @@ bool PrimitiveComp( const char* source , const Value& primitive , int op ) {
         default: lava_unreach("null comparison!"); return false; // You cannot compare NULL
       }
     } else if(ret.IsReal()) {
-      std::cerr<<"PRI:"<<ret.GetReal()<<std::endl;
       return primitive.IsReal() ? (PrimitiveComp(ret.GetReal(),primitive.GetReal(),op)) : false;
     } else if(ret.IsBoolean()) {
       switch(op) {
@@ -391,12 +390,111 @@ TEST(Interpreter,SimpleLoopBench) {
   } return 1;);
 }
 
+
 #endif
-TEST(Interpreter,SimpleLoopBench) {
-  BENCHMARK(var a = 0.0;for( var i = 0 ; 1000000; 1 ) {
-      a = 7.9;
-      a = a % 3.1;
-  } return 1;);
+
+TEST(Interpreter,SimpleBranch) {
+  PRIMITIVE_EQ(10,
+      var a = true;
+      if(a) {
+        return 10;
+      } else {
+        return -11;
+      }
+  );
+
+  PRIMITIVE_EQ(10,
+      var a = true;
+      if(a) return 10;
+      return -11;
+  );
+
+  PRIMITIVE_EQ(-11,
+      var a = false;
+      if(!a) return -11;
+      return 1;
+  );
+
+  PRIMITIVE_EQ(1,
+      var a = true;
+      var b = false;
+      if(!(a && b)) return 1;
+      return -10;
+  );
+
+  PRIMITIVE_EQ(true,
+      var a = 10;
+      if(a > 12) {
+      return false;
+      }
+      return true;
+  );
+
+  PRIMITIVE_EQ(true,
+      var a = 10;
+      if(a) {
+        if(a-1) {
+          if(a-2) {
+            if(a-3) {
+              if(a-4) {
+                if(a-5) {
+                  return true;
+                }
+              }
+            }
+          }
+        }
+      } else {
+        return false;
+      }
+      return 100;
+  );
+
+  PRIMITIVE_EQ(false,
+      var a = 10;
+      if(a == 10) {
+        var b = 20;
+        if(b == 20) {
+          var c = 30;
+          if(c != 30) {
+            return true;
+          }
+        }
+        return false;
+      }
+      return 100;
+  );
+
+  PRIMITIVE_EQ(,
+      var a = 10;
+      if( a == 10 ) {
+        var b;
+        if(!b)
+         return null;
+      }
+      return 100 + 2 * foo();
+  );
+
+  PRIMITIVE_EQ(10,
+      var a = true;
+      var b = false;
+      if(!b == a) {
+        return 10;
+      }
+      return -100;
+  );
+}
+
+TEST(Interpreter,Branch) {
+
+  PRIMITIVE_EQ(10,
+      var a = true;
+      var b = false;
+      if(!b == a) {
+        return 10;
+      }
+      return -100;
+  );
 }
 
 } // namespace lavascript

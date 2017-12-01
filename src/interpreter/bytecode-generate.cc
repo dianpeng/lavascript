@@ -1455,14 +1455,14 @@ bool Generator::Visit( const ast::For& node ) {
 
   // handle 2nd expression, condition variable
   if(node._2nd) {
-    second_reg = lexical_scope()->GetLoopCondIterator();
+    second_reg = lexical_scope()->GetLoopIter2();
     if(!VisitExpressionWithOutputRegister(*node._2nd,second_reg))
       return false;
   }
 
   // handle 3rd/step variable
   if(node._3rd) {
-    third_reg = lexical_scope()->GetLoopStepIterator();
+    third_reg = lexical_scope()->GetLoopIter3();
     if(!VisitExpressionWithOutputRegister(*node._3rd,third_reg))
       return false;
   }
@@ -1532,7 +1532,7 @@ bool Generator::Visit( const ast::For& node ) {
 
 bool Generator::Visit( const ast::ForEach& node ) {
   // Get the iterator register
-  Register itr_reg(lexical_scope()->GetLoopVarIterator());
+  Register itr_reg(lexical_scope()->GetLoopIter1());
 
   // Evaluate the interator initial value
   ScopedRegister init_reg(this);
@@ -1542,7 +1542,8 @@ bool Generator::Visit( const ast::ForEach& node ) {
 
   // Generate the festart
   BytecodeBuilder::Label forward =
-    func_scope()->bb()->festart(func_scope()->ra()->base(),node.sci(),itr_reg.index());
+    func_scope()->bb()->festart(func_scope()->ra()->base(),node.sci(),
+                                                           itr_reg.index());
 
   {
     LexicalScope scope(this,true);
@@ -1551,11 +1552,15 @@ bool Generator::Visit( const ast::ForEach& node ) {
     std::uint16_t header = static_cast<std::uint16_t>(
         func_scope()->bb()->CodePosition());
 
-    Optional<Register> v(func_scope()->GetLocalVar(*node.var->name));
-    lava_debug(NORMAL,lava_verify(v.Has()););
+    Optional<Register> key(func_scope()->GetLocalVar(*node.key->name));
+    Optional<Register> val(func_scope()->GetLocalVar(*node.val->name));
+
+    lava_debug(NORMAL,lava_verify(key.Has()););
+    lava_debug(NORMAL,lava_verify(val.Has()););
 
     // Deref the key from iterator register into the target register
-    SEMIT(idref,node.var->sci(),v.Get().index(),itr_reg.index());
+    SEMIT(idref,node.key->sci(),key.Get().index(),val.Get().index(),
+                                                  itr_reg.index());
 
     // Visit the chunk
     if(!VisitChunk(*node.body,false)) return false;

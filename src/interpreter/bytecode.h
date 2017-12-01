@@ -161,7 +161,7 @@ static const std::size_t kAllocatableBytecodeRegisterSize = 255;
   __(E,INEW,inew,REG,REG,_)        \
   __(B,FESTART,festart,REG,PC,_)   \
   __(B,FEEND  ,feend  ,REG,PC,_)   \
-  __(E,IDREF  ,idref  ,REG,REG,_)  \
+  __(D,IDREF  ,idref  ,REG,REG,REG)\
   __(G,BRK   ,brk,PC,_,_)          \
   __(G,CONT  ,cont,PC,_,_)         \
   /* always the last one */        \

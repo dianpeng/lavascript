@@ -43,9 +43,10 @@ TEST(BytecodeGenerate,Basic) {
   std::string error;
   {
     std::string script(stringify(
-          var bv = 10;
-          for( var a = 0 ;  1000; 1 ) {
-            bv = bv + 1;
+          var x = 0;
+          for ( var a , b in xxx ) {
+            x = x + a;
+            x = x + b;
           }
           ));
 

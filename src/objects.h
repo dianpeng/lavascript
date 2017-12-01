@@ -2450,10 +2450,12 @@ template< typename T > bool Map::Visit( T* visitor ) {
  * Prototype
  * ------------------------------------------------------------------*/
 inline const double* Prototype::real_table() const {
-  lava_debug(NORMAL,lava_verify(real_table_size() !=0););
-
-  const char* p = reinterpret_cast<const char*>(this);
-  return reinterpret_cast<const double*>(p+sizeof(Prototype));
+  if(real_table_size_) {
+    const char* p = reinterpret_cast<const char*>(this);
+    return reinterpret_cast<const double*>(p+sizeof(Prototype));
+  } else {
+    return NULL;
+  }
 }
 
 inline double Prototype::GetReal( std::size_t index ) const {

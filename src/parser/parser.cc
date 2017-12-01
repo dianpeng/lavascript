@@ -541,14 +541,36 @@ ast::Node* Parser::ParseFor() {
     if(!short_assign) return NULL;
 
     switch(lexer_.lexeme().token) {
-      case Token::TK_IN:
-        if(short_assign->expr) {
-          ErrorAt(expr_start,short_assign->end, "foreach statement's variable "
-                                                "expects a \"in\" after variable "
-                                                "not an normal assignment");
-          return NULL;
+      case Token::TK_COMMA:
+        {
+          // This must be a *foreach* statement , it must have style like :
+          // for( var idx , key in array ) { ... }
+          if(lexer_.Next().token != Token::kIdentifier) {
+            ErrorAt(expr_start,short_assign->end, "foreach statement's expect a identifier to indicate "
+                                                  "value in the foreach, if no need to have the value "
+                                                  "please specify a _ to denote placeholder");
+            return NULL;
+          }
+
+          // Create the value
+          ast::Variable* val = ast_factory_.NewVariable(lexer_.lexeme().start,
+                                                        lexer_.lexeme().end,
+                                                        lexer_.lexeme().str_value);
+
+          if(!lexer_.Try(Token::kIn)) {
+            ErrorAt(expr_start,lexer_.lexeme().end, "foreach statement expect a \"in\" "
+                                                    "after variable definition");
+            return NULL;
+          }
+
+          if(short_assign->expr) {
+            ErrorAt(expr_start,short_assign->end, "foreach statement's variable "
+                                                  "expects a \"in\" after variable "
+                                                  "not an normal assignment");
+            return NULL;
+          }
+          return ParseForEach(expr_start,short_assign->var,val);
         }
-        return ParseForEach(expr_start,short_assign->var);
       case Token::TK_SEMICOLON:
         return ParseStepFor(expr_start,short_assign);
       default:
@@ -616,7 +638,8 @@ ast::For* Parser::ParseStepFor( size_t expr_start , ast::Var* expr ) {
                               body );
 }
 
-ast::ForEach* Parser::ParseForEach( size_t expr_start , ast::Variable* var ) {
+ast::ForEach* Parser::ParseForEach( size_t expr_start , ast::Variable* key ,
+                                                        ast::Variable* val ) {
   lava_verify( lexer_.lexeme().token == Token::kIn );
   ast::Node* itr = NULL;
   ast::Chunk* body = NULL;
@@ -635,7 +658,8 @@ ast::ForEach* Parser::ParseForEach( size_t expr_start , ast::Variable* var ) {
 
   return ast_factory_.NewForEach( expr_start ,
                                   lexer_.lexeme().start ,
-                                  var,
+                                  key,
+                                  val,
                                   itr,
                                   body );
 }
@@ -759,8 +783,13 @@ std::size_t Parser::AddChunkStmt( ast::Node* stmt , Vector<ast::Variable*>* lv )
       if(cnt > ret) ret = cnt;
     }
   } else if(stmt->IsForEach()) {
-    lv->Add(zone_,stmt->AsForEach()->var);
-    if(!ret) ret = 0;
+    lv->Add(zone_,stmt->AsForEach()->key);
+    AddLocVarContextVar(stmt->AsForEach()->key);
+
+    lv->Add(zone_,stmt->AsForEach()->val);
+    AddLocVarContextVar(stmt->AsForEach()->val);
+
+    if(!ret) ret = 1; // This is for hidden iterator
   }
 
   return ret;

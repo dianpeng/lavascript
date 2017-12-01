@@ -238,7 +238,7 @@ TEST(Parser,Expression) {
       for( var a = 100 ; 200 ; ) {}
      );
 
-  positive( return a - 0; );
+  positive( for( var a , b in mm ) {} );
 }
 
 } // namespace parser

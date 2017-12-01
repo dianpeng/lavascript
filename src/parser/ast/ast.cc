@@ -174,7 +174,11 @@ class PrinterVisitor : public AstVisitor<PrinterVisitor> {
     Indent() << "(foreach\n";
     ++indent_;
 
-    VisitNode(*node.var);
+    VisitNode(*node.key);
+    output_ << ',';
+    VisitNode(*node.val);
+    output_ << ' ';
+
     Indent()<< " in ";
 
     VisitNode(*node.iter);

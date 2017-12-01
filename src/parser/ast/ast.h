@@ -348,13 +348,17 @@ struct For : public Node {
 };
 
 struct ForEach : public Node {
-  Variable* var;
+  Variable* key;
+  Variable* val;
   Node* iter;
   Chunk* body;
 
-  ForEach( size_t sp  ,size_t ep , Variable* v , Node* i , Chunk* b ):
+  ForEach( size_t sp  ,size_t ep , Variable* k,
+                                   Variable* v,
+                                   Node* i , Chunk* b ):
     Node( FOREACH , sp , ep ),
-    var(v),
+    key(k),
+    val(v),
     iter(i),
     body(b)
   {}

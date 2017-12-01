@@ -81,6 +81,7 @@ class AstFactory {
 
 
   inline ForEach* NewForEach( size_t start , size_t end , Variable* ,
+                                                          Variable* ,
                                                           Node*,
                                                           Chunk* );
 
@@ -240,10 +241,11 @@ inline For* AstFactory::NewFor( size_t start , size_t end , Var* first,  Node* s
   return new (zone_) For(start,end,first,second,third,b);
 }
 
-inline ForEach* AstFactory::NewForEach( size_t start , size_t end , Variable* v ,
+inline ForEach* AstFactory::NewForEach( size_t start , size_t end , Variable* k ,
+                                                                    Variable* v ,
                                                                     Node* i,
                                                                     Chunk* b ) {
-  return new (zone_) ForEach(start,end,v,i,b);
+  return new (zone_) ForEach(start,end,k,v,i,b);
 }
 
 inline Break* AstFactory::NewBreak( size_t start , size_t end ) {

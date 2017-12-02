@@ -40,7 +40,7 @@ bool Compile( Context* context ,const char* source ,
   return true;
 }
 
-static const bool kShowBytecode = true;
+static const bool kShowBytecode = false;
 
 enum { COMP_LE , COMP_LT , COMP_GT , COMP_GE , COMP_EQ , COMP_NE };
 
@@ -93,6 +93,8 @@ bool Bench( const char* source ) {
   }
   if(ret.IsReal()) {
     std::cerr<<"Real:"<<static_cast<int>(ret.GetReal())<<std::endl;
+  } else if(ret.IsBoolean()) {
+    std::cerr<<"Bool:"<<ret.GetBoolean()<<std::endl;
   } else {
     std::cerr<<"Type:"<<ret.type_name()<<std::endl;
   }
@@ -166,7 +168,6 @@ bool PrimitiveComp( const char* source , const Value& primitive , int op ) {
 namespace lavascript {
 namespace interpreter {
 
-#if 0
 
 TEST(Interpreter,Load) {
   PRIMITIVE_EQ(0,return 0;);
@@ -379,6 +380,7 @@ TEST(Interpreter,SimpleLoop) {
   PRIMITIVE_EQ(10,var a = 0; for( var i = 0 ; 10.0 ; 1 ) { a = a + 1; } return a;);
 }
 
+#if 0
 TEST(Interpreter,SimpleLoopBench) {
   BENCHMARK(var a = 0.0;for( var i = 0 ; 1000000; 1 ) {
       a = a + 1;
@@ -389,9 +391,8 @@ TEST(Interpreter,SimpleLoopBench) {
       a = a - 16;
   } return 1;);
 }
-
-
 #endif
+
 
 TEST(Interpreter,SimpleBranch) {
   PRIMITIVE_EQ(10,
@@ -496,6 +497,8 @@ TEST(Interpreter,Branch) {
       return -100;
   );
 }
+
+
 
 } // namespace lavascript
 } // namespace interpreter

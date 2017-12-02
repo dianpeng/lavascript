@@ -124,41 +124,46 @@ INTERPRETER_REGISTER_EXTERN_SYMBOL(pow)
  * Interpreter C++ Part Function Implementation
  *
  * -------------------------------------------------------------------------*/
-inline Bytecode PrevOpcode( Runtime* sandbox ) {
-  std::uint32_t pbc = sandbox->cur_pc[-1];
+inline std::uint32_t CurrentBytecode( Runtime* sandbox ) {
+  /**
+   * We do have instruction occupy 2 slots , *BUT* we don't need to consider
+   * this because that byte is added on demand.
+   *
+   * When we reach to C++ function, our PC should still points to the added
+   * byte for that instruction if our previous instruction is a 2 byte.
+   *
+   * So we only need to substract one of the *current* PC
+   */
+  return sandbox->cur_pc[-1];
+}
+
+inline Bytecode CurrentOpcode( Runtime* sandbox ) {
+  std::uint32_t pbc = CurrentBytecode(sandbox);
   return static_cast<Bytecode>( pbc & 0xff );
 }
 
 // --------------------------------------------------------------------------
 // Arithmetic Helper
 // --------------------------------------------------------------------------
-Value InterpreterDoArithmetic( Runtime* sandbox ,
-                               Value left ,
-                               Value right ) {
-  (void)sandbox;
-  (void)left;
-  (void)right;
-  {
-    Value r;
-    SetValueFlag( &r, VALUE_FAIL );
-    return r;
-  }
-}
-INTERPRETER_REGISTER_EXTERN_SYMBOL(InterpreterDoArithmetic)
-
-Value InterpreterPow         ( Runtime* sandbox ,
-                               Value left,
-                               Value right ,
-                               Value* output ) {
+bool InterpreterDoArithmetic( Runtime* sandbox , Value left ,
+                                                 Value right,
+                                                 Value* output ) {
   (void)sandbox;
   (void)left;
   (void)right;
   (void)output;
-  {
-    Value r;
-    SetValueFlag( &r, VALUE_FAIL );
-    return r;
-  }
+  return false;
+}
+INTERPRETER_REGISTER_EXTERN_SYMBOL(InterpreterDoArithmetic)
+
+bool InterpreterPow         ( Runtime* sandbox , Value left,
+                                                 Value right ,
+                                                 Value* output ) {
+  (void)sandbox;
+  (void)left;
+  (void)right;
+  (void)output;
+  return false;
 }
 INTERPRETER_REGISTER_EXTERN_SYMBOL(InterpreterPow)
 
@@ -172,23 +177,33 @@ INTERPRETER_REGISTER_EXTERN_SYMBOL(InterpreterDivByZero)
 // ---------------------------------------------------------------------------
 // Comparison Helper
 // ---------------------------------------------------------------------------
-Value InterpreterDoCompare  ( Runtime* sandbox , Value left ,
-                                                 Value right ) {
+bool  InterpreterDoCompare  ( Runtime* sandbox , Value left ,
+                                                 Value right,
+                                                 Value* output ) {
   (void)sandbox;
   (void)left;
   (void)right;
-  {
-    Value r;
-    SetValueFlag( &r, VALUE_FAIL );
-    return r;
-  }
+  (void)output;
+  return false;
 }
 INTERPRETER_REGISTER_EXTERN_SYMBOL(InterpreterDoCompare)
+
+// This function shuold *never* trigger GC
+bool InterpreterCompareHH  ( Runtime* sandbox , HeapObject* left,
+                                                HeapObject* right,
+                                                Value* output ) {
+  (void)sandbox;
+  (void)left;
+  (void)right;
+  (void)output;
+  return false;
+}
+INTERPRETER_REGISTER_EXTERN_SYMBOL(InterpreterCompareHH)
 
 // ----------------------------------------------------------------------------
 // Unary Helper
 // ----------------------------------------------------------------------------
-bool InterpreterDoNegate   ( Runtime* sandbox , const Value& operand ,
+bool InterpreterDoNegate   ( Runtime* sandbox , Value  operand ,
                                                 Value* result ) {
   (void)sandbox;
   (void)operand;
@@ -196,54 +211,6 @@ bool InterpreterDoNegate   ( Runtime* sandbox , const Value& operand ,
   return false;
 }
 INTERPRETER_REGISTER_EXTERN_SYMBOL(InterpreterDoNegate)
-
-// ----------------------------------------------------------------------------
-// Jump Helper
-// ----------------------------------------------------------------------------
-void* InterpreterDoCondJmpT  ( Runtime* sandbox , Value condition ,
-                                                  std::uint32_t where ,
-                                                  void* start_of_pc ) {
-  (void)sandbox;
-  (void)condition;
-  (void)where;
-  (void)start_of_pc;
-  return NULL;
-}
-INTERPRETER_REGISTER_EXTERN_SYMBOL(InterpreterDoCondJmpT)
-
-void* InterpreterDoCondJmpF  ( Runtime* sandbox , Value condition ,
-                                                  std::uint32_t where ,
-                                                  void* start_of_pc ) {
-  (void)sandbox;
-  (void)condition;
-  (void)where;
-  (void)start_of_pc;
-  return NULL;
-}
-INTERPRETER_REGISTER_EXTERN_SYMBOL(InterpreterDoCondJmpF)
-
-
-void* InterpreterDoCondAnd   ( Runtime* sandbox , Value condition ,
-                                                  std::uint32_t where ,
-                                                  void* start_of_pc ) {
-  (void)sandbox;
-  (void)condition;
-  (void)where;
-  (void)start_of_pc;
-  return NULL;
-}
-INTERPRETER_REGISTER_EXTERN_SYMBOL(InterpreterDoCondAnd)
-
-void* InterpreterDoCondOr    ( Runtime* sandbox , Value condition ,
-                                                  std::uint32_t where ,
-                                                  void* start_of_pc ) {
-  (void)sandbox;
-  (void)condition;
-  (void)where;
-  (void)start_of_pc;
-  return NULL;
-}
-INTERPRETER_REGISTER_EXTERN_SYMBOL(InterpreterDoCondOr)
 
 // ----------------------------------------------------------------------------
 // Literal Loader Helper
@@ -345,17 +312,15 @@ INTERPRETER_REGISTER_EXTERN_SYMBOL(InterpreterDoLoadCls)
 // ----------------------------------------------------------------------------
 // Property Get/Set
 // ----------------------------------------------------------------------------
-Value InterpreterDoPropGet   ( Runtime* sandbox , Value obj , String** key ) {
+bool  InterpreterPropGet   ( Runtime* sandbox , Value obj , String** key ,
+                                                            Value* output ) {
   (void)sandbox;
   (void)obj;
   (void)key;
-  {
-    Value r;
-    SetValueFlag( &r, VALUE_FAIL );
-    return r;
-  }
+  (void)output;
+  return false;
 }
-INTERPRETER_REGISTER_EXTERN_SYMBOL(InterpreterDoPropGet)
+INTERPRETER_REGISTER_EXTERN_SYMBOL(InterpreterPropGet)
 
 void InterpreterPropGetNotFound( Runtime* sandbox , Value obj , String** key ) {
   (void)sandbox;
@@ -364,79 +329,91 @@ void InterpreterPropGetNotFound( Runtime* sandbox , Value obj , String** key ) {
 }
 INTERPRETER_REGISTER_EXTERN_SYMBOL(InterpreterPropGetNotFound)
 
-void InterpreterPropGetNotObject( Runtime* sandbox, Value obj , String** key ) {
+void InterpreterPropNeedObject ( Runtime* sandbox, Value obj ) {
   (void)sandbox;
   (void)obj;
-  (void)key;
 }
-INTERPRETER_REGISTER_EXTERN_SYMBOL(InterpreterPropGetNotObject)
+INTERPRETER_REGISTER_EXTERN_SYMBOL(InterpreterPropNeedObject)
 
-bool InterpreterDoPropSet      ( Runtime* sandbox , Value obj , String** key ,
-                                                                Value val ) {
+void InterpreterIdxOutOfBound  ( Runtime* sandbox , Value obj , std::uint32_t size ) {
+  (void)sandbox;
+  (void)obj;
+  (void)size;
+}
+INTERPRETER_REGISTER_EXTERN_SYMBOL(InterpreterIdxOutOfBound)
+
+bool InterpreterPropSet      ( Runtime* sandbox , Value obj , String** key ,
+                                                              Value val ) {
   (void)sandbox;
   (void)obj;
   (void)key;
   (void)val;
   return false;
 }
-INTERPRETER_REGISTER_EXTERN_SYMBOL(InterpreterDoPropSet)
+INTERPRETER_REGISTER_EXTERN_SYMBOL(InterpreterPropSet)
 
-Value InterpreterDoIdxGet      ( Runtime* sandbox , Value obj , Value key ) {
+bool InterpreterIdxGet      ( Runtime* sandbox , Value obj , Value key ,
+                                                             Value* output ) {
   (void)sandbox;
   (void)obj;
   (void)key;
-  {
-    Value r;
-    SetValueFlag( &r, VALUE_FAIL );
-    return r;
-  }
+  (void)output;
+  return false;
 }
-INTERPRETER_REGISTER_EXTERN_SYMBOL(InterpreterDoIdxGet)
+INTERPRETER_REGISTER_EXTERN_SYMBOL(InterpreterIdxGet)
 
-Value InterpreterDoIdxGetI     ( Runtime* sandbox , Value obj , std::int32_t idx ) {
+bool  InterpreterIdxGetI     ( Runtime* sandbox , Value obj , std::uint8_t idx ,
+                                                              Value* output ) {
   (void)sandbox;
   (void)obj;
   (void)idx;
-  {
-    Value r;
-    SetValueFlag( &r, VALUE_FAIL );
-    return r;
-  }
+  (void)output;
+  return false;
 }
-INTERPRETER_REGISTER_EXTERN_SYMBOL(InterpreterDoIdxGetI)
+INTERPRETER_REGISTER_EXTERN_SYMBOL(InterpreterIdxGetI)
 
-bool InterpreterDoIdxSet      ( Runtime* sandbox , Value obj , Value key ,
-                                                               Value val ) {
+bool InterpreterIdxSet      ( Runtime* sandbox , Value obj , Value key ,
+                                                             Value val ) {
   (void)sandbox;
   (void)obj;
   (void)key;
   (void)val;
   return false;
 }
-INTERPRETER_REGISTER_EXTERN_SYMBOL(InterpreterDoIdxSet)
+INTERPRETER_REGISTER_EXTERN_SYMBOL(InterpreterIdxSet)
 
-bool InterpreterDoGGet       ( Runtime* sandbox , Value* output , String** key ) {
+bool InterpreterIdxSetI    ( Runtime* sandbox , Value obj  , std::uint8_t idx ,
+                                                             Value val ) {
+  (void)sandbox;
+  (void)obj;
+  (void)idx;
+  (void)val;
+  return false;
+}
+INTERPRETER_REGISTER_EXTERN_SYMBOL(InterpreterIdxSetI)
+
+bool InterpreterGGet       ( Runtime* sandbox , Value* output , String** key ) {
   (void)sandbox;
   (void)key;
   (void)output;
   return false;
 }
-INTERPRETER_REGISTER_EXTERN_SYMBOL(InterpreterDoGGet)
+INTERPRETER_REGISTER_EXTERN_SYMBOL(InterpreterGGet)
 
-bool InterpreterDoGSet       ( Runtime* sandbox , String** key , Value value ) {
+bool InterpreterGSet       ( Runtime* sandbox , String** key , Value value ) {
   (void)sandbox;
   (void)key;
   (void)value;
   return false;
 }
-INTERPRETER_REGISTER_EXTERN_SYMBOL(InterpreterDoGSet)
+INTERPRETER_REGISTER_EXTERN_SYMBOL(InterpreterGSet)
 
 
 // ----------------------------------------------------------------------------
 // Loop
 // ----------------------------------------------------------------------------
-bool InterpreterForEnd1     ( Runtime* sandbox , const Value& lhs , const Value& rhs ,
-                                                                    std::uint32_t offset ) {
+bool InterpreterForEnd1     ( Runtime* sandbox , Value lhs , Value rhs ,
+                                                             std::uint32_t offset ) {
   (void)sandbox;
   (void)lhs;
   (void)rhs;
@@ -444,15 +421,40 @@ bool InterpreterForEnd1     ( Runtime* sandbox , const Value& lhs , const Value&
 }
 INTERPRETER_REGISTER_EXTERN_SYMBOL(InterpreterForEnd1)
 
-bool InterpreterForEnd2     ( Runtime* sandbox , const Value& lhs , const Value& rhs ,
-                                                                    const Value& cond ,
-                                                                    std::uint32_t offset ) {
+bool InterpreterForEnd2     ( Runtime* sandbox , Value lhs , Value rhs ,
+                                                             Value cond ,
+                                                             std::uint32_t offset ) {
   (void)sandbox;
   (void)lhs;
   (void)rhs;
   return false;
 }
 INTERPRETER_REGISTER_EXTERN_SYMBOL(InterpreterForEnd2)
+
+bool InterpreterFEStart     ( Runtime* sandbox , Value* expr , std::uint32_t offset ) {
+  (void)sandbox;
+  (void)expr;
+  (void)offset;
+  return false;
+}
+INTERPRETER_REGISTER_EXTERN_SYMBOL(InterpreterFEStart)
+
+bool InterpreterFEEnd       ( Runtime* sandbox , Value expr , std::uint32_t offset ) {
+  (void)sandbox;
+  (void)expr;
+  (void)offset;
+  return false;
+}
+INTERPRETER_REGISTER_EXTERN_SYMBOL(InterpreterFEEnd)
+
+bool InterpreterIDref       ( Runtime* sandbox , Value expr , Value* key , Value* val ) {
+  (void)sandbox;
+  (void)expr;
+  (void)key;
+  (void)val;
+  return false;
+}
+INTERPRETER_REGISTER_EXTERN_SYMBOL(InterpreterIDref)
 
 
 /* ---------------------------------------------------------------------
@@ -472,7 +474,7 @@ INTERPRETER_REGISTER_EXTERN_SYMBOL(InterpreterForEnd2)
  * ------------------------------------------------------------------*/
 |.define CHECK_DIV_BY_ZERO
 |.define CHECK_NUMBER_MEMORY,0
-|.define TRACE_OP,1
+|.define TRACE_OP,0
 |.define USE_CMOV_COMP,0
 |.define USE_CMOV_NEG
 
@@ -630,7 +632,6 @@ static_assert( sizeof(IFrame) == 16 );
 |.define SAVED_R15,             [rsp+16]
 |.define SAVED_RBP,             [rsp+8]
 
-// DO NOT MODIFY IT UNLESS YOU KNOW SHIT
 |.define SAVED_PPC,             rsp
 |.define SAVED_PC ,             [rsp]
 
@@ -678,13 +679,10 @@ INTERPRETER_REGISTER_EXTERN_SYMBOL(Print64)
 |  mov CARG1,OP
 |  fcall PrintOP
 |.endif
-// IFETCH starts, one of the hottest code segement
-// The top 4 instructions are ordered as 4-1-1-1 to optimize decoder so
-// it can be decoded in one cycle.
-|  mov INSTR,dword [PC]  // 2 uops
+|  mov INSTR,dword [PC]  // 1 uops
 |  movzx OP,INSTR_OP     // 1 uops
-|  add PC,4              // fused 1uops
-|  shr INSTR,8           // fused 1uops
+|  add PC,4              // 1 uops
+|  shr INSTR,8           // 1 uops
 |  jmp aword [DISPATCH+OP*8]
 |.endmacro
 
@@ -735,25 +733,25 @@ INTERPRETER_REGISTER_EXTERN_SYMBOL(Print64)
 /* -----------------------------------------------------------
  * Special Constant for Real                                 |
  * ----------------------------------------------------------*/
-|.macro LdRConstH,XREG,HIGH
+|.macro rconstH,XREG,HIGH
 |  mov64 T1,(static_cast<std::uint64_t>(HIGH)<<32)
 |  movd XREG,T1
 |.endmacro
 
-|.macro LdRConstL,XREG,LOW
+|.macro rconstL,XREG,LOW
 |  mov64 T1,(static_cast<std::uint64_t>(LOW))
 |  movd XREG,T1
 |.endmacro
 
-|.macro LdRConst,XREG,X64V
+|.macro rconst,XREG,X64V
 |  mov64 T1,X64V
 |  movd  XREG,T1
 |.endmacro
 
 // Used to negate the double precision number's sign bit
-|.macro LdRConst_sign,XREG; LdRConstH XREG,0x80000000; .endmacro
-|.macro LdRConst_one ,XREG; LdRConstH XREG,0x3ff00000; .endmacro
-|.macro LdRConst_neg_one,XREG; LdRConstH XREG,0xbff00000; .endmacro
+|.macro rconst_sign,XREG; rconstH XREG,0x80000000; .endmacro
+|.macro rconst_one ,XREG; rconstH XREG,0x3ff00000; .endmacro
+|.macro rconst_neg_one,XREG; rconstH XREG,0xbff00000; .endmacro
 
 /* -----------------------------------------------------------
  * constant loading                                          |
@@ -814,14 +812,6 @@ INTERPRETER_REGISTER_EXTERN_SYMBOL(Print64)
 // heap object header
 #define HOH_TYPE_OFFSET 7
 
-// Check whether a Value is a HeapObject
-|.macro CheckHeap,val,fail_label
-|  mov T1,val
-|  shr T1,48
-|  cmp T1L, Value::FLAG_HEAP
-|  jne >fail_label
-|.endmacro
-
 // Set a pointer into a register , this is really painful
 |.macro StHeap,val
 
@@ -866,10 +856,18 @@ INTERPRETER_REGISTER_EXTERN_SYMBOL(Print64)
 |  mov val, qword [T2+index*8]
 |.endmacro
 
+// Check whether a Value is a HeapObject
+|.macro CheckHeap,val,fail_label
+|  mov T1,val
+|  shr T1,48
+|  cmp T1L, Value::FLAG_HEAP
+|  jne fail_label
+|.endmacro
+
 // General macro to check a heap object is certain type
 |.macro CheckHeapPtrT,val,pattern,fail_label
 |  cmp byte [val-HOH_TYPE_OFFSET], pattern
-|  jne >fail_label
+|  jne fail_label
 |.endmacro
 
 |.macro CheckHeapT,val,pattern,fail_label
@@ -882,13 +880,9 @@ INTERPRETER_REGISTER_EXTERN_SYMBOL(Print64)
 // Object bit pattern
 
 #define OBJECT_BIT_PATTERN TYPE_OBJECT
-
 #define LIST_BIT_PATTERN TYPE_LIST
-
 #define SSO_BIT_PATTERN TYPE_STRING
-
 #define CLOSURE_BIT_PATTERN TYPE_CLOSURE
-
 #define EXTENSION_BIT_PATTERN TYPE_EXTENSION
 
 // -------------------------------------------------------------------------
@@ -933,14 +927,19 @@ INTERPRETER_REGISTER_EXTERN_SYMBOL(Print64)
 |  mov reg, qword [reg]
 |.endmacro
 
+// If fail, reg will be set to store the value of that
+// actual pointer points to a *unknown* heap object;
+// otherwise reg will be set to store the value of pointer
+// for that SSO object
 |.macro CheckSSORaw,reg,fail
 |  and reg,qword [->ValueHeapMaskLoad]
+|  mov reg,qword [reg]
 |  cmp byte [reg-HOH_TYPE_OFFSET], SSO_BIT_PATTERN
 |  jne fail
 |  mov reg,qword [reg]
 |.endmacro
 
-#define INTERP_HELPER_LIST(__) \
+#define INTERP_HELPER_LIST(__)               \
   /* arithmetic */                           \
   __(INTERP_START,InterpStart)               \
   __(INTERP_FAIL ,InterpFail)                \
@@ -956,17 +955,20 @@ INTERPRETER_REGISTER_EXTERN_SYMBOL(Print64)
   __(INTERP_COMPARERV,InterpCompareRV)       \
   __(INTERP_COMPAREVR,InterpCompareVR)       \
   __(INTERP_COMPAREVV,InterpCompareVV)       \
-  __(INTERP_COMPAREHH,InterpCompareHH)       \
   /* property get/set */                     \
-  __(INTERP_PROPGET_NOTFOUND,InterpPropGetNotFound)      \
-  __(INTERP_PROPGET_NOTOBJECT,InterpPropGetNotObject)    \
-  __(INTERP_PROPGET,InterpPropGet)           \
-  __(INTERP_IDXGETI,InterpIdxGetI)           \
-  __(INTERP_IDXGET ,InterpIdxGet )           \
-  /* ---- debug helper ---- */               \
-  __(PRINT_OP,PrintOP)                       \
-  __(PRINT2  ,Print2 )                       \
-  __(PRINT64 ,Print64)                       \
+  __(INTERP_PROPGET_NOTFOUND,InterpPropGetNotFound)   \
+  __(INTERP_PROPGET,InterpPropGet)                    \
+  __(INTERP_IDX_GETI,InterpIdxGetI)                   \
+  __(INTERP_IDX_GET ,InterpIdxGet )                   \
+  __(INTERP_IDX_SETI,InterpIdxSetI)                   \
+  __(INTERP_IDX_SET ,InterpIdxSet )                   \
+  __(INTERP_PROP_NEEDOBJECT ,InterpNeedObject)        \
+  __(INTERP_IDX_OUTOFBOUND_GET,InterpIdxOutOfBoundGet)\
+  __(INTERP_IDX_OUTOFBOUND_SET,InterpIdxOutOfBoundSet)\
+  /* ---- Debug Helper ---- */                        \
+  __(PRINT_OP,PrintOP)                                \
+  __(PRINT2  ,Print2 )                                \
+  __(PRINT64 ,Print64)                                \
   __(PRINTF  ,PrintF )
 
 enum {
@@ -1011,7 +1013,7 @@ void GenerateInterpMisc( BuildContext* bctx ) {
   |.dword Value::TAG_HEAP_STORE_MASK_LOWER,Value::TAG_HEAP_STORE_MASK_HIGHER // 8 bytes
 
   |->ValueHeapMaskLoad:
-  |.dword Value::TAG_HEAP_LOAD_MASK_LOWER,Value::TAG_HEAP_LOAD_MASK_HIGHER // 8 bytes
+  |.dword Value::TAG_HEAP_LOAD_MASK_LOWER,Value::TAG_HEAP_LOAD_MASK_HIGHER   // 8 bytes
 
   |->FlagTrueConst:
   |.dword Value::FLAG_TRUE // 4 bytes
@@ -1095,15 +1097,6 @@ void GenerateInterpMisc( BuildContext* bctx ) {
 // ----------------------------------------
 // helper macros
 // ----------------------------------------
-|.macro ret2acc
-|  mov T1,rax
-|  shr T1,32
-|  cmp T1,VALUE_FAIL
-|  je ->InterpFail
-|  mov qword [ACC], rax
-|  Dispatch
-|.endmacro
-
 |.macro retbool
 |  test eax,eax
 |  je ->InterpFail
@@ -1126,17 +1119,21 @@ void GenerateHelper( BuildContext* bctx ) {
   |->InterpArithRealL:
   |  savepc
   |  mov CARG1,RUNTIME
-  |  LdRealV CARG2,ARG1F
+  |  LdRealV CARG2,ARG2F
+  |  mov CARG3, qword [STK+ARG3F*8]
+  |  lea CARG4, [STK+ARG1F*8]
   |  fcall InterpreterDoArithmetic
-  |  ret2acc
+  |  retbool
 
   |=> INTERP_ARITH_REALR:
   |->InterpArithRealR:
   |  savepc
   |  mov CARG1,RUNTIME
-  |  LdRealV CARG3,ARG2F
+  |  mov CARG2,qword [STK+ARG2F*8]
+  |  LdRealV CARG3,ARG3F
+  |  lea CARG4, [STK+ARG1F*8]
   |  fcall InterpreterDoArithmetic
-  |  ret2acc
+  |  retbool
 
   |=> INTERP_ARITH_VV:
   |->InterpArithVV:
@@ -1144,8 +1141,9 @@ void GenerateHelper( BuildContext* bctx ) {
   |  mov CARG1, RUNTIME
   |  mov CARG2, qword [STK+ARG1F*8]
   |  mov CARG3, qword [STK+ARG2F*8]
+  |  lea CARG4, [STK+ARG3F*8] // ARG3F == CARG4
   |  fcall InterpreterDoArithmetic
-  |  ret2acc
+  |  retbool
 
   |=> INTERP_POW_SLOWRV:
   |->InterpPowSlowRV:
@@ -1155,7 +1153,7 @@ void GenerateHelper( BuildContext* bctx ) {
   |  mov CARG3,qword [STK+ARG3F*8]
   |  lea CARG4, [STK+ARG1F*8]
   |  fcall InterpreterPow
-  |  ret2acc
+  |  retbool
 
   |=> INTERP_POW_SLOWVR:
   |->InterpPowSlowVR:
@@ -1165,7 +1163,7 @@ void GenerateHelper( BuildContext* bctx ) {
   |  LdRealV CARG3,ARG3F
   |  lea CARG4, [STK+ARG1F*8]
   |  fcall InterpreterPow
-  |  ret2acc
+  |  retbool
 
   |=> INTERP_POW_SLOWVV:
   |->InterpPowSlowVV:
@@ -1176,7 +1174,7 @@ void GenerateHelper( BuildContext* bctx ) {
   |  mov CARG3, qword [STK+ARG3F*8]
   |  lea CARG4, [STK+ARG1F*8]
   |  fcall InterpreterPow
-  |  ret2acc
+  |  retbool
 
   /* -------------------------------------------
    * Interp Arithmetic Exception               |
@@ -1197,26 +1195,29 @@ void GenerateHelper( BuildContext* bctx ) {
   |  mov CARG1,RUNTIME
   |  LdRealV CARG2,ARG2F
   |  mov CARG3, qword [STK+ARG2F*8]
+  |  lea CARG4, [STK+ARG1F*8]
   |  fcall InterpreterDoCompare
-  |  ret2acc
+  |  retbool
 
   |=> INTERP_COMPAREVR:
   |->InterpCompareVR:
   |  savepc
   |  mov CARG1,RUNTIME
-  |  mov CARG2,qword [STK+ARG1F*8]
-  |  LdRealV CARG3,ARG2F
+  |  mov CARG2,qword [STK+ARG2F*8]
+  |  LdRealV CARG3,ARG3F
+  |  lea CARG4, [STK+ARG1F*8]
   |  fcall InterpreterDoCompare
-  |  ret2acc
+  |  retbool
 
   |=> INTERP_COMPAREVV:
   |->InterpCompareVV:
   |  savepc
   |  mov CARG1, RUNTIME
-  |  mov CARG2, qword [STK+ARG1F*8]
-  |  mov CARG3, qword [STK+ARG2F*8]
+  |  mov CARG2, qword [STK+ARG2F*8]
+  |  mov CARG3, qword [STK+ARG3F*8]
+  |  lea CARG4, [STK+ARG1F*8]
   |  fcall InterpreterDoCompare
-  |  ret2acc
+  |  retbool
 
   /* -------------------------------------------------
    * Property Get/Set                                |
@@ -1225,37 +1226,66 @@ void GenerateHelper( BuildContext* bctx ) {
   |->InterpPropGet:
   |  savepc
   |  mov CARG1, RUNTIME
-  |  mov CARG2, qword [STK+ARG1F*8]
-  |  LdStr CARG3, ARG2F
-  |  fcall InterpreterDoPropGet
-  |  ret2acc
+  |  mov CARG2, qword [STK+ARG2F*8]
+  |  LdStr CARG3, ARG3F
+  |  lea CARG4, [STK+ARG1F*8]
+  |  fcall InterpreterPropGet
+  |  retbool
 
   |=> INTERP_PROPGET_NOTFOUND:
   |->InterpPropGetNotFound:
   |  savepc
   |  mov CARG1, RUNTIME
-  |  mov CARG2, qword [STK+ARG1F*8]
-  |  LdStr CARG3,ARG1F
+  |  mov CARG2, qword [STK+ARG2F*8]
+  |  LdStr CARG3,ARG3F
   |  fcall InterpreterPropGetNotFound
   |  jmp ->InterpFail
 
-  |=> INTERP_PROPGET_NOTOBJECT:
-  |->InterpPropGetNotObject:
+  |=> INTERP_PROP_NEEDOBJECT:
+  |->InterpPropNeedObject:
   |  savepc
   |  mov CARG1, RUNTIME
-  |  mov CARG2, qword [STK+ARG1F*8]
-  |  LdStr CARG3, ARG2F
-  |  fcall InterpreterPropGetNotObject
+  |  mov CARG2, qword [STK+ARG2F*8]
+  |  fcall InterpreterPropNeedObject
   |  jmp ->InterpFail
 
-  |=> INTERP_IDXGETI:
+  |=> INTERP_IDX_GETI:
   |->InterpIdxGetI:
   |  savepc
   |  mov CARG1, RUNTIME
-  |  mov CARG2, qword [STK+ARG1F*8]
-  |  mov CARG3L , ARG2
-  |  fcall InterpreterDoIdxGetI
+  |  mov CARG2, qword [STK+ARG2F*8]
+  |  mov CARG3L,ARG3
+  |  lea CARG4, qword [STK+ARG1F*8]
+  |  fcall InterpreterIdxGetI
   |  retbool
+
+  |=> INTERP_IDX_SETI:
+  |->InterpIdxSetI:
+  |  savepc
+  |  mov CARG1, RUNTIME
+  |  mov CARG2, qword [STK+ARG1F*8]
+  |  mov CARG3L,ARG2
+  |  mov CARG4, qword [STK+ARG3F*8]
+  |  fcall InterpreterIdxSetI
+  |  retbool
+
+  |=> INTERP_IDX_OUTOFBOUND_SET:
+  |->InterpIdxOutOfBoundSet:
+  |  savepc
+  |  mov CARG1, RUNTIME
+  |  mov CARG2, qword [STK+ARG2F*8]
+  |  mov CARG3L, ARG3
+  |  fcall InterpreterIdxOutOfBound
+  |  jmp ->InterpFail
+
+  |=> INTERP_IDX_OUTOFBOUND_GET:
+  |->InterpIdxOutOfBoundGet:
+  |  savepc
+  |  mov CARG1, RUNTIME
+  |  mov CARG2, qword [STK+ARG1F*8]
+  |  mov CARG3L, ARG2
+  |  fcall InterpreterIdxOutOfBound
+  |  jmp ->InterpFail
 }
 
 void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
@@ -1301,7 +1331,7 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
     case BC_LOAD1:
       |=> bc:
       |  instr_F
-      |  LdRConst_one xmm0
+      |  rconst_one xmm0
       |  movsd qword[STK+ARG1F*8], xmm0
       |  Dispatch
       break;
@@ -1309,7 +1339,7 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
     case BC_LOADN1:
       |=> bc:
       |  instr_F
-      |  LdRConst_neg_one xmm0
+      |  rconst_neg_one xmm0
       |  movsd qword[STK+ARG1F*8], xmm0
       |  Dispatch
       break;
@@ -1605,14 +1635,14 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
       |  arith_vv BC_DIVVV,divsd
       break;
 
-    /* ========================================================
+    /* =============================================================
      * MODXX
      *
      *   Similar implementation like Lua not Luajit. Return casted
      *   integer's mod value instead of fmod style value. BTW, fmod
      *   is really slow
      *
-     * ========================================================*/
+     * ============================================================*/
 
 
     case BC_MODVR:
@@ -1734,20 +1764,12 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
      * -------------------------------------------------------------------*/
     |.macro comp_xv,BC,slow_path,false_jmp
     |  instr_D
-    |  mov RREG, qword[STK+ARG3F*8]
 
-    |.if CHECK_NUMBER_MEMORY
-    |  mov T0L , dword[STK+ARG3F*8+4]
-    |.else
-    |  mov T0,RREG
-    |  shr T0,32
-    |.endif
-
-    |  cmp T0L, Value::FLAG_REAL
+    |  cmp dword [STK+ARG3F*8+4], Value::FLAG_REAL
     |  jnb ->slow_path
+
     |  LdReal xmm0, ARG2F
-    |  movd xmm1, RREG
-    |  ucomisd xmm0, xmm1
+    |  ucomisd xmm0, qword [STK+ARG3F*8]
     // cmov instruction is slower here , doesn't worth it
     |  false_jmp >1
     |  mov dword[STK+ARG1F*8+4], Value::FLAG_TRUE
@@ -1789,20 +1811,11 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
     |.macro comp_vx,BC,slow_path,false_jmp
     |  instr_D
 
-    |  mov LREG,qword [STK+ARG2F*8]
-
-    |.if CHECK_NUMBER_MEMORY
-    |  mov T0L, dword [STK+ARG2F*8+4]
-    |.else
-    |  mov T0, RREG
-    |  shr T0, 32
-    |.endif
-
-    |  cmp T0L, Value::FLAG_REAL
+    |  cmp dword [STK+ARG2F*8+4], Value::FLAG_REAL
     |  jnb ->slow_path
 
     |  LdReal xmm1,ARG3F
-    |  movd xmm0, LREG
+    |  movsd xmm0, qword [STK+ARG2F*8]
     |  ucomisd xmm0,xmm1
     |  false_jmp >1
     |  mov dword [STK+ARG1F*8+4], Value::FLAG_TRUE
@@ -1884,18 +1897,18 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
 
     |.macro comp_eqne_vv,BC,T,F
     |  instr_D
-    // We fast check numeric number's value. Pay attension that bit comparison
-    // is not okay due to the fact we have +0 and -0, we need to do the conversion
-    // to do the correct comparison
+
+    // We fast check numeric number's value. Pay attension that bit
+    // comparison is not okay due to the fact we have +0 and -0
     |  cmp dword [STK+ARG2F*8+4], Value::FLAG_REAL
     |  jnb >3
 
-    |  cmp dword [STK+ARG2F*8+4], Value::FLAG_REAL
+    |  cmp dword [STK+ARG3F*8+4], Value::FLAG_REAL
     |  jnb >3
 
     |  movsd xmm0, qword [STK+ARG2F*8]
     |  ucomisd xmm0, qword [STK+ARG3F*8]
-    |  je >1
+    |  jne >1
     |  mov dword [STK+ARG1F*8+4], T
     |2:
     |  Dispatch
@@ -1913,7 +1926,7 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
     |  shr RREG, 48
 
     |  cmp LREG, RREG
-    |  je >4
+    |  jne >4
 
     // LREG and RREG doesn't match, we need to rule out heap type to
     // actually tell whether LREGL and RREGL are the same or not
@@ -1923,27 +1936,40 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
     |  je >5
 
     // Okay, both LREGL an RREGL are not heap tag, so we can assert
-    // they are *not* equal due to they are primitive type
-    |  mov dword [STK+ARG1F*8+4], F
+    // they are equal due to they are primitive type
+    |  mov dword [STK+ARG1F*8+4], T
     |  jmp <2
 
-    // Primitive type are *identical* return TRUE
+    // Primitive type are definitly not equal since they have different
+    // type, so we just return *FALSE*
     |4:
-    |  mov dword [STK+ARG1F*8+4], T
+    |  mov dword [STK+ARG1F*8+4], F
     |  jmp <2
 
     // When we reach 5, we know at least one of the operand is a *HEAP*
     // object. We can try to inline a SSO check here or just go back to
     // InterpCompareVV to do the job
     |5:
-    |  CheckSSORaw T0,->InterpCompareHH
-    |  CheckSSORaw T1,->InterpCompareHH
+    |  CheckSSORaw T0,>7
+    |  CheckSSORaw T1,>7
     |  cmp T0,T1
     |  jne >6
     |  mov dword [STK+ARG1F*8+4], T
     |6:
     |  mov dword [STK+ARG1F*8+4], F
     |  jmp <2
+
+    // Calls into InterpreterCompareHH
+    |7:
+    |  // T0/T1 stores HeapObject*
+    |  mov CARG1, RUNTIME
+    |  mov CARG2, T0
+    |  mov CARG3, T1
+    |  lea CARG4, [STK+ARG1F*8+4] // where to set the true/false
+    |  fcall InterpreterCompareHH
+    |  test eax,eax
+    |  je ->InterpFail
+    |  Dispatch
     |.endmacro
 
 
@@ -1962,8 +1988,8 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
     |  instr_D
     |  LdStr LREG,ARG2F
     |  mov RREG,qword [STK+ARG3F*8]
-    |  CheckSSO LREG,1
-    |  CheckSSOV RREG,1
+    |  CheckSSO LREG,>1
+    |  CheckSSOV RREG,>1
 
     |.if USE_CMOV_COMP
     |  mov ARG2, Value::FLAG_FALSE
@@ -1990,8 +2016,8 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
     |  instr_D
     |  mov LREG, qword [STK+ARG2F*8]
     |  LdStr RREG,ARG3F
-    |  CheckSSOV LREG,1
-    |  CheckSSO  RREG,1
+    |  CheckSSOV LREG,>1
+    |  CheckSSO  RREG,>1
 
     |.if USE_CMOV_COMP
     |  mov ARG2, Value::FLAG_FALSE
@@ -2046,7 +2072,7 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
       |  jnb >8
 
       |  movsd, xmm0, qword [STK+ARG2F*8]
-      |  LdRConst_sign xmm1
+      |  rconst_sign xmm1
       |  xorpd xmm0, xmm1
       |  movsd qword [STK+ARG1F*8], xmm0
       |  Dispatch
@@ -2133,11 +2159,15 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
       |  Dispatch
       break;
 
+    |.macro absolute_jmp,BC
+    |=>BC:
+    |  instr_G
+    |  branch_to ARG1F,ARG3F
+    |  Dispatch
+    |.endmacro
+
     case BC_JMP:
-      |=>bc:
-      |  instr_G
-      |  branch_to ARG1F,ARG3F
-      |  Dispatch
+      |  absolute_jmp,BC_JMP
       break;
 
     // ----------------------------------------------------------
@@ -2189,7 +2219,7 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
 
     // 3. check if the key is a SSO
     |  mov LREG, qword [T2L]
-    |  CheckSSO LREG,6
+    |  CheckSSO LREG,>6
     |  mov LREG, qword [LREG]
     |  cmp LREG, RREG
     |  jne >6 // string not identical
@@ -2223,17 +2253,17 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
       |  cmp word [STK+ARG1F*8+6],Value::FLAG_HEAP
       |  jne >8
       |  mov LREG, qword [STK+ARG1F*8]
-      |  CheckObj LREG,9
+      |  CheckObj LREG,>9
       |.else
       |  mov LREG, qword [STK+ARG1F*8]
-      |  CheckObjV LREG,9
+      |  CheckObjV LREG,>9
       |.endif
 
       |  LdStr RREG,ARG2F
       // assume RREG is an heap object since this should be guaranteed
       // by front-end
       |  DerefPtrFromV RREG
-      |  CheckSSO RREG,8
+      |  CheckSSO RREG,>8
 
       // find sso's position
       |  find_sso_pos ACCIDX
@@ -2242,7 +2272,7 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
       |  jmp ->InterpPropGet
 
       |9: // failed at *object*
-      |  jmp ->InterpPropGetNotObject
+      |  jmp ->InterpPropNeedObject
       break;
 
     case BC_PROPSET:
@@ -2254,30 +2284,108 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
       |  mov CARG2, qword [ACC]
       |  mov CARG3, qword [STK+ARG1F*8]
       |  LdStr CARG4,ARG2F
-      |  fcall InterpreterDoPropSet
+      |  fcall InterpreterPropSet
       |  retbool
       break;
 
+    // Assume the ARG3F *already* contains index value ,4 bytes
+    |.macro index_list,oob,not_list
+    |  cmp word [STK+ARG2F*8+6], Value::FLAG_HEAP
+    |  jne ->InterpPropNeedObject
+
+    |  mov LREG, qword [STK+ARG2F*8]
+    |  CheckList LREG,not_list // if it is not a list then jump
+
+    |  cmp ARG3, dword [LREG+ListLayout::kSizeOffset]
+    |  jae ->oob
+
+    |  mov RREG, qword [LREG+ListLayout::kSliceOffset]
+    |  mov ARG2F,qword [RREG]
+
+    |  mov ARG2F, qword [ARG2F+ARG3F*8+SliceLayout::kArrayOffset]
+    |  mov qword [STK+ARG1F*8], ARG2F
+    |  Dispatch
+    |.endmacro
+
     case BC_IDXGET:
       |=>bc:
-      |  instr_E
-      |  savepc
+      |  instr_D
+      |  cmp word [STK+ARG3F*8+4], Value::FLAG_REAL
+      |  jnb >1
+      |  cvtsd2si ARG3, qword [STK+ARG3F*8]
+      |  test ARG3,ARG3
+      |  js ->InterpIdxOutOfBoundGet // out of bound
+
+      // do the indexing for list or array
+      |  index_list,InterpIdxOutOfBoundGet,->InterpIdxGetI
+
+      // general type index
+      |1:
       |  mov CARG1, RUNTIME
-      |  mov CARG2, qword [STK+ARG1F*8]
-      |  mov CARG3, qword [STK+ARG2F*8]
-      |  fcall InterpreterDoIdxGet
+      |  mov CARG2, qword [STK+ARG2F*8]
+      |  mov CARG3, qword [STK+ARG3F*8]
+      |  lea CARG4, [STK+ARG1F*8]
+      |  fcall InterpreterIdxGet
       |  retbool
       break;
+
+    case BC_IDXGETI:
+      |=>bc:
+      |  instr_D
+      |  index_list,InterpIdxOutOfBoundGet,->InterpIdxGetI
+      break;
+
+
+    |.macro set_list,oob,not_list
+    |  cmp word [STK+ARG1F*8+6], Value::FLAG_HEAP
+    |  jne ->InterpPropNeedObject
+
+    |  mov LREG, qword [STK+ARG1F*8]
+    |  CheckList LREG,not_list
+
+    |  cmp ARG2, dword [LREG+ListLayout::kSizeOffset]
+    |  jae ->oob
+
+    |  mov RREG, qword [LREG+ListLayout::kSliceOffset]
+    |  mov ARG1F,qword [RREG]
+
+    |  mov LREG, qword [STK+ARG3F*8]
+    |  mov qword [ARG1F+ARG2F*8+ListLayout::kSliceOffset], LREG
+    |  Dispatch
+    |.endmacro
+
+
     case BC_IDXSET:
       |=>bc:
       |  instr_D
+
+      // check the idx is a number
+      |  cmp word [STK+ARG2F*8+4], Value::FLAG_REAL
+      |  jnb >1
+
+      // conversion
+      |  cvtsd2si ARG2, qword [STK+ARG2F*8]
+
+      |  test ARG2, ARG2
+      |  jz ->InterpIdxOutOfBoundSet
+
+      |  set_list,InterpIdxOutOfBoundSet,->InterpIdxSetI
+
+      |1:
       |  savepc
       |  mov CARG1, RUNTIME
       |  mov CARG2, qword [STK+ARG1F*8]
       |  mov CARG3, qword [STK+ARG2F*8]
       |  mov CARG4, qword [STK+ARG3F*8]
-      |  fcall InterpreterDoIdxSet
+      |  fcall InterpreterIdxSet
       |  retbool
+      break;
+
+
+    case BC_IDXSETI:
+      |=>bc:
+      |  instr_D
+      |  set_list,InterpIdxOutOfBoundSet,->InterpIdxSetI
       break;
 
     case BC_UVGET:
@@ -2303,7 +2411,7 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
       |  mov CARG1, RUNTIME
       |  LdStr CARG2, ARG1F
       |  mov CARG3, qword [STK+ARG2F*8]
-      |  fcall InterpreterDoGSet
+      |  fcall InterpreterGSet
       |  retbool
       break;
 
@@ -2314,7 +2422,7 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
       |  mov CARG1, RUNTIME
       |  lea CARG2, [STK+ARG1F*8]
       |  LdStr CARG3, ARG2F
-      |  fcall InterpreterDoGGet
+      |  fcall InterpreterGGet
       |  retbool
       break;
 
@@ -2357,9 +2465,10 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
       |8:
       |  // skip the 4th argument
       |  add PC,4
-      |  jmp <8
+      |  jmp <7
 
       |6: // fallback for situation that is not integer
+      |  savepc
       |  mov CARG1, RUNTIME
       |  mov CARG2, qword [STK+ARG1F*8]
       |  mov CARG3, qword [STK+ARG2F*8]
@@ -2398,6 +2507,7 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
       |  jmp <7
 
       |6:
+      |  savepc
       |  mov CARG1, RUNTIME
       |  lea CARG2, [STK+ARG1F*8]
       |  mov CARG3, qword [STK+ARG2F*8]
@@ -2420,6 +2530,64 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
       |=>bc:
       |  instr_G
       |  branch_to ARG1F,ARG3F
+      |  Dispatch
+      break;
+
+    case BC_BRK:
+      |  absolute_jmp BC_BRK
+      break;
+
+    case BC_CONT:
+      |  absolute_jmp BC_CONT
+      break;
+
+    // Foreach instructions
+    case BC_FESTART:
+      |=>bc:
+      |  instr_B
+
+      // TODO:: Worth optimizing for list/map ??
+      |  savepc
+      |  mov CARG1, RUNTIME
+      |  lea CARG2, [STK+ARG1F*8]
+      |  mov CARG3L, ARG2
+      |  fcall InterpreterFEStart
+      |  test eax,eax
+      |  je ->InterpFail
+      |  mov PC, qword [RUNTIME+RuntimeLayout::kCurPCOffset]
+      |  Dispatch
+      break;
+
+    case BC_FEEND:
+      |=>bc:
+      |  instr_B
+
+      // TODO:: Worth optimizing for list/map ??
+      |  savepc
+      |  mov CARG1, RUNTIME
+      |  lea CARG2, [STK+ARG1F*8]
+      |  mov CARG3L,ARG2
+      |  fcall InterpreterFEEnd
+      |  test eax,eax
+      |  je ->InterpFail
+      |  mov PC, qword [RUNTIME+RuntimeLayout::kCurPCOffset]
+      |  Dispatch
+      break;
+
+    case BC_IDREF:
+      |=>bc:
+      |  instr_D
+
+      // TODO:: Worth optimizing for list/map ??
+      |  savepc
+      |  mov CARG1, RUNTIME
+      |  mov CARG2, qword [STK+ARG1F*8]
+      |  lea CARG3, qword [STK+ARG2F*8]
+      |  lea CARG4, qword [STK+ARG3F*8]
+      |  fcall InterpreterIDref
+      |  test eax,eax
+      |  je ->InterpFail
+      |  mov PC, qword [RUNTIME+RuntimeLayout::kCurPCOffset]
       |  Dispatch
       break;
 

@@ -158,7 +158,6 @@ static const std::size_t kAllocatableBytecodeRegisterSize = 255;
   __(H,FEND2,fend2 ,REG,REG,REG)   \
   __(X,FEVRSTART,fevrstart,_,_,_)  \
   __(G,FEVREND,fevrend,PC,_,_ )    \
-  __(E,INEW,inew,REG,REG,_)        \
   __(B,FESTART,festart,REG,PC,_)   \
   __(B,FEEND  ,feend  ,REG,PC,_)   \
   __(D,IDREF  ,idref  ,REG,REG,REG)\

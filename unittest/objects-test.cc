@@ -5,6 +5,7 @@
 #include <gtest/gtest.h>
 #include <random>
 #include <src/trace.h>
+#include <math.h>
 
 #ifdef min
 #undef min
@@ -66,6 +67,20 @@ TEST(Objects,ValuePrimitive) {
     ASSERT_TRUE(v.type() == TYPE_BOOLEAN) << v.type();
     v.SetNull();
     ASSERT_TRUE(v.type() == TYPE_NULL) << v.type();
+  }
+
+  // infinity value
+  {
+    Value v(std::numeric_limits<double>::infinity());
+    ASSERT_TRUE(v.type() == TYPE_REAL);
+    ASSERT_TRUE(v.GetReal() == std::numeric_limits<double>::infinity());
+  }
+
+  // nan
+  {
+    Value v(std::numeric_limits<double>::quiet_NaN());
+    ASSERT_TRUE(v.type() == TYPE_REAL);
+    ASSERT_TRUE(isnan(v.GetReal()));
   }
 }
 

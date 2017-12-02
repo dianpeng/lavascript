@@ -1534,13 +1534,12 @@ bool Generator::Visit( const ast::ForEach& node ) {
   // Get the iterator register
   Register itr_reg(lexical_scope()->GetLoopIter1());
 
-  // Evaluate the interator initial value
-  ScopedRegister init_reg(this);
-  if(!VisitExpression(*node.iter,&init_reg)) return false;
+  // Evaluate the interator initial value and force it into iter_reg
+  if(!VisitExpressionWithOutputRegister(*node.iter,itr_reg)) return false;
 
-  SEMIT(inew,node.iter->sci(),itr_reg.index(),init_reg.Get().index());
 
-  // Generate the festart
+  // Generate the festart. Festart will convert itr_reg into iterator
+  // and then do the comparison and other stuff
   BytecodeBuilder::Label forward =
     func_scope()->bb()->festart(func_scope()->ra()->base(),node.sci(),
                                                            itr_reg.index());

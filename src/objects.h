@@ -2500,8 +2500,7 @@ bool Prototype::Visit( T* visitor ) {
  * ------------------------------------------------------------------*/
 inline Script::FunctionTableEntry* Script::fte_array() const {
   char* base = reinterpret_cast<char*>(const_cast<Script*>(this));
-  return reinterpret_cast<FunctionTableEntry*>(
-      base + sizeof(Script));
+  return reinterpret_cast<FunctionTableEntry*>(base + sizeof(Script));
 }
 
 inline const Script::FunctionTableEntry&

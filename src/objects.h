@@ -927,7 +927,7 @@ class Prototype final : public HeapObject {
  public: // Constant table
   inline double GetReal( std::size_t ) const;
   inline Handle<String> GetString( std::size_t ) const;
-  std::uint16_t GetUpValue( std::size_t , interpreter::UpValueState* ) const;
+  std::uint8_t GetUpValue( std::size_t , interpreter::UpValueState* ) const;
   interpreter::BytecodeIterator GetBytecodeIterator() const {
     return interpreter::BytecodeIterator( code_buffer(), code_buffer_size() );
   }
@@ -1048,11 +1048,33 @@ struct PrototypeLayout {
 class Closure final : public HeapObject {
  public:
   Handle<Prototype> prototype() const { return prototype_; }
-  inline Value* upvalue();
-  inline const Value* upvalue() const;
+
+  // Unsafe function since it doesn't check index and oob
+  Value* upvalue() {
+    return reinterpret_cast<Value*>(
+        reinterpret_cast<char*>(this)+sizeof(Closure));
+  }
+
+  const Value* upvalue() const {
+    return reinterpret_cast<const Value*>(
+        reinterpret_cast<const char*>(this)+sizeof(Closure));
+  }
+
+  Value GetUpValue( std::uint8_t idx ) const {
+    lava_debug(NORMAL,lava_verify(idx < prototype_->upvalue_size()););
+    return upvalue()[idx];
+  }
 
   template< typename T >
   bool Visit( T* );
+
+ public:
+  // Create a closure that is used to wrap *main* prototype
+  static Handle<Closure> New( GC* , const Handle<Prototype>& );
+
+  Closure( const Handle<Prototype>& proto ):
+    prototype_(proto)
+  {}
 
  private:
   Handle<Prototype> prototype_;

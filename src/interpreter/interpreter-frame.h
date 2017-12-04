@@ -24,9 +24,10 @@ namespace interpreter{
 // 2) Pointer (48 bits) to the field2 object, extension/closure
 // 3) PC offset (16 bits)
 // 4) NArg , number of argument (8 bits)
+// 5) Flag , 0 indicate normal call , 1 means tail call
 // -----------------------------------------------------------------------
-// [PC (16 bits)][Reserve (16bits)][PFrame pointer (32 bits)]
-// [Narg(8 bits)][Reserve (8 bits)][Caller (48 bits)]
+// [Reserve (16 bits)][PC  (16bits)][PFrame pointer (32 bits)]
+// [Narg     (8 bits)][Flag(8 bits)][Caller (48 bits)]
 
 // To make it easy to be accessed via assembly code we wrap it as normal
 // C structure and put all the accessor outside of the structure as normal
@@ -38,6 +39,11 @@ struct IFrame {
 
 static_assert( std::is_standard_layout<IFrame>::value );
 static_assert( sizeof(IFrame) == 16 );
+
+// Reserved slots/register for *holding* this IFrame structure while we are
+// in the *call*
+static const std::size_t kReserveCallStack = 16;
+static const std::size_t kReserveCallStackSlot = kReserveCallStack / sizeof(Value);
 
 struct IFrameLayout {
   static const std::uint32_t kField1Offset = offsetof(IFrame,field1);

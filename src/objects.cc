@@ -144,12 +144,12 @@ Prototype::Prototype( const Handle<String>& pp , std::size_t argument_size ,
       );
 }
 
-std::uint16_t Prototype::GetUpValue( std::size_t index ,
-                                     interpreter::UpValueState* state ) const {
+std::uint8_t Prototype::GetUpValue( std::size_t index ,
+                                    interpreter::UpValueState* state ) const {
   const std::uint32_t* upvalue = upvalue_table();
   lava_debug(NORMAL,lava_verify(upvalue && index < upvalue_size_););
   std::uint32_t v = upvalue[index];
-  std::uint16_t ret;
+  std::uint8_t ret;
   interpreter::BytecodeBuilder::DecodeUpValue(v,&ret,state);
   return ret;
 }
@@ -246,6 +246,13 @@ void Prototype::Dump( DumpWriter* writer , const std::string& source ) const {
       count += bi.offset();
     }
   }
+}
+
+/* ---------------------------------------------------------------
+ * Closure
+ * --------------------------------------------------------------*/
+Handle<Closure> Closure::New( GC* gc , const Handle<Prototype>& proto ) {
+  return gc->NewClosure(proto.ref());
 }
 
 /* ---------------------------------------------------------------

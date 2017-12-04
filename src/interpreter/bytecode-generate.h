@@ -26,6 +26,7 @@ class ScopedRegister;
 class Generator;
 class FunctionScope;
 class LexicalScope;
+class IFrameReserver;
 
 /**
  * Represent a bytecode register
@@ -159,6 +160,47 @@ class RegisterAllocator {
 
   // Reserved registers for local variables
   std::vector<std::uint8_t> scope_base_;
+
+  friend class IFrameReserver; // Used to allocate empty 2 slots for invocation
+};
+
+// Used to reserve the needed slot for a function call frame.
+class IFrameReserver {
+ public:
+  IFrameReserver( RegisterAllocator* ra ) :
+    ra_(ra),
+    failed_(false) {
+    std::int32_t iprev = -1;
+    for( std::size_t i = 0 ; i < kReserveCallStackSlot ; ++i ) {
+      Optional<Register> r(ra->Grab());
+      if(!r) {
+        failed_ = false;
+        break;
+      }
+
+      if(iprev == -1) {
+        iprev = r.Get().index();
+      } else {
+        lava_debug(NORMAL,lava_verify(iprev+1 == r.Get().index()););
+      }
+
+      rarr_[i] = r;
+    }
+  }
+
+  ~IFrameReserver() {
+    for( std::int32_t i = kReserveCallStackSlot - 1; i >= 0 ; --i ) {
+      ra_->Drop(rarr_[i].Get());
+    }
+  }
+
+  operator bool () const { return failed_; }
+
+ private:
+  Optional<Register> rarr_[kReserveCallStackSlot];
+  RegisterAllocator* ra_;
+  bool failed_;
+  LAVA_DISALLOW_COPY_AND_ASSIGN(IFrameReserver);
 };
 
 /**

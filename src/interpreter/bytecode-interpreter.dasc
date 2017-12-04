@@ -81,7 +81,7 @@ int HorribleCast( T* ptr ) {
 // @ARG3: start of the stack
 // @ARG4: start of the code buffer for the *Prototype*
 // @ARG5: start of the dispatch table
-typedef bool (*Main)(Runtime*,Prototype**,void*,void*,void*);
+typedef bool (*Main)(Runtime*,Closure**,Prototype**,void*,void*,void*);
 
 // ------------------------------------------------------------------
 //
@@ -298,14 +298,33 @@ bool InterpreterDoAddObj    ( Runtime* sandbox , Value* output ,
 }
 INTERPRETER_REGISTER_EXTERN_SYMBOL(InterpreterDoAddObj)
 
-bool InterpreterDoLoadCls   ( Runtime* sandbox , Value* start_of_stack ,
-                                                 std::uint32_t prototype_id ,
+bool InterpreterDoLoadCls   ( Runtime* sandbox , std::uint32_t prototype_id ,
                                                  Value* dest ) {
-  (void)sandbox;
-  (void)start_of_stack;
-  (void)prototype_id;
-  (void)dest;
-  return false;
+  Script* scp = *(sandbox->script);
+  const Script::FunctionTableEntry& entry = scp->GetFunction(prototype_id);
+
+  Handle<Closure> cls(Closure::New(sandbox->context->gc(),entry.prototype));
+
+  // Initialize the UpValue array
+  {
+    Value* stk = sandbox->cur_stk;
+    Closure* cls = *(sandbox->cur_cls);  // We will *not* Have GC
+    Value* uv_arr = cls->upvalue();
+    const std::uint32_t len = entry.prototype->upvalue_size();
+    for( std::uint32_t i = 0 ; i < len ; ++i ) {
+      UpValueState st;
+      std::uint8_t idx = entry.prototype->GetUpValue(i,&st);
+      if(st == UV_EMBED) {
+        uv_arr[i] = stk[idx];
+      } else {
+        uv_arr[i] = cls->GetUpValue(idx);
+      }
+    }
+  }
+
+  dest->SetClosure(cls);
+
+  return true;
 }
 INTERPRETER_REGISTER_EXTERN_SYMBOL(InterpreterDoLoadCls)
 
@@ -456,6 +475,41 @@ bool InterpreterIDref       ( Runtime* sandbox , Value expr , Value* key , Value
 }
 INTERPRETER_REGISTER_EXTERN_SYMBOL(InterpreterIDref)
 
+/* ---------------------------------------------------------------------
+ * Function call
+ * --------------------------------------------------------------------*/
+bool InterpreterCall        ( Runtime* sandbox , Value expr , std::uint8_t base ,
+                                                              std::uint8_t narg ,
+                                                              bool tcall ) {
+  (void)sandbox;
+  (void)expr;
+  (void)base;
+  (void)narg;
+  (void)tcall;
+  return false;
+}
+INTERPRETER_REGISTER_EXTERN_SYMBOL(InterpreterCall)
+
+void InterpreterArgumentMismatch( Runtime* sandbox , Value object ,
+                                                     std::uint8_t arg ) {
+  (void)sandbox;
+  (void)object;
+  (void)arg;
+}
+INTERPRETER_REGISTER_EXTERN_SYMBOL(InterpreterArgumentMismatch)
+
+bool StackResize            ( Runtime* sandbox ) {
+  (void)sandbox;
+  return false;
+}
+INTERPRETER_REGISTER_EXTERN_SYMBOL(StackResize)
+
+void InterpreterCallNeedObject ( Runtime* sandbox , Value object ) {
+  (void)sandbox;
+  (void)object;
+}
+INTERPRETER_REGISTER_EXTERN_SYMBOL(InterpreterCallNeedObject)
+
 
 /* ---------------------------------------------------------------------
  *
@@ -524,6 +578,8 @@ inline bool CheckAddress( std::uintptr_t addr ) {
 
 // Top stack's pointer
 |.define STK,                   r14   // callee saved
+|.define STKL,                  r14d
+
 |.define ACCIDX,                2040
 |.define ACCFIDX,               2044
 |.define ACCFHIDX,              2046  // for heap flag
@@ -534,6 +590,7 @@ inline bool CheckAddress( std::uintptr_t addr ) {
 
 // Bytecode array
 |.define PC,                    rbp  // callee saved
+|.define PCL,                   ebp
 
 // Hold the decoded unit
 |.define INSTR,                 eax
@@ -639,8 +696,8 @@ static_assert( sizeof(IFrame) == 16 );
 // boundary. Like we may call into ToBoolean function to get value
 // of certain register's Boolean value and we may need to save register
 // like rax which is part of our argument/operand of isntructions
-|.define SAVED_SLOT1,           [rsp+56]
-|.define SAVED_SLOT2,           [rsp+64]
+|.define SAVED_SLOT1,           rsp+56
+|.define SAVED_SLOT2,           rsp+64
 
 /* ---------------------------------------------------------------
  * debug helper                                                  |
@@ -664,8 +721,8 @@ void PrintF( double v ) {
 }
 INTERPRETER_REGISTER_EXTERN_SYMBOL(PrintF)
 
-void Print64( std::uint64_t a , std::uint64_t b ) {
-  lava_error("%" LAVA_FMTU64 ":%" LAVA_FMTU64,a,b);
+void Print64( std::uint64_t a , std::uint64_t b , std::uint64_t c ) {
+  lava_error("%" LAVA_FMTU64 ":%" LAVA_FMTU64 ":%" LAVA_FMTU64,a,b,c);
 }
 INTERPRETER_REGISTER_EXTERN_SYMBOL(Print64)
 
@@ -834,12 +891,12 @@ INTERPRETER_REGISTER_EXTERN_SYMBOL(Print64)
 |  or  dest,val
 |.else
 |  mov dest,val
-|  or  dest,qword [->ValueHeapLoadMask]
+|  or  dest,qword [->ValueHeapMaskLoad]
 |.endif
 |.endmacro
 
 |.macro DerefPtrFromV,v
-|  and v, qword [->ValueHeapLoadMask]
+|  and v,qword [->ValueHeapMaskLoad]
 |.endmacro
 
 // It is painful to load a string into its Value format
@@ -872,7 +929,7 @@ INTERPRETER_REGISTER_EXTERN_SYMBOL(Print64)
 
 |.macro CheckHeapT,val,pattern,fail_label
 |  and val,qword [->ValueHeapMaskLoad]
-|  mov val, qword [val]
+|  mov val,qword [val]
 |  CheckHeapPtrT val,pattern,fail_label
 |.endmacro
 
@@ -965,6 +1022,11 @@ INTERPRETER_REGISTER_EXTERN_SYMBOL(Print64)
   __(INTERP_PROP_NEEDOBJECT ,InterpNeedObject)        \
   __(INTERP_IDX_OUTOFBOUND_GET,InterpIdxOutOfBoundGet)\
   __(INTERP_IDX_OUTOFBOUND_SET,InterpIdxOutOfBoundSet)\
+  /* call */                                          \
+  __(INTERP_CALL,InterpCall)                          \
+  __(INTERP_TCALL,InterpTCall)                        \
+  __(INTERP_NEEDOBJECT,InterpNeedObject)              \
+  __(INTERP_ARGUMENTMISMATCH,InterpArgumentMismatch)  \
   /* ---- Debug Helper ---- */                        \
   __(PRINT_OP,PrintOP)                                \
   __(PRINT2  ,Print2 )                                \
@@ -1062,12 +1124,22 @@ void GenerateInterpMisc( BuildContext* bctx ) {
   |  interp_prolog
 
   |  mov RUNTIME ,CARG1                 // runtime
-  |  mov PROTO   ,CARG2                 // proto
-  |  mov STK     ,CARG3                 // stack
-  |  mov PC      ,CARG4                 // pc
-  |  mov DISPATCH,CARG5                 // dispatch
+  |  mov PROTO   ,CARG3                 // proto
+  |  mov STK     ,CARG4                 // stack
+  |  mov PC      ,CARG5                 // pc
+  |  mov DISPATCH,CARG6                 // dispatch
 
-  |  mov qword SAVED_PC,CARG4           // save the *start* of bc array
+  |  mov qword SAVED_PC,PC              // save the *start* of bc array
+
+  // setup the call frame
+  |  xor rax,rax
+  |  mov qword [STK],   rax             // Set the IFrame upper 8 bytes to be 0
+  |  mov qword [STK+8], CARG2           // Reset the flag/narg and set the Caller to be PROTO
+  |  add STK,16                         // Bump the STK register
+
+  |  mov qword [RUNTIME+RuntimeLayout::kCurClsOffset], CARG2
+  |  mov qword [RUNTIME+RuntimeLayout::kCurStackOffset], STK
+
   // run
   |  Dispatch
 
@@ -1082,7 +1154,7 @@ void GenerateInterpMisc( BuildContext* bctx ) {
 
   |=> INTERP_RETURN:
   |->InterpReturn:
-  |  mov rax, qword [ACC]
+  |  mov rax, RREG
   |  mov qword [RUNTIME+RuntimeLayout::kRetOffset],rax
   |  mov rax,1
 
@@ -1286,26 +1358,52 @@ void GenerateHelper( BuildContext* bctx ) {
   |  mov CARG3L, ARG2
   |  fcall InterpreterIdxOutOfBound
   |  jmp ->InterpFail
+
+  /* -------------------------------------------------
+   * Call
+   * ------------------------------------------------*/
+  |=> INTERP_CALL:
+  |->InterpCall:
+  |  savepc
+  |  mov CARG1, RUNTIME
+  |  mov CARG2, qword [STK+ARG2F*8]
+  |  mov CARG3L, ARG2
+  |  mov CARG4L, ARG3
+  |  xor CARG5L, CARG5L
+  |  fcall InterpreterCall
+  |  retbool
+
+  |=> INTERP_TCALL:
+  |->InterpTCall:
+  |  savepc
+  |  mov CARG1, RUNTIME
+  |  mov CARG2, qword [STK+ARG2F*8]
+  |  mov CARG3L,ARG2
+  |  mov CARG4L,ARG3
+  |  mov CARG5L,1
+  |  fcall InterpreterCall
+  |  retbool
+
+  |=> INTERP_NEEDOBJECT:
+  |->InterpNeedObject:
+  |  savepc
+  |  mov CARG1, RUNTIME
+  |  mov CARG2, qword [STK+ARG1F*8]
+  |  fcall InterpreterCallNeedObject
+  |  jmp ->InterpFail
+
+  |=> INTERP_ARGUMENTMISMATCH:
+  |->InterpArgumentMismatch:
+  |  savepc
+  |  mov CARG1, RUNTIME
+  |  mov CARG2, qword [STK+ARG1F*8]
+  |  mov CARG3L,ARG3
+  |  fcall InterpreterArgumentMismatch
+  |  jmp ->InterpFail
 }
 
 void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
   switch(bc) {
-    /** =====================================================
-     *  Call handling                                       |
-     *  ====================================================*/
-    case BC_RETNULL:
-      |=> bc:
-      |  instr_X
-      |  mov dword [STK+ACCFIDX],Value::FLAG_NULL
-      |  jmp ->InterpReturn
-      break;
-
-    case BC_RET:
-      |=> bc:
-      |  instr_X
-      |  jmp ->InterpReturn
-      break;
-
     /** =====================================================
      *  Register Move                                       |
      *  ====================================================*/
@@ -1494,10 +1592,9 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
       |=>bc:
       |  instr_C
       |  savepc
-      |  mov CARG1,RUNTIME
-      |  mov CARG2, STK
-      |  mov CARG3L, ARG2
-      |  lea CARG4 , [STK+ARG1F*8]
+      |  mov CARG1 , RUNTIME
+      |  mov CARG2L, ARG2
+      |  lea CARG3 , [STK+ARG1F*8]
       |  fcall InterpreterDoLoadCls
       |  retbool
       break;
@@ -2546,7 +2643,6 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
       |=>bc:
       |  instr_B
 
-      // TODO:: Worth optimizing for list/map ??
       |  savepc
       |  mov CARG1, RUNTIME
       |  lea CARG2, [STK+ARG1F*8]
@@ -2562,7 +2658,6 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
       |=>bc:
       |  instr_B
 
-      // TODO:: Worth optimizing for list/map ??
       |  savepc
       |  mov CARG1, RUNTIME
       |  lea CARG2, [STK+ARG1F*8]
@@ -2578,7 +2673,6 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
       |=>bc:
       |  instr_D
 
-      // TODO:: Worth optimizing for list/map ??
       |  savepc
       |  mov CARG1, RUNTIME
       |  mov CARG2, qword [STK+ARG1F*8]
@@ -2590,6 +2684,180 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
       |  mov PC, qword [RUNTIME+RuntimeLayout::kCurPCOffset]
       |  Dispatch
       break;
+
+    /* ------------------------------------------------------------
+     * Call/TCall/Return
+     * -----------------------------------------------------------*/
+
+      |.macro do_call,flag,slow_path
+      |  instr_D
+
+      // 1. Do a stack check to see wheather we *need* to grow the
+      //    stack since a function call *may* run out of the stack
+      //    space
+      |  lea T0, [STK+ARG2F*8]
+      |  cmp T0, qword [RUNTIME+RuntimeLayout::kStackEndOffset]
+      |  jae ->InterpResizeStack
+
+      // 2. Check object type
+      |3:
+      |  cmp word [STK+ARG1F*8+6], Value::FLAG_HEAP
+      |  jne ->InterpNeedObject
+
+      // Okay , we have heap object now and we need to tell its type
+      // and then do the actual dispatching. 2 types of value can be
+      // used for a call , one is prototype in script ; the other is
+      // extension type. Extension type will be dispatched by c++
+      // function.
+      |  mov LREG, qword [STK+ARG1F*8]
+      |  DerefPtrFromV LREG
+      |  mov RREG, LREG                            // Saved for later use
+      |  mov LREG, qword [LREG]                    // Get HeapObject*
+
+      |  CheckHeapPtrT LREG,CLOSURE_BIT_PATTERN  ,->slow_path
+
+      // RREG (Closure**)
+      // LREG (Closure* )
+      // ARG2 (Base)
+      // ARG3 (Narg)
+      
+      // set up the IFrame object. The IFrame object should be placed
+      // 2 slots/sizeof(Value) before the T0 which is the new base of
+      // the stack
+      
+      |  mov ARG2F, qword [RUNTIME+RuntimeLayout::kStackBeginOffset]
+      |  mov ARG1F, STK
+      |  sub ARG1F, ARG2F
+
+      |  mov dword [T0-16], ARG1    // Store the Previous Frame pointer, and reset the
+
+      |  mov ARG2, ARG3             // We need to reserve ARG3 for argument check
+      |  flag                       // set the flag field
+      |  or ARG2F, RREG
+
+      |  mov qword [T0-8] , ARG2F   // Store the current Closure** into the prev frame
+
+      // Get current begining of the *PC*
+      |  mov ARG2F, qword [PROTO]
+      |  mov ARG2F, qword [ARG2F+PrototypeLayout::kCodeBufferOffset]
+
+      |  sub PC,ARG2F
+      |  shr PC,2                   // divide by 2
+      |  mov dword [STK-12], PCL
+
+      // set the closure pointer back to *runtime* object
+      |  mov qword [RUNTIME+RuntimeLayout::kCurClsOffset],RREG
+
+      // get the *new* proto object
+      |  mov LREG  , qword [LREG+ClosureLayout::kPrototypeOffset]
+      |  mov PROTO , LREG
+      |  mov LREG  , qword [LREG]
+
+      // check the argument is correct or not , we put the check here is Okay
+      // due to the fact that if it fails , then we can exit here safely.
+      // Otherwise doesn't matter at all
+      |  cmp ARG3  , dword [LREG+PrototypeLayout::kArgumentSizeOffset]
+      |  jne ->InterpArgumentMismatch // ARG1 and ARG3 are valid
+
+      // get the *new* code buffer starting pointer
+      |  mov RREG  , qword [LREG+PrototypeLayout::kCodeBufferOffset]
+
+      // change the current context PROTO and PC register to the correct field
+      // of the new closure
+      |  mov STK   , T0               // set the new *stack*
+      |  mov qword [RUNTIME+RuntimeLayout::kCurStackOffset], T0
+
+      |  mov PC    , RREG             // set the new *PC*
+      |  mov qword SAVED_PC, RREG     // set the savedpc
+      |  Dispatch
+
+      // stack overflow
+      // ARG2F/ARG3F are caller saved, ARG1F are callee saved
+      |1:
+      |  mov qword [SAVED_SLOT1], ARG2F
+      |  mov qword [SAVED_SLOT2], ARG3F
+      |  mov CARG1, RUNTIME
+      |  fcall StackResize   // This doesn't trigger GC
+      |  test eax,eax
+      |  je ->InterpFail
+      |  mov ARG2F, qword [SAVED_SLOT1]
+      |  mov ARG3F, qword [SAVED_SLOT2]
+      |  jmp <3             // recover execution
+
+      |.endmacro
+
+
+      |.macro null_flag;
+      |  shr ARG2F,56
+      |.endmacro
+
+      |.macro tcall_flag
+      |  shl ARG2F, 8
+      |  or  ARG2F, 1
+      |  shl ARG2F,48
+      |.endmacro
+
+
+    case BC_CALL:
+      |=>bc:
+      |  do_call null_flag,InterpCall
+      break;
+
+    case BC_TCALL:
+      |=>bc:
+      |  do_call tcall_flag,InterpTCall
+      break;
+
+    |.macro do_ret
+    |  mov ARG3F, qword [RUNTIME+RuntimeLayout::kStackBeginOffset] // Start of the stack
+
+    |2:
+    |  mov ARG1 , dword [STK-16]     // Starting of the current IFrame
+    |  test ARG1,ARG1
+    |  je ->InterpReturn             // Interpreter return from here
+
+    |  movzx T0L , byte [STK-2]      // Store the tcall flag bit flag
+
+    |  mov ARG1  , dword[STK-16]
+    |  mov STK   , ARG3F
+    |  add STK   , ARG1F
+
+    |  test T0L, T0L
+    |  jne <2                        // Loop again if it is a tcall frame
+
+    |1:
+    |  mov   LREG , qword [STK-8]    // LREG == Closure
+    |  mov   qword [RUNTIME+RuntimeLayout::kCurClsOffset], LREG
+
+    |  mov   LREG , qword [LREG]
+    |  mov   PROTO, qword [LREG+ClosureLayout::kPrototypeOffset]
+
+    |  mov   T0   , qword [PROTO]
+    |  mov   PC   , qword [T0+PrototypeLayout::kCodeBufferOffset]
+
+    |  mov   qword SAVED_PC, PC      // Set the *savedpc* back
+    |  mov   T0L  , dword [STK-12]   // Get the PC offset
+    |  shl   T0L  , 2                // Multiply by 4
+    |  add   PCL  , T0L              // Set to the correct PC counter
+
+    |.endmacro
+
+    case BC_RETNULL:
+    |=>bc:
+    |  instr_X
+    |  do_ret  
+    |  mov word [STK+ACCFIDX], Value::FLAG_NULL
+    |  Dispatch
+    break;
+
+    case BC_RET:
+    |=>bc:
+    |  instr_X
+    |  mov RREG, qword [ACC]
+    |  do_ret
+    |  mov qword [ACC], RREG
+    |  Dispatch
+    break;
 
     default:
       |=> bc:
@@ -2808,19 +3076,27 @@ bool AssemblyInterpreter::Instance::Run( Context* context , const Handle<Script>
                                                             std::string* error,
                                                             Value* rval ) {
 
+  // Get the runtime object pointer
   Runtime* rt = context->gc()->GetInterpreterRuntime(script.ref(), globals.ref(), error);
+
+  // Main function
+  Handle<Prototype> main_proto(script->main());
+
+  // Main function's closure
+  Handle<Closure> cls(Closure::New(context->gc(),main_proto));
+
   // Entry of our assembly interpreter
   Main m = reinterpret_cast<Main>(interp_->interp_entry_);
 
   // Interpret the bytecode
-  bool ret = m(rt,rt->cur_proto,reinterpret_cast<void*>(rt->stack),
-                                const_cast<void*>(
-                                  reinterpret_cast<const void*>((*(rt->cur_proto))->code_buffer())),
-                                dispatch_interp_);
+  bool ret = m(rt,
+               cls.ref(),
+               (main_proto.ref()),
+               reinterpret_cast<void*>(rt->stack_begin),
+               const_cast<void*>(reinterpret_cast<const void*>(main_proto->code_buffer())),
+               dispatch_interp_);
   // Check return
-  if(ret) {
-    *rval = rt->ret;
-  }
+  if(ret) *rval = rt->ret;
 
   context->gc()->ReturnInterpreterRuntime(rt);
   return ret;

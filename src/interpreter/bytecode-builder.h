@@ -28,9 +28,9 @@ namespace interpreter {
 class BytecodeBuilder {
  public:
   static const std::size_t kInitialCodeBufferSize = 1024;
-  static void DecodeUpValue( std::uint32_t code , std::uint16_t* index ,
+  static void DecodeUpValue( std::uint32_t code , std::uint8_t* index ,
                                                   UpValueState* state ) {
-    *index = static_cast<std::uint16_t>(code & 0x0000ffff);
+    *index = static_cast<std::uint8_t>(code & 0x0000ffff);
     *state = static_cast<UpValueState>( code >> 16 );
   }
  public:

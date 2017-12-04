@@ -736,6 +736,9 @@ bool Generator::VisitPrefix( const ast::Prefix& node , std::size_t end ,
         break;
       default:
         {
+          // Reserve slot for IFrame object on the evaluation stack
+          IFrameReserver fr(func_scope()->ra());
+
           const std::uint8_t base = func_scope()->ra()->base();
           const std::size_t arglen = c.fc->args->size();
           std::vector<std::uint8_t> argset;
@@ -1198,7 +1201,9 @@ bool Generator::VisitExpression( const ast::Node& node , ExprResult* result ) {
       case ast::TERNARY:  return Visit(*node.AsTernary(),result);
       case ast::LIST:     return Visit(*node.AsList(),result);
       case ast::OBJECT:   return Visit(*node.AsObject(),result);
-      case ast::FUNCTION: return VisitAnonymousFunction(result->GetHint().Get(),*node.AsFunction());
+      case ast::FUNCTION: 
+        result->SetRegister(result->GetHint().Get());
+        return VisitAnonymousFunction(result->GetHint().Get(),*node.AsFunction());
       default:
         lava_unreachF("Disallowed expression with node type %s",node.node_name());
         return false;
@@ -1633,8 +1638,8 @@ bool Generator::Visit( const ast::Return& node ) {
         if(!SpillToAcc(node.expr->sci(),&ret))
           return false;
     }
-    SEMIT(ret,node.sci());
   }
+  SEMIT(ret,node.sci());
   return true;
 }
 
@@ -1707,6 +1712,8 @@ bool Generator::VisitNamedFunction( const ast::Function& node ) {
       Error(ERR_TOO_MANY_PROTOTYPES,node);
       return false;
     }
+
+    SEMIT(initcls,node.sci(),idx);
     return true;
   }
   return false;

@@ -43,11 +43,10 @@ TEST(BytecodeGenerate,Basic) {
   std::string error;
   {
     std::string script(stringify(
-          var x = 0;
-          for ( var a , b in xxx ) {
-            x = x + a;
-            x = x + b;
-          }
+          foo(a,b,c,d);
+          bar();
+          waw();
+          return uuu();
           ));
 
     ScriptBuilder sb("a",script);

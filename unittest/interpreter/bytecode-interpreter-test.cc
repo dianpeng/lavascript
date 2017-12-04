@@ -40,7 +40,7 @@ bool Compile( Context* context ,const char* source ,
   return true;
 }
 
-static const bool kShowBytecode = false;
+static const bool kShowBytecode = true;
 
 enum { COMP_LE , COMP_LT , COMP_GT , COMP_GE , COMP_EQ , COMP_NE };
 
@@ -81,7 +81,7 @@ bool Bench( const char* source ) {
   bool r;
 
   {
-    static const std::size_t kTimes = 100;
+    static const std::size_t kTimes = 1;
     std::uint64_t start = ::lavascript::OS::NowInMicroSeconds();
     for ( std::size_t i = 0 ; i < kTimes ; ++i ) {
       r = ins.Run(&ctx,scp,obj,&error,&ret);
@@ -168,6 +168,8 @@ bool PrimitiveComp( const char* source , const Value& primitive , int op ) {
 namespace lavascript {
 namespace interpreter {
 
+
+#if 0
 
 TEST(Interpreter,Load) {
   PRIMITIVE_EQ(0,return 0;);
@@ -495,6 +497,31 @@ TEST(Interpreter,Branch) {
         return 10;
       }
       return -100;
+  );
+}
+
+TEST(Interpreter,Func) {
+  BENCHMARK(
+      var xx = function() { return true; };
+      for( var i = 0; 1000000 ; 1 ) {
+        xx();
+      }
+      return true;
+  );
+}
+
+#endif
+
+TEST(Interpreter,C) {
+  BENCHMARK(
+      var foo = function ( a, f) {
+        if(a < 2)
+          return a;
+        else
+          return f(a-2,f) + f(a-1,f);
+      };
+      var a = foo(34,foo);
+      return a;
   );
 }
 

@@ -665,6 +665,9 @@ class GC : AllStatic {
                       std::size_t ,
                       std::size_t reserve );
 
+  // create a closure object
+  Closure** NewClosure( Prototype** );
+
 
  public:
   // Force a GC cycle to happen
@@ -743,7 +746,6 @@ T** GC::New( ARGS ...args ) {
 
 template< typename T , typename ...ARGS >
 T** GC::New( T** holder , ARGS ...args ) {
-  TryGC(); // Try to perform GC if we need to
   *holder = ConstructFromBuffer<T>( heap_.Grab( sizeof(T),
                                                 GetObjectType<T>::value,
                                                 GC_WHITE,

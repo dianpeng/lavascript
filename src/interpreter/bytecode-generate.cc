@@ -638,176 +638,196 @@ bool Generator::Visit( const ast::Variable& var , ExprResult* result ) {
   return true;
 }
 
-bool Generator::VisitPrefix( const ast::Prefix& node , std::size_t end ,
-                                                       bool tcall ,
-                                                       const Register& hint ) {
-
-  ScopedRegister temp(this); // tmeporary register to be used to *hold* intermediate
-  Register var_reg;
-
-  // 1. Setup temporary register for holding intermediate value
-  {
-    Optional<Register> r(func_scope()->ra()->Grab());
-    if(!r) {
-      Error(ERR_REGISTER_OVERFLOW,node.sci());
-      return false;
-    }
-    temp.Reset(r);
-    var_reg = r.Get();
-  }
-
-  if(!VisitExpressionWithOutputRegister(*node.var,var_reg))
-    return false;
-
-  // NOTES: var_reg can be in ACC as well, this is purposely to handle cases
-  //        that function call's return value must be in acc register. So we
-  //        don't end up shuffling intermidiate function call's return value
-
-  // Handle the component part
-  const std::size_t len = node.list->size();
-  lava_verify(end <= len);
-
-  for( std::size_t i = 0 ; i < end ; ++i ) {
-    const ast::Prefix::Component& c = node.list->Index(i);
-    switch(c.t) {
-      case ast::Prefix::Component::DOT:
-        {
-          // Get the string reference
-          std::int32_t ref = func_scope()->bb()->Add( *c.var->name , context_ ->gc() );
-          if(ref<0) {
-            Error(ERR_REGISTER_OVERFLOW,*c.var);
-            return false;
-          }
-
-          // Use PROPGET instruction
-          if(i == end-1) {
-            EEMIT(propget,c.var->sci(),hint.index(),var_reg.index(),ref);
-          } else {
-            EEMIT(propget,c.var->sci(),var_reg.index(),var_reg.index(),ref);
-          }
-        }
-        break;
-      case ast::Prefix::Component::INDEX:
-
-        // Optimize to use idxgeti instruction which takes an embed integer part
-        // of the instruction to avoid constant table lookup and loading. Also
-        // it bypass the type check since we only have real type as number type
-        // internally
-        if(c.expr->IsLiteral() && c.expr->AsLiteral()->IsReal()) {
-          // Try to narrow the implementation to find out whether we
-          // can embed the index into bc idxgeti which saves us time
-          std::int32_t iref;
-          if(NarrowReal(c.expr->AsLiteral()->real_value,&iref)) {
-            if(iref >= std::numeric_limits<std::uint8_t>::min() &&
-               iref <= std::numeric_limits<std::uint8_t>::max()) {
-
-              if(i == end-1) {
-                EEMIT(idxgeti,c.expr->sci(),hint.index(),var_reg.index(),
-                    static_cast<std::uint8_t>(iref));
-              } else {
-                EEMIT(idxgeti,c.expr->sci(),var_reg.index(),var_reg.index(),
-                    static_cast<std::uint8_t>(iref));
-              }
-              break;
-            }
-          }
+bool Generator::VisitPrefixComponent( const ast::Prefix::Component& c,
+                                      bool tcall,
+                                      const Register& input,
+                                      const Register& output ) {
+  switch(c.t) {
+    case ast::Prefix::Component::DOT:
+      {
+        // Get the string reference
+        std::int32_t ref = func_scope()->bb()->Add( *c.var->name , context_ ->gc() );
+        if(ref<0) {
+          Error(ERR_REGISTER_OVERFLOW,*c.var);
+          return false;
         }
 
-        // fallthrough here to handle common cases
-        {
-          // Register used to hold the expression
-          ScopedRegister expr_reg(this);
+        // Use PROPGET instruction
+        EEMIT(propget,c.var->sci(),output.index(),input.index(),ref);
+      }
+      break;
+    case ast::Prefix::Component::INDEX:
 
-          // Get the register for the expression
-          if(!VisitExpression(*c.expr,&expr_reg))
-            return false;
+      // Optimize to use idxgeti instruction which takes an embed integer part
+      // of the instruction to avoid constant table lookup and loading. Also
+      // it bypass the type check since we only have real type as number type
+      // internally
+      if(c.expr->IsLiteral() && c.expr->AsLiteral()->IsReal()) {
+        // Try to narrow the implementation to find out whether we
+        // can embed the index into bc idxgeti which saves us time
+        std::uint8_t iref;
+        if(NarrowReal(c.expr->AsLiteral()->real_value,&iref)) {
+          EEMIT(idxgeti,c.expr->sci(),output.index(),input.index(),iref);
+          break;
+        }
+      }
 
-          if(i == end-1) {
-            // Emit the idxget instruction for indexing
-            EEMIT(idxget,c.expr->sci(),hint.index(),var_reg.index(),
+      // fallthrough here to handle common cases
+      {
+        ScopedRegister temp_input(this);  // Used when output is *Acc* this is highly
+                                          // unlikely to happen though
+        if(input.IsAcc()) {
+          if(!temp_input.Reset(SpillFromAcc(c.expr->sci()))) return false;
+        }
+
+        // Register used to hold the expression
+        ScopedRegister expr_reg(this);
+
+        // Get the register for the expression
+        if(!VisitExpression(*c.expr,&expr_reg))
+          return false;
+
+        if(input.IsAcc()) {
+          // Emit the idxget instruction for indexing
+          EEMIT(idxget,c.expr->sci(),output.index(),temp_input.Get().index(),
                                                     expr_reg.Get().index());
-          } else {
-            // Emit the idxget instruction for indexing
-            EEMIT(idxget,c.expr->sci(),var_reg.index(),var_reg.index(),
-                                                       expr_reg.Get().index());
-          }
+        } else {
+          // Emit the idxget instruction for indexing
+          EEMIT(idxget,c.expr->sci(),output.index(),input.index(),
+                                                    expr_reg.Get().index());
         }
-        break;
-      default:
-        {
-          // Reserve slot for IFrame object on the evaluation stack
-          IFrameReserver fr(func_scope()->ra());
+      }
+      break;
+    default:
+      {
+        // Reserve slot for IFrame object on the evaluation stack
+        IFrameReserver fr(func_scope()->ra());
+        ScopedRegister temp_input(this);
 
-          const std::uint8_t base = func_scope()->ra()->base();
-          const std::size_t arglen = c.fc->args->size();
-          std::vector<std::uint8_t> argset;
-          argset.reserve(arglen);
+        const std::uint8_t base = func_scope()->ra()->base();
+        const std::size_t arglen = c.fc->args->size();
+        std::vector<std::uint8_t> argset;
+        argset.reserve(arglen);
 
-          // 1. Visit each argument and get all its related registers
-          for( std::size_t i = 0; i < arglen; ++i ) {
-            Optional<Register> expected(func_scope()->ra()->Grab());
-            if(!expected) {
-              Error(ERR_REGISTER_OVERFLOW,c.fc->sci());
-              return false;
-            }
+        if(arglen && input.IsAcc()) {
+          if(!temp_input.Reset(SpillFromAcc(c.fc->sci()))) return false;
+        }
 
-            // Force the argument goes into the correct registers that we want
-            if(!VisitExpressionWithOutputRegister(*c.fc->args->Index(i),expected.Get()))
-              return false;
-
-            argset.push_back(expected.Get().index());
+        // 1. Visit each argument and get all its related registers
+        for( std::size_t i = 0; i < arglen; ++i ) {
+          Optional<Register> expected(func_scope()->ra()->Grab());
+          if(!expected) {
+            Error(ERR_REGISTER_OVERFLOW,c.fc->sci());
+            return false;
           }
 
-          lava_debug(NORMAL,
-              if(!argset.empty()) {
-                std::uint8_t p = argset.front();
-                for( std::size_t i = 1 ; i < argset.size() ; ++i ) {
-                  // all argument's register should be consequtive
-                  lava_verify(p == argset[i]-1);
-                  p = argset[i];
-                }
+          // Force the argument goes into the correct registers that we want
+          if(!VisitExpressionWithOutputRegister(*c.fc->args->Index(i),expected.Get()))
+            return false;
+
+          argset.push_back(expected.Get().index());
+        }
+
+        lava_debug(NORMAL,
+            if(!argset.empty()) {
+              std::uint8_t p = argset.front();
+              for( std::size_t i = 1 ; i < argset.size() ; ++i ) {
+                // all argument's register should be consequtive
+                lava_verify(p == argset[i]-1);
+                p = argset[i];
               }
-            );
+            }
+          );
 
-          // 2. Generate call instruction
+        // 2. Generate call instruction
 
-          // Check whether we can use tcall or not. The tcall instruction
-          // *must be* for the last component , since then we know we will
-          // forsure generate a ret instruction afterwards
-          const bool tc = tcall && (i == (len-1));
-          if(tc) {
+        // Check whether we can use tcall or not. The tcall instruction
+        // *must be* for the last component , since then we know we will
+        // forsure generate a ret instruction afterwards
+        {
+          Register func( input.IsAcc() ? temp_input.Get() : input );
+          if(tcall) {
             EEMIT(tcall,c.fc->sci(),
-                        var_reg.index(),
+                        func.index(),
                         base,
                         static_cast<std::uint8_t>(c.fc->args->size()));
           } else {
             EEMIT(call,c.fc->sci(),
-                       var_reg.index(),
+                       func.index(),
                        base,
                        static_cast<std::uint8_t>(c.fc->args->size()));
           }
-
-          // 3. Handle return value
-          //
-          // Since function's return value are in Acc registers, we need an
-          // extra move to move it back to var_reg. This could potentially be
-          // a performance problem due to the fact that we have too much chained
-          // function call and all its intermediate return value are shuffling
-          // around registers. Currently we have no way to specify return value
-          // in function call
-          if(i != (end-1)) {
-            EEMIT(move,c.fc->sci(),var_reg.index(),Register::kAccIndex);
-          } else {
-            if(!hint.IsAcc()) {
-              EEMIT(move,c.fc->sci(),hint.index(),Register::kAccIndex);
-            }
-          }
-
-          // 4. free all temporary register used by the func-call
-          for( auto &e : argset ) func_scope()->ra()->Drop(Register(e));
         }
-        break;
-    }
+
+        // 3. Handle return value
+        //
+        // Since function's return value are in Acc registers, we need an
+        // extra move to move it back to var_reg. This could potentially be
+        // a performance problem due to the fact that we have too much chained
+        // function call and all its intermediate return value are shuffling
+        // around registers. Currently we have no way to specify return value
+        // in function call
+        if(!output.IsAcc())
+          EEMIT(move,c.fc->sci(),output.index(),Register::kAccIndex);
+
+        // 4. free all temporary register used by the func-call
+        for( auto &e : argset ) func_scope()->ra()->Drop(Register(e));
+      }
+      break;
+  }
+  return true;
+}
+
+template< bool TCALL >
+bool Generator::VisitPrefix( const ast::Prefix& node , std::size_t end ,
+                                                       const Register& hint ) {
+  lava_debug(NORMAL,lava_verify(end););
+
+  ScopedRegister input  (this); // tmeporary register to be used to *hold* intermediate
+  ScopedRegister temp   (this);
+  Register output;
+
+  if(!VisitExpression(*node.var,&input))
+    return false;
+
+  // Check if the input register is a temporary register , if so we don't need
+  // allocate a new temporary output register just use the one allocated inside
+  // of the call VisitExpression
+  if(func_scope()->ra()->IsReserved(input.Get())) {
+    // Okay this is a variable register, not a temporary one , so we need to
+    // allocate a new temporary register for holding the output
+    if(!temp.Reset(func_scope()->ra()->Grab())) return false;
+    output = temp.Get();
+  } else {
+    output = input.Get();
+  }
+
+  // Handle first component specifically , pay attention to the input/output
+  // register.
+  {
+    const ast::Prefix::Component& c = node.list->First();
+    if(!VisitPrefixComponent(c,TCALL && (node.list->size()==1),input.Get(),
+                                                               output))
+      return false;
+  }
+
+  // Handle rest of the intermediate prefix expression. They all gonna use
+  // output/temporary register to hold intermediate result.
+  const std::size_t len = node.list->size();
+  lava_verify(end <= len);
+  for( std::size_t i = 1 ; i < end -1 ; ++i ) {
+    const ast::Prefix::Component& c = node.list->Index(i);
+    if(!VisitPrefixComponent(c,false,output,output))
+      return false;
+  }
+
+  // Handle *last* expression since we need to set the output to the hint register
+  // for the last one
+  if(end > 1)
+  {
+    const ast::Prefix::Component& c = node.list->Last();
+    if(!VisitPrefixComponent(c,TCALL,output,hint))
+      return false;
   }
 
   return true;
@@ -815,7 +835,7 @@ bool Generator::VisitPrefix( const ast::Prefix& node , std::size_t end ,
 
 bool Generator::Visit( const ast::Prefix& node , ExprResult* result ) {
   lava_debug(NORMAL,lava_verify(result->GetHint()););
-  if(!VisitPrefix(node,node.list->size(),false,result->GetHint().Get()))
+  if(!VisitPrefix<false>(node,node.list->size(),result->GetHint().Get()))
     return false;
   result->SetRegister(result->GetHint().Get());
   return true;
@@ -1366,7 +1386,7 @@ bool Generator::VisitPrefixAssign( const ast::Assign& node ) {
   if(!VisitExpression(*node.rhs,&rhs))
     return false;
 
-  if(!VisitPrefix(*node.lhs_pref,node.lhs_pref->list->size()-1,false,lhs.Get()))
+  if(!VisitPrefix<false>(*node.lhs_pref,node.lhs_pref->list->size()-1,lhs.Get()))
     return false;
 
   // Handle the last component
@@ -1430,7 +1450,7 @@ bool Generator::Visit( const ast::Assign& node ) {
 
 bool Generator::Visit( const ast::Call& node ) {
   // Discard the result of the evaluation, so we pass in a Acc as hint
-  if(!VisitPrefix(*node.call,node.call->list->size(),false,Register::kAccReg))
+  if(!VisitPrefix<false>(*node.call,node.call->list->size(),Register::kAccReg))
     return false;
   return true;
 }
@@ -1670,10 +1690,9 @@ bool Generator::Visit( const ast::Return& node ) {
     // previous call frame at all.
     if(CanBeTailCallOptimized(*node.expr)) {
       lava_debug(NORMAL, lava_verify(node.expr->IsPrefix()); );
-      if(!VisitPrefix(*node.expr->AsPrefix(),
-                      node.expr->AsPrefix()->list->size(),
-                      true, // allow the tail call optimization
-                      Register::kAccReg))
+      if(!VisitPrefix<true>(*node.expr->AsPrefix(),
+                            node.expr->AsPrefix()->list->size(),
+                            Register::kAccReg))
         return false;
     } else {
       ScopedRegister ret(this);

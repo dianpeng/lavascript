@@ -246,7 +246,6 @@ bool InterpreterNewList   ( Runtime* sandbox , Value* output ,
                                                std::uint32_t narg ) {
   Handle<List> list(List::New(sandbox->context->gc(),narg));
   output->SetList(list);
-  lava_error("LIST:%p,SLICE:%p",list.ptr(),list->slice().ptr());
   return true;
 }
 INTERPRETER_REGISTER_EXTERN_SYMBOL(InterpreterNewList)
@@ -558,7 +557,7 @@ INTERPRETER_REGISTER_EXTERN_SYMBOL(InterpreterCallNeedObject)
  * ------------------------------------------------------------------*/
 |.define CHECK_DIV_BY_ZERO
 |.define CHECK_NUMBER_MEMORY,0
-|.define TRACE_OP,1
+|.define TRACE_OP,0
 |.define USE_CMOV_COMP,0
 |.define USE_CMOV_NEG
 
@@ -1111,6 +1110,7 @@ void GenerateInterpMisc( BuildContext* bctx ) {
   |.dword Value::TAG_HEAP_STORE_MASK_LOWER,Value::TAG_HEAP_STORE_MASK_HIGHER // 8 bytes
 
   |->ValueHeapMaskLoad:
+  |->FrameClosurePointerLoad:
   |.dword Value::TAG_HEAP_LOAD_MASK_LOWER,Value::TAG_HEAP_LOAD_MASK_HIGHER   // 8 bytes
 
   |->FlagTrueConst:
@@ -1121,9 +1121,6 @@ void GenerateInterpMisc( BuildContext* bctx ) {
 
   |->RealZero:
   |.dword 0,0  // 8 btyes
-
-  |->FrameClosurePointerLoad:
-  |.dword 0xffffffff,0x0000ffff
 
   |.code
 
@@ -2758,10 +2755,9 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
       // used for a call , one is prototype in script ; the other is
       // extension type. Extension type will be dispatched by c++
       // function.
-      |  mov LREG, qword [STK+ARG1F*8]
-      |  DerefPtrFromV LREG
-      |  mov RREG, LREG                            // Saved for later use
-      |  mov LREG, qword [LREG]                    // Get HeapObject*
+      |  mov RREG, qword [STK+ARG1F*8]
+      |  DerefPtrFromV RREG
+      |  mov LREG, qword [RREG]                    // Get HeapObject*
 
       |  CheckHeapPtrT LREG,CLOSURE_BIT_PATTERN  ,->slow_path
 

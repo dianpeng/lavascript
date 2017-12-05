@@ -611,9 +611,14 @@ class Generator {
   // This may introduce a *move*
   bool VisitExpressionWithOutputRegister( const ast::Node& , const Register& );
 
+  bool VisitPrefixComponent( const ast::Prefix::Component& c ,
+                             bool tcall,
+                             const Register& input,
+                             const Register& output );
+
   // Visit prefix like ast until end is met
+  template< bool TCALL >
   bool VisitPrefix( const ast::Prefix& pref , std::size_t end ,
-                                              bool tcall ,
                                               const Register& output );
 
   /* -------------------------------------------
@@ -913,6 +918,10 @@ inline FunctionScope::~FunctionScope() {
   } else {
     generator()->func_scope_ = NULL;
   }
+
+  // No need to leave the scope , but just ensure what we have done is
+  // correct during register allocation phase.
+  lava_debug(NORMAL,ra_.LeaveScope(););
 }
 
 inline Generator::Generator( Context* context , const ast::Root& root ,

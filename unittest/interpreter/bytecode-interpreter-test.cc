@@ -81,7 +81,7 @@ bool Bench( const char* source ) {
   bool r;
 
   {
-    static const std::size_t kTimes = 100;
+    static const std::size_t kTimes = 50;
     std::uint64_t start = ::lavascript::OS::NowInMicroSeconds();
     for ( std::size_t i = 0 ; i < kTimes ; ++i ) {
       r = ins.Run(&ctx,scp,obj,&error,&ret);
@@ -515,14 +515,13 @@ TEST(Interpreter,Func) {
 #endif
 
 TEST(Interpreter,C) {
-  PRIMITIVE_EQ(1,
-      var a = function() { return 1; };
-      var b = function() { return 2; };
-      var c = function() { return 3; };
-      var d = function() { return 4; };
-      var e = function(u){ return u; };
-      var x = [1,2,3,4,5];
-      return x[0];
+  BENCHMARK(
+      var fib = function(a,b) {
+        if(a < 2)
+          return a;
+        return b(a-1,b) + b(a-2,b);
+      };
+      fib(34,fib);
   );
 }
 

@@ -194,7 +194,7 @@ void LexicalScope::Init( const ast::Chunk& node ) {
   for( std::size_t i = 0; i < len; ++i ) {
     const zone::String* name = node.local_vars->Index(i)->name;
     local_vars_.push_back(
-        LocalVar(name,func_scope()->GetLocalVarRegister(*name).index()));
+        LocalVar(name,Register(func_scope()->GetLocalVarRegister(*name).index())));
   }
 
   for( std::size_t i = 0 ; i < node.iterator_count ; ++i )
@@ -206,8 +206,7 @@ void LexicalScope::Init( const ast::Function& node ) {
     const std::size_t len = node.proto->size();
     for( std::size_t i = 0 ; i < len ; ++i ) {
       const zone::String* name = node.proto->Index(i)->name;
-      local_vars_.push_back(LocalVar(name,
-            func_scope()->GetLocalVarRegister(*name).index()));
+      local_vars_.push_back(LocalVar(name,func_scope()->GetLocalVarRegister(*name)));
     }
   }
 }
@@ -350,7 +349,7 @@ bool FunctionScope::Init( const ast::LocVarContext& lctx ) {
     const std::size_t l = lctx.local_vars->size();
     for( std::size_t i = 0 ; i < l ; ++i ) {
       local_vars_.push_back(LocalVar(lctx.local_vars->Index(i)->name,
-                                     base+static_cast<std::uint8_t>(i)));
+                                     Register(base+static_cast<std::uint8_t>(i))));
     }
     base += static_cast<std::uint8_t>(l);
   }
@@ -861,15 +860,60 @@ bool Generator::Visit( const ast::List& node , const SourceCodeInfo& sci,
      */
     EEMIT(newlist,sci,output.index(),static_cast<std::uint16_t>(entry_size));
 
-    // Go through each list entry/element
-    for( std::size_t i = 0 ; i < entry_size ; ++i ) {
-      ScopedRegister r1(this);
-      const ast::Node& e = *node.entry->Index(i);
-      if(!VisitExpression(e,&r1)) return false;
-      EEMIT(addlist,e.sci(),output.index(),r1.Get().index());
-    }
-    result->SetRegister(output);
+    std::size_t idle_reg = func_scope()->ra()->size();
+    if(idle_reg < entry_size) {
+      /**
+       * If we don't have enough idle register, we can always fallback to
+       * this *slow* path which uses per entry per addlist instruction. This
+       * is not optimal in terms of performance but it is a working solution
+       * if we don't have enough free/idel registers
+       */
+      for( std::size_t i = 0 ; i < entry_size ; ++i ) {
+        ScopedRegister r1(this);
+        const ast::Node& e = *node.entry->Index(i);
+        if(!VisitExpression(e,&r1)) return false;
+        EEMIT(addlist,e.sci(),output.index(),r1.Get().index(),1);
+      }
+    } else {
+      // When we reach here it means we have *enough* idle register to
+      // optimize the number of *addlist* instruction. We should keep it
+      // minimum here
+#if LAVASCRIPT_DEBUG_LEVEL >= 1
+      std::vector<Register> reg_set;
+#endif // LAVASCRIPT_DEBUG_LEVEL
+      std::uint8_t base = 255;
 
+      for( std::size_t i = 0 ; i < entry_size ; ++i ) {
+        Optional<Register> r(func_scope()->ra()->Grab());
+        lava_debug(NORMAL,lava_verify(r););
+
+        if(base == 255) base = r.Get().index();
+
+        lava_debug(NORMAL,reg_set.push_back(r.Get()););
+
+        const ast::Node& e = *node.entry->Index(i);
+        if(!VisitExpressionWithOutputRegister(e,r.Get()))
+          return false;
+      }
+
+      /** check all the intermediate register is sequencial **/
+      lava_debug(NORMAL,
+          std::uint8_t base = reg_set[0].index();
+          for( std::size_t i = 1 ; i < reg_set.size() ; ++i )
+            lava_verify(base+i == reg_set[i].index());
+        );
+
+      // Now we emit a *single addlist instruction here
+      EEMIT(addlist,node.sci(),output.index(),
+                               base,
+                               static_cast<std::uint8_t>(entry_size));
+
+      // Now free all the register here
+      for( int i = static_cast<int>(entry_size) - 1 ; i >= 0 ; --i )
+        func_scope()->ra()->Drop(Register(base+i));
+    }
+
+    result->SetRegister(output);
   }
   return true;
 }
@@ -1201,7 +1245,7 @@ bool Generator::VisitExpression( const ast::Node& node , ExprResult* result ) {
       case ast::TERNARY:  return Visit(*node.AsTernary(),result);
       case ast::LIST:     return Visit(*node.AsList(),result);
       case ast::OBJECT:   return Visit(*node.AsObject(),result);
-      case ast::FUNCTION: 
+      case ast::FUNCTION:
         result->SetRegister(result->GetHint().Get());
         return VisitAnonymousFunction(result->GetHint().Get(),*node.AsFunction());
       default:

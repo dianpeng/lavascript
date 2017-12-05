@@ -10,13 +10,13 @@ namespace lavascript {
 
 LAVA_DEFINE_INT64(GC,minimum_gap,"minimum gap between each GC cycle",0);
 LAVA_DEFINE_DOUBLE(GC,factor,"tunable factor for triggering GC cycle",0.0);
-LAVA_DEFINE_INT64(GC,heap_init_capacity,"heap initialize capacity",8);
-LAVA_DEFINE_INT64(GC,heap_capacity,"heap's max capacity",4096);
-LAVA_DEFINE_INT64(GC,gcref_init_capacity,"gcref initialized capacity",1);
-LAVA_DEFINE_INT64(GC,gcref_capacity,"gcref maximum capacity",1);
-LAVA_DEFINE_INT64(GC,sso_init_slot,"sso initialize slot size",2);
-LAVA_DEFINE_INT64(GC,sso_init_capacity,"sso initialize capacity",2);
-LAVA_DEFINE_INT64(GC,sso_capacity,"sso maximum capacity",8);
+LAVA_DEFINE_INT64(GC,heap_init_capacity,"heap initialize capacity",10240);
+LAVA_DEFINE_INT64(GC,heap_capacity,"heap's max capacity",40960);
+LAVA_DEFINE_INT64(GC,gcref_init_capacity,"gcref initialized capacity",1024);
+LAVA_DEFINE_INT64(GC,gcref_capacity,"gcref maximum capacity",2048);
+LAVA_DEFINE_INT64(GC,sso_init_slot,"sso initialize slot size",1024);
+LAVA_DEFINE_INT64(GC,sso_init_capacity,"sso initialize capacity",2048);
+LAVA_DEFINE_INT64(GC,sso_capacity,"sso maximum capacity",4096);
 
 namespace gc {
 

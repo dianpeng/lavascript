@@ -130,7 +130,7 @@ static const std::size_t kAllocatableBytecodeRegisterSize = 255;
   __(E,LOADLIST1, loadlist1, REG , REG , _ )    \
   __(D,LOADLIST2, loadlist2, REG , REG , REG )  \
   __(B,NEWLIST, newlist, REG , NARG  , _ )      \
-  __(E,ADDLIST, addlist, REG , REG , _ )        \
+  __(D,ADDLIST, addlist, REG , REG , NARG )     \
   __(F,LOADOBJ0 , loadobj0 , REG , _ , _  )     \
   __(D,LOADOBJ1, loadobj1, REG , REG , REG )    \
   __(B,NEWOBJ  , newobj , REG , NARG  , _  )    \

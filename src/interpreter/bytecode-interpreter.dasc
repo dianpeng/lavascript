@@ -215,50 +215,57 @@ INTERPRETER_REGISTER_EXTERN_SYMBOL(InterpreterDoNegate)
 // ----------------------------------------------------------------------------
 // Literal Loader Helper
 // ----------------------------------------------------------------------------
-bool InterpreterDoLoadList0  ( Runtime* sandbox , Value* output ) {
-  (void)sandbox;
-  (void)output;
-  return false;
+bool InterpreterLoadList0  ( Runtime* sandbox , Value* output ) {
+  Handle<List> list(List::New(sandbox->context->gc()));
+  output->SetList(list);
+  return true;
 }
-INTERPRETER_REGISTER_EXTERN_SYMBOL(InterpreterDoLoadList0)
+INTERPRETER_REGISTER_EXTERN_SYMBOL(InterpreterLoadList0)
 
-bool InterpreterDoLoadList1  ( Runtime* sandbox , Value* output ,
-                                                  Value e1 ) {
-  (void)sandbox;
-  (void)output;
-  (void)e1;
-  return false;
+bool InterpreterLoadList1  ( Runtime* sandbox , Value* output ,
+                                                const Value& e1 ) {
+  Handle<List> list(List::New(sandbox->context->gc(),1));
+  list->Push(sandbox->context->gc(),e1);
+  output->SetList(list);
+  return true;
 }
-INTERPRETER_REGISTER_EXTERN_SYMBOL(InterpreterDoLoadList1)
+INTERPRETER_REGISTER_EXTERN_SYMBOL(InterpreterLoadList1)
 
-bool InterpreterDoLoadList2  ( Runtime* sandbox , Value* output ,
-                                                  Value e1,
-                                                  Value e2 ) {
-  (void)sandbox;
-  (void)output;
-  (void)e1;
-  (void)e2;
-  return false;
+bool InterpreterLoadList2  ( Runtime* sandbox , Value* output ,
+                                                const Value& e1,
+                                                const Value& e2 ) {
+  Handle<List> list(List::New(sandbox->context->gc(),2));
+  list->Push(sandbox->context->gc(),e1);
+  list->Push(sandbox->context->gc(),e2);
+  output->SetList(list);
+  return true;
 }
-INTERPRETER_REGISTER_EXTERN_SYMBOL(InterpreterDoLoadList2)
+INTERPRETER_REGISTER_EXTERN_SYMBOL(InterpreterLoadList2)
 
-bool InterpreterDoNewList   ( Runtime* sandbox , Value* output ,
-                                                  std::uint32_t narg ) {
-  (void)sandbox;
-  (void)output;
-  (void)narg;
-  return false;
+bool InterpreterNewList   ( Runtime* sandbox , Value* output ,
+                                               std::uint32_t narg ) {
+  Handle<List> list(List::New(sandbox->context->gc(),narg));
+  output->SetList(list);
+  lava_error("LIST:%p,SLICE:%p",list.ptr(),list->slice().ptr());
+  return true;
 }
-INTERPRETER_REGISTER_EXTERN_SYMBOL(InterpreterDoNewList)
+INTERPRETER_REGISTER_EXTERN_SYMBOL(InterpreterNewList)
 
-bool InterpreterDoAddList   ( Runtime* sandbox , Value* output ,
-                                                 Value  val ) {
-  (void)sandbox;
-  (void)output;
-  (void)val;
-  return false;
+bool InterpreterAddList   ( Runtime* sandbox , Value* output ,
+                                               std::uint8_t base,
+                                               std::uint32_t narg ) {
+
+  lava_debug(NORMAL,lava_verify(output->IsList()););
+  Handle<List> l(output->GetList());
+
+  for( std::uint32_t i = 0 ; i < narg ; ++i ) {
+    l->Push(sandbox->context->gc(),sandbox->cur_stk[base+i]);
+  }
+
+  lava_verify(l->size()==narg);
+  return true;
 }
-INTERPRETER_REGISTER_EXTERN_SYMBOL(InterpreterDoAddList)
+INTERPRETER_REGISTER_EXTERN_SYMBOL(InterpreterAddList)
 
 bool InterpreterDoLoadObj0   ( Runtime* sandbox , Value* output ) {
   (void)sandbox;
@@ -298,11 +305,10 @@ bool InterpreterDoAddObj    ( Runtime* sandbox , Value* output ,
 }
 INTERPRETER_REGISTER_EXTERN_SYMBOL(InterpreterDoAddObj)
 
-bool InterpreterDoLoadCls   ( Runtime* sandbox , std::uint32_t prototype_id ,
-                                                 Value* dest ) {
+Handle<Closure> NewClosure( Runtime* sandbox , std::uint32_t ref ,
+                                               Handle<String>* name ) {
   Script* scp = *(sandbox->script);
-  const Script::FunctionTableEntry& entry = scp->GetFunction(prototype_id);
-
+  const Script::FunctionTableEntry& entry = scp->GetFunction(ref);
   Handle<Closure> cls(Closure::New(sandbox->context->gc(),entry.prototype));
 
   // Initialize the UpValue array
@@ -322,11 +328,35 @@ bool InterpreterDoLoadCls   ( Runtime* sandbox , std::uint32_t prototype_id ,
     }
   }
 
-  dest->SetClosure(cls);
+  if(name) *name = entry.name;
+  return cls;
+}
 
+bool InterpreterLoadCls   ( Runtime* sandbox , std::uint32_t ref,
+                                               Value* dest ) {
+  dest->SetClosure(NewClosure(sandbox,ref,NULL));
   return true;
 }
-INTERPRETER_REGISTER_EXTERN_SYMBOL(InterpreterDoLoadCls)
+INTERPRETER_REGISTER_EXTERN_SYMBOL(InterpreterLoadCls)
+
+bool InterpreterInitCls  ( Runtime* sandbox , std::uint32_t ref ) {
+  Handle<String> name;
+  // get the function's closure and its name
+  Handle<Closure> cls(NewClosure(sandbox,ref,&name));
+
+  // set it up into the *global* table
+  Handle<Object> glb(sandbox->global);
+
+  lava_debug(NORMAL,lava_verify(name););
+
+  // load it up into the *global table
+  if(!glb->Set(sandbox->context->gc(),name,Value(cls))) {
+    // TODO:: add error handling
+    return false;
+  }
+  return true;
+}
+INTERPRETER_REGISTER_EXTERN_SYMBOL(InterpreterInitCls)
 
 // ----------------------------------------------------------------------------
 // Property Get/Set
@@ -528,7 +558,7 @@ INTERPRETER_REGISTER_EXTERN_SYMBOL(InterpreterCallNeedObject)
  * ------------------------------------------------------------------*/
 |.define CHECK_DIV_BY_ZERO
 |.define CHECK_NUMBER_MEMORY,0
-|.define TRACE_OP,0
+|.define TRACE_OP,1
 |.define USE_CMOV_COMP,0
 |.define USE_CMOV_NEG
 
@@ -725,6 +755,11 @@ void Print64( std::uint64_t a , std::uint64_t b , std::uint64_t c ) {
   lava_error("%" LAVA_FMTU64 ":%" LAVA_FMTU64 ":%" LAVA_FMTU64,a,b,c);
 }
 INTERPRETER_REGISTER_EXTERN_SYMBOL(Print64)
+
+void PrintV( const Value& v ) {
+  lava_error("%s",v.type_name());
+}
+INTERPRETER_REGISTER_EXTERN_SYMBOL(PrintV)
 
 /* ---------------------------------------------------------------
  * dispatch table                                                |
@@ -1031,7 +1066,8 @@ INTERPRETER_REGISTER_EXTERN_SYMBOL(Print64)
   __(PRINT_OP,PrintOP)                                \
   __(PRINT2  ,Print2 )                                \
   __(PRINT64 ,Print64)                                \
-  __(PRINTF  ,PrintF )
+  __(PRINTF  ,PrintF )                                \
+  __(PRINTV , PrintV )
 
 enum {
   INTERP_HELPER_DUMMY = SIZE_OF_BYTECODE,
@@ -1085,6 +1121,9 @@ void GenerateInterpMisc( BuildContext* bctx ) {
 
   |->RealZero:
   |.dword 0,0  // 8 btyes
+
+  |->FrameClosurePointerLoad:
+  |.dword 0xffffffff,0x0000ffff
 
   |.code
 
@@ -1502,7 +1541,7 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
       |  savepc
       |  mov CARG1,RUNTIME
       |  lea CARG2,[STK+ARG1F*8]
-      |  fcall InterpreterDoLoadList0
+      |  fcall InterpreterLoadList0
       |  retbool
       break;
     case BC_LOADLIST1:
@@ -1511,8 +1550,8 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
       |  savepc
       |  mov CARG1, RUNTIME
       |  lea CARG2, [STK+ARG1F*8]
-      |  mov CARG3, qword [STK+ARG2F*8]
-      |  fcall InterpreterDoLoadList1
+      |  lea CARG3, [STK+ARG2F*8]
+      |  fcall InterpreterLoadList1
       |  retbool
       break;
     case BC_LOADLIST2:
@@ -1521,30 +1560,30 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
       |  savepc
       |  mov CARG1, RUNTIME
       |  lea CARG2, [STK+ARG1F*8]
-      |  mov CARG3, qword [STK+ARG2F*8]
-      |  mov CARG4, qword [STK+ARG3F*8]
-      |  fcall InterpreterDoLoadList2
+      |  lea CARG3, [STK+ARG2F*8]
+      |  lea CARG4, [STK+ARG3F*8]
+      |  fcall InterpreterLoadList2
       |  retbool
       break;
     case BC_NEWLIST:
       |=>bc:
-      |  jmp ->InterpNewList
       |  instr_B
       |  savepc
       |  mov CARG1, RUNTIME
       |  lea CARG2, [STK+ARG1F*8]
       |  mov CARG3L, ARG2
-      |  fcall InterpreterDoNewList
+      |  fcall InterpreterNewList
       |  retbool
       break;
     case BC_ADDLIST:
       |=>bc:
-      |  instr_E
+      |  instr_D
       |  savepc
       |  mov CARG1, RUNTIME
       |  lea CARG2, [STK+ARG1F*8]
-      |  mov CARG3, qword [STK+ARG2F*8]
-      |  fcall InterpreterDoAddList
+      |  mov CARG3L, ARG2
+      |  mov CARG4L, ARG3
+      |  fcall InterpreterAddList
       |  retbool
       break;
     case BC_LOADOBJ0:
@@ -1595,7 +1634,16 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
       |  mov CARG1 , RUNTIME
       |  mov CARG2L, ARG2
       |  lea CARG3 , [STK+ARG1F*8]
-      |  fcall InterpreterDoLoadCls
+      |  fcall InterpreterLoadCls
+      |  retbool
+      break;
+    case BC_INITCLS:
+      |=>bc:
+      |  instr_G
+      |  savepc
+      |  mov CARG1, RUNTIME
+      |  mov CARG2L, ARG1
+      |  fcall InterpreterInitCls
       |  retbool
       break;
 
@@ -2401,6 +2449,7 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
 
     |  mov ARG2F, qword [ARG2F+ARG3F*8+SliceLayout::kArrayOffset]
     |  mov qword [STK+ARG1F*8], ARG2F
+
     |  Dispatch
     |.endmacro
 
@@ -2444,7 +2493,7 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
     |  jae ->oob
 
     |  mov RREG, qword [LREG+ListLayout::kSliceOffset]
-    |  mov ARG1F,qword [RREG]
+    |  mov ARG1F,qword [RREG]  // ARG1F --> Slice*
 
     |  mov LREG, qword [STK+ARG3F*8]
     |  mov qword [ARG1F+ARG2F*8+ListLayout::kSliceOffset], LREG
@@ -2689,7 +2738,7 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
      * Call/TCall/Return
      * -----------------------------------------------------------*/
 
-      |.macro do_call,flag,slow_path
+      |.macro do_call,set_flag,slow_path
       |  instr_D
 
       // 1. Do a stack check to see wheather we *need* to grow the
@@ -2720,30 +2769,24 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
       // LREG (Closure* )
       // ARG2 (Base)
       // ARG3 (Narg)
-      
+
       // set up the IFrame object. The IFrame object should be placed
       // 2 slots/sizeof(Value) before the T0 which is the new base of
       // the stack
-      
+
       |  mov ARG2F, qword [RUNTIME+RuntimeLayout::kStackBeginOffset]
       |  mov ARG1F, STK
       |  sub ARG1F, ARG2F
 
       |  mov dword [T0-16], ARG1    // Store the Previous Frame pointer, and reset the
 
-      |  mov ARG2, ARG3             // We need to reserve ARG3 for argument check
-      |  flag                       // set the flag field
-      |  or ARG2F, RREG
-
+      |  mov ARG2F, ARG3F           // We need to reserve ARG3 for argument check
+      |  shl ARG2F, 56
+      |  or  ARG2F, RREG
       |  mov qword [T0-8] , ARG2F   // Store the current Closure** into the prev frame
 
-      // Get current begining of the *PC*
-      |  mov ARG2F, qword [PROTO]
-      |  mov ARG2F, qword [ARG2F+PrototypeLayout::kCodeBufferOffset]
-
-      |  sub PC,ARG2F
-      |  shr PC,2                   // divide by 2
-      |  mov dword [STK-12], PCL
+      // set the needed flag
+      |  set_flag
 
       // set the closure pointer back to *runtime* object
       |  mov qword [RUNTIME+RuntimeLayout::kCurClsOffset],RREG
@@ -2787,20 +2830,24 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
       |.endmacro
 
 
-      |.macro null_flag;
-      |  shr ARG2F,56
+      |.macro call_flag
+      // A normal call needs to be returned properly so we need to
+      // set the correct PC value for returning
+      |  sub PC, qword SAVED_PC
+      |  shr PC, 2
+      |  mov dword [STK-12], PCL
       |.endmacro
 
       |.macro tcall_flag
-      |  shl ARG2F, 8
-      |  or  ARG2F, 1
-      |  shl ARG2F,48
+      // A tcall flag needs to be set up and no need to store PC
+      // offset in current frame since we won't return to this frame
+      |  mov byte [STK-2], 1 // mark it as a tcall frame
       |.endmacro
 
 
     case BC_CALL:
       |=>bc:
-      |  do_call null_flag,InterpCall
+      |  do_call call_flag,InterpCall
       break;
 
     case BC_TCALL:
@@ -2816,17 +2863,19 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
     |  test ARG1,ARG1
     |  je ->InterpReturn             // Interpreter return from here
 
-    |  movzx T0L , byte [STK-2]      // Store the tcall flag bit flag
-
     |  mov ARG1  , dword[STK-16]
     |  mov STK   , ARG3F
     |  add STK   , ARG1F
 
-    |  test T0L, T0L
-    |  jne <2                        // Loop again if it is a tcall frame
+    // now STK points to the *previous* frame and we need to check
+    // whether the previous frame is a frame we need to skip since
+    // it maybe a tail call frame
+    |  cmp byte [STK-2], 1
+    |  je <2
 
     |1:
     |  mov   LREG , qword [STK-8]    // LREG == Closure
+    |  and   LREG , qword [->FrameClosurePointerLoad]
     |  mov   qword [RUNTIME+RuntimeLayout::kCurClsOffset], LREG
 
     |  mov   LREG , qword [LREG]
@@ -2845,7 +2894,7 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
     case BC_RETNULL:
     |=>bc:
     |  instr_X
-    |  do_ret  
+    |  do_ret
     |  mov word [STK+ACCFIDX], Value::FLAG_NULL
     |  Dispatch
     break;

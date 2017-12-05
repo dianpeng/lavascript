@@ -81,7 +81,7 @@ bool Bench( const char* source ) {
   bool r;
 
   {
-    static const std::size_t kTimes = 1;
+    static const std::size_t kTimes = 100;
     std::uint64_t start = ::lavascript::OS::NowInMicroSeconds();
     for ( std::size_t i = 0 ; i < kTimes ; ++i ) {
       r = ins.Run(&ctx,scp,obj,&error,&ret);
@@ -89,6 +89,8 @@ bool Bench( const char* source ) {
     std::uint64_t end   = ::lavascript::OS::NowInMicroSeconds();
     if(r) {
       std::cerr<<"Benchmark result:"<<(end-start)/kTimes<<'\n';
+    } else {
+      std::cerr<<"Failed!"<<std::endl;
     }
   }
   if(ret.IsReal()) {
@@ -513,15 +515,14 @@ TEST(Interpreter,Func) {
 #endif
 
 TEST(Interpreter,C) {
-  BENCHMARK(
-      var foo = function ( a, f) {
-        if(a < 2)
-          return a;
-        else
-          return f(a-2,f) + f(a-1,f);
-      };
-      var a = foo(34,foo);
-      return a;
+  PRIMITIVE_EQ(1,
+      var a = function() { return 1; };
+      var b = function() { return 2; };
+      var c = function() { return 3; };
+      var d = function() { return 4; };
+      var e = function(u){ return u; };
+      var x = [1,2,3,4,5];
+      return x[0];
   );
 }
 

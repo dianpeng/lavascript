@@ -16,7 +16,7 @@ const char* GetGCStateName( GCState state ) {
     case GC_BLACK : return "black";
     case GC_WHITE:  return "white";
     case GC_GRAY:   return "gray";
-    default: return "reserved";
+    default:        return "reserved";
   }
 }
 

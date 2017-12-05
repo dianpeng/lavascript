@@ -36,7 +36,7 @@ class Register {
   static const Register kAccReg;
   static const std::size_t kAccIndex = 255;
 
-  Register( std::uint8_t index ): index_(index) {}
+  explicit Register( std::uint8_t index ): index_(index) {}
   Register():index_(kAccIndex) {}
 
  public:

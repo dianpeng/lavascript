@@ -141,11 +141,13 @@ bool RegisterAllocator::EnterScope( std::size_t size , std::uint8_t* b ) {
 }
 
 void RegisterAllocator::LeaveScope() {
+  if(scope_base_.empty()) return;
+
   lava_debug(NORMAL,
-      lava_verify(!scope_base_.empty());
       lava_verify(!free_register_ ||
                   (free_register_->reg.index() == scope_base_.back()));
-      );
+  );
+
   std::uint8_t end = scope_base_.back();
   scope_base_.pop_back();
   std::uint8_t start = scope_base_.empty() ? 0 : scope_base_.back();
@@ -459,13 +461,6 @@ Optional<Register> Generator::SpillRegister( const SourceCodeInfo& sci ,
   return r;
 }
 
-bool Generator::SpillToAcc( const SourceCodeInfo& sci , ScopedRegister* reg ) {
-  lava_debug(NORMAL,lava_verify(*reg););
-  EEMIT(move,sci,Register::kAccIndex,reg->Get().index());
-  reg->Reset();
-  return true;
-}
-
 bool Generator::AllocateLiteral( const SourceCodeInfo& sci , const ast::Literal& lit ,
                                                              const Register& reg ) {
   switch(lit.literal_type) {
@@ -515,49 +510,45 @@ fallback:
   return true;
 }
 
-Optional<Register> Generator::ExprResultToRegister( const SourceCodeInfo& sci ,
-                                                    const ExprResult& expr ) {
-  if(expr.IsReg())
-    return Optional<Register>(expr.reg());
-  else {
-    switch(expr.kind()) {
-      case KREAL:
-        if(!func_scope()->bb()->loadr(
-              func_scope()->ra()->base(),
-              sci,Register::kAccIndex,static_cast<std::uint16_t>(expr.ref()))) {
-          Error(ERR_FUNCTION_TOO_LONG,sci);
-          return Optional<Register>();
-        }
-        break;
-      case KSTR:
-        if(!func_scope()->bb()->loadstr(
-              func_scope()->ra()->base(),
-              sci,Register::kAccIndex,static_cast<std::uint16_t>(expr.ref()))) {
-          Error(ERR_FUNCTION_TOO_LONG,sci);
-          return Optional<Register>();
-        }
-        break;
-      case KTRUE:
-        if(!func_scope()->bb()->loadtrue(func_scope()->ra()->base(),sci,Register::kAccIndex)) {
-          Error(ERR_FUNCTION_TOO_LONG,sci);
-          return Optional<Register>();
-        }
-        break;
-      case KFALSE:
-        if(!func_scope()->bb()->loadfalse(func_scope()->ra()->base(),sci,Register::kAccIndex)) {
-          Error(ERR_FUNCTION_TOO_LONG,sci);
-          return Optional<Register>();
-        }
-        break;
-      default:
-        if(!func_scope()->bb()->loadnull(func_scope()->ra()->base(),sci,Register::kAccIndex)) {
-          Error(ERR_FUNCTION_TOO_LONG,sci);
-          return Optional<Register>();
-        }
-        break;
-    }
-    return Optional<Register>(Register::kAccReg);
+bool Generator::ExprResultToRegister( const SourceCodeInfo& sci ,
+                                      const Register& output ,
+                                      const ExprResult& expr ) {
+  lava_debug(NORMAL,lava_verify(expr.IsLiteral()););
+  switch(expr.kind()) {
+    case KREAL:
+      if(!func_scope()->bb()->loadr(func_scope()->ra()->base(),
+            sci,output.index(),static_cast<std::uint16_t>(expr.ref()))) {
+        Error(ERR_FUNCTION_TOO_LONG,sci);
+        return false;
+      }
+      break;
+    case KSTR:
+      if(!func_scope()->bb()->loadstr(func_scope()->ra()->base(),
+            sci,output.index(),static_cast<std::uint16_t>(expr.ref()))) {
+        Error(ERR_FUNCTION_TOO_LONG,sci);
+        return false;
+      }
+      break;
+    case KTRUE:
+      if(!func_scope()->bb()->loadtrue(func_scope()->ra()->base(),sci,output.index())) {
+        Error(ERR_FUNCTION_TOO_LONG,sci);
+        return false;
+      }
+      break;
+    case KFALSE:
+      if(!func_scope()->bb()->loadfalse(func_scope()->ra()->base(),sci,output.index())) {
+        Error(ERR_FUNCTION_TOO_LONG,sci);
+        return false;
+      }
+      break;
+    default:
+      if(!func_scope()->bb()->loadnull(func_scope()->ra()->base(),sci,output.index())) {
+        Error(ERR_FUNCTION_TOO_LONG,sci);
+        return false;
+      }
+      break;
   }
+  return true;
 }
 
 const char* Generator::GetErrorCategoryDescription( ErrorCategory ec ) const {
@@ -805,6 +796,7 @@ bool Generator::VisitPrefix( const ast::Prefix& node , std::size_t end ,
   // Handle first component specifically , pay attention to the input/output
   // register.
   {
+    if(end ==1) output = hint;
     const ast::Prefix::Component& c = node.list->First();
     if(!VisitPrefixComponent(c,TCALL && (node.list->size()==1),input.Get(),
                                                                output))
@@ -823,8 +815,7 @@ bool Generator::VisitPrefix( const ast::Prefix& node , std::size_t end ,
 
   // Handle *last* expression since we need to set the output to the hint register
   // for the last one
-  if(end > 1)
-  {
+  if(end > 1) {
     const ast::Prefix::Component& c = node.list->Last();
     if(!VisitPrefixComponent(c,TCALL,output,hint))
       return false;
@@ -1278,9 +1269,16 @@ bool Generator::VisitExpression( const ast::Node& node , ExprResult* result ) {
 bool Generator::VisitExpression( const ast::Node& node , Register* result ) {
   ExprResult r;
   if(!VisitExpression(node,&r)) return false;
-  ScopedRegister reg(this,ExprResultToRegister(node.sci(),r));
-  if(!reg) return false;
-  *result = reg.Release();
+
+  if(r.IsReg()) {
+    *result = r.reg();
+  } else {
+    Optional<Register> temp(func_scope()->ra()->Grab());
+    if(!temp) return false;
+    *result = temp.Get();
+    if(!ExprResultToRegister(node.sci(),temp.Get(),r))
+      return false;
+  }
   return true;
 }
 
@@ -1487,7 +1485,7 @@ bool Generator::Visit( const ast::If& node ) {
     if(!VisitChunk(*br.body,true)) return false;
 
     // Generate the jump
-    if(br.cond)
+    if(br.cond && (i < (len-1)))
       label_vec.push_back(func_scope()->bb()->jmp(func_scope()->ra()->base(),br.cond->sci()));
   }
 
@@ -1695,11 +1693,8 @@ bool Generator::Visit( const ast::Return& node ) {
                             Register::kAccReg))
         return false;
     } else {
-      ScopedRegister ret(this);
-      if(!VisitExpression(*node.expr,&ret)) return false;
-      if(!ret.Get().IsAcc())
-        if(!SpillToAcc(node.expr->sci(),&ret))
-          return false;
+      if(!VisitExpressionWithOutputRegister(*node.expr,Register::kAccReg))
+        return false;
     }
   }
   SEMIT(ret,node.sci());

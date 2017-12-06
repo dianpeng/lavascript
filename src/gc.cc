@@ -393,12 +393,12 @@ Map** GC::NewMap( std::size_t capacity ) {
 }
 
 Prototype** GC::NewPrototype( String** proto,
-                              std::size_t argument_size ,
-                              std::size_t max_local_var_size,
-                              std::size_t real_table_size,
-                              std::size_t string_table_size,
-                              std::size_t upvalue_size,
-                              std::size_t code_buffer_size ) {
+                              std::uint8_t argument_size ,
+                              std::uint8_t max_local_var_size,
+                              std::uint8_t real_table_size,
+                              std::uint8_t string_table_size,
+                              std::uint8_t upvalue_size,
+                              std::uint32_t code_buffer_size ) {
 
   // Highly sensitive to the layout of the Prototype object
 

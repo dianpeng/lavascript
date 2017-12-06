@@ -81,7 +81,7 @@ bool Bench( const char* source ) {
   bool r;
 
   {
-    static const std::size_t kTimes = 50;
+    static const std::size_t kTimes = 1;
     std::uint64_t start = ::lavascript::OS::NowInMicroSeconds();
     for ( std::size_t i = 0 ; i < kTimes ; ++i ) {
       r = ins.Run(&ctx,scp,obj,&error,&ret);
@@ -170,8 +170,6 @@ bool PrimitiveComp( const char* source , const Value& primitive , int op ) {
 namespace lavascript {
 namespace interpreter {
 
-
-#if 0
 
 TEST(Interpreter,Load) {
   PRIMITIVE_EQ(0,return 0;);
@@ -502,6 +500,9 @@ TEST(Interpreter,Branch) {
   );
 }
 
+#if 0
+
+
 TEST(Interpreter,Func) {
   BENCHMARK(
       var xx = function() { return true; };
@@ -521,7 +522,11 @@ TEST(Interpreter,C) {
           return a;
         return b(a-1,b) + b(a-2,b);
       };
-      fib(34,fib);
+      var global;
+
+      for ( var i = 1 ; 10 ; 1 )
+        global = fib(34,fib);
+      return global;
   );
 }
 

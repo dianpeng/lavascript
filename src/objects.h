@@ -908,21 +908,21 @@ class Prototype final : public HeapObject {
   // const vm::ConstantTable& constant_table() const { return constant_table_; }
   // const vm::UpValueIndexArray& upvalue_array() const { return upvalue_array_; }
   Handle<String> proto_string() const { return proto_string_; }
-  std::size_t argument_size() const { return argument_size_; }
+  std::uint8_t argument_size() const { return argument_size_; }
 
   // Used to maintain correct GC status
-  std::size_t max_local_var_size() const { return max_local_var_size_; }
+  std::uint8_t max_local_var_size() const { return max_local_var_size_; }
 
  public: // Mutator
   void set_proto_string( const Handle<String>& str ) { proto_string_ = str; }
   void set_argument_size( std::size_t arg) { argument_size_ = arg; }
 
-  std::size_t real_table_size() const { return real_table_size_; }
-  std::size_t string_table_size() const { return string_table_size_; }
-  std::size_t upvalue_size() const { return upvalue_size_; }
-  std::size_t code_buffer_size() const { return code_buffer_size_; }
-  std::size_t sci_size() const { return code_buffer_size_; }
-  std::size_t reg_offset_size() const { return code_buffer_size_; }
+  std::uint8_t real_table_size() const { return real_table_size_; }
+  std::uint8_t string_table_size() const { return string_table_size_; }
+  std::uint8_t upvalue_size() const { return upvalue_size_; }
+  std::uint32_t code_buffer_size() const { return code_buffer_size_; }
+  std::uint32_t sci_size() const { return code_buffer_size_; }
+  std::uint32_t reg_offset_size() const { return code_buffer_size_; }
 
  public: // Constant table
   inline double GetReal( std::size_t ) const;
@@ -947,12 +947,12 @@ class Prototype final : public HeapObject {
   void Dump( DumpWriter* writer , const std::string& source ) const;
 
  public:
-  Prototype( const Handle<String>& pp , std::size_t argument_size ,
-                                        std::size_t max_local_var_size,
-                                        std::size_t real_table_size,
-                                        std::size_t string_table_size,
-                                        std::size_t upvalue_size,
-                                        std::size_t code_buffer_size,
+  Prototype( const Handle<String>& pp , std::uint8_t argument_size ,
+                                        std::uint8_t max_local_var_size,
+                                        std::uint8_t real_table_size,
+                                        std::uint8_t string_table_size,
+                                        std::uint8_t upvalue_size,
+                                        std::uint32_t code_buffer_size,
                                         double* rtable,
                                         String*** stable,
                                         std::uint32_t* utable,
@@ -968,18 +968,18 @@ class Prototype final : public HeapObject {
 
  private:
   Handle<String> proto_string_;
-  std::size_t argument_size_;
-  std::size_t max_local_var_size_;
+  std::uint8_t argument_size_;
+  std::uint8_t max_local_var_size_;
 
   // Constant table size
-  std::size_t real_table_size_;
-  std::size_t string_table_size_;
+  std::uint8_t real_table_size_;
+  std::uint8_t string_table_size_;
 
   // Upvalue slot size
-  std::size_t upvalue_size_;
+  std::uint8_t upvalue_size_;
 
   // Code buffer size
-  std::size_t code_buffer_size_;
+  std::uint32_t code_buffer_size_;
 
   /**
    * For prototype, we don't use implicit layout since there are
@@ -1073,12 +1073,25 @@ class Closure final : public HeapObject {
   static Handle<Closure> New( GC* , const Handle<Prototype>& );
 
   Closure( const Handle<Prototype>& proto ):
-    prototype_(proto)
+    prototype_(proto),
+    code_buffer_(proto->code_buffer()),
+    argument_size_(proto->argument_size())
   {}
 
  private:
   Handle<Prototype> prototype_;
 
+  /** cached value from Prototype object to avoid pointer chasing
+   *  The value put here must be persisten across the GC boundary
+   */
+  const std::uint32_t* code_buffer_; // *cached* code buffer pointer to avoid too much
+                                     // pointer chasing inside of interpreter. The code
+                                     // cache is not gc with the normal heap and it is
+                                     // persistent across heap compaction , so we can
+                                     // cache it as long as the prototype is alive which
+                                     // is always true
+
+  std::uint8_t argument_size_;       // Argument size of the attached protocol
   friend struct ClosureLayout;
   friend class GC;
   LAVA_DISALLOW_COPY_AND_ASSIGN(Closure);
@@ -1087,6 +1100,8 @@ static_assert( std::is_standard_layout<Closure>::value );
 
 struct ClosureLayout {
   static const std::uint32_t kPrototypeOffset = offsetof(Closure,prototype_);
+  static const std::uint32_t kCodeBufferOffset= offsetof(Closure,code_buffer_);
+  static const std::uint32_t kArgumentSizeOffset = offsetof(Closure,argument_size_);
   static const std::uint32_t kUpValueOffset   = sizeof(Closure);
 };
 

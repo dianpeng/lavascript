@@ -650,12 +650,12 @@ class GC : AllStatic {
 
   // specialized new for Prototype object creation
   Prototype** NewPrototype( String** ,
-                            std::size_t,
-                            std::size_t,
-                            std::size_t,
-                            std::size_t,
-                            std::size_t,
-                            std::size_t);
+                            std::uint8_t ,
+                            std::uint8_t ,
+                            std::uint8_t ,
+                            std::uint8_t ,
+                            std::uint8_t ,
+                            std::uint32_t );
 
   // specialized new for Script object creation
   Script** NewScript( Context* ,

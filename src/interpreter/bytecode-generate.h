@@ -523,7 +523,6 @@ class ExprResult {
 
  public:
   void SetHint( const Register& reg ) {
-    lava_debug(NORMAL,lava_verify(!reg.IsAcc()););
     hint_.Set(reg);
   }
   Optional<Register> GetHint() const { return hint_; }
@@ -654,7 +653,6 @@ class Generator {
  private: // Misc helpers --------------------------------------
   // Spill the Acc register to another register
   Optional<Register> SpillFromAcc( const SourceCodeInfo& );
-  bool SpillToAcc( const SourceCodeInfo& , ScopedRegister* );
   Optional<Register> SpillRegister( const SourceCodeInfo& , const Register& );
 
   // Allocate literal with in certain registers
@@ -663,7 +661,8 @@ class Generator {
 
   // Convert ExprResult to register, it may allocate new register
   // to hold it if it is literal value
-  Optional<Register> ExprResultToRegister( const SourceCodeInfo& sci , const ExprResult& );
+  bool ExprResultToRegister( const SourceCodeInfo& sci , const Register& output ,
+                                                         const ExprResult& );
 
  private: // Errors ---------------------------------------------
   inline void Error( const SourceCodeInfo& , const char* fmt , ... ) const;

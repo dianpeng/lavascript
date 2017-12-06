@@ -527,11 +527,11 @@ void InterpreterArgumentMismatch( Runtime* sandbox , Value object ,
 }
 INTERPRETER_REGISTER_EXTERN_SYMBOL(InterpreterArgumentMismatch)
 
-bool StackResize            ( Runtime* sandbox ) {
+bool ResizeStack( Runtime* sandbox ) {
   (void)sandbox;
   return false;
 }
-INTERPRETER_REGISTER_EXTERN_SYMBOL(StackResize)
+INTERPRETER_REGISTER_EXTERN_SYMBOL(ResizeStack)
 
 void InterpreterCallNeedObject ( Runtime* sandbox , Value object ) {
   (void)sandbox;
@@ -1097,6 +1097,8 @@ const char* GetInterpHelperName( int idx ) {
  * ----------------------------------------------------------*/
 #define Dst (&(bctx->dasm_ctx))
 
+#define IFRAME_EOF 0xffff  // End of function frame, should return from VM
+
 /* -----------------------------------------------------------
  * Interpreter Prolog                                        |
  * ----------------------------------------------------------*/
@@ -1110,14 +1112,20 @@ void GenerateInterpMisc( BuildContext* bctx ) {
   |.dword Value::TAG_HEAP_STORE_MASK_LOWER,Value::TAG_HEAP_STORE_MASK_HIGHER // 8 bytes
 
   |->ValueHeapMaskLoad:
-  |->FrameClosurePointerLoad:
+  |->PointerMask:
   |.dword Value::TAG_HEAP_LOAD_MASK_LOWER,Value::TAG_HEAP_LOAD_MASK_HIGHER   // 8 bytes
 
+  |->PointerTag:
+  |.dword 0,0xffff0000 // 8 bytes
+
   |->FlagTrueConst:
-  |.dword Value::FLAG_TRUE // 4 bytes
+  |.dword Value::FLAG_TRUE  // 4 bytes
 
   |->FlagFalseConst:
   |.dword Value::FLAG_FALSE // 4 bytes
+
+  |->ValueNullConst:
+  |.dword 0, Value::FLAG_NULL // 8 bytes
 
   |->RealZero:
   |.dword 0,0  // 8 btyes
@@ -1168,7 +1176,8 @@ void GenerateInterpMisc( BuildContext* bctx ) {
   |  mov qword SAVED_PC,PC              // save the *start* of bc array
 
   // setup the call frame
-  |  xor rax,rax
+  |  mov eax,  IFRAME_EOF
+  |  shl rax,  48
   |  mov qword [STK],   rax             // Set the IFrame upper 8 bytes to be 0
   |  mov qword [STK+8], CARG2           // Reset the flag/narg and set the Caller to be PROTO
   |  add STK,16                         // Bump the STK register
@@ -2743,7 +2752,7 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
       //    space
       |  lea T0, [STK+ARG2F*8]
       |  cmp T0, qword [RUNTIME+RuntimeLayout::kStackEndOffset]
-      |  jae ->InterpResizeStack
+      |  jae >9  // Resize stack
 
       // 2. Check object type
       |3:
@@ -2761,25 +2770,32 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
 
       |  CheckHeapPtrT LREG,CLOSURE_BIT_PATTERN  ,->slow_path
 
+      // Check argument number
+      |  cmp ARG3_8 , byte [LREG+ClosureLayout::kArgumentSizeOffset]
+      |  jne ->InterpArgumentMismatch
+
       // RREG (Closure**)
       // LREG (Closure* )
       // ARG2 (Base)
       // ARG3 (Narg)
 
-      // set up the IFrame object. The IFrame object should be placed
-      // 2 slots/sizeof(Value) before the T0 which is the new base of
-      // the stack
+      /*
+       * Store the old PC into the *current* frame for recovery of
+       * stack frame when return
+       */
+      |  movzx ARG1 , word [STK-10]
+      |  shl   ARG1F, 48
+      |  or    ARG1F, PC
+      |  mov   qword [STK-16], ARG1F
 
-      |  mov ARG2F, qword [RUNTIME+RuntimeLayout::kStackBeginOffset]
-      |  mov ARG1F, STK
-      |  sub ARG1F, ARG2F
+      /*
+       * Store the BASE value into the *new* frame
+       */
+      |  shl ARG2F,51              // 51 == 48 + 3 (3 means ARG2*8)
+      |  mov qword [T0-16], ARG2F  // This will reset the whole quad to be 0 ended
+                                   // Because we use *or* to set the PC to the place
 
-      |  mov dword [T0-16], ARG1    // Store the Previous Frame pointer, and reset the
-
-      |  mov ARG2F, ARG3F           // We need to reserve ARG3 for argument check
-      |  shl ARG2F, 56
-      |  or  ARG2F, RREG
-      |  mov qword [T0-8] , ARG2F   // Store the current Closure** into the prev frame
+      |  mov qword [T0-8] , RREG  // Set the *closure* pointer into the *new* frame
 
       // set the needed flag
       |  set_flag
@@ -2788,56 +2804,41 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
       |  mov qword [RUNTIME+RuntimeLayout::kCurClsOffset],RREG
 
       // get the *new* proto object
-      |  mov LREG  , qword [LREG+ClosureLayout::kPrototypeOffset]
-      |  mov PROTO , LREG
-      |  mov LREG  , qword [LREG]
-
-      // check the argument is correct or not , we put the check here is Okay
-      // due to the fact that if it fails , then we can exit here safely.
-      // Otherwise doesn't matter at all
-      |  cmp ARG3  , dword [LREG+PrototypeLayout::kArgumentSizeOffset]
-      |  jne ->InterpArgumentMismatch // ARG1 and ARG3 are valid
+      |  mov PROTO , qword [LREG+ClosureLayout::kPrototypeOffset]
 
       // get the *new* code buffer starting pointer
-      |  mov RREG  , qword [LREG+PrototypeLayout::kCodeBufferOffset]
+      |  mov PC , qword [LREG+ClosureLayout::kCodeBufferOffset]
 
       // change the current context PROTO and PC register to the correct field
       // of the new closure
       |  mov STK   , T0               // set the new *stack*
       |  mov qword [RUNTIME+RuntimeLayout::kCurStackOffset], T0
 
-      |  mov PC    , RREG             // set the new *PC*
-      |  mov qword SAVED_PC, RREG     // set the savedpc
+      |  mov qword SAVED_PC, PC       // set the savedpc
       |  Dispatch
 
       // stack overflow
       // ARG2F/ARG3F are caller saved, ARG1F are callee saved
-      |1:
-      |  mov qword [SAVED_SLOT1], ARG2F
-      |  mov qword [SAVED_SLOT2], ARG3F
+      |9:
+      |  mov qword [SAVED_SLOT1] , ARG2F
+      |  mov qword [SAVED_SLOT2] , ARG2F
       |  mov CARG1, RUNTIME
-      |  fcall StackResize   // This doesn't trigger GC
+      |  mov CARG2, ARG2F
+      |  fcall ResizeStack
       |  test eax,eax
       |  je ->InterpFail
       |  mov ARG2F, qword [SAVED_SLOT1]
       |  mov ARG3F, qword [SAVED_SLOT2]
-      |  jmp <3             // recover execution
-
+      |  jmp <3 // resume execution
       |.endmacro
 
-
       |.macro call_flag
-      // A normal call needs to be returned properly so we need to
-      // set the correct PC value for returning
-      |  sub PC, qword SAVED_PC
-      |  shr PC, 2
-      |  mov dword [STK-12], PCL
       |.endmacro
 
       |.macro tcall_flag
       // A tcall flag needs to be set up and no need to store PC
       // offset in current frame since we won't return to this frame
-      |  mov byte [STK-2], 1 // mark it as a tcall frame
+      |  mov byte [STK-1], 1 // mark it as a tcall frame
       |.endmacro
 
 
@@ -2852,46 +2853,40 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
       break;
 
     |.macro do_ret
-    |  mov ARG3F, qword [RUNTIME+RuntimeLayout::kStackBeginOffset] // Start of the stack
 
     |2:
-    |  mov ARG1 , dword [STK-16]     // Starting of the current IFrame
-    |  test ARG1,ARG1
+    |  movzx ARG1F, word [STK-10]
+
+    |  cmp ARG1F,IFRAME_EOF
     |  je ->InterpReturn             // Interpreter return from here
 
-    |  mov ARG1  , dword[STK-16]
-    |  mov STK   , ARG3F
-    |  add STK   , ARG1F
+    |  sub   STK  , ARG1F            // Now STK points to the *previous* frame
 
     // now STK points to the *previous* frame and we need to check
     // whether the previous frame is a frame we need to skip since
     // it maybe a tail call frame
-    |  cmp byte [STK-2], 1
+    |  cmp byte [STK-1], 1
     |  je <2
 
     |1:
-    |  mov   LREG , qword [STK-8]    // LREG == Closure
-    |  and   LREG , qword [->FrameClosurePointerLoad]
+    |  mov   LREG , qword [STK-8]    // LREG == Closure**
     |  mov   qword [RUNTIME+RuntimeLayout::kCurClsOffset], LREG
+    |  mov   ARG1F, qword [LREG]
+    |  mov   PROTO, qword [ARG1F+ClosureLayout::kPrototypeOffset]
+    |  mov   PC , qword [STK-16]
+    |  and   PC , qword [->PointerMask]
 
-    |  mov   LREG , qword [LREG]
-    |  mov   PROTO, qword [LREG+ClosureLayout::kPrototypeOffset]
-
-    |  mov   T0   , qword [PROTO]
-    |  mov   PC   , qword [T0+PrototypeLayout::kCodeBufferOffset]
-
-    |  mov   qword SAVED_PC, PC      // Set the *savedpc* back
-    |  mov   T0L  , dword [STK-12]   // Get the PC offset
-    |  shl   T0L  , 2                // Multiply by 4
-    |  add   PCL  , T0L              // Set to the correct PC counter
+    |  mov   ARG2F, qword [ARG1F+ClosureLayout::kCodeBufferOffset]
+    |  mov   qword SAVED_PC, ARG2F
 
     |.endmacro
 
     case BC_RETNULL:
     |=>bc:
     |  instr_X
+    |  mov LREG, qword [->ValueNullConst]
     |  do_ret
-    |  mov word [STK+ACCFIDX], Value::FLAG_NULL
+    |  mov dword [STK+ACCFIDX], Value::FLAG_NULL
     |  Dispatch
     break;
 

@@ -51,12 +51,12 @@ Handle<Prototype> BytecodeBuilder::New( GC* gc , const BytecodeBuilder& bb ,
                                                  String** proto ) {
 
   Prototype** pp = gc->NewPrototype(proto ? proto : String::New(gc,"()",2).ref(),
-                                    arg_size,
-                                    max_local_var_size,
-                                    bb.real_table_.size(),
-                                    bb.string_table_.size(),
-                                    bb.upvalue_slot_.size(),
-                                    bb.code_buffer_.size());
+                                    static_cast<std::uint8_t>(arg_size),
+                                    static_cast<std::uint8_t>(max_local_var_size),
+                                    static_cast<std::uint8_t>(bb.real_table_.size()),
+                                    static_cast<std::uint8_t>(bb.string_table_.size()),
+                                    static_cast<std::uint8_t>(bb.upvalue_slot_.size()),
+                                    static_cast<std::uint32_t>(bb.code_buffer_.size()));
   Prototype* ret = *pp;
 
   // initialize each field

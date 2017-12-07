@@ -138,16 +138,18 @@ static const std::size_t kAllocatableBytecodeRegisterSize = 255;
   __(C,LOADCLS  , loadcls  , REG , GARG , _ )   \
   __(G,INITCLS , initcls, GARG , _ , _ )        \
   /* property/upvalue/global value */           \
-  __(D,PROPGET,propget,REG,REG,SREF) \
-  __(D,PROPSET,propset,REG,SREF,REG) \
-  __(D,IDXGET ,idxget,REG,REG,REG)   \
-  __(D,IDXSET ,idxset,REG,REG,REG)   \
-  __(D,IDXSETI,idxseti,REG,IMM,REG)  \
-  __(D,IDXGETI,idxgeti,REG,REG,IMM)  \
-  __(E,UVGET  ,uvget ,REG,GARG,_)    \
-  __(E,UVSET  ,uvset ,GARG,REG,_)    \
-  __(E,GSET   ,gset  ,SREF,REG,_)    \
-  __(E,GGET   ,gget  ,REG,SREF,_)    \
+  __(D,PROPGET,propget,REG,REG,SREF)            \
+  __(D,PROPSET,propset,REG,SREF,REG)            \
+  __(D,PROPGETSSO,propgetsso,REG,REG,SSO)       \
+  __(D,PROPSETSSO,propsetsso,REG,SSO,REG)       \
+  __(D,IDXGET ,idxget,REG,REG,REG)              \
+  __(D,IDXSET ,idxset,REG,REG,REG)              \
+  __(D,IDXSETI,idxseti,REG,IMM,REG)             \
+  __(D,IDXGETI,idxgeti,REG,REG,IMM)             \
+  __(E,UVGET  ,uvget ,REG,GARG,_)               \
+  __(E,UVSET  ,uvset ,GARG,REG,_)               \
+  __(E,GSET   ,gset  ,SREF,REG,_)               \
+  __(E,GGET   ,gget  ,REG,SREF,_)               \
   /* subroutine */ \
   __(D,CALL, call , REG , BASE , NARG )         \
   __(D,TCALL, tcall, REG , BASE , NARG )        \

@@ -40,7 +40,7 @@ bool Compile( Context* context ,const char* source ,
   return true;
 }
 
-static const bool kShowBytecode = true;
+static const bool kShowBytecode = false;
 
 enum { COMP_LE , COMP_LT , COMP_GT , COMP_GE , COMP_EQ , COMP_NE };
 
@@ -81,7 +81,7 @@ bool Bench( const char* source ) {
   bool r;
 
   {
-    static const std::size_t kTimes = 1;
+    static const std::size_t kTimes = 100;
     std::uint64_t start = ::lavascript::OS::NowInMicroSeconds();
     for ( std::size_t i = 0 ; i < kTimes ; ++i ) {
       r = ins.Run(&ctx,scp,obj,&error,&ret);
@@ -170,6 +170,8 @@ bool PrimitiveComp( const char* source , const Value& primitive , int op ) {
 namespace lavascript {
 namespace interpreter {
 
+
+#if 0
 
 TEST(Interpreter,Load) {
   PRIMITIVE_EQ(0,return 0;);
@@ -382,20 +384,6 @@ TEST(Interpreter,SimpleLoop) {
   PRIMITIVE_EQ(10,var a = 0; for( var i = 0 ; 10.0 ; 1 ) { a = a + 1; } return a;);
 }
 
-#if 0
-TEST(Interpreter,SimpleLoopBench) {
-  BENCHMARK(var a = 0.0;for( var i = 0 ; 1000000; 1 ) {
-      a = a + 1;
-      a = a * 2;
-      a = a * 2;
-      a = a * 2;
-      a = a * 2;
-      a = a - 16;
-  } return 1;);
-}
-#endif
-
-
 TEST(Interpreter,SimpleBranch) {
   PRIMITIVE_EQ(10,
       var a = true;
@@ -500,37 +488,105 @@ TEST(Interpreter,Branch) {
   );
 }
 
-#if 0
+TEST(Interpreter,FuncCall) {
+  PRIMITIVE_EQ(true,
+      var foo = function() { return true; };
+      var c = foo();
+      return c;
+      );
+  PRIMITIVE_EQ(true,
+      var foo = function() { return true; };
+      return foo();
+      ); // tail call optimization
+  PRIMITIVE_EQ(0,
+      var foo = function(a,b) {
+        if(a <1) return a;
+        return b(a-1,b);
+      };
+      return foo(100,foo);
+      ); // tail call optimization
+  PRIMITIVE_EQ(5702887,
+      var fib = function(a,fib) {
+        if(a < 2) return a;
+        return fib(a-1,fib) + fib(a-2,fib);
+      };
+      return fib(34,fib);
+     );
+}
 
+TEST(Interpreter,ArrayIndexI) {
+  PRIMITIVE_EQ(4,
+      var bar = [1,2,3,4,5];
+      return bar[3];
+      );
 
-TEST(Interpreter,Func) {
-  BENCHMARK(
-      var xx = function() { return true; };
-      for( var i = 0; 1000000 ; 1 ) {
-        xx();
-      }
-      return true;
+  PRIMITIVE_EQ(3,
+      var bar = [1,2,3,4,5];
+      return bar[2];
+      );
+
+  PRIMITIVE_EQ(5,
+      var bar = [1,2,3,4,5];
+      return bar[4];
+      );
+
+}
+
+TEST(Interpreter,ArrayIndexVarI) {
+  PRIMITIVE_EQ(4,
+      var bar = [1,2,3,4,5];
+      var idx = 3;
+      return bar[idx];
   );
+}
+
+TEST(Intepreter,ArrayIndexSetI) {
+  PRIMITIVE_EQ(4,
+      var bar = [0,0,0,0,0];
+      bar[1] = 4;
+      return bar[1];
+      );
+  PRIMITIVE_EQ(4,
+      var bar = [0,0,0,0,0];
+      var idx = 1;
+      bar[idx] = 4;
+      return bar[idx];
+      );
 }
 
 #endif
 
-TEST(Interpreter,C) {
-  BENCHMARK(
-      var fib = function(a,b) {
-        if(a < 2)
-          return a;
-        return b(a-1,b) + b(a-2,b);
-      };
-      var global;
+TEST(Interpreter,ObjectSSOGet) {
+  PRIMITIVE_EQ(true,
+      var b = { "a" : true , "b" : false , "uuvvhhgg" : 3 , "xxvvhhgg" : 4 };
+      return b.a;
+      );
 
-      for ( var i = 1 ; 10 ; 1 )
-        global = fib(34,fib);
-      return global;
-  );
+  PRIMITIVE_EQ(4,
+      var b = { "a" : true , "b" : false , "uuvvhhgg" : 3 , "xxvvhhgg" : 4 };
+      return b.xxvvhhgg;
+      );
+
+  PRIMITIVE_EQ(,
+      var b = { "a" : true , "b" : false , "uuvvhhgg" : 3 , "xxvvhhgg" : null };
+      return b.xxvvhhgg;
+      );
 }
 
-
+TEST(Interpreter,Object) {
+  PRIMITIVE_EQ(true,
+      var b = { "a" : true , "b" : false , "uuvvhhgg" : 3 , "xxvvhhgg" : 4 };
+      return b.a;
+      );
+  BENCHMARK(
+      var b = { "a" : 1 , "b" : 2 };
+      var c = 0;
+      for( var i = 1 ; 1000000 ; 1 ) {
+        c = b.b;
+      }
+      return c;
+  );
+}
 
 } // namespace lavascript
 } // namespace interpreter

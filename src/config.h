@@ -12,7 +12,7 @@ namespace lavascript {
  *  designed
  *
  * ---------------------------------------------------------------*/
-static const std::size_t kSSOMaxSize               = 32;
+static const std::size_t kSSOMaxSize               = 32; // inclusive
 static const std::size_t kDefaultListSize          = 4;
 static const std::size_t kDefaultObjectSize        = 8;
 static const std::size_t kMaxListEntryCount        = 256;

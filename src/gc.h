@@ -5,6 +5,7 @@
 #include <string>
 #include <cstring>
 
+#include "config.h"
 #include "common.h"
 #include "heap-object-header.h"
 #include "heap-allocator.h"
@@ -631,6 +632,16 @@ class GC : AllStatic {
   String** NewString( const void* str , size_t len );
 
   /**
+   * Create SSO from the internal SSO pool. This function must hold the assumption
+   * that length <= kSSOMaxSize . Since SSO is persistent , it is safe to hold the
+   * reference of SSO
+   */
+  SSO* NewSSO( const char* str , std::size_t length ) {
+    lava_debug(NORMAL,lava_verify(length <= kSSOMaxSize););
+    return sso_pool_.Get(str,length);
+  }
+
+  /**
    * Create an empty string , though the above API can take care of this case
    * as well.
    */
@@ -646,10 +657,11 @@ class GC : AllStatic {
    * Specialized New for Map creation . It will properly construct all the
    * entry
    */
-  Map** NewMap( std::size_t capacity = 0 );
+  Map** NewMap( std::size_t capacity = 2 );
 
   // specialized new for Prototype object creation
   Prototype** NewPrototype( String** ,
+                            std::uint8_t ,
                             std::uint8_t ,
                             std::uint8_t ,
                             std::uint8_t ,
@@ -667,7 +679,6 @@ class GC : AllStatic {
 
   // create a closure object
   Closure** NewClosure( Prototype** );
-
 
  public:
   // Force a GC cycle to happen

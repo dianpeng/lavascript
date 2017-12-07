@@ -224,7 +224,7 @@ INTERPRETER_REGISTER_EXTERN_SYMBOL(InterpreterLoadList0)
 
 bool InterpreterLoadList1  ( Runtime* sandbox , Value* output ,
                                                 const Value& e1 ) {
-  Handle<List> list(List::New(sandbox->context->gc(),1));
+  Handle<List> list(List::New(sandbox->context->gc(),2));
   list->Push(sandbox->context->gc(),e1);
   output->SetList(list);
   return true;
@@ -266,43 +266,46 @@ bool InterpreterAddList   ( Runtime* sandbox , Value* output ,
 }
 INTERPRETER_REGISTER_EXTERN_SYMBOL(InterpreterAddList)
 
-bool InterpreterDoLoadObj0   ( Runtime* sandbox , Value* output ) {
-  (void)sandbox;
-  (void)output;
-  return false;
+void InterpreterLoadObj0( Runtime* sandbox , Value* output ) {
+  output->SetObject( Object::New(sandbox->context->gc()) );
 }
-INTERPRETER_REGISTER_EXTERN_SYMBOL(InterpreterDoLoadObj0)
+INTERPRETER_REGISTER_EXTERN_SYMBOL(InterpreterLoadObj0)
 
-bool InterpreterDoLoadObj1   ( Runtime* sandbox , Value* output ,
-                                                  Value  key,
-                                                  Value  val ) {
-  (void)sandbox;
-  (void)output;
-  (void)key;
-  (void)val;
-  return false;
+bool InterpreterLoadObj1( Runtime* sandbox , Value* output ,
+                                             const Value& key,
+                                             const Value& val ) {
+  Handle<Object> obj(Object::New(sandbox->context->gc(),2));
+  if(key.IsString()) {
+    obj->Put(sandbox->context->gc(),key.GetString(),val);
+    output->SetObject(obj);
+    return true;
+  } else {
+    // TODO:: Add error line
+    return false;
+  }
 }
-INTERPRETER_REGISTER_EXTERN_SYMBOL(InterpreterDoLoadObj1)
+INTERPRETER_REGISTER_EXTERN_SYMBOL(InterpreterLoadObj1)
 
-bool InterpreterDoNewObj    ( Runtime* sandbox , Value* output ,
-                                                 std::uint32_t narg ) {
-  (void)sandbox;
-  (void)output;
-  (void)narg;
-  return false;
+void InterpreterNewObj    ( Runtime* sandbox , Value* output ,
+                                               std::uint32_t narg ) {
+  Handle<Object> obj(Object::New(sandbox->context->gc(),narg));
+  output->SetObject(obj);
 }
-INTERPRETER_REGISTER_EXTERN_SYMBOL(InterpreterDoNewObj)
+INTERPRETER_REGISTER_EXTERN_SYMBOL(InterpreterNewObj)
 
-bool InterpreterDoAddObj    ( Runtime* sandbox , Value* output ,
-                                                 Value  key,
-                                                 Value  val ) {
-  (void)sandbox;
-  (void)output;
-  (void)key;
-  (void)val;
-  return false;
+bool InterpreterAddObj    ( Runtime* sandbox , Value* output ,
+                                               const Value& key,
+                                               const Value& val ) {
+  lava_debug(NORMAL,lava_verify(output->IsObject()););
+  if(key.IsString()) {
+    output->GetObject()->Put(sandbox->context->gc(),key.GetString(),val);
+    return true;
+  } else {
+    // TODO:: Add error line
+    return false;
+  }
 }
-INTERPRETER_REGISTER_EXTERN_SYMBOL(InterpreterDoAddObj)
+INTERPRETER_REGISTER_EXTERN_SYMBOL(InterpreterAddObj)
 
 Handle<Closure> NewClosure( Runtime* sandbox , std::uint32_t ref ,
                                                Handle<String>* name ) {
@@ -376,6 +379,13 @@ void InterpreterPropGetNotFound( Runtime* sandbox , Value obj , String** key ) {
   (void)key;
 }
 INTERPRETER_REGISTER_EXTERN_SYMBOL(InterpreterPropGetNotFound)
+
+void InterpreterPropGetSSONotFound( Runtime* sandbox , Value obj , SSO* key ) {
+  (void)sandbox;
+  (void)obj;
+  (void)key;
+}
+INTERPRETER_REGISTER_EXTERN_SYMBOL(InterpreterPropGetSSONotFound)
 
 void InterpreterPropNeedObject ( Runtime* sandbox, Value obj ) {
   (void)sandbox;
@@ -947,6 +957,13 @@ INTERPRETER_REGISTER_EXTERN_SYMBOL(PrintV)
 |  mov val, qword [T2+index*8]
 |.endmacro
 
+// Load SSO value from sso table
+|.macro LdSSO,val,index,temp
+|  mov temp, qword [PROTO]
+|  mov temp, qword [temp+PrototypeLayout::kSSOTableOffset]
+|  mov val , qword [temp+index*8]
+|.endmacro
+
 // Check whether a Value is a HeapObject
 |.macro CheckHeap,val,fail_label
 |  mov T1,val
@@ -1349,15 +1366,6 @@ void GenerateHelper( BuildContext* bctx ) {
   |  fcall InterpreterPropGet
   |  retbool
 
-  |=> INTERP_PROPGET_NOTFOUND:
-  |->InterpPropGetNotFound:
-  |  savepc
-  |  mov CARG1, RUNTIME
-  |  mov CARG2, qword [STK+ARG2F*8]
-  |  LdStr CARG3,ARG3F
-  |  fcall InterpreterPropGetNotFound
-  |  jmp ->InterpFail
-
   |=> INTERP_PROP_NEEDOBJECT:
   |->InterpPropNeedObject:
   |  savepc
@@ -1598,8 +1606,8 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
       |  savepc
       |  mov CARG1, RUNTIME
       |  lea CARG2, [STK+ARG1F*8]
-      |  fcall InterpreterDoLoadObj0
-      |  retbool
+      |  fcall InterpreterLoadObj0
+      |  Dispatch
       break;
     case BC_LOADOBJ1:
       |=>bc:
@@ -1607,9 +1615,9 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
       |  savepc
       |  mov CARG1, RUNTIME
       |  lea CARG2, [STK+ARG1F*8]
-      |  mov CARG3, qword [STK+ARG2F*8]
-      |  mov CARG4, qword [STK+ARG3F*8]
-      |  fcall InterpreterDoLoadObj1
+      |  lea CARG3, [STK+ARG2F*8]
+      |  lea CARG4, [STK+ARG3F*8]
+      |  fcall InterpreterLoadObj1
       |  retbool
       break;
     case BC_NEWOBJ:
@@ -1619,8 +1627,8 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
       |  mov CARG1, RUNTIME
       |  lea CARG2, [STK+ARG1F*8]
       |  mov CARG3L, ARG2
-      |  fcall InterpreterDoNewObj
-      |  retbool
+      |  fcall InterpreterNewObj
+      |  Dispatch
       break;
     case BC_ADDOBJ:
       |=>bc:
@@ -1628,9 +1636,9 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
       |  savepc
       |  mov CARG1, RUNTIME
       |  lea CARG2, [STK+ARG1F*8]
-      |  mov CARG3, qword [STK+ARG2F*8]
-      |  mov CARG4, qword [STK+ARG3F*8]
-      |  fcall InterpreterDoAddObj
+      |  lea CARG3, [STK+ARG2F*8]
+      |  lea CARG4, [STK+ARG3F*8]
+      |  fcall InterpreterAddObj
       |  retbool
       break;
     case BC_LOADCLS:
@@ -2325,118 +2333,84 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
     // Property/Upvalue/Global
     // ---------------------------------------------------------*/
 
-    // A better way to implement property get/set is via IC (inline cache)
-    // but currently we don't have IC states at bytecode level and we will
-    // add it guide the JIT compilation phase. For interpreter, we will use
-    // something simpler but good to capture most of the cases. Since we force
-    // our internal hash use SSO's default hash value to serve as hash value
-    // of the key, so we will use a trick that is used in LuaJIT here. For
-    // key that is SSO, we will retrieve its hash value out and directly
-    // generate index to anchor its main position inside of the *chain* and
-    // if we miss we will fallback to the slow path
+    // This small assembly routine is used to do a key/value lookup inside
+    // of a Object/Map. This function is roughly the same as doing an normal
+    // open addressing chain resolution when key is SSO inside of Map object.
 
-    // LREG --> Object*
-    // RREG --> SSO*
-    |.macro find_sso_pos,output
-    |  mov T2,LREG
+    // assume objreg is type Map* , pointer to a *Map*
+    // assume ssoref is type SSO* , pointer to a *SSO*
+    |.macro objfind_sso,objreg,ssoreg,not_found,found
+    |  mov RREGL, dword [ssoreg+SSOLayout::kHashOffset]     // get the sso hash value
+    |  and RREGL, dword [objreg+MapLayout::kMaskOffset]     // do the masking
 
-    |  mov T2L, dword [T2+MapLayout::kCapacityOffset]
+    // Assuming Entry inside of Map is 24 bytes , 3 machine word
+    |  lea LREG , [objreg+MapLayout::kArrayOffset]          // Store the Entry's start address
+    |  lea RREG , [RREG+RREG*2]                             // RREG * 3
+    |  lea RREG , [LREG+RREG*8]                             // RREG = [start_of_address+LREG*24]
 
-    |  mov T1L, dword [RREG+SSOLayout::kHashOffset]
+    // check if entry is *deleted* or *used*
+    |2:
+    |  mov  T1L, dword [RREG+MapEntryLayout::kFlagOffset]
+    | // start the chain resolution loop
+    |  test T1L, (Map::Entry::kUseButNotDelBit)
+    |  jz not_found  // not found
 
-    // T2L capacity , T1L size
-    |  sub T2L,1
+    |  mov T0, qword [RREG+MapEntryLayout::kKeyOffset]     // Get the key
+    |  CheckSSO T0, >3
 
-    // T1L -> index
-    |  and T1L,T2L
-
-    // index into the array
-    |  lea T2L, [LREG+(MapLayout::kArrayOffset)]
-    |  lea T1L, [T1L+T1L*2]
-    |  lea T2L, [T2L+T1L*8]
-
-    // save map's starting address
-    |  lea T1 , [LREG+MapLayout::kArrayOffset]
-
-    // 1. check if this entry is *deleted* or *used*
-    |  mov LREGL, dword [T2L+MapEntryLayout::kFlagOffset]
-    |  test LREGL,((1<<30))
-    |  je >7  // not found main position is empty
-
-    |1:
-    // 2. check if it is deleted
-    |  test LREGL,((1<<31))
-    |  jne >6 // deleted slots
-
-    // 3. check if the key is a SSO
-    |  mov LREG, qword [T2L]
-    |  CheckSSO LREG,>6
-    |  mov LREG, qword [LREG]
-    |  cmp LREG, RREG
-    |  jne >6 // string not identical
-
-    // now we find the entry
-    |  mov T2,qword [T2L+MapEntryLayout::kValueOffset]
-    |  mov qword [STK+output*8], T2
-    |  Dispatch
-
-    // move to next iteration
-    |6:
-    |  mov LREGL, dword [T2L+MapEntryLayout::kFlagOffset]
-    |  test LREGL,((1<<29))
-    |  je >7
-    |  and LREGL, ((bits::BitOn<std::uint32_t,0,29>::value))
-    |  lea T2L  , [LREGL+LREGL*2]
-    |  lea T2L  , [T1+T2L*8]
-    |  mov LREGL, dword [T2L*8+MapEntryLayout::kFlagOffset]
-    |  jmp <1
-
-    |7:
-    |  jmp ->InterpPropGetNotFound
-
+    |  cmp ssoreg, T0
+    |  jne >3
+    // we find our key here , RREG points to the entry
+    |  found
+    |3: // next iteration
+    |  test T1L, (Map::Entry::kMoreBit)
+    |  jz not_found // not found
+    |  and T1L , (bits::BitOn<std::uint32_t,0,29>::value)
+    |  lea T0  , [T1+T1*2]
+    |  lea RREG, [LREG+T0*8]
+    |  jmp <2
     |.endmacro
 
-    case BC_PROPGET:
+    case BC_PROPGETSSO:
+      |.macro getsso_found
+      |  mov T0, qword [RREG+MapEntryLayout::kValueOffset]
+      |  mov qword [STK+ARG1F*8], T0
+      |  Dispatch
+      |.endmacro
+
       |=>bc:
-      |  instr_B
+      |  instr_D
+      // Check ARG2F points to a *Object*
+      |  cmp word [STK+ARG2F*8+6], Value::FLAG_HEAP
+      |  jne ->InterpPropNeedObject
 
-      |.if 1
-      |  cmp word [STK+ARG1F*8+6],Value::FLAG_HEAP
-      |  jne >8
-      |  mov LREG, qword [STK+ARG1F*8]
-      |  CheckObj LREG,>9
-      |.else
-      |  mov LREG, qword [STK+ARG1F*8]
-      |  CheckObjV LREG,>9
-      |.endif
+      |  mov T0, qword [STK+ARG2F*8]
+      |  mov ARG2F, T0
+      |  CheckObj ARG2F, >9
 
-      |  LdStr RREG,ARG2F
-      // assume RREG is an heap object since this should be guaranteed
-      // by front-end
-      |  DerefPtrFromV RREG
-      |  CheckSSO RREG,>8
+      // Load *Map* object into ARG2F
+      |  mov ARG2F, qword [ARG2F+ObjectLayout::kMapOffset]
+      |  mov ARG2F, qword [ARG2F]
 
-      // find sso's position
-      |  find_sso_pos ACCIDX
+      // Load SSO/key into ARG3F
+      |  LdSSO ARG3F,ARG3F,T0
 
-      |8: // should be done by slow path of InterpPorpGet
-      |  jmp ->InterpPropGet
+      // Do the search
+      |  objfind_sso ARG2F,ARG3F,>8,getsso_found
+
+      |8: // not fonud label
+      |  mov CARG1, RUNTIME
+      |  mov CARG2, ARG2F
+      |  mov CARG3, ARG3F
+      |  fcall InterpreterPropGetSSONotFound
+      |  jmp ->InterpFail
 
       |9: // failed at *object*
-      |  jmp ->InterpPropNeedObject
-      break;
-
-    case BC_PROPSET:
-      // propset is directly yielded back to C++ functions
-      |=>bc:
-      |  instr_B
-      |  savepc
       |  mov CARG1, RUNTIME
-      |  mov CARG2, qword [ACC]
-      |  mov CARG3, qword [STK+ARG1F*8]
-      |  LdStr CARG4,ARG2F
-      |  fcall InterpreterPropSet
-      |  retbool
+      |  mov CARG2, T0
+      |  mov CARG3, qword [STK+ARG3F*8+6]
+      |  lea CARG3, [STK+ARG1F*8]
+      |  fcall InterpreterPropGet
       break;
 
     // Assume the ARG3F *already* contains index value ,4 bytes
@@ -2462,7 +2436,7 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
     case BC_IDXGET:
       |=>bc:
       |  instr_D
-      |  cmp word [STK+ARG3F*8+4], Value::FLAG_REAL
+      |  cmp dword [STK+ARG3F*8+4], Value::FLAG_REAL
       |  jnb >1
       |  cvtsd2si ARG3, qword [STK+ARG3F*8]
       |  test ARG3,ARG3
@@ -2502,7 +2476,7 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
     |  mov ARG1F,qword [RREG]  // ARG1F --> Slice*
 
     |  mov LREG, qword [STK+ARG3F*8]
-    |  mov qword [ARG1F+ARG2F*8+ListLayout::kSliceOffset], LREG
+    |  mov qword [ARG1F+ARG2F*8+SliceLayout::kArrayOffset], LREG
     |  Dispatch
     |.endmacro
 
@@ -2512,12 +2486,10 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
       |  instr_D
 
       // check the idx is a number
-      |  cmp word [STK+ARG2F*8+4], Value::FLAG_REAL
+      |  cmp dword [STK+ARG2F*8+4], Value::FLAG_REAL
       |  jnb >1
-
       // conversion
       |  cvtsd2si ARG2, qword [STK+ARG2F*8]
-
       |  test ARG2, ARG2
       |  jz ->InterpIdxOutOfBoundSet
 
@@ -2536,7 +2508,7 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
 
     case BC_IDXSETI:
       |=>bc:
-      |  instr_D
+      |  instr_D // ARG1 == object; ARG2 == imm; ARG3 == value
       |  set_list,InterpIdxOutOfBoundSet,->InterpIdxSetI
       break;
 
@@ -2795,7 +2767,7 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
       |  mov qword [T0-16], ARG2F  // This will reset the whole quad to be 0 ended
                                    // Because we use *or* to set the PC to the place
 
-      |  mov qword [T0-8] , RREG  // Set the *closure* pointer into the *new* frame
+      |  mov qword [T0-8] , RREG   // Set the *closure* pointer into the *new* frame
 
       // set the needed flag
       |  set_flag
@@ -2823,7 +2795,6 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
       |  mov qword [SAVED_SLOT1] , ARG2F
       |  mov qword [SAVED_SLOT2] , ARG2F
       |  mov CARG1, RUNTIME
-      |  mov CARG2, ARG2F
       |  fcall ResizeStack
       |  test eax,eax
       |  je ->InterpFail

@@ -20,7 +20,8 @@ class String : public ZoneObject {
    * point to this instance. The reason to make it private is that people
    * should not rely on the truth that a null string always points to this
    * instance since if user instantiate a value *string* with default constructor
-   * then this null string will not be a instance of kNullString */
+   * then this null string will not be a instance of kNullString
+   */
   static String kNullString;
  public:
   String() : ptr_("") , size_(0) {}
@@ -99,6 +100,9 @@ class String : public ZoneObject {
     lava_assert(index < static_cast<int>(size_),"Index out of bound!");
     return ptr_[index];
   }
+
+ public:
+  bool IsSSO() const { return size_ <= kSSOMaxSize; }
 
  private:
   const char* ptr_;

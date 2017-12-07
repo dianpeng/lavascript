@@ -371,7 +371,9 @@ class SSO final {
   std::uint32_t hash() const { return hash_; }
   std::size_t size() const { return size_; }
   inline const void* data() const;
-
+  std::string ToStdString() const {
+    return std::string(static_cast<const char*>(data()),size());
+  }
  public:
   inline bool operator == ( const char* ) const;
   inline bool operator == ( const std::string& ) const;
@@ -736,9 +738,15 @@ class Map final : public HeapObject {
     Value value;
     std::uint32_t hash;
     std::uint32_t next : 29;
-    std::uint32_t more :  1;
-    std::uint32_t del  :  1;
-    std::uint32_t use  :  1;
+    std::uint32_t more :  1; // 1<<29
+    std::uint32_t del  :  1; // 1<<30
+    std::uint32_t use  :  1; // 1<<31
+
+    static const std::uint32_t kMoreBit = ((1<<29));
+    static const std::uint32_t kDelBit  = ((1<<30));
+    static const std::uint32_t kUseBit  = ((1<<31));
+    // Used to test whether the entry is *used* but not *del*
+    static const std::uint32_t kUseButNotDelBit = kUseBit;
 
     bool active() const { return use && !del; }
   };
@@ -793,7 +801,12 @@ class Map final : public HeapObject {
   static Handle<Map> Rehash( GC* , const Handle<Map>&);
   template< typename T > bool Visit( T* );
 
-  Map( std::size_t capacity ): capacity_(capacity), size_(0), slot_size_(0) {}
+  Map( std::size_t capacity ):
+    capacity_(capacity),
+    mask_(capacity-1),
+    size_(0),
+    slot_size_(0)
+  { lava_debug(NORMAL,lava_verify(capacity);); }
 
  private:
 
@@ -829,6 +842,7 @@ class Map final : public HeapObject {
 
  private:
   std::uint32_t capacity_;
+  std::uint32_t mask_;    // capacity_ - 1
   std::uint32_t size_;
   std::uint32_t slot_size_;
 
@@ -842,6 +856,7 @@ static_assert( sizeof(Map::Entry) == 24 );
 
 struct MapLayout {
   static const std::uint32_t kCapacityOffset = offsetof(Map,capacity_);
+  static const std::uint32_t kMaskOffset     = offsetof(Map,mask_);
   static const std::uint32_t kSizeOffset     = offsetof(Map,size_);
   static const std::uint32_t kSlotSize       = offsetof(Map,slot_size_);
   static const std::uint32_t kArrayOffset    = sizeof(Map);
@@ -917,8 +932,10 @@ class Prototype final : public HeapObject {
   void set_proto_string( const Handle<String>& str ) { proto_string_ = str; }
   void set_argument_size( std::size_t arg) { argument_size_ = arg; }
 
+ public: // Size
   std::uint8_t real_table_size() const { return real_table_size_; }
   std::uint8_t string_table_size() const { return string_table_size_; }
+  std::uint8_t sso_table_size() const { return sso_table_size_; }
   std::uint8_t upvalue_size() const { return upvalue_size_; }
   std::uint32_t code_buffer_size() const { return code_buffer_size_; }
   std::uint32_t sci_size() const { return code_buffer_size_; }
@@ -927,6 +944,7 @@ class Prototype final : public HeapObject {
  public: // Constant table
   inline double GetReal( std::size_t ) const;
   inline Handle<String> GetString( std::size_t ) const;
+  inline SSO* GetSSO( std::size_t ) const;
   std::uint8_t GetUpValue( std::size_t , interpreter::UpValueState* ) const;
   interpreter::BytecodeIterator GetBytecodeIterator() const {
     return interpreter::BytecodeIterator( code_buffer(), code_buffer_size() );
@@ -951,10 +969,12 @@ class Prototype final : public HeapObject {
                                         std::uint8_t max_local_var_size,
                                         std::uint8_t real_table_size,
                                         std::uint8_t string_table_size,
+                                        std::uint8_t sso_table_size,
                                         std::uint8_t upvalue_size,
                                         std::uint32_t code_buffer_size,
                                         double* rtable,
                                         String*** stable,
+                                        SSO**     ssotable,
                                         std::uint32_t* utable,
                                         std::uint32_t* cb,
                                         SourceCodeInfo* sci,
@@ -962,6 +982,7 @@ class Prototype final : public HeapObject {
  private:
   inline const double* real_table() const;
   String*** string_table() const { return string_table_; }
+  SSO**     sso_table()    const { return sso_table_;  }
   const std::uint32_t* upvalue_table() const { return upvalue_table_; }
   const SourceCodeInfo* sci_buffer() const { return sci_buffer_; }
   const std::uint8_t* reg_offset_table() const { return reg_offset_table_; }
@@ -974,6 +995,7 @@ class Prototype final : public HeapObject {
   // Constant table size
   std::uint8_t real_table_size_;
   std::uint8_t string_table_size_;
+  std::uint8_t sso_table_size_;
 
   // Upvalue slot size
   std::uint8_t upvalue_size_;
@@ -995,6 +1017,8 @@ class Prototype final : public HeapObject {
    */
 
   String*** string_table_;
+  SSO**     sso_table_;
+
   std::uint32_t* upvalue_table_;
   std::uint32_t* code_buffer_;
   SourceCodeInfo* sci_buffer_;
@@ -1015,9 +1039,11 @@ struct PrototypeLayout {
   static const std::uint32_t kMaxLocalVarSizeOffset = offsetof(Prototype,max_local_var_size_);
   static const std::uint32_t kRealTableSizeOffset = offsetof(Prototype,real_table_size_);
   static const std::uint32_t kStringTableSizeOffset = offsetof(Prototype,string_table_size_);
+  static const std::uint32_t kSSOTableSizeOffset = offsetof(Prototype,sso_table_size_);
   static const std::uint32_t kUpValueSizeOffset  = offsetof(Prototype,upvalue_size_);
   static const std::uint32_t kCodeBufferSizeOffset = offsetof(Prototype,code_buffer_size_);
   static const std::uint32_t kStringTableOffset = offsetof(Prototype,string_table_);
+  static const std::uint32_t kSSOTableOffset = offsetof(Prototype,sso_table_);
   static const std::uint32_t kUpValueTableOffset= offsetof(Prototype,upvalue_table_);
   static const std::uint32_t kCodeBufferOffset = offsetof (Prototype,code_buffer_);
   static const std::uint32_t kSciBufferOffset  = offsetof (Prototype,sci_buffer_);
@@ -2195,7 +2221,7 @@ Map::Entry* Map::FindEntry( const T& key , std::uint32_t fullhash ,
     );
 
   Map* self = const_cast<Map*>(this);
-  int main_position = fullhash & (capacity()-1);
+  int main_position = fullhash & mask_;
   Entry* main = self->data()+main_position;
   if(!main->use) return opt == FIND ? NULL : main;
 
@@ -2505,6 +2531,11 @@ inline Handle<String> Prototype::GetString( std::size_t index ) const {
   String*** arr = string_table();
   lava_debug(NORMAL,lava_verify(arr && index < string_table_size_ ););
   return Handle<String>(arr[index]);
+}
+
+inline SSO* Prototype::GetSSO( std::size_t index ) const {
+  lava_debug(NORMAL,lava_verify(sso_table_ && index < sso_table_size_););
+  return sso_table_[index];
 }
 
 inline const SourceCodeInfo& Prototype::GetSci( std::size_t index ) const {

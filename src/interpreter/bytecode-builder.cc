@@ -28,6 +28,25 @@ std::int32_t BytecodeBuilder::Add( const ::lavascript::zone::String& str ,
       std::distance(string_table_.begin(),ret)));
 }
 
+std::int32_t BytecodeBuilder::AddSSO( const ::lavascript::zone::String& sso ,
+                                      GC* gc ) {
+  lava_debug(NORMAL,lava_verify(sso.IsSSO()););
+
+  auto ret = std::find_if(sso_table_.begin(),sso_table_.end(),
+      [=](SSO* lhs) { return *lhs == sso.data(); });
+
+  if(ret == sso_table_.end()) {
+    if(sso_table_.size() == kMaxLiteralSize) {
+      return -1;
+    }
+    SSO* new_sso = gc->NewSSO(sso.data(),sso.size());
+    sso_table_.push_back(new_sso);
+    return static_cast<std::int32_t>(sso_table_.size()-1);
+  }
+  return (static_cast<std::int32_t>(
+        std::distance(sso_table_.begin(),ret)));
+}
+
 String** BytecodeBuilder::BuildFunctionPrototypeString( GC* gc ,
     const ::lavascript::parser::ast::Function& node ) {
   if(!node.proto->empty()) {
@@ -55,6 +74,7 @@ Handle<Prototype> BytecodeBuilder::New( GC* gc , const BytecodeBuilder& bb ,
                                     static_cast<std::uint8_t>(max_local_var_size),
                                     static_cast<std::uint8_t>(bb.real_table_.size()),
                                     static_cast<std::uint8_t>(bb.string_table_.size()),
+                                    static_cast<std::uint8_t>(bb.sso_table_.size()),
                                     static_cast<std::uint8_t>(bb.upvalue_slot_.size()),
                                     static_cast<std::uint32_t>(bb.code_buffer_.size()));
   Prototype* ret = *pp;
@@ -70,6 +90,11 @@ Handle<Prototype> BytecodeBuilder::New( GC* gc , const BytecodeBuilder& bb ,
     for( std::size_t i = 0 ; i < bb.string_table_.size(); ++i ) {
       arr[i] = bb.string_table_[i].ref();
     }
+  }
+
+  {
+    SSO** arr = ret->sso_table();
+    if(arr) MemCopy(arr,bb.sso_table_);
   }
 
   {

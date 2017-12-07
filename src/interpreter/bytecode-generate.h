@@ -88,6 +88,12 @@ class ScopedRegister {
   void Reset( const Register& reg );
   void Reset();
   bool Reset( const Optional<Register>& reg );
+  void Swap ( ScopedRegister* that ) {
+    lava_debug(NORMAL,lava_verify(generator_ == that->generator_););
+    std::swap(reg_,that->reg_);
+    std::swap(empty_,that->empty_);
+  }
+
  private:
   Generator* generator_;
   Register reg_;
@@ -617,8 +623,7 @@ class Generator {
 
   // Visit prefix like ast until end is met
   template< bool TCALL >
-  bool VisitPrefix( const ast::Prefix& pref , std::size_t end ,
-                                              const Register& output );
+  bool VisitPrefix( const ast::Prefix& pref , const Register& output );
 
   /* -------------------------------------------
    * Statement Code Generation                 |

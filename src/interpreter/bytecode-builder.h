@@ -40,6 +40,11 @@ class BytecodeBuilder {
   inline std::int32_t Add( double );
   std::int32_t Add( const ::lavascript::zone::String& , GC* );
 
+  // Add a string into BytecodeBuilder as *SSO* table, this *doesn't* add
+  // the string into normal string table. Assume user have already test
+  // this string can be categorized as SSO
+  std::int32_t AddSSO( const ::lavascript::zone::String& , GC* );
+
   std::size_t real_table_size() const { return real_table_.size(); }
   std::size_t string_table_size() const { return string_table_.size(); }
   std::size_t upvalue_size() const { return upvalue_slot_.size(); }
@@ -77,7 +82,8 @@ class BytecodeBuilder {
 
   inline bool EmitB( std::uint8_t , const SourceCodeInfo& , Bytecode , std::uint8_t , std::uint16_t );
   inline bool EmitC( std::uint8_t , const SourceCodeInfo& , Bytecode , std::uint16_t, std::uint8_t  );
-  inline bool EmitD( std::uint8_t , const SourceCodeInfo& , Bytecode , std::uint8_t , std::uint8_t , std::uint8_t );
+  inline bool EmitD( std::uint8_t , const SourceCodeInfo& , Bytecode , std::uint8_t , std::uint8_t ,
+                                                                                      std::uint8_t );
   inline bool EmitE( std::uint8_t , const SourceCodeInfo& , Bytecode , std::uint8_t , std::uint8_t );
   inline bool EmitF( std::uint8_t , const SourceCodeInfo& , Bytecode , std::uint8_t );
   inline bool EmitG( std::uint8_t , const SourceCodeInfo& , Bytecode , std::uint16_t );
@@ -204,6 +210,7 @@ class BytecodeBuilder {
   std::vector<SourceCodeInfo> debug_info_;           // Debug info
   std::vector<double> real_table_;                   // Real table
   std::vector<Handle<String>> string_table_;         // String table
+  std::vector<SSO*> sso_table_;                      // SSO table
 
   struct UpValueSlot {
     std::uint16_t index;      // Can represent the register index or the slot
@@ -527,6 +534,7 @@ inline BytecodeBuilder::BytecodeBuilder():
   debug_info_ (),
   real_table_ (),
   string_table_(),
+  sso_table_  (),
   upvalue_slot_(),
   reg_offset_table_()
 { code_buffer_.reserve(kInitialCodeBufferSize); }

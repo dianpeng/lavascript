@@ -115,10 +115,12 @@ Prototype::Prototype( const Handle<String>& pp , std::uint8_t argument_size ,
                                                  std::uint8_t max_local_var_size,
                                                  std::uint8_t real_table_size,
                                                  std::uint8_t string_table_size,
+                                                 std::uint8_t sso_table_size,
                                                  std::uint8_t upvalue_size,
                                                  std::uint32_t code_buffer_size ,
                                                  double* rtable,
                                                  String*** stable,
+                                                 SSO** ssotable,
                                                  std::uint32_t* utable,
                                                  std::uint32_t* cb,
                                                  SourceCodeInfo* sci ,
@@ -128,9 +130,11 @@ Prototype::Prototype( const Handle<String>& pp , std::uint8_t argument_size ,
   max_local_var_size_(max_local_var_size),
   real_table_size_(real_table_size),
   string_table_size_(string_table_size),
+  sso_table_size_   (sso_table_size),
   upvalue_size_(upvalue_size),
   code_buffer_size_(code_buffer_size),
   string_table_(stable),
+  sso_table_(ssotable),
   upvalue_table_(utable),
   code_buffer_(cb),
   sci_buffer_(sci),
@@ -171,6 +175,13 @@ void Prototype::Dump( DumpWriter* writer , const std::string& source ) const {
     DumpWriter::Section section(writer,"String Table");
     for( std::size_t i = 0 ; i < string_table_size(); ++i ) {
       writer->WriteL("%zu.     %s",i,GetString(i)->ToStdString().c_str());
+    }
+  }
+
+  { // sso table
+    DumpWriter::Section section(writer,"SSO Table");
+    for( std::size_t i = 0 ; i < sso_table_size(); ++i ) {
+      writer->WriteL("%zu.     %s",i,GetSSO(i)->ToStdString().c_str());
     }
   }
 

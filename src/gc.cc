@@ -376,6 +376,8 @@ Slice** GC::NewSlice( std::size_t capacity ) {
 }
 
 Map** GC::NewMap( std::size_t capacity ) {
+  if(!capacity) capacity = 2;        // We cannot allow empty map existed since our interpreter
+                                     // doesn't check the size of the map but just do a search
   Map* map = ConstructFromBuffer<Map>(
       heap_.Grab( sizeof(Map) + capacity * sizeof(Map::Entry) ,
                   TYPE_MAP,
@@ -397,6 +399,7 @@ Prototype** GC::NewPrototype( String** proto,
                               std::uint8_t max_local_var_size,
                               std::uint8_t real_table_size,
                               std::uint8_t string_table_size,
+                              std::uint8_t sso_table_size,
                               std::uint8_t upvalue_size,
                               std::uint32_t code_buffer_size ) {
 
@@ -404,6 +407,7 @@ Prototype** GC::NewPrototype( String** proto,
 
   std::size_t rtable_bytes = Align(real_table_size*sizeof(double),gc::kAlignment);
   std::size_t stable_bytes = Align(string_table_size*sizeof(String**),gc::kAlignment);
+  std::size_t ssotable_bytes = Align(sso_table_size*sizeof(SSO**),gc::kAlignment);
   std::size_t utable_bytes = Align(upvalue_size*sizeof(std::uint32_t),gc::kAlignment);
   std::size_t cb_bytes     = Align(code_buffer_size*sizeof(std::uint32_t),gc::kAlignment);
   std::size_t sci_bytes    = Align(code_buffer_size*sizeof(SourceCodeInfo),gc::kAlignment);
@@ -411,6 +415,7 @@ Prototype** GC::NewPrototype( String** proto,
 
   void* proto_buffer = heap_.Grab( sizeof(Prototype) + rtable_bytes +
                                                        stable_bytes +
+                                                       ssotable_bytes +
                                                        utable_bytes +
                                                        cb_bytes     +
                                                        sci_bytes    +
@@ -422,8 +427,8 @@ Prototype** GC::NewPrototype( String** proto,
 
   // NOTES: always put rtable at very first since it is always used at very first
   void* rtable = rtable_bytes ? base : NULL; acc += rtable_bytes;
-
   void* stable = stable_bytes ? BufferOffset<char>(base,acc) : NULL; acc += stable_bytes;
+  void* ssotable= ssotable_bytes ? BufferOffset<char>(base,acc) : NULL; acc += ssotable_bytes;
   void* utable = utable_bytes ? BufferOffset<char>(base,acc) : NULL; acc += utable_bytes;
   void* cb     = cb_bytes     ? BufferOffset<char>(base,acc) : NULL; acc += cb_bytes;
   void* sci    = sci_bytes    ? BufferOffset<char>(base,acc) : NULL; acc += sci_bytes;
@@ -435,10 +440,12 @@ Prototype** GC::NewPrototype( String** proto,
                                                               max_local_var_size,
                                                               real_table_size,
                                                               string_table_size,
+                                                              sso_table_size,
                                                               upvalue_size,
                                                               code_buffer_size,
                                                               static_cast<double*>(rtable),
                                                               static_cast<String***>(stable),
+                                                              static_cast<SSO**>(ssotable),
                                                               static_cast<std::uint32_t*>(utable),
                                                               static_cast<std::uint32_t*>(cb),
                                                               static_cast<SourceCodeInfo*>(sci),

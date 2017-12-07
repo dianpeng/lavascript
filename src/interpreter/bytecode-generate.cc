@@ -636,15 +636,26 @@ bool Generator::VisitPrefixComponent( const ast::Prefix::Component& c,
   switch(c.t) {
     case ast::Prefix::Component::DOT:
       {
-        // Get the string reference
-        std::int32_t ref = func_scope()->bb()->Add( *c.var->name , context_ ->gc() );
-        if(ref<0) {
-          Error(ERR_REGISTER_OVERFLOW,*c.var);
-          return false;
+        zone::String* name = c.var->name;
+        if(name->IsSSO()) {
+          // Speicalized SSO version of propget instruction
+          std::int32_t ref = func_scope()->bb()->AddSSO(*name,context_->gc());
+          if(ref <0) {
+            Error(ERR_TOO_MANY_LITERALS,*c.var);
+            return false;
+          }
+          // Use PROPGETSSO instruction
+          EEMIT(propgetsso,c.var->sci(),output.index(),input.index(),ref);
+        } else {
+          // Get the string reference
+          std::int32_t ref = func_scope()->bb()->Add(*name,context_->gc());
+          if(ref<0) {
+            Error(ERR_TOO_MANY_LITERALS,*c.var);
+            return false;
+          }
+          // Use PROPGET instruction
+          EEMIT(propget,c.var->sci(),output.index(),input.index(),ref);
         }
-
-        // Use PROPGET instruction
-        EEMIT(propget,c.var->sci(),output.index(),input.index(),ref);
       }
       break;
     case ast::Prefix::Component::INDEX:
@@ -770,13 +781,11 @@ bool Generator::VisitPrefixComponent( const ast::Prefix::Component& c,
 }
 
 template< bool TCALL >
-bool Generator::VisitPrefix( const ast::Prefix& node , std::size_t end ,
-                                                       const Register& hint ) {
-  lava_debug(NORMAL,lava_verify(end););
-
+bool Generator::VisitPrefix( const ast::Prefix& node , const Register& hint ) {
   ScopedRegister input  (this); // tmeporary register to be used to *hold* intermediate
   ScopedRegister temp   (this);
   Register output;
+  const std::size_t len = node.list->size();
 
   if(!VisitExpression(*node.var,&input))
     return false;
@@ -796,18 +805,15 @@ bool Generator::VisitPrefix( const ast::Prefix& node , std::size_t end ,
   // Handle first component specifically , pay attention to the input/output
   // register.
   {
-    if(end ==1) output = hint;
+    if(len ==1) output = hint;
     const ast::Prefix::Component& c = node.list->First();
-    if(!VisitPrefixComponent(c,TCALL && (node.list->size()==1),input.Get(),
-                                                               output))
+    if(!VisitPrefixComponent(c,TCALL && (len == 1),input.Get(),output))
       return false;
   }
 
   // Handle rest of the intermediate prefix expression. They all gonna use
   // output/temporary register to hold intermediate result.
-  const std::size_t len = node.list->size();
-  lava_verify(end <= len);
-  for( std::size_t i = 1 ; i < end -1 ; ++i ) {
+  for( std::size_t i = 1 ; i < len -1 ; ++i ) {
     const ast::Prefix::Component& c = node.list->Index(i);
     if(!VisitPrefixComponent(c,false,output,output))
       return false;
@@ -815,7 +821,7 @@ bool Generator::VisitPrefix( const ast::Prefix& node , std::size_t end ,
 
   // Handle *last* expression since we need to set the output to the hint register
   // for the last one
-  if(end > 1) {
+  if(len > 1) {
     const ast::Prefix::Component& c = node.list->Last();
     if(!VisitPrefixComponent(c,TCALL,output,hint))
       return false;
@@ -826,7 +832,7 @@ bool Generator::VisitPrefix( const ast::Prefix& node , std::size_t end ,
 
 bool Generator::Visit( const ast::Prefix& node , ExprResult* result ) {
   lava_debug(NORMAL,lava_verify(result->GetHint()););
-  if(!VisitPrefix<false>(node,node.list->size(),result->GetHint().Get()))
+  if(!VisitPrefix<false>(node,result->GetHint().Get()))
     return false;
   result->SetRegister(result->GetHint().Get());
   return true;
@@ -1372,68 +1378,111 @@ bool Generator::VisitPrefixAssign( const ast::Assign& node ) {
   ScopedRegister lhs(this);
   ScopedRegister rhs(this);
 
-  {
-    Optional<Register> r(func_scope()->ra()->Grab());
-    if(!r) {
-      Error(ERR_REGISTER_OVERFLOW,node.sci());
-      return false;
+  // evaluate *RHS* expression into RHS register
+  if(!VisitExpression(*node.rhs,&rhs)) return false;
+
+  // evaluate LHS prefix expression
+  const ast::Prefix& pref = *node.lhs_pref;
+
+  if(!VisitExpression(*pref.var,&lhs)) return false;
+
+  const std::size_t len = pref.list->size();
+
+  if(len >1) {
+    ScopedRegister temp(this);
+    Register imreg;
+
+    if(func_scope()->ra()->IsReserved(lhs.Get())) {
+      // If it is a reserved register, we cannot modify it, so
+      // we allocate a temporary one to hold the sub-expression
+      // intermediate evaluated result
+      if(!temp.Reset(func_scope()->ra()->Grab())) return false;
+      imreg = temp.Get();
+    } else {
+      imreg = lhs.Get();
     }
-    lhs.Reset(r.Get());
+
+    // first component
+    {
+      const ast::Prefix::Component& c = pref.list->Index(0);
+      if(!VisitPrefixComponent(c,false,lhs.Get(),imreg))
+        return false;
+    }
+
+    // reset component
+    for( std::size_t i = 1 ; i < (len-1); ++i ) {
+      const ast::Prefix::Component& c = pref.list->Index(0);
+      if(!VisitPrefixComponent(c,false,imreg,imreg))
+        return false;
+    }
+
+    // LHS always hold the intermediate result
+    if(temp) lhs.Swap(&temp);
   }
 
-  if(!VisitExpression(*node.rhs,&rhs))
-    return false;
+  // last component
+  {
+    const ast::Prefix::Component& last_comp = pref.list->Last();
 
-  if(!VisitPrefix<false>(*node.lhs_pref,node.lhs_pref->list->size()-1,lhs.Get()))
-    return false;
-
-  // Handle the last component
-  const ast::Prefix::Component& last_comp = node.lhs_pref->list->Last();
-  switch(last_comp.t) {
-    case ast::Prefix::Component::DOT:
-      {
-        std::int32_t ref = func_scope()->bb()->Add(*last_comp.var->name,context_->gc());
-        if(ref<0) {
-          Error(ERR_TOO_MANY_LITERALS,node);
-          return false;
+    switch(last_comp.t) {
+      case ast::Prefix::Component::DOT:
+        {
+          zone::String* name = last_comp.var->name;
+          if(name->IsSSO()) {
+            std::int32_t ref = func_scope()->bb()->AddSSO(*name,context_->gc());
+            if(ref <0) {
+              Error(ERR_TOO_MANY_LITERALS,node);
+              return false;
+            }
+            SEMIT(propsetsso,node.sci(),lhs.Get().index(),ref,rhs.Get().index());
+          } else {
+            std::int32_t ref = func_scope()->bb()->Add(*last_comp.var->name,context_->gc());
+            if(ref<0) {
+              Error(ERR_TOO_MANY_LITERALS,node);
+              return false;
+            }
+            SEMIT(propset,node.sci(),lhs.Get().index(),ref,rhs.Get().index());
+          }
         }
-        SEMIT(propset,node.sci(),lhs.Get().index(),rhs.Get().index(),ref);
-      }
-      break;
-    case ast::Prefix::Component::INDEX:
-      {
-        if(last_comp.expr->IsLiteral() && last_comp.expr->AsLiteral()->IsReal()) {
-          // try to narrow the real index to take advantage of idxseti instruction
-          std::int32_t iref;
-          if(NarrowReal(last_comp.expr->AsLiteral()->real_value,&iref)) {
-            if(std::numeric_limits<std::uint8_t>::max() >= iref &&
-               std::numeric_limits<std::uint8_t>::min() <= iref) {
+        break;
+      case ast::Prefix::Component::INDEX:
+        {
+          if(last_comp.expr->IsLiteral() && last_comp.expr->AsLiteral()->IsReal()) {
+            // try to narrow the real index to take advantage of idxseti instruction
+            std::int8_t iref;
+            if(NarrowReal(last_comp.expr->AsLiteral()->real_value,&iref)) {
               SEMIT(idxseti,node.sci(),lhs.Get().index(),iref,rhs.Get().index());
               break;
             }
           }
-        }
 
-        // fallthrough to handle common case
-        {
-          if(rhs.Get().IsAcc()) {
-            if(rhs.Reset(SpillFromAcc(last_comp.expr->sci()))) return false;
-          }
-
+          // fallthrough to handle common case
           {
-            ScopedRegister expr_reg(this);
-            if(!VisitExpression(*last_comp.expr,&expr_reg)) return false;
+            // Spill RHS if it is an ACC
+            if(rhs.Get().IsAcc()) {
+              if(!rhs.Reset(SpillFromAcc(last_comp.expr->sci()))) return false;
+            }
 
-            // idxset REG REG REG
-            SEMIT(idxset,node.sci(),lhs.Get().index(),expr_reg.Get().index(),
-                                                      rhs.Get().index());
+            // Spill LHS if it is an ACC
+            if(lhs.Get().IsAcc()) {
+              if(!lhs.Reset(SpillFromAcc(last_comp.expr->sci()))) return false;
+            }
+
+            {
+              ScopedRegister expr_reg(this);
+              if(!VisitExpression(*last_comp.expr,&expr_reg)) return false;
+
+              // idxset REG REG REG
+              SEMIT(idxset,node.sci(),lhs.Get().index(),expr_reg.Get().index(),
+                                                        rhs.Get().index());
+            }
           }
         }
-      }
-      break;
-    default:
-      lava_unreach("Cannot be in this case ending with a function call");
-      return false;
+        break;
+      default:
+        lava_unreach("Cannot be in this case ending with a function call");
+        return false;
+    }
   }
   return true;
 }
@@ -1448,7 +1497,7 @@ bool Generator::Visit( const ast::Assign& node ) {
 
 bool Generator::Visit( const ast::Call& node ) {
   // Discard the result of the evaluation, so we pass in a Acc as hint
-  if(!VisitPrefix<false>(*node.call,node.call->list->size(),Register::kAccReg))
+  if(!VisitPrefix<false>(*node.call,Register::kAccReg))
     return false;
   return true;
 }
@@ -1688,9 +1737,7 @@ bool Generator::Visit( const ast::Return& node ) {
     // previous call frame at all.
     if(CanBeTailCallOptimized(*node.expr)) {
       lava_debug(NORMAL, lava_verify(node.expr->IsPrefix()); );
-      if(!VisitPrefix<true>(*node.expr->AsPrefix(),
-                            node.expr->AsPrefix()->list->size(),
-                            Register::kAccReg))
+      if(!VisitPrefix<true>(*node.expr->AsPrefix(),Register::kAccReg))
         return false;
     } else {
       if(!VisitExpressionWithOutputRegister(*node.expr,Register::kAccReg))

@@ -23,15 +23,6 @@ double pow(double,double);
 
 namespace lavascript {
 namespace interpreter{
-
-inline void SetValueFlag( Value* v , std::uint32_t flag ) {
-  v->raw_ = static_cast<std::uint64_t>(flag) << 32;
-}
-
-inline std::uint32_t GetValueFlag( const Value& v ) {
-  return static_cast<std::uint32_t>(v.raw_ >>32);
-}
-
 namespace {
 
 // Used in dynasm library
@@ -72,6 +63,13 @@ int HorribleCast( T* ptr ) {
   return ret;
 }
 
+// Report error into Runtime object just a wrapper for string formatting
+inline void ReportError( Runtime* rt , const char* fmt , ... ) {
+  //TODO:: This is function needs to be modified to do a stack unwind
+  va_list arg;
+  va_start(arg,fmt);
+  FormatV(rt->error,fmt,arg);
+}
 
 // ------------------------------------------------------------------
 // Prototype for the main interpreter function
@@ -145,114 +143,180 @@ inline Bytecode CurrentOpcode( Runtime* sandbox ) {
 // --------------------------------------------------------------------------
 // Arithmetic Helper
 // --------------------------------------------------------------------------
-bool InterpreterDoArithmetic( Runtime* sandbox , Value left ,
-                                                 Value right,
-                                                 Value* output ) {
-  (void)sandbox;
-  (void)left;
-  (void)right;
-  (void)output;
-  return false;
+void InterpreterModByZero( Runtime* sandbox ) {
+  ReportError(sandbox,"\"%\"'s rhs value is 0");
 }
-INTERPRETER_REGISTER_EXTERN_SYMBOL(InterpreterDoArithmetic)
+INTERPRETER_REGISTER_EXTERN_SYMBOL(InterpreterModByZero)
 
-bool InterpreterPow         ( Runtime* sandbox , Value left,
-                                                 Value right ,
+bool InterpreterArithmetic( Runtime* sandbox , const Value& left ,
+                                                 const Value& right,
                                                  Value* output ) {
-  (void)sandbox;
-  (void)left;
-  (void)right;
-  (void)output;
-  return false;
+  if(left.IsExtension() || right.IsExtension()) {
+    Handle<Extension> ext(left.IsExtension() ? left.GetExtension() :
+        right.GetExtension());
+    switch(CurrentOpcode(sandbox)) {
+      case BC_ADDRV: case BC_ADDVR: case BC_ADDVV:
+        return ext->Add(left,right,output,sandbox->error);
+      case BC_SUBRV: case BC_SUBVR: case BC_SUBVV:
+        return ext->Sub(left,right,output,sandbox->error);
+      case BC_MULRV: case BC_MULVR: case BC_MULVV:
+        return ext->Mul(left,right,output,sandbox->error);
+      case BC_DIVRV: case BC_DIVVR: case BC_DIVVV:
+        return ext->Div(left,right,output,sandbox->error);
+      default:
+        return ext->Mod(left,right,output,sandbox->error);
+    }
+  } else if(left.IsReal() && right.IsReal()) {
+#define _DO(OP) output->SetReal(left.GetReal() OP right.GetReal()); break
+
+    switch(CurrentOpcode(sandbox)) {
+      case BC_ADDRV: case BC_ADDVR: case BC_ADDVV: _DO(+);
+      case BC_SUBRV: case BC_SUBVR: case BC_SUBVV: _DO(-);
+      case BC_MULRV: case BC_MULVR: case BC_MULVV: _DO(*);
+      case BC_DIVRV: case BC_DIVVR: case BC_DIVVV: _DO(/);
+      default:
+        {
+          std::int32_t l = static_cast<std::int32_t>(left.GetReal());
+          std::int32_t r = static_cast<std::int32_t>(right.GetReal());
+          if(r == 0) {
+            InterpreterModByZero(sandbox);
+            return false;
+          }
+          output->SetReal( static_cast<double>( l % r ) );
+        }
+        break;
+    }
+
+#undef _DO // _DO
+  } else {
+    ReportError(sandbox,"arithmetic operator cannot work between type %s and %s",
+        left.type_name(),right.type_name());
+    return false;
+  }
+  return true;
+}
+INTERPRETER_REGISTER_EXTERN_SYMBOL(InterpreterArithmetic)
+
+bool InterpreterPow( Runtime* sandbox , const Value& left,
+                                        const Value& right ,
+                                        Value* output ) {
+
+  if(left.IsExtension())
+    return left.GetExtension()->Pow(left,right,output,sandbox->error);
+  else if(right.IsExtension())
+    return right.GetExtension()->Pow(left,right,output,sandbox->error);
+  else if(left.IsReal() && right.IsReal()) {
+    output->SetReal( std::pow(left.GetReal(),right.GetReal()) );
+  } else {
+    ReportError(sandbox,"\"%\" operator cannot work between type %s and %s",
+        left.type_name(),right.type_name());
+    return false;
+  }
+  return true;
 }
 INTERPRETER_REGISTER_EXTERN_SYMBOL(InterpreterPow)
-
-void InterpreterDivByZero    ( Runtime* sandbox , std::uint32_t* pc ) {
-  (void)sandbox;
-  (void)pc;
-}
-INTERPRETER_REGISTER_EXTERN_SYMBOL(InterpreterDivByZero)
 
 
 // ---------------------------------------------------------------------------
 // Comparison Helper
+//
+// I want to force a jmp table for the following switch, but not sure how to
+// do it in portable C++
+//
 // ---------------------------------------------------------------------------
-bool  InterpreterDoCompare  ( Runtime* sandbox , Value left ,
-                                                 Value right,
-                                                 Value* output ) {
-  (void)sandbox;
-  (void)left;
-  (void)right;
-  (void)output;
-  return false;
-}
-INTERPRETER_REGISTER_EXTERN_SYMBOL(InterpreterDoCompare)
+bool InterpreterCompare( Runtime* sandbox , const Value& left ,
+                                            const Value& right,
+                                            Value* output ) {
+  if(left.IsString() && right.IsString()) {
+#define _DO(OP) output->SetBoolean(*left.GetString() OP *right.GetString()); break
 
-// This function shuold *never* trigger GC
-bool InterpreterCompareHH  ( Runtime* sandbox , HeapObject* left,
-                                                HeapObject* right,
-                                                Value* output ) {
-  (void)sandbox;
-  (void)left;
-  (void)right;
-  (void)output;
-  return false;
+    switch(CurrentBytecode(sandbox)) {
+      case BC_LTRV: case BC_LTVR: case BC_LTVV: _DO(<);
+      case BC_LERV: case BC_LEVR: case BC_LEVV: _DO(<=);
+      case BC_GTRV: case BC_GTVR: case BC_GTVV: _DO(>);
+      case BC_GERV: case BC_GEVR: case BC_GEVV: _DO(>=);
+      case BC_EQRV: case BC_EQVR: case BC_EQVV: _DO(==);
+      default: _DO(!=);
+    }
+
+#undef _DO // _DO
+  } else if(left.IsExtension() || right.IsExtension()) {
+#define _DO(OP) return left.IsExtension() ? \
+                       left.GetExtension()->OP(left,right,output,sandbox->error) : \
+                       right.GetExtension()->OP(left,right,output,sandbox->error);
+    switch(CurrentBytecode(sandbox)) {
+      case BC_LTRV: case BC_LTVR: case BC_LTVV: _DO(Lt);
+      case BC_LERV: case BC_LEVR: case BC_LEVV: _DO(Le);
+      case BC_GTRV: case BC_GTVR: case BC_GTVV: _DO(Gt);
+      case BC_GERV: case BC_GEVR: case BC_GEVV: _DO(Ge);
+      case BC_EQRV: case BC_EQVR: case BC_EQVV: _DO(Eq);
+      default: _DO(Ne);
+    }
+#undef _DO // _DO
+  } else if(left.IsReal() && right.IsReal()) {
+#define _DO(OP) output->SetBoolean(left.GetReal() OP right.GetReal()); break
+
+    switch(CurrentBytecode(sandbox)) {
+      case BC_LTRV: case BC_LTVR: case BC_LTVV: _DO(<);
+      case BC_LERV: case BC_LEVR: case BC_LEVV: _DO(<=);
+      case BC_GTRV: case BC_GTVR: case BC_GTVV: _DO(>);
+      case BC_GERV: case BC_GEVR: case BC_GEVV: _DO(>=);
+      case BC_EQRV: case BC_EQVR: case BC_EQVV: _DO(==);
+      default: _DO(!=);
+    }
+
+#undef _DO // _DO
+  } else {
+    ReportError(sandbox,"comparison operator doesn't work between type %s and %s",
+        left.type_name(),right.type_name());
+    return false;
+  }
+  return true;
 }
-INTERPRETER_REGISTER_EXTERN_SYMBOL(InterpreterCompareHH)
+INTERPRETER_REGISTER_EXTERN_SYMBOL(InterpreterCompare)
 
 // ----------------------------------------------------------------------------
 // Unary Helper
 // ----------------------------------------------------------------------------
-bool InterpreterDoNegate   ( Runtime* sandbox , Value  operand ,
-                                                Value* result ) {
-  (void)sandbox;
-  (void)operand;
-  (void)result;
-  return false;
+void InterpreterNegateFail( Runtime* sandbox , const Value& operand ) {
+  ReportError(sandbox,"unary operator \"-\" can only work with real type, not type %s",
+      operand.type_name());
 }
-INTERPRETER_REGISTER_EXTERN_SYMBOL(InterpreterDoNegate)
+INTERPRETER_REGISTER_EXTERN_SYMBOL(InterpreterNegateFail)
 
 // ----------------------------------------------------------------------------
 // Literal Loader Helper
 // ----------------------------------------------------------------------------
-bool InterpreterLoadList0  ( Runtime* sandbox , Value* output ) {
+void InterpreterLoadList0( Runtime* sandbox , Value* output ) {
   Handle<List> list(List::New(sandbox->context->gc()));
   output->SetList(list);
-  return true;
 }
 INTERPRETER_REGISTER_EXTERN_SYMBOL(InterpreterLoadList0)
 
-bool InterpreterLoadList1  ( Runtime* sandbox , Value* output ,
-                                                const Value& e1 ) {
+void InterpreterLoadList1( Runtime* sandbox , Value* output , const Value& e1 ) {
   Handle<List> list(List::New(sandbox->context->gc(),2));
   list->Push(sandbox->context->gc(),e1);
   output->SetList(list);
-  return true;
 }
 INTERPRETER_REGISTER_EXTERN_SYMBOL(InterpreterLoadList1)
 
-bool InterpreterLoadList2  ( Runtime* sandbox , Value* output ,
-                                                const Value& e1,
-                                                const Value& e2 ) {
+void InterpreterLoadList2( Runtime* sandbox , Value* output , const Value& e1,
+                                                              const Value& e2 ) {
   Handle<List> list(List::New(sandbox->context->gc(),2));
   list->Push(sandbox->context->gc(),e1);
   list->Push(sandbox->context->gc(),e2);
   output->SetList(list);
-  return true;
 }
 INTERPRETER_REGISTER_EXTERN_SYMBOL(InterpreterLoadList2)
 
-bool InterpreterNewList   ( Runtime* sandbox , Value* output ,
-                                               std::uint32_t narg ) {
+void InterpreterNewList( Runtime* sandbox , Value* output , std::uint32_t narg ) {
   Handle<List> list(List::New(sandbox->context->gc(),narg));
   output->SetList(list);
-  return true;
 }
 INTERPRETER_REGISTER_EXTERN_SYMBOL(InterpreterNewList)
 
-bool InterpreterAddList   ( Runtime* sandbox , Value* output ,
-                                               std::uint8_t base,
-                                               std::uint32_t narg ) {
+void InterpreterAddList( Runtime* sandbox , Value* output , std::uint8_t base,
+                                                            std::uint32_t narg ) {
 
   lava_debug(NORMAL,lava_verify(output->IsList()););
   Handle<List> l(output->GetList());
@@ -260,9 +324,6 @@ bool InterpreterAddList   ( Runtime* sandbox , Value* output ,
   for( std::uint32_t i = 0 ; i < narg ; ++i ) {
     l->Push(sandbox->context->gc(),sandbox->cur_stk[base+i]);
   }
-
-  lava_verify(l->size()==narg);
-  return true;
 }
 INTERPRETER_REGISTER_EXTERN_SYMBOL(InterpreterAddList)
 
@@ -280,28 +341,28 @@ bool InterpreterLoadObj1( Runtime* sandbox , Value* output ,
     output->SetObject(obj);
     return true;
   } else {
-    // TODO:: Add error line
+    ReportError(sandbox,"object's key must be string type, but get type %s",
+        key.type_name());
     return false;
   }
 }
 INTERPRETER_REGISTER_EXTERN_SYMBOL(InterpreterLoadObj1)
 
-void InterpreterNewObj    ( Runtime* sandbox , Value* output ,
-                                               std::uint32_t narg ) {
+void InterpreterNewObj( Runtime* sandbox , Value* output , std::uint32_t narg ) {
   Handle<Object> obj(Object::New(sandbox->context->gc(),narg));
   output->SetObject(obj);
 }
 INTERPRETER_REGISTER_EXTERN_SYMBOL(InterpreterNewObj)
 
-bool InterpreterAddObj    ( Runtime* sandbox , Value* output ,
-                                               const Value& key,
-                                               const Value& val ) {
+bool InterpreterAddObj( Runtime* sandbox , Value* output , const Value& key,
+                                                           const Value& val ) {
   lava_debug(NORMAL,lava_verify(output->IsObject()););
   if(key.IsString()) {
     output->GetObject()->Put(sandbox->context->gc(),key.GetString(),val);
     return true;
   } else {
-    // TODO:: Add error line
+    ReportError(sandbox,"object's key must be string type, but get type %s",
+        key.type_name());
     return false;
   }
 }
@@ -334,10 +395,8 @@ Handle<Closure> NewClosure( Runtime* sandbox , std::uint32_t ref ,
   return cls;
 }
 
-bool InterpreterLoadCls   ( Runtime* sandbox , std::uint32_t ref,
-                                               Value* dest ) {
+void InterpreterLoadCls( Runtime* sandbox , std::uint32_t ref, Value* dest ) {
   dest->SetClosure(NewClosure(sandbox,ref,NULL));
-  return true;
 }
 INTERPRETER_REGISTER_EXTERN_SYMBOL(InterpreterLoadCls)
 
@@ -353,7 +412,8 @@ bool InterpreterInitCls  ( Runtime* sandbox , std::uint32_t ref ) {
 
   // load it up into the *global table
   if(!glb->Set(sandbox->context->gc(),name,Value(cls))) {
-    // TODO:: add error handling
+    ReportError(sandbox,"global closure %s has already been defined!",
+        name->ToStdString().c_str());
     return false;
   }
   return true;
@@ -363,8 +423,14 @@ INTERPRETER_REGISTER_EXTERN_SYMBOL(InterpreterInitCls)
 // ----------------------------------------------------------------------------
 // Property Get/Set
 // ----------------------------------------------------------------------------
-bool  InterpreterPropGet   ( Runtime* sandbox , Value obj , String** key ,
-                                                            Value* output ) {
+void InterpreterPropNeedObject( Runtime* sandbox, const Value& obj ) {
+  (void)sandbox;
+  (void)obj;
+}
+INTERPRETER_REGISTER_EXTERN_SYMBOL(InterpreterPropNeedObject)
+
+bool InterpreterPropGet( Runtime* sandbox , Value obj , String** key ,
+                                                        Value* output ) {
   (void)sandbox;
   (void)obj;
   (void)key;
@@ -373,45 +439,64 @@ bool  InterpreterPropGet   ( Runtime* sandbox , Value obj , String** key ,
 }
 INTERPRETER_REGISTER_EXTERN_SYMBOL(InterpreterPropGet)
 
-void InterpreterPropGetNotFound( Runtime* sandbox , Value obj , String** key ) {
+bool InterpreterPropGetSSO( Runtime* sandbox , Value obj , SSO* key ,
+                                                           Value* output ) {
   (void)sandbox;
   (void)obj;
   (void)key;
+  (void)output;
+  return false;
 }
-INTERPRETER_REGISTER_EXTERN_SYMBOL(InterpreterPropGetNotFound)
+INTERPRETER_REGISTER_EXTERN_SYMBOL(InterpreterPropGetSSO)
 
-void InterpreterPropGetSSONotFound( Runtime* sandbox , Value obj , SSO* key ) {
+
+void InterpreterPropGetSSONotFound( Runtime* sandbox , const Value& obj , SSO* key ) {
   (void)sandbox;
   (void)obj;
   (void)key;
 }
 INTERPRETER_REGISTER_EXTERN_SYMBOL(InterpreterPropGetSSONotFound)
 
-void InterpreterPropNeedObject ( Runtime* sandbox, Value obj ) {
+bool InterpreterPropSet( Runtime* sandbox , Value obj , String** key ,
+                                                        Value* output ) {
   (void)sandbox;
   (void)obj;
+  (void)key;
+  (void)output;
+  return false;
 }
-INTERPRETER_REGISTER_EXTERN_SYMBOL(InterpreterPropNeedObject)
+INTERPRETER_REGISTER_EXTERN_SYMBOL(InterpreterPropSet)
 
-void InterpreterIdxOutOfBound  ( Runtime* sandbox , Value obj , std::uint32_t size ) {
+bool InterpreterPropSetSSO( Runtime* sandbox , Value obj , SSO* key ,
+                                                           Value* output ) {
+  (void)sandbox;
+  (void)obj;
+  (void)key;
+  (void)output;
+  return false;
+}
+INTERPRETER_REGISTER_EXTERN_SYMBOL(InterpreterPropSetSSO)
+
+
+void InterpreterPropSetSSONotFound( Runtime* sandbox , const Value& obj ,
+                                                       SSO* key ) {
+  (void)sandbox;
+  (void)obj;
+  (void)key;
+}
+INTERPRETER_REGISTER_EXTERN_SYMBOL(InterpreterPropSetSSONotFound)
+
+
+void InterpreterIdxOutOfBound( Runtime* sandbox , const Value& obj ,
+                                                  std::uint32_t size ) {
   (void)sandbox;
   (void)obj;
   (void)size;
 }
 INTERPRETER_REGISTER_EXTERN_SYMBOL(InterpreterIdxOutOfBound)
 
-bool InterpreterPropSet      ( Runtime* sandbox , Value obj , String** key ,
-                                                              Value val ) {
-  (void)sandbox;
-  (void)obj;
-  (void)key;
-  (void)val;
-  return false;
-}
-INTERPRETER_REGISTER_EXTERN_SYMBOL(InterpreterPropSet)
-
-bool InterpreterIdxGet      ( Runtime* sandbox , Value obj , Value key ,
-                                                             Value* output ) {
+bool InterpreterIdxGet( Runtime* sandbox , const Value& obj , const Value& key ,
+                                                              Value* output ) {
   (void)sandbox;
   (void)obj;
   (void)key;
@@ -420,8 +505,9 @@ bool InterpreterIdxGet      ( Runtime* sandbox , Value obj , Value key ,
 }
 INTERPRETER_REGISTER_EXTERN_SYMBOL(InterpreterIdxGet)
 
-bool  InterpreterIdxGetI     ( Runtime* sandbox , Value obj , std::uint8_t idx ,
-                                                              Value* output ) {
+bool  InterpreterIdxGetI     ( Runtime* sandbox , const Value& obj ,
+                                                  std::uint8_t idx ,
+                                                  Value* output ) {
   (void)sandbox;
   (void)obj;
   (void)idx;
@@ -430,8 +516,9 @@ bool  InterpreterIdxGetI     ( Runtime* sandbox , Value obj , std::uint8_t idx ,
 }
 INTERPRETER_REGISTER_EXTERN_SYMBOL(InterpreterIdxGetI)
 
-bool InterpreterIdxSet      ( Runtime* sandbox , Value obj , Value key ,
-                                                             Value val ) {
+bool InterpreterIdxSet      ( Runtime* sandbox , const Value& obj ,
+                                                 const Value& key ,
+                                                 const Value& val ) {
   (void)sandbox;
   (void)obj;
   (void)key;
@@ -440,8 +527,9 @@ bool InterpreterIdxSet      ( Runtime* sandbox , Value obj , Value key ,
 }
 INTERPRETER_REGISTER_EXTERN_SYMBOL(InterpreterIdxSet)
 
-bool InterpreterIdxSetI    ( Runtime* sandbox , Value obj  , std::uint8_t idx ,
-                                                             Value val ) {
+bool InterpreterIdxSetI    ( Runtime* sandbox , const Value& obj  ,
+                                                std::uint8_t idx ,
+                                                const Value& val ) {
   (void)sandbox;
   (void)obj;
   (void)idx;
@@ -552,7 +640,7 @@ INTERPRETER_REGISTER_EXTERN_SYMBOL(InterpreterCallNeedObject)
 
 /* ---------------------------------------------------------------------
  *
- * Implementation of AssemblyIntepreter
+ * Implementation of AssemblyInterpreter
  *
  * --------------------------------------------------------------------*/
 |.arch x64
@@ -565,7 +653,7 @@ INTERPRETER_REGISTER_EXTERN_SYMBOL(InterpreterCallNeedObject)
 /* -------------------------------------------------------------------
  * Preprocessor option for dynasm
  * ------------------------------------------------------------------*/
-|.define CHECK_DIV_BY_ZERO
+|.define CHECK_MOD_BY_ZERO
 |.define CHECK_NUMBER_MEMORY,0
 |.define TRACE_OP,0
 |.define USE_CMOV_COMP,0
@@ -896,14 +984,14 @@ INTERPRETER_REGISTER_EXTERN_SYMBOL(PrintV)
 // load upvalue value into register
 |.macro LdUV,reg,index
 |  mov T1,qword [RUNTIME+RuntimeLayout::kCurClsOffset]
-|  mov T2,qword [T1+ClosureLayout::kUpValueOffset]
-|  mov reg, qword [T2+index*8]
+|  mov T1,qword [T1+ClosureLayout::kUpValueOffset]
+|  mov reg, qword [T1+index*8]
 |.endmacro
 
 |.macro StUV,index,reg
 |  mov T1,qword [RUNTIME+RuntimeLayout::kCurClsOffset]
-|  mov T2,qword [T1+ClosureLayout::kUpValueOffset]
-|  mov qword [T2+index*8], reg
+|  mov T1,qword [T1+ClosureLayout::kUpValueOffset]
+|  mov qword [T1+index*8], reg
 |.endmacro
 
 // ----------------------------------------------
@@ -1058,7 +1146,7 @@ INTERPRETER_REGISTER_EXTERN_SYMBOL(PrintV)
   __(INTERP_POW_SLOWVR,InterpPowSlowVR)      \
   __(INTERP_POW_SLOWRV,InterpPowSlowRV)      \
   __(INTERP_POW_SLOWVV,InterpPowSlowVV)      \
-  __(DIV_BY_ZERO,DivByZero)                  \
+  __(MOD_BY_ZERO,ModByZero)                  \
   /* comparison */                           \
   __(INTERP_COMPARERV,InterpCompareRV)       \
   __(INTERP_COMPAREVR,InterpCompareVR)       \
@@ -1246,17 +1334,31 @@ void GenerateInterpMisc( BuildContext* bctx ) {
 
 void GenerateHelper( BuildContext* bctx ) {
 
-  /* ----------------------------------------
-   * InterpArithXXX                         |
-   * ---------------------------------------*/
+  /* -------------------------------------------------------------------------
+   * InterpArithXXX
+   *
+   * C++'s ABI is kind of hard to maintain correctly between Assembly
+   * code and normal function in C++. The object passing mechanism is
+   * not easy if you try to use pass by *value*. So to make things
+   * easir, our internal C++ function *all* use reference/pointer, which
+   * avoid the passing by value's ABI problem. However, sometimes our
+   * value are in register, so we need to spill it into stack to make
+   * ABI works.
+   *
+   * We have SAVED_SLOT1/SAVED_SLOT2 for this cases
+   * -----------------------------------------------------------------------*/
   |=> INTERP_ARITH_REALL:
   |->InterpArithRealL:
   |  savepc
   |  mov CARG1,RUNTIME
-  |  LdRealV CARG2,ARG2F
-  |  mov CARG3, qword [STK+ARG3F*8]
+
+  |  LdRealV T2,ARG2F
+  |  lea CARG2,[SAVED_SLOT1]
+  |  mov qword [SAVED_SLOT1], T2
+
+  |  lea CARG3, [STK+ARG3F*8]
   |  lea CARG4, [STK+ARG1F*8]
-  |  fcall InterpreterDoArithmetic
+  |  fcall InterpreterArithmetic
   |  retbool
 
   |=> INTERP_ARITH_REALR:
@@ -1264,27 +1366,35 @@ void GenerateHelper( BuildContext* bctx ) {
   |  savepc
   |  mov CARG1,RUNTIME
   |  mov CARG2,qword [STK+ARG2F*8]
-  |  LdRealV CARG3,ARG3F
+
+  |  LdRealV T2,ARG3F
+  |  lea CARG3,[SAVED_SLOT1]
+  |  mov qword [SAVED_SLOT1], T2
+
   |  lea CARG4, [STK+ARG1F*8]
-  |  fcall InterpreterDoArithmetic
+  |  fcall InterpreterArithmetic
   |  retbool
 
   |=> INTERP_ARITH_VV:
   |->InterpArithVV:
   |  savepc
   |  mov CARG1, RUNTIME
-  |  mov CARG2, qword [STK+ARG1F*8]
-  |  mov CARG3, qword [STK+ARG2F*8]
+  |  lea CARG2, [STK+ARG1F*8]
+  |  lea CARG3, [STK+ARG2F*8]
   |  lea CARG4, [STK+ARG3F*8] // ARG3F == CARG4
-  |  fcall InterpreterDoArithmetic
+  |  fcall InterpreterArithmetic
   |  retbool
 
   |=> INTERP_POW_SLOWRV:
   |->InterpPowSlowRV:
   |  savepc
   |  mov CARG1, RUNTIME
-  |  LdRealV CARG2,ARG2F
-  |  mov CARG3,qword [STK+ARG3F*8]
+
+  |  LdRealV T2,ARG2F
+  |  lea CARG2, [SAVED_SLOT1]
+  |  mov qword  [SAVED_SLOT1], T2
+
+  |  lea CARG3, [STK+ARG3F*8]
   |  lea CARG4, [STK+ARG1F*8]
   |  fcall InterpreterPow
   |  retbool
@@ -1293,8 +1403,12 @@ void GenerateHelper( BuildContext* bctx ) {
   |->InterpPowSlowVR:
   |  savepc
   |  mov CARG1, RUNTIME
-  |  mov CARG2, qword [STK+ARG2F*8]
-  |  LdRealV CARG3,ARG3F
+  |  lea CARG2, [STK+ARG2F*8]
+
+  |  LdRealV T2,ARG3F
+  |  mov qword [SAVED_SLOT1], T2
+  |  lea CARG3,[SAVED_SLOT1]
+
   |  lea CARG4, [STK+ARG1F*8]
   |  fcall InterpreterPow
   |  retbool
@@ -1304,8 +1418,8 @@ void GenerateHelper( BuildContext* bctx ) {
   |  savepc
   |  instr_D
   |  mov CARG1, RUNTIME
-  |  mov CARG2, qword [STK+ARG2F*8]
-  |  mov CARG3, qword [STK+ARG3F*8]
+  |  lea CARG2, [STK+ARG2F*8]
+  |  lea CARG3, [STK+ARG3F*8]
   |  lea CARG4, [STK+ARG1F*8]
   |  fcall InterpreterPow
   |  retbool
@@ -1313,11 +1427,11 @@ void GenerateHelper( BuildContext* bctx ) {
   /* -------------------------------------------
    * Interp Arithmetic Exception               |
    * ------------------------------------------*/
-  |=> DIV_BY_ZERO:
-  |->DivByZero:
+  |=> MOD_BY_ZERO:
+  |->ModByZero:
+  |  savepc
   |  mov CARG1,RUNTIME
-  |  lea CARG2,[PC-4]
-  |  fcall InterpreterDivByZero
+  |  fcall InterpreterModByZero
   |  jmp ->InterpFail
 
   /* -------------------------------------------
@@ -1327,30 +1441,38 @@ void GenerateHelper( BuildContext* bctx ) {
   |->InterpCompareRV:
   |  savepc
   |  mov CARG1,RUNTIME
-  |  LdRealV CARG2,ARG2F
-  |  mov CARG3, qword [STK+ARG2F*8]
+
+  |  LdRealV T2,ARG2F
+  |  lea CARG2, [SAVED_SLOT1]
+  |  mov qword  [SAVED_SLOT1], T2
+
+  |  lea CARG3, [STK+ARG2F*8]
   |  lea CARG4, [STK+ARG1F*8]
-  |  fcall InterpreterDoCompare
+  |  fcall InterpreterCompare
   |  retbool
 
   |=> INTERP_COMPAREVR:
   |->InterpCompareVR:
   |  savepc
   |  mov CARG1,RUNTIME
-  |  mov CARG2,qword [STK+ARG2F*8]
-  |  LdRealV CARG3,ARG3F
+  |  lea CARG2, [STK+ARG2F*8]
+
+  |  LdRealV T2,ARG3F
+  |  lea CARG3, [SAVED_SLOT1]
+  |  mov qword  [SAVED_SLOT1], T2
+
   |  lea CARG4, [STK+ARG1F*8]
-  |  fcall InterpreterDoCompare
+  |  fcall InterpreterCompare
   |  retbool
 
   |=> INTERP_COMPAREVV:
   |->InterpCompareVV:
   |  savepc
   |  mov CARG1, RUNTIME
-  |  mov CARG2, qword [STK+ARG2F*8]
-  |  mov CARG3, qword [STK+ARG3F*8]
+  |  lea CARG2, [STK+ARG2F*8]
+  |  lea CARG3, [STK+ARG3F*8]
   |  lea CARG4, [STK+ARG1F*8]
-  |  fcall InterpreterDoCompare
+  |  fcall InterpreterCompare
   |  retbool
 
   /* -------------------------------------------------
@@ -1556,7 +1678,7 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
       |  mov CARG1,RUNTIME
       |  lea CARG2,[STK+ARG1F*8]
       |  fcall InterpreterLoadList0
-      |  retbool
+      |  Dispatch
       break;
     case BC_LOADLIST1:
       |=>bc:
@@ -1566,7 +1688,7 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
       |  lea CARG2, [STK+ARG1F*8]
       |  lea CARG3, [STK+ARG2F*8]
       |  fcall InterpreterLoadList1
-      |  retbool
+      |  Dispatch
       break;
     case BC_LOADLIST2:
       |=>bc:
@@ -1577,7 +1699,7 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
       |  lea CARG3, [STK+ARG2F*8]
       |  lea CARG4, [STK+ARG3F*8]
       |  fcall InterpreterLoadList2
-      |  retbool
+      |  Dispatch
       break;
     case BC_NEWLIST:
       |=>bc:
@@ -1587,7 +1709,7 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
       |  lea CARG2, [STK+ARG1F*8]
       |  mov CARG3L, ARG2
       |  fcall InterpreterNewList
-      |  retbool
+      |  Dispatch
       break;
     case BC_ADDLIST:
       |=>bc:
@@ -1598,7 +1720,7 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
       |  mov CARG3L, ARG2
       |  mov CARG4L, ARG3
       |  fcall InterpreterAddList
-      |  retbool
+      |  Dispatch
       break;
     case BC_LOADOBJ0:
       |=>bc:
@@ -1649,7 +1771,7 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
       |  mov CARG2L, ARG2
       |  lea CARG3 , [STK+ARG1F*8]
       |  fcall InterpreterLoadCls
-      |  retbool
+      |  Dispatch
       break;
     case BC_INITCLS:
       |=>bc:
@@ -1798,8 +1920,7 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
      * MODXX
      *
      *   Similar implementation like Lua not Luajit. Return casted
-     *   integer's mod value instead of fmod style value. BTW, fmod
-     *   is really slow
+     *   integer's mod value instead of fmod style value
      *
      * ============================================================*/
 
@@ -1814,9 +1935,9 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
       |  LdReal2Int ARG3,ARG3F,T0
       |  cvtsd2si eax ,qword [STK+ARG2F*8]  // ARG2F == rax
 
-      |.if CHECK_DIV_BY_ZERO
+      |.if CHECK_MOD_BY_ZERO
       |  test ARG3,ARG3
-      |  je ->DivByZero
+      |  je ->ModByZero
       |.endif
 
       |  cdq
@@ -1835,9 +1956,9 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
       |  LdReal2Int eax,ARG2F,T0  // ARG2F == rax
       |  cvtsd2si ARG3 ,qword [STK+ARG3F*8]
 
-      |.if CHECK_DIV_BY_ZERO
+      |.if CHECK_MOD_BY_ZERO
       |  test ARG3,ARG3
-      |  je ->DivByZero
+      |  je ->ModByZero
       |.endif
 
       |  cdq
@@ -1859,9 +1980,9 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
       |  cvtsd2si eax, qword [STK+ARG2F*8]  // ARG2F == rax
       |  cvtsd2si ARG3,qword [STK+ARG3F*8]
 
-      |.if CHECK_DIV_BY_ZERO
+      |.if CHECK_MOD_BY_ZERO
       |  test ARG3,ARG3
-      |  je ->DivByZero
+      |  je ->ModByZero
       |.endif
 
       |  cdq
@@ -2118,14 +2239,14 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
     |  mov dword [STK+ARG1F*8+4], F
     |  jmp <2
 
-    // Calls into InterpreterCompareHH
+    // Calls into InterpreterCompare
     |7:
     |  // T0/T1 stores HeapObject*
     |  mov CARG1, RUNTIME
-    |  mov CARG2, T0
-    |  mov CARG3, T1
-    |  lea CARG4, [STK+ARG1F*8+4] // where to set the true/false
-    |  fcall InterpreterCompareHH
+    |  lea CARG2, [STK+ARG2F*8]
+    |  lea CARG3, [STK+ARG3F*8]
+    |  lea CARG4, [STK+ARG1F*8] // where to set the true/false
+    |  fcall InterpreterCompare
     |  test eax,eax
     |  je ->InterpFail
     |  Dispatch
@@ -2239,9 +2360,8 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
       |8:
       |  mov CARG1, RUNTIME
       |  mov CARG2, qword [STK+ARG2F*8]
-      |  lea CARG3, [STK+ARG1F*8]
-      |  fcall InterpreterDoNegate
-      |  retbool
+      |  fcall InterpreterNegateFail
+      |  jmp ->InterpFail
       break;
 
     case BC_NOT:
@@ -2339,6 +2459,7 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
 
     // assume objreg is type Map* , pointer to a *Map*
     // assume ssoref is type SSO* , pointer to a *SSO*
+    // returned slot/entry is in RREG
     |.macro objfind_sso,objreg,ssoreg,not_found,found
     |  mov RREGL, dword [ssoreg+SSOLayout::kHashOffset]     // get the sso hash value
     |  and RREGL, dword [objreg+MapLayout::kMaskOffset]     // do the masking
@@ -2384,8 +2505,8 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
       |  cmp word [STK+ARG2F*8+6], Value::FLAG_HEAP
       |  jne ->InterpPropNeedObject
 
-      |  mov T0, qword [STK+ARG2F*8]
-      |  mov ARG2F, T0
+      |  mov CARG2, qword [STK+ARG2F*8]
+      |  mov ARG2F, CARG2
       |  CheckObj ARG2F, >9
 
       // Load *Map* object into ARG2F
@@ -2407,10 +2528,71 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
 
       |9: // failed at *object*
       |  mov CARG1, RUNTIME
-      |  mov CARG2, T0
-      |  mov CARG3, qword [STK+ARG3F*8+6]
-      |  lea CARG3, [STK+ARG1F*8]
+      |  LdSSO CARG3,ARG3F,T1  // T0 == CARG1
+      |  lea CARG4, [STK+ARG1F*8]
+      |  fcall InterpreterPropGetSSO
+      |  retbool
+      break;
+
+    case BC_PROPGET:
+      // This version of bytecode indicates that the string *MUST NOT* be a SSO
+      // just directly fallback to the slow version written in C++
+      |=>bc:
+      |  instr_D
+      |  mov   CARG1, RUNTIME
+      |  lea   CARG2, [STK+ARG2F*8]
+      |  LdStr CARG3, ARG3F
+      |  lea   CARG4, [STK+ARG3F*8]
       |  fcall InterpreterPropGet
+      |  retbool
+      break;
+
+    case BC_PROPSETSSO:
+      |=>bc:
+      |.macro setsso_found
+      |  mov T0, qword [STK+ARG3F*8]
+      |  mov qword [RREG+MapEntryLayout::kValueOffset], T0
+      |  Dispatch
+      |.endmacro
+
+      |  instr_D
+      |  cmp word [STK+ARG1F*8+6], Value::FLAG_HEAP
+      |  jne ->InterpPropNeedObject
+      |  mov CARG2, qword [STK+ARG1F*8]
+      |  mov ARG1F, CARG2
+      |  CheckObj ARG1F, >9
+
+      // Load the *Map* object into ARG1F
+      |  mov ARG1F, qword [ARG1F+ObjectLayout::kMapOffset]
+      |  mov ARG1F, qword [ARG1F]
+      |  LdSSO ARG2F,ARG2F,T0
+
+      |  objfind_sso ARG1F,ARG2F,>8,setsso_found
+
+      |8:
+      |  mov CARG1, RUNTIME
+      |  mov CARG2, ARG1F
+      |  mov CARG3, ARG2F
+      |  fcall InterpreterPropSetSSONotFound
+      |  jmp ->InterpFail
+
+      |9:
+      |  mov CARG1, RUNTIME
+      |  LdSSO CARG3,ARG3F,T1
+      |  lea CARG4, [STK+ARG1F*8]
+      |  fcall InterpreterPropSetSSO
+      |  retbool
+      break;
+
+    case BC_PROPSET:
+      |=>bc:
+      |  instr_D
+      |  mov CARG1, RUNTIME
+      |  lea CARG2, [STK+ARG1F*8]
+      |  LdStr CARG3, ARG2F
+      |  lea CARG4, [STK+ARG3F*8]
+      |  fcall InterpreterPropSet
+      |  retbool
       break;
 
     // Assume the ARG3F *already* contains index value ,4 bytes
@@ -2438,7 +2620,7 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
       |  instr_D
       |  cmp dword [STK+ARG3F*8+4], Value::FLAG_REAL
       |  jnb >1
-      |  cvtsd2si ARG3, qword [STK+ARG3F*8]
+      |  cvtsd2si ARG3F, qword [STK+ARG3F*8]
       |  test ARG3,ARG3
       |  js ->InterpIdxOutOfBoundGet // out of bound
 
@@ -2489,7 +2671,7 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
       |  cmp dword [STK+ARG2F*8+4], Value::FLAG_REAL
       |  jnb >1
       // conversion
-      |  cvtsd2si ARG2, qword [STK+ARG2F*8]
+      |  cvtsd2si ARG2F, qword [STK+ARG2F*8]
       |  test ARG2, ARG2
       |  jz ->InterpIdxOutOfBoundSet
 
@@ -2855,7 +3037,7 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
     case BC_RETNULL:
     |=>bc:
     |  instr_X
-    |  mov LREG, qword [->ValueNullConst]
+    |  mov RREG, qword [->ValueNullConst]
     |  do_ret
     |  mov dword [STK+ACCFIDX], Value::FLAG_NULL
     |  Dispatch

@@ -40,7 +40,7 @@ bool Compile( Context* context ,const char* source ,
   return true;
 }
 
-static const bool kShowBytecode = false;
+static const bool kShowBytecode = true;
 
 enum { COMP_LE , COMP_LT , COMP_GT , COMP_GE , COMP_EQ , COMP_NE };
 
@@ -169,9 +169,6 @@ bool PrimitiveComp( const char* source , const Value& primitive , int op ) {
 
 namespace lavascript {
 namespace interpreter {
-
-
-#if 0
 
 TEST(Interpreter,Load) {
   PRIMITIVE_EQ(0,return 0;);
@@ -554,7 +551,6 @@ TEST(Intepreter,ArrayIndexSetI) {
       );
 }
 
-#endif
 
 TEST(Interpreter,ObjectSSOGet) {
   PRIMITIVE_EQ(true,
@@ -571,22 +567,20 @@ TEST(Interpreter,ObjectSSOGet) {
       var b = { "a" : true , "b" : false , "uuvvhhgg" : 3 , "xxvvhhgg" : null };
       return b.xxvvhhgg;
       );
-}
-
-TEST(Interpreter,Object) {
   PRIMITIVE_EQ(true,
       var b = { "a" : true , "b" : false , "uuvvhhgg" : 3 , "xxvvhhgg" : 4 };
       return b.a;
       );
-  BENCHMARK(
-      var b = { "a" : 1 , "b" : 2 };
-      var c = 0;
-      for( var i = 1 ; 1000000 ; 1 ) {
-        c = b.b;
-      }
-      return c;
-  );
 }
+
+TEST(Interpreter,ObjectSSOSet) {
+  PRIMITIVE_EQ(200,
+      var b = { "a" : 1 };
+      b.a = 200;
+      return b.a;
+      );
+}
+
 
 } // namespace lavascript
 } // namespace interpreter

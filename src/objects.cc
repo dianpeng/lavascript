@@ -120,7 +120,7 @@ Prototype::Prototype( const Handle<String>& pp , std::uint8_t argument_size ,
                                                  std::uint32_t code_buffer_size ,
                                                  double* rtable,
                                                  String*** stable,
-                                                 SSO** ssotable,
+                                                 SSOTableEntry* ssotable,
                                                  std::uint32_t* utable,
                                                  std::uint32_t* cb,
                                                  SourceCodeInfo* sci ,
@@ -181,7 +181,7 @@ void Prototype::Dump( DumpWriter* writer , const std::string& source ) const {
   { // sso table
     DumpWriter::Section section(writer,"SSO Table");
     for( std::size_t i = 0 ; i < sso_table_size(); ++i ) {
-      writer->WriteL("%zu.     %s",i,GetSSO(i)->ToStdString().c_str());
+      writer->WriteL("%zu.     %s",i,GetSSO(i)->sso->ToStdString().c_str());
     }
   }
 

@@ -94,6 +94,17 @@ bool NarrowReal     ( double real , T* output ) {
   return false;
 }
 
+template< typename T >
+bool TryCastReal( double real , T* output ) {
+  double dmax = static_cast<double>(std::numeric_limits<T>::max());
+  double dmin = static_cast<double>(std::numeric_limits<T>::min());
+  if( real >= dmin && real <= dmax ) {
+    *output = static_cast<T>(real);
+    return true;
+  }
+  return false;
+}
+
 /**
  * pretty print the real number. The issue with std::to_string is that
  * the tailing zeros are gonna show up. Example: 1.234 --> "1.234000".

@@ -147,10 +147,11 @@ bool PrimitiveComp( const char* source , const Value& primitive , int op ) {
     } else if(ret.IsString()) {
       return primitive.IsString() ? (*ret.GetString() == *primitive.GetString()) : false;
     } else {
-      lava_unreachF("not primitive type at all %s|%s",ret.type_name(),primitive.type_name());
+      std::cerr<<"NONE primitive type :"<<ret.type_name()<<std::endl;
       return false;
     }
   } else {
+    std::cerr<<"Interpreter failed:"<<error<<std::endl;
     return false;
   }
 }
@@ -161,6 +162,10 @@ bool PrimitiveComp( const char* source , const Value& primitive , int op ) {
 #define PRIMITIVE_NE(VALUE,...) \
   ASSERT_TRUE(PrimitiveComp(#__VA_ARGS__,::lavascript::Value(VALUE),COMP_NE))
 
+#define NEGATIVE(...) \
+  ASSERT_FALSE(PrimitiveComp(#__VA_ARGS__,::lavascript::Value(),COMP_EQ))
+
+
 #define BENCHMARK(...) \
   ASSERT_TRUE(Bench(#__VA_ARGS__))
 
@@ -170,12 +175,13 @@ bool PrimitiveComp( const char* source , const Value& primitive , int op ) {
 namespace lavascript {
 namespace interpreter {
 
+#if 0
+
 TEST(Interpreter,Load) {
   PRIMITIVE_EQ(0,return 0;);
   PRIMITIVE_EQ(-1,return -1;);
   PRIMITIVE_EQ(1,return 1;);
 }
-
 
 TEST(Interpreter,ArithXV) {
   PRIMITIVE_EQ(10,var a = 50; return 60-a;);
@@ -579,6 +585,97 @@ TEST(Interpreter,ObjectSSOSet) {
       b.a = 200;
       return b.a;
       );
+}
+
+TEST(Interpreter,ArithmeticFail) {
+  NEGATIVE(var a = []; return a + 10;);
+  NEGATIVE(var a = []; return 10+ a ;);
+  NEGATIVE(var a = []; var b = {}; return a + b; );
+  NEGATIVE(var a = []; return a ^ 10;);
+  NEGATIVE(var b = []; return 10^ b ;);
+  NEGATIVE(var a = []; var b = {}; return a ^ b; );
+  NEGATIVE(var a = 0; return 10 % a;);
+  NEGATIVE(var b = 10;return b  % 0;);
+}
+
+TEST(Interpreter,CompareFail) {
+  NEGATIVE(var a = []; return a < 10;);
+  NEGATIVE(var a = {}; return 10> a ;);
+  NEGATIVE(var a = {}; var b = []; return a == b;);
+}
+
+TEST(Interpreter,CompareStr) {
+  // NORMAL STRING COMPARISON ---------------------------------------------------------
+  PRIMITIVE_EQ(true,var a = "abbccd"; return a < "zzxxeef";);
+  PRIMITIVE_EQ(true,var a = "abbccd"; return a<= "zzxxeef";);
+  PRIMITIVE_EQ(true,var a = "zzxxeef";return a > "abbccd"; );
+  PRIMITIVE_EQ(true,var a = "zzxxeef";return a >="abbccd"; );
+
+  PRIMITIVE_EQ(true,var a = "abbccd"; return "zzxxeef" > a;);
+  PRIMITIVE_EQ(true,var a = "abbccd"; return "zzxxeef">= a;);
+  PRIMITIVE_EQ(true,var a = "zzxxeef";return "abbccd" < a; );
+  PRIMITIVE_EQ(true,var a = "zzxxeef";return "abbccd" <=a; );
+
+  PRIMITIVE_EQ(true,var a = "abbccd"; var b = "zzxxeef"; return a < b; );
+  PRIMITIVE_EQ(true,var a = "abbccd"; var b = "zzxxeef"; return a <=b; );
+  PRIMITIVE_EQ(true,var a = "zzxxeef";var b = "abbccd" ; return a > b; );
+  PRIMITIVE_EQ(true,var a = "zzxxeef";var b = "abbccd" ; return a >=b; );
+
+  // Assumption kSSOMaxSize == 32
+  // LONG STRING ----------------------------------------------------------------------
+  PRIMITIVE_EQ(true,var a = "abcdefghijklmnopqrstuvwxyz,abcdefghijklmnopqrstuvwxyz";
+                    return a == "abcdefghijklmnopqrstuvwxyz,abcdefghijklmnopqrstuvwxyz";
+      );
+
+  PRIMITIVE_EQ(true,var a = "abcdefghijklmnopqrstuvwxyz,abcdefghijklmnopqrstuvwxyz";
+                    return "abcdefghijklmnopqrstuvwxyz,abcdefghijklmnopqrstuvwxyz" == a;
+      );
+
+  PRIMITIVE_EQ(true,var a = "abcdefghijklmnopqrstuvwxyz,abcdefghijklmnopqrstuvwxyz";
+                    var b = "abcdefghijklmnopqrstuvwxyz,abcdefghijklmnopqrstuvwxyz";
+                    return a == b;
+      );
+
+  PRIMITIVE_EQ(false,var a = "abcdefghijklmnopqrstuvwxyz,abcdefghijklmnopqrstuvwxyz";
+                    return a != "abcdefghijklmnopqrstuvwxyz,abcdefghijklmnopqrstuvwxyz";
+      );
+
+  PRIMITIVE_EQ(false,var a = "abcdefghijklmnopqrstuvwxyz,abcdefghijklmnopqrstuvwxyz";
+                    return "abcdefghijklmnopqrstuvwxyz,abcdefghijklmnopqrstuvwxyz" != a;
+      );
+
+  PRIMITIVE_EQ(false,var a = "abcdefghijklmnopqrstuvwxyz,abcdefghijklmnopqrstuvwxyz";
+                    var b = "abcdefghijklmnopqrstuvwxyz,abcdefghijklmnopqrstuvwxyz";
+                    return a != b;
+      );
+}
+
+#endif
+
+TEST(Interpreter,IdxPropNeedObject) {
+  NEGATIVE(var a = 10; return a.a;);
+  NEGATIVE(var b = 10; return b["a"];);
+}
+
+TEST(Interpreter,IdxPropGetFallback) {
+  // Long string to trigger PROPGET instruction instead of PROPGETSSO
+  PRIMITIVE_EQ( 1,
+      var a = { "_123456789012345678901234567890123456" : 1 };
+      return a._123456789012345678901234567890123456;
+  );
+}
+
+TEST(Interpreter,IdxPropGetSSO) {
+  NEGATIVE(var a = []; return a.b;);
+}
+
+TEST(Interpreter,IdxPropSetFallback) {
+  // Long string to trigger PROPGET instruction instead of PROPGETSSO
+  PRIMITIVE_EQ( 100,
+      var a = { "_123456789012345678901234567890123456" : 1 };
+      a._123456789012345678901234567890123456 = 100;
+      return a._123456789012345678901234567890123456;
+  );
 }
 
 

@@ -407,7 +407,7 @@ Prototype** GC::NewPrototype( String** proto,
 
   std::size_t rtable_bytes = Align(real_table_size*sizeof(double),gc::kAlignment);
   std::size_t stable_bytes = Align(string_table_size*sizeof(String**),gc::kAlignment);
-  std::size_t ssotable_bytes = Align(sso_table_size*sizeof(SSO**),gc::kAlignment);
+  std::size_t ssotable_bytes = Align(sso_table_size*sizeof(Prototype::SSOTableEntry),gc::kAlignment);
   std::size_t utable_bytes = Align(upvalue_size*sizeof(std::uint32_t),gc::kAlignment);
   std::size_t cb_bytes     = Align(code_buffer_size*sizeof(std::uint32_t),gc::kAlignment);
   std::size_t sci_bytes    = Align(code_buffer_size*sizeof(SourceCodeInfo),gc::kAlignment);
@@ -445,7 +445,7 @@ Prototype** GC::NewPrototype( String** proto,
                                                               code_buffer_size,
                                                               static_cast<double*>(rtable),
                                                               static_cast<String***>(stable),
-                                                              static_cast<SSO**>(ssotable),
+                                                              static_cast<Prototype::SSOTableEntry*>(ssotable),
                                                               static_cast<std::uint32_t*>(utable),
                                                               static_cast<std::uint32_t*>(cb),
                                                               static_cast<SourceCodeInfo*>(sci),

@@ -63,12 +63,11 @@ int HorribleCast( T* ptr ) {
   return ret;
 }
 
-// Report error into Runtime object just a wrapper for string formatting
-inline void ReportError( Runtime* rt , const char* fmt , ... ) {
-  //TODO:: This is function needs to be modified to do a stack unwind
-  va_list arg;
-  va_start(arg,fmt);
-  FormatV(rt->error,fmt,arg);
+void ReportError( Runtime* sandbox , const char* fmt , ... ) {
+  // TODO:: Add stack unwind and other stuff for report error
+  va_list vl;
+  va_start(vl,fmt);
+  FormatV(sandbox->error,fmt,vl);
 }
 
 // ------------------------------------------------------------------
@@ -137,7 +136,9 @@ inline std::uint32_t CurrentBytecode( Runtime* sandbox ) {
 
 inline Bytecode CurrentOpcode( Runtime* sandbox ) {
   std::uint32_t pbc = CurrentBytecode(sandbox);
-  return static_cast<Bytecode>( pbc & 0xff );
+  Bytecode bc = static_cast<Bytecode>(pbc&0xff);
+  lava_error("BC:%s",GetBytecodeName(bc));
+  return bc;
 }
 
 // --------------------------------------------------------------------------
@@ -149,8 +150,9 @@ void InterpreterModByZero( Runtime* sandbox ) {
 INTERPRETER_REGISTER_EXTERN_SYMBOL(InterpreterModByZero)
 
 bool InterpreterArithmetic( Runtime* sandbox , const Value& left ,
-                                                 const Value& right,
-                                                 Value* output ) {
+                                               const Value& right,
+                                               Value* output ) {
+  lava_error("Into arithmetic %s,%s",left.type_name(),right.type_name());
   if(left.IsExtension() || right.IsExtension()) {
     Handle<Extension> ext(left.IsExtension() ? left.GetExtension() :
         right.GetExtension());
@@ -230,12 +232,12 @@ bool InterpreterCompare( Runtime* sandbox , const Value& left ,
   if(left.IsString() && right.IsString()) {
 #define _DO(OP) output->SetBoolean(*left.GetString() OP *right.GetString()); break
 
-    switch(CurrentBytecode(sandbox)) {
+    switch(CurrentOpcode(sandbox)) {
       case BC_LTRV: case BC_LTVR: case BC_LTVV: _DO(<);
       case BC_LERV: case BC_LEVR: case BC_LEVV: _DO(<=);
       case BC_GTRV: case BC_GTVR: case BC_GTVV: _DO(>);
       case BC_GERV: case BC_GEVR: case BC_GEVV: _DO(>=);
-      case BC_EQRV: case BC_EQVR: case BC_EQVV: _DO(==);
+      case BC_EQSV: case BC_EQVS: case BC_EQVV: _DO(==);
       default: _DO(!=);
     }
 
@@ -244,19 +246,19 @@ bool InterpreterCompare( Runtime* sandbox , const Value& left ,
 #define _DO(OP) return left.IsExtension() ? \
                        left.GetExtension()->OP(left,right,output,sandbox->error) : \
                        right.GetExtension()->OP(left,right,output,sandbox->error);
-    switch(CurrentBytecode(sandbox)) {
+    switch(CurrentOpcode(sandbox)) {
       case BC_LTRV: case BC_LTVR: case BC_LTVV: _DO(Lt);
       case BC_LERV: case BC_LEVR: case BC_LEVV: _DO(Le);
       case BC_GTRV: case BC_GTVR: case BC_GTVV: _DO(Gt);
       case BC_GERV: case BC_GEVR: case BC_GEVV: _DO(Ge);
-      case BC_EQRV: case BC_EQVR: case BC_EQVV: _DO(Eq);
+      case BC_EQRV: case BC_EQVR: case BC_EQSV: case BC_EQVS: case BC_EQVV: _DO(Eq);
       default: _DO(Ne);
     }
 #undef _DO // _DO
   } else if(left.IsReal() && right.IsReal()) {
 #define _DO(OP) output->SetBoolean(left.GetReal() OP right.GetReal()); break
 
-    switch(CurrentBytecode(sandbox)) {
+    switch(CurrentOpcode(sandbox)) {
       case BC_LTRV: case BC_LTVR: case BC_LTVV: _DO(<);
       case BC_LERV: case BC_LEVR: case BC_LEVV: _DO(<=);
       case BC_GTRV: case BC_GTVR: case BC_GTVV: _DO(>);
@@ -368,6 +370,7 @@ bool InterpreterAddObj( Runtime* sandbox , Value* output , const Value& key,
 }
 INTERPRETER_REGISTER_EXTERN_SYMBOL(InterpreterAddObj)
 
+LAVA_ALWAYS_INLINE
 Handle<Closure> NewClosure( Runtime* sandbox , std::uint32_t ref ,
                                                Handle<String>* name ) {
   Script* scp = *(sandbox->script);
@@ -400,7 +403,7 @@ void InterpreterLoadCls( Runtime* sandbox , std::uint32_t ref, Value* dest ) {
 }
 INTERPRETER_REGISTER_EXTERN_SYMBOL(InterpreterLoadCls)
 
-bool InterpreterInitCls  ( Runtime* sandbox , std::uint32_t ref ) {
+bool InterpreterInitCls( Runtime* sandbox , std::uint32_t ref ) {
   Handle<String> name;
   // get the function's closure and its name
   Handle<Closure> cls(NewClosure(sandbox,ref,&name));
@@ -424,121 +427,172 @@ INTERPRETER_REGISTER_EXTERN_SYMBOL(InterpreterInitCls)
 // Property Get/Set
 // ----------------------------------------------------------------------------
 void InterpreterPropNeedObject( Runtime* sandbox, const Value& obj ) {
-  (void)sandbox;
-  (void)obj;
+  ReportError(sandbox,"type %s cannot work with operator \".\" or \"[]\"",obj.type_name());
 }
 INTERPRETER_REGISTER_EXTERN_SYMBOL(InterpreterPropNeedObject)
 
-bool InterpreterPropGet( Runtime* sandbox , Value obj , String** key ,
-                                                        Value* output ) {
-  (void)sandbox;
-  (void)obj;
-  (void)key;
-  (void)output;
-  return false;
+bool InterpreterPropGet( Runtime* sandbox , const Value& obj , String** key ,
+                                                               Value* output ) {
+  Handle<String> k(key);
+  if(obj.IsObject()) {
+    if(!obj.GetObject()->Get(k,output)) {
+      ReportError(sandbox,"key %s not found in object",k->ToStdString().c_str());
+      return false;
+    }
+
+  } else if(obj.IsExtension()) {
+    return obj.GetExtension()->GetProp(obj,Value(k),output,sandbox->error);
+  } else {
+    ReportError(sandbox,"operator \".\" or \"[]\" cannot work between type %s and string",
+        obj.type_name());
+    return false;
+  }
+  return true;
 }
 INTERPRETER_REGISTER_EXTERN_SYMBOL(InterpreterPropGet)
 
-bool InterpreterPropGetSSO( Runtime* sandbox , Value obj , SSO* key ,
-                                                           Value* output ) {
-  (void)sandbox;
-  (void)obj;
-  (void)key;
-  (void)output;
-  return false;
+bool InterpreterPropGetSSO( Runtime* sandbox , const Value& obj , std::uint32_t index ,
+                                                                  Value* output ) {
+  if(obj.IsExtension()) {
+    Value key(Handle<String>(sandbox->cur_proto()->GetSSO(index)->str));
+    return obj.GetExtension()->GetProp(obj,key,output,sandbox->error);
+  } else if(obj.IsObject()) {
+    Handle<String> key(sandbox->cur_proto()->GetSSO(index)->str);
+    if(!obj.GetObject()->Get(key,output)) {
+      ReportError(sandbox,"key %s not found in object",key->ToStdString().c_str());
+      return false;
+    }
+  } else {
+    ReportError(sandbox,"operator \".\" or \"[]\" cannot work between type %s and string",
+        obj.type_name());
+    return false;
+  }
+
+  return true;
 }
 INTERPRETER_REGISTER_EXTERN_SYMBOL(InterpreterPropGetSSO)
 
 
-void InterpreterPropGetSSONotFound( Runtime* sandbox , const Value& obj , SSO* key ) {
-  (void)sandbox;
-  (void)obj;
-  (void)key;
+void InterpreterPropGetSSONotFound( Runtime* sandbox , SSO* key ) {
+  ReportError(sandbox,"key %s not found in object",key->ToStdString().c_str());
 }
 INTERPRETER_REGISTER_EXTERN_SYMBOL(InterpreterPropGetSSONotFound)
 
-bool InterpreterPropSet( Runtime* sandbox , Value obj , String** key ,
-                                                        Value* output ) {
-  (void)sandbox;
-  (void)obj;
-  (void)key;
-  (void)output;
-  return false;
+bool InterpreterPropSet( Runtime* sandbox , const Value& obj , String** key ,
+                                                               const Value& value ) {
+  Handle<String> k(key);
+  if(obj.IsObject()) {
+    if(!obj.GetObject()->Update(sandbox->context->gc(),k,value)) {
+      ReportError(sandbox,"key %s not found in object, cannot set",k->ToStdString().c_str());
+      return false;
+    }
+  } else if(obj.IsExtension()) {
+    return obj.GetExtension()->SetProp(obj,Value(k),value,sandbox->error);
+  } else {
+    ReportError(sandbox,"operator \".\" or \"[]\" cannot work between type %s and string",
+        obj.type_name());
+    return false;
+  }
+  return true;
 }
 INTERPRETER_REGISTER_EXTERN_SYMBOL(InterpreterPropSet)
 
-bool InterpreterPropSetSSO( Runtime* sandbox , Value obj , SSO* key ,
-                                                           Value* output ) {
-  (void)sandbox;
-  (void)obj;
-  (void)key;
-  (void)output;
-  return false;
+bool InterpreterPropSetSSO( Runtime* sandbox , Value obj , std::uint32_t index,
+                                                           const Value& value ) {
+  if(obj.IsExtension()) {
+    Value key(Handle<String>(sandbox->cur_proto()->GetSSO(index)->str));
+    return obj.GetExtension()->SetProp(obj,key,value,sandbox->error);
+  } else if(obj.IsObject()) {
+    Handle<String> key(sandbox->cur_proto()->GetSSO(index)->str);
+    if(!obj.GetObject()->Set(sandbox->context->gc(),key,value)) {
+      ReportError(sandbox,"key %s not found in object, cannot set",key->ToStdString().c_str());
+      return false;
+    }
+  } else {
+    ReportError(sandbox,"operator \".\" or \"[]\" cannot work between type %s and string",
+        obj.type_name());
+    return false;
+  }
+  return true;
 }
 INTERPRETER_REGISTER_EXTERN_SYMBOL(InterpreterPropSetSSO)
 
 
-void InterpreterPropSetSSONotFound( Runtime* sandbox , const Value& obj ,
-                                                       SSO* key ) {
-  (void)sandbox;
-  (void)obj;
-  (void)key;
+void InterpreterPropSetSSONotFound( Runtime* sandbox , SSO* key ) {
+  ReportError(sandbox,"key %s not found in object, cannot set",key->ToStdString().c_str());
 }
 INTERPRETER_REGISTER_EXTERN_SYMBOL(InterpreterPropSetSSONotFound)
 
 
 void InterpreterIdxOutOfBound( Runtime* sandbox , const Value& obj ,
-                                                  std::uint32_t size ) {
-  (void)sandbox;
-  (void)obj;
-  (void)size;
+                                                  std::int32_t size ) {
+  lava_debug(NORMAL,lava_verify(obj.IsList()););
+  ReportError(sandbox,"index %d out of bound of list with size %d",size,
+      obj.GetList()->size());
 }
 INTERPRETER_REGISTER_EXTERN_SYMBOL(InterpreterIdxOutOfBound)
 
 bool InterpreterIdxGet( Runtime* sandbox , const Value& obj , const Value& key ,
                                                               Value* output ) {
-  (void)sandbox;
-  (void)obj;
-  (void)key;
-  (void)output;
-  return false;
+  if(obj.IsExtension()) {
+    return obj.GetExtension()->GetProp(obj,key,output,sandbox->error);
+  } else if(obj.IsList() && key.IsReal()) {
+    std::int32_t idx;
+    Handle<List> l(obj.GetList());
+    if(TryCastReal(key.GetReal(),&idx) && (idx >= 0 && idx < static_cast<std::int32_t>(l->size()))) {
+      *output = l->Index(idx);
+    } else {
+      ReportError(sandbox,"index %f out of bound of list with size %d",key.GetReal(),l->size());
+      return false;
+    }
+  } else if(obj.IsObject() && key.IsString()) {
+    Handle<Object> o(obj.GetObject());
+    if(!o->Get(key.GetString(),output)) {
+      ReportError(sandbox,"key %s not found in object",key.GetString()->ToStdString().c_str());
+      return false;
+    }
+  } else {
+    ReportError(sandbox,"type %s cannot work with type %s by operator \".\" or \"[]\"",
+        obj.type_name(),key.type_name());
+    return false;
+  }
+  return true;
 }
 INTERPRETER_REGISTER_EXTERN_SYMBOL(InterpreterIdxGet)
-
-bool  InterpreterIdxGetI     ( Runtime* sandbox , const Value& obj ,
-                                                  std::uint8_t idx ,
-                                                  Value* output ) {
-  (void)sandbox;
-  (void)obj;
-  (void)idx;
-  (void)output;
-  return false;
-}
-INTERPRETER_REGISTER_EXTERN_SYMBOL(InterpreterIdxGetI)
 
 bool InterpreterIdxSet      ( Runtime* sandbox , const Value& obj ,
                                                  const Value& key ,
                                                  const Value& val ) {
-  (void)sandbox;
-  (void)obj;
-  (void)key;
-  (void)val;
-  return false;
+  if(obj.IsExtension()) {
+    return obj.GetExtension()->SetProp(obj,key,val,sandbox->error);
+  } else if(obj.IsList() && key.IsReal()) {
+    std::int32_t idx;
+    Handle<List> l(obj.GetList());
+    if(TryCastReal(key.GetReal(),&idx) && (idx >= 0 && idx < static_cast<std::int32_t>(l->size()))) {
+      l->Index(idx) = val;
+    } else {
+      ReportError(sandbox,"index %f out of bound of list with size %d",key.GetReal(),l->size());
+      return false;
+    }
+  } else if(obj.IsObject() && key.IsString()) {
+    Handle<Object> o(obj.GetObject());
+    if(!o->Set(sandbox->context->gc(),key.GetString(),val)) {
+      ReportError(sandbox,"key %s not found in object, cannot set",key.GetString()->ToStdString().c_str());
+      return false;
+    }
+  } else {
+    ReportError(sandbox,"type %s cannot work with type %s by operator \".\" or \"[]\"",
+        obj.type_name(),key.type_name());
+    return false;
+  }
+  return true;
 }
 INTERPRETER_REGISTER_EXTERN_SYMBOL(InterpreterIdxSet)
 
-bool InterpreterIdxSetI    ( Runtime* sandbox , const Value& obj  ,
-                                                std::uint8_t idx ,
-                                                const Value& val ) {
-  (void)sandbox;
-  (void)obj;
-  (void)idx;
-  (void)val;
-  return false;
-}
-INTERPRETER_REGISTER_EXTERN_SYMBOL(InterpreterIdxSetI)
-
-bool InterpreterGGet       ( Runtime* sandbox , Value* output , String** key ) {
+// ----------------------------------------------------------------------------
+// Global
+// ----------------------------------------------------------------------------
+bool InterpreterGGet( Runtime* sandbox , Value* output , String** key ) {
   (void)sandbox;
   (void)key;
   (void)output;
@@ -546,14 +600,13 @@ bool InterpreterGGet       ( Runtime* sandbox , Value* output , String** key ) {
 }
 INTERPRETER_REGISTER_EXTERN_SYMBOL(InterpreterGGet)
 
-bool InterpreterGSet       ( Runtime* sandbox , String** key , Value value ) {
+bool InterpreterGSet( Runtime* sandbox , String** key , const Value& value ) {
   (void)sandbox;
   (void)key;
   (void)value;
   return false;
 }
 INTERPRETER_REGISTER_EXTERN_SYMBOL(InterpreterGSet)
-
 
 // ----------------------------------------------------------------------------
 // Loop
@@ -655,9 +708,8 @@ INTERPRETER_REGISTER_EXTERN_SYMBOL(InterpreterCallNeedObject)
  * ------------------------------------------------------------------*/
 |.define CHECK_MOD_BY_ZERO
 |.define CHECK_NUMBER_MEMORY,0
-|.define TRACE_OP,0
+|.define TRACE_OP,1
 |.define USE_CMOV_COMP,0
-|.define USE_CMOV_NEG
 
 /* -------------------------------------------------------------------
  * 64 bits call
@@ -1049,7 +1101,8 @@ INTERPRETER_REGISTER_EXTERN_SYMBOL(PrintV)
 |.macro LdSSO,val,index,temp
 |  mov temp, qword [PROTO]
 |  mov temp, qword [temp+PrototypeLayout::kSSOTableOffset]
-|  mov val , qword [temp+index*8]
+|  shl index,4
+|  mov val , qword [temp+index]
 |.endmacro
 
 // Check whether a Value is a HeapObject
@@ -1150,15 +1203,13 @@ INTERPRETER_REGISTER_EXTERN_SYMBOL(PrintV)
   /* comparison */                           \
   __(INTERP_COMPARERV,InterpCompareRV)       \
   __(INTERP_COMPAREVR,InterpCompareVR)       \
+  __(INTERP_COMPARESV,InterpCompareSV)       \
+  __(INTERP_COMPAREVS,InterpCompareVS)       \
   __(INTERP_COMPAREVV,InterpCompareVV)       \
   /* property get/set */                     \
-  __(INTERP_PROPGET_NOTFOUND,InterpPropGetNotFound)   \
-  __(INTERP_PROPGET,InterpPropGet)                    \
   __(INTERP_IDX_GETI,InterpIdxGetI)                   \
-  __(INTERP_IDX_GET ,InterpIdxGet )                   \
   __(INTERP_IDX_SETI,InterpIdxSetI)                   \
-  __(INTERP_IDX_SET ,InterpIdxSet )                   \
-  __(INTERP_PROP_NEEDOBJECT ,InterpNeedObject)        \
+  __(INTERP_PROP_NEEDOBJECT ,InterpPropNeedObject)    \
   __(INTERP_IDX_OUTOFBOUND_GET,InterpIdxOutOfBoundGet)\
   __(INTERP_IDX_OUTOFBOUND_SET,InterpIdxOutOfBoundSet)\
   /* call */                                          \
@@ -1365,7 +1416,7 @@ void GenerateHelper( BuildContext* bctx ) {
   |->InterpArithRealR:
   |  savepc
   |  mov CARG1,RUNTIME
-  |  mov CARG2,qword [STK+ARG2F*8]
+  |  lea CARG2,[STK+ARG2F*8]
 
   |  LdRealV T2,ARG3F
   |  lea CARG3,[SAVED_SLOT1]
@@ -1379,9 +1430,9 @@ void GenerateHelper( BuildContext* bctx ) {
   |->InterpArithVV:
   |  savepc
   |  mov CARG1, RUNTIME
-  |  lea CARG2, [STK+ARG1F*8]
-  |  lea CARG3, [STK+ARG2F*8]
-  |  lea CARG4, [STK+ARG3F*8] // ARG3F == CARG4
+  |  lea CARG2, [STK+ARG2F*8]
+  |  lea CARG3, [STK+ARG3F*8]
+  |  lea CARG4, [STK+ARG1F*8] // ARG3F == CARG4
   |  fcall InterpreterArithmetic
   |  retbool
 
@@ -1465,6 +1516,34 @@ void GenerateHelper( BuildContext* bctx ) {
   |  fcall InterpreterCompare
   |  retbool
 
+  |=> INTERP_COMPAREVS:
+  |->InterpCompareVS:
+  |  savepc
+  |  mov CARG1, RUNTIME
+  |  lea CARG2, [STK+ARG2F*8]
+
+  |  LdStrV T2, ARG3F
+  |  lea CARG3, [SAVED_SLOT1]
+  |  mov qword [SAVED_SLOT1],T2
+
+  |  lea CARG4, [STK+ARG1F*8]
+  |  fcall InterpreterCompare
+  |  retbool
+
+  |=> INTERP_COMPARESV:
+  |->InterpCompareSV:
+  |  savepc
+  |  mov CARG1, RUNTIME
+
+  |  LdStrV T2, ARG2F
+  |  lea CARG2, [SAVED_SLOT1]
+  |  mov qword [SAVED_SLOT1], T2
+
+  |  lea CARG3, [STK+ARG3F*8]
+  |  lea CARG4, [STK+ARG1F*8]
+  |  fcall InterpreterCompare
+  |  retbool
+
   |=> INTERP_COMPAREVV:
   |->InterpCompareVV:
   |  savepc
@@ -1478,21 +1557,11 @@ void GenerateHelper( BuildContext* bctx ) {
   /* -------------------------------------------------
    * Property Get/Set                                |
    * ------------------------------------------------*/
-  |=> INTERP_PROPGET:
-  |->InterpPropGet:
-  |  savepc
-  |  mov CARG1, RUNTIME
-  |  mov CARG2, qword [STK+ARG2F*8]
-  |  LdStr CARG3, ARG3F
-  |  lea CARG4, [STK+ARG1F*8]
-  |  fcall InterpreterPropGet
-  |  retbool
-
   |=> INTERP_PROP_NEEDOBJECT:
   |->InterpPropNeedObject:
   |  savepc
   |  mov CARG1, RUNTIME
-  |  mov CARG2, qword [STK+ARG2F*8]
+  |  lea CARG2, [STK+ARG2F*8]
   |  fcall InterpreterPropNeedObject
   |  jmp ->InterpFail
 
@@ -1501,9 +1570,10 @@ void GenerateHelper( BuildContext* bctx ) {
   |  savepc
   |  mov CARG1, RUNTIME
   |  mov CARG2, qword [STK+ARG2F*8]
-  |  mov CARG3L,ARG3
+  |  cvtsi2sd xmm0, ARG3
+  |  movd CARG3, xmm0
   |  lea CARG4, qword [STK+ARG1F*8]
-  |  fcall InterpreterIdxGetI
+  |  fcall InterpreterIdxGet
   |  retbool
 
   |=> INTERP_IDX_SETI:
@@ -1511,9 +1581,10 @@ void GenerateHelper( BuildContext* bctx ) {
   |  savepc
   |  mov CARG1, RUNTIME
   |  mov CARG2, qword [STK+ARG1F*8]
-  |  mov CARG3L,ARG2
+  |  cvtsi2sd xmm0, ARG2
+  |  movd CARG3, xmm0
   |  mov CARG4, qword [STK+ARG3F*8]
-  |  fcall InterpreterIdxSetI
+  |  fcall InterpreterIdxSet
   |  retbool
 
   |=> INTERP_IDX_OUTOFBOUND_SET:
@@ -1888,13 +1959,11 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
     |  instr_D
 
     // check the lhs to be integer or not
-    |  mov LREG,qword [STK+ARG2F*8]
-    |  cmp LREGL,Value::FLAG_REAL
+    |  cmp dword [STK+ARG2F*8+4], Value::FLAG_REAL
     |  jnb ->InterpArithVV
 
     | // real && xx
-    |  mov RREG,qword [STK+ARG3F*8]
-    |  cmp RREGL,Value::FLAG_REAL
+    |  cmp dword [STK+ARG3F*8+4],Value::FLAG_REAL
     |  jnb ->InterpArithVV
 
     |  movsd xmm0, qword [STK+ARG2F*8]
@@ -2036,7 +2105,7 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
     /* ====================================================================
      * Comparison
      *
-     * Inline numeric comparison and also do promotion inline
+     * Inline numeric comparison
      * ===================================================================*/
 
     /* --------------------------------------------------------------------
@@ -2242,6 +2311,7 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
     // Calls into InterpreterCompare
     |7:
     |  // T0/T1 stores HeapObject*
+    |  savepc
     |  mov CARG1, RUNTIME
     |  lea CARG2, [STK+ARG2F*8]
     |  lea CARG3, [STK+ARG3F*8]
@@ -2450,7 +2520,7 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
       break;
 
     // ----------------------------------------------------------
-    // Property/Upvalue/Global
+    // Property/UpValue/Global
     // ---------------------------------------------------------*/
 
     // This small assembly routine is used to do a key/value lookup inside
@@ -2505,8 +2575,8 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
       |  cmp word [STK+ARG2F*8+6], Value::FLAG_HEAP
       |  jne ->InterpPropNeedObject
 
-      |  mov CARG2, qword [STK+ARG2F*8]
-      |  mov ARG2F, CARG2
+      |  lea  CARG2, [STK+ARG2F*8]
+      |  mov ARG2F, qword [STK+ARG2F*8]
       |  CheckObj ARG2F, >9
 
       // Load *Map* object into ARG2F
@@ -2521,14 +2591,13 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
 
       |8: // not fonud label
       |  mov CARG1, RUNTIME
-      |  mov CARG2, ARG2F
-      |  mov CARG3, ARG3F
+      |  mov CARG2, ARG3F
       |  fcall InterpreterPropGetSSONotFound
       |  jmp ->InterpFail
 
       |9: // failed at *object*
       |  mov CARG1, RUNTIME
-      |  LdSSO CARG3,ARG3F,T1  // T0 == CARG1
+      |  mov CARG3L, ARG3
       |  lea CARG4, [STK+ARG1F*8]
       |  fcall InterpreterPropGetSSO
       |  retbool
@@ -2542,7 +2611,7 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
       |  mov   CARG1, RUNTIME
       |  lea   CARG2, [STK+ARG2F*8]
       |  LdStr CARG3, ARG3F
-      |  lea   CARG4, [STK+ARG3F*8]
+      |  lea   CARG4, [STK+ARG1F*8]
       |  fcall InterpreterPropGet
       |  retbool
       break;
@@ -2558,8 +2627,9 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
       |  instr_D
       |  cmp word [STK+ARG1F*8+6], Value::FLAG_HEAP
       |  jne ->InterpPropNeedObject
-      |  mov CARG2, qword [STK+ARG1F*8]
-      |  mov ARG1F, CARG2
+
+      |  lea CARG2, [STK+ARG1F*8]
+      |  mov ARG1F, qword [STK+ARG1F*8]
       |  CheckObj ARG1F, >9
 
       // Load the *Map* object into ARG1F
@@ -2571,15 +2641,14 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
 
       |8:
       |  mov CARG1, RUNTIME
-      |  mov CARG2, ARG1F
-      |  mov CARG3, ARG2F
+      |  mov CARG2, ARG2F
       |  fcall InterpreterPropSetSSONotFound
       |  jmp ->InterpFail
 
       |9:
       |  mov CARG1, RUNTIME
-      |  LdSSO CARG3,ARG3F,T1
-      |  lea CARG4, [STK+ARG1F*8]
+      |  mov CARG3L, ARG2
+      |  lea CARG4, [STK+ARG3F*8]
       |  fcall InterpreterPropSetSSO
       |  retbool
       break;
@@ -2620,18 +2689,19 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
       |  instr_D
       |  cmp dword [STK+ARG3F*8+4], Value::FLAG_REAL
       |  jnb >1
-      |  cvtsd2si ARG3F, qword [STK+ARG3F*8]
-      |  test ARG3,ARG3
-      |  js ->InterpIdxOutOfBoundGet // out of bound
+      |  cvtsd2si T0, qword [STK+ARG3F*8]
+      |  test T0,T0
+      |  js >1 // negative index, cannot handle
 
       // do the indexing for list or array
+      |  mov ARG3F, T0
       |  index_list,InterpIdxOutOfBoundGet,->InterpIdxGetI
 
       // general type index
       |1:
       |  mov CARG1, RUNTIME
-      |  mov CARG2, qword [STK+ARG2F*8]
-      |  mov CARG3, qword [STK+ARG3F*8]
+      |  lea CARG2, [STK+ARG2F*8]
+      |  lea CARG3, [STK+ARG3F*8]
       |  lea CARG4, [STK+ARG1F*8]
       |  fcall InterpreterIdxGet
       |  retbool
@@ -2642,7 +2712,6 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
       |  instr_D
       |  index_list,InterpIdxOutOfBoundGet,->InterpIdxGetI
       break;
-
 
     |.macro set_list,oob,not_list
     |  cmp word [STK+ARG1F*8+6], Value::FLAG_HEAP
@@ -2671,18 +2740,19 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
       |  cmp dword [STK+ARG2F*8+4], Value::FLAG_REAL
       |  jnb >1
       // conversion
-      |  cvtsd2si ARG2F, qword [STK+ARG2F*8]
-      |  test ARG2, ARG2
-      |  jz ->InterpIdxOutOfBoundSet
+      |  cvtsd2si T0, qword [STK+ARG2F*8]
+      |  test T0, T0
+      |  jz >1
 
+      |  mov ARG2F, T0
       |  set_list,InterpIdxOutOfBoundSet,->InterpIdxSetI
 
       |1:
       |  savepc
       |  mov CARG1, RUNTIME
-      |  mov CARG2, qword [STK+ARG1F*8]
-      |  mov CARG3, qword [STK+ARG2F*8]
-      |  mov CARG4, qword [STK+ARG3F*8]
+      |  lea CARG2, [STK+ARG1F*8]
+      |  lea CARG3, [STK+ARG2F*8]
+      |  lea CARG4, [STK+ARG3F*8]
       |  fcall InterpreterIdxSet
       |  retbool
       break;

@@ -20,7 +20,8 @@ struct Runtime {
   Value*         cur_stk;          // current frame's start of stack
   std::uint32_t* cur_pc;           // current frame's start of PC
 
-  Prototype** cur_proto() const { return (*cur_cls)->prototype().ref(); }
+  Prototype* cur_proto() const { return (*cur_cls)->prototype().ptr(); }
+  Handle<Prototype> cur_proto_handle() const { return (*cur_cls)->prototype(); }
 
   // get current interpreted frame object
   IFrame* cur_frame() const {

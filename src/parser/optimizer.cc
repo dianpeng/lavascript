@@ -569,12 +569,8 @@ bool ExpressionOptimizer::Optimize( ast::Binary* node , Expression* expr ) {
        * x+0 = x ; 0+x = x;
        * x-0 = x ; 0-x = -x;
        * 1*x = x ; x*1 = x;
-       * 0*x = 0 ; x*0 = 0;
        * -1*x= -x; x*-1= -x;
-       * 0/x = 0 ; 0%x = 0;
-       * x/1 = x ;
-       * x/-1= -x;
-       * 0^x = 0 ;
+       * x/1 = x ; x/-1= -x;
        *
        * TODO:: Add more ? Is it worth since we definitly gonna have a JIT compiler ?
        * TODO:: Really messy function , split it ??
@@ -610,9 +606,6 @@ bool ExpressionOptimizer::Optimize( ast::Binary* node , Expression* expr ) {
           lava_debug(NORMAL,lava_verify(rhs.IsComplex()););
           if(ival == 1) {
             expr->node = rhs.node;
-          } else if(ival == 0) {
-            expr->ekind = EREAL;
-            expr->real_value = 0.0;
           } else if(ival == -1) {
             expr->node = ast_factory_.NewUnary(node->start,
                 node->end,
@@ -623,9 +616,6 @@ bool ExpressionOptimizer::Optimize( ast::Binary* node , Expression* expr ) {
           lava_debug(NORMAL,lava_verify(lhs.IsComplex()););
           if(ival == 1) {
             expr->node = lhs.node;
-          } else if(ival == 0) {
-            expr->ekind = EREAL;
-            expr->real_value = 0.0;
           } else if(ival == -1) {
             expr->node = ast_factory_.NewUnary(node->start,
                 node->end,
@@ -635,13 +625,7 @@ bool ExpressionOptimizer::Optimize( ast::Binary* node , Expression* expr ) {
         }
       } else if(node->op == Token::TK_DIV) {
         std::int32_t ival;
-        if(lhs.NarrowReal(&ival)) {
-          if(ival == 0) {
-            expr->ekind = EREAL;
-            expr->real_value = 0.0;
-          }
-
-        } else if(rhs.NarrowReal(&ival)) {
+        if(rhs.NarrowReal(&ival)) {
           if(ival == 1) {
             expr->node = lhs.node;
           } else if(ival == -1) {
@@ -653,18 +637,6 @@ bool ExpressionOptimizer::Optimize( ast::Binary* node , Expression* expr ) {
             Error(*node,"Divide by 0");
             return false;
           }
-        }
-      } else if(node->op == Token::TK_MOD) {
-        std::int32_t ival;
-        if(lhs.NarrowReal(&ival) && ival == 0) {
-          expr->ekind = EREAL;
-          expr->real_value = 0.0;
-        }
-      } else if(node->op == Token::TK_POW) {
-        std::int32_t ival;
-        if(lhs.NarrowReal(&ival) && ival == 0) {
-          expr->ekind = EREAL;
-          expr->real_value = 0.0;
         }
       }
     }

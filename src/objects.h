@@ -919,6 +919,17 @@ class Iterator : public HeapObject {
 
 class Prototype final : public HeapObject {
  public:
+   // Used to store SSO string inside of the Prototype. This structure also
+   // keeps a record of a String** which encapsulate the SSO* pointer
+   struct SSOTableEntry {
+     const SSO* sso;
+     String**   str;
+     SSOTableEntry(): sso(NULL), str(NULL) {}
+     SSOTableEntry( const SSO* _1st , String** _2nd ): sso(_1st) , str(_2nd) {}
+   };
+   static_assert(sizeof(SSOTableEntry) == 16);
+
+ public:
   // const vm::Bytecode& bytecode() const { return bytecode_; }
   // const vm::ConstantTable& constant_table() const { return constant_table_; }
   // const vm::UpValueIndexArray& upvalue_array() const { return upvalue_array_; }
@@ -944,7 +955,7 @@ class Prototype final : public HeapObject {
  public: // Constant table
   inline double GetReal( std::size_t ) const;
   inline Handle<String> GetString( std::size_t ) const;
-  inline SSO* GetSSO( std::size_t ) const;
+  inline SSOTableEntry* GetSSO( std::size_t ) const;
   std::uint8_t GetUpValue( std::size_t , interpreter::UpValueState* ) const;
   interpreter::BytecodeIterator GetBytecodeIterator() const {
     return interpreter::BytecodeIterator( code_buffer(), code_buffer_size() );
@@ -974,7 +985,7 @@ class Prototype final : public HeapObject {
                                         std::uint32_t code_buffer_size,
                                         double* rtable,
                                         String*** stable,
-                                        SSO**     ssotable,
+                                        SSOTableEntry* ssotable,
                                         std::uint32_t* utable,
                                         std::uint32_t* cb,
                                         SourceCodeInfo* sci,
@@ -982,7 +993,7 @@ class Prototype final : public HeapObject {
  private:
   inline const double* real_table() const;
   String*** string_table() const { return string_table_; }
-  SSO**     sso_table()    const { return sso_table_;  }
+  SSOTableEntry* sso_table()    const { return sso_table_;  }
   const std::uint32_t* upvalue_table() const { return upvalue_table_; }
   const SourceCodeInfo* sci_buffer() const { return sci_buffer_; }
   const std::uint8_t* reg_offset_table() const { return reg_offset_table_; }
@@ -1017,7 +1028,7 @@ class Prototype final : public HeapObject {
    */
 
   String*** string_table_;
-  SSO**     sso_table_;
+  SSOTableEntry* sso_table_;
 
   std::uint32_t* upvalue_table_;
   std::uint32_t* code_buffer_;
@@ -1057,6 +1068,12 @@ struct PrototypeLayout {
   // sure whether worth it or not.
   static const std::uint32_t kRealTableOffset = sizeof(Prototype);
 };
+
+struct PrototypeSSOTableEntryLayout {
+  static const std::uint32_t kSSOOffset = offsetof(Prototype::SSOTableEntry,sso);
+  static const std::uint32_t kStrOffset = offsetof(Prototype::SSOTableEntry,str);
+};
+static_assert(PrototypeSSOTableEntryLayout::kSSOOffset == 0); // SSO must be at very first
 
 /**
  * Closure represents a function that defined at script side. A closure *doesn't*
@@ -1152,13 +1169,10 @@ class Extension : public HeapObject {
    virtual bool Ge ( const Value& , const Value& , Value* , std::string* );
    virtual bool Eq ( const Value& , const Value& , Value* , std::string* );
    virtual bool Ne ( const Value& , const Value& , Value* , std::string* );
+
    // Accessor
-   virtual bool GetIndex( const Value& , Value* , std::string* ) const;
-   virtual bool GetProp ( const Value& , Value* , std::string* ) const;
-   virtual bool SetIndex( const Value& , const Value& , std::string* ) const;
-   virtual bool SetProp ( const Value& , const Value& , std::string* ) const;
-   // Iterator
-   // Call
+   virtual bool GetProp ( const Value& , const Value& , Value* , std::string* ) const;
+   virtual bool SetProp ( const Value& , const Value& , const Value& , std::string* );
 };
 
 /**
@@ -2533,9 +2547,9 @@ inline Handle<String> Prototype::GetString( std::size_t index ) const {
   return Handle<String>(arr[index]);
 }
 
-inline SSO* Prototype::GetSSO( std::size_t index ) const {
+inline Prototype::SSOTableEntry* Prototype::GetSSO( std::size_t index ) const {
   lava_debug(NORMAL,lava_verify(sso_table_ && index < sso_table_size_););
-  return sso_table_[index];
+  return sso_table_ + index;
 }
 
 inline const SourceCodeInfo& Prototype::GetSci( std::size_t index ) const {

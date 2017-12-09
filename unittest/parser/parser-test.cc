@@ -153,11 +153,7 @@ TEST(Parser,ConstantFolding) {
   ConstExprCheck(ID("a"),a = 1*a;);
   ConstExprCheck(ID("b"),a = 0+b;);
   ConstExprCheck(ID("b"),a = b+0;);
-  ConstExprCheck(0,a = a*0;);
-  ConstExprCheck(0,a = 0*a;);
   ConstExprCheck(ID("b"),a = b/1;);
-  ConstExprCheck(0,a = 0/b;);
-  ConstExprCheck(0,a = 0^a;);
 
   ConstExprCheck(true,a = 1 < 2; );
   ConstExprCheck(true,a = 2 <=2; );

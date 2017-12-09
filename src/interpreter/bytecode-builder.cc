@@ -33,16 +33,17 @@ std::int32_t BytecodeBuilder::AddSSO( const ::lavascript::zone::String& sso ,
   lava_debug(NORMAL,lava_verify(sso.IsSSO()););
 
   auto ret = std::find_if(sso_table_.begin(),sso_table_.end(),
-      [=](SSO* lhs) { return *lhs == sso.data(); });
+      [=](Prototype::SSOTableEntry& lhs) { return *(lhs.sso) == sso.data(); });
 
   if(ret == sso_table_.end()) {
     if(sso_table_.size() == kMaxLiteralSize) {
       return -1;
     }
-    SSO* new_sso = gc->NewSSO(sso.data(),sso.size());
-    sso_table_.push_back(new_sso);
+    Handle<String> str(String::New(gc,sso.data(),sso.size()));
+    sso_table_.push_back(Prototype::SSOTableEntry(&(str->sso()),str.ref()));
     return static_cast<std::int32_t>(sso_table_.size()-1);
   }
+
   return (static_cast<std::int32_t>(
         std::distance(sso_table_.begin(),ret)));
 }
@@ -93,7 +94,7 @@ Handle<Prototype> BytecodeBuilder::New( GC* gc , const BytecodeBuilder& bb ,
   }
 
   {
-    SSO** arr = ret->sso_table();
+    Prototype::SSOTableEntry* arr = ret->sso_table();
     if(arr) MemCopy(arr,bb.sso_table_);
   }
 

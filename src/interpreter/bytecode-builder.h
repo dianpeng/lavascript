@@ -210,7 +210,7 @@ class BytecodeBuilder {
   std::vector<SourceCodeInfo> debug_info_;           // Debug info
   std::vector<double> real_table_;                   // Real table
   std::vector<Handle<String>> string_table_;         // String table
-  std::vector<SSO*> sso_table_;                      // SSO table
+  std::vector<Prototype::SSOTableEntry> sso_table_;  // SSO table
 
   struct UpValueSlot {
     std::uint16_t index;      // Can represent the register index or the slot

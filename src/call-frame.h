@@ -1,5 +1,7 @@
 #ifndef CALL_FRAME_H_
 #define CALL_FRAME_H_
+
+#include "config.h"
 #include "util.h"
 #include "objects.h"
 
@@ -30,6 +32,7 @@ class CallFrame {
       return GetArgumentSize_Interp();
     else
       lava_die();
+    return 0;
   }
 
   /**
@@ -42,6 +45,7 @@ class CallFrame {
       return GetArgument_Interp(index);
     else
       lava_die();
+    return Value();
   }
 
   /** Set the return value */
@@ -73,8 +77,8 @@ class CallFrame {
              CallFrameType frame_type ,
              void* frame ):
     interp_runtime_(interp_runtime),
-    frame_type     (frame_type),
-    frame          (frame)
+    frame_type_    (frame_type),
+    frame_         (frame)
   {}
 
  private:
@@ -109,8 +113,7 @@ inline Value CallFrame::GetArgument_Interp( std::size_t index ) const {
 
 inline void CallFrame::SetReturn_Interp( const Value& v ) {
   // interpreter pass return value via acc register
-  static const std::size_t kAccIndex = 255;
-  interp_runtime_->cur_stk[kAccIndex] = v;
+  interp_runtime_->cur_stk[interpreter::kAccRegisterIndex] = v;
 }
 
 } // namespace lavascript

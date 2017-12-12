@@ -8,6 +8,7 @@
 
 namespace lavascript {
 class Closure;
+class Extension;
 
 namespace interpreter{
 
@@ -50,14 +51,22 @@ struct IFrame {
   std::uint64_t field2; // Second 8 bytes
 
  public:
-  inline void SetUp( std::uint16_t base , const std::uint32_t* pc ,
-                     bool tcall , std::uint8_t narg , Closure** cls );
+  inline void SetUpAsExtension( std::uint16_t base , const std::uint32_t* pc ,
+                                                     bool tcall ,
+                                                     std::uint8_t narg ,
+                                                     Extension** );
+
+  inline void set_pc( const std::uint32_t* pc );
 
   inline std::uint16_t base() const;
   inline const std::uint32_t* pc() const;
   inline Closure** closure() const;
+  inline Extension** extension() const;
   inline bool tcall() const;
   inline std::uint8_t narg() const;
+
+  enum { CLOSURE_CALL = 0 , EXTENSION_CALL = 1 };
+  inline int call_type() const;
 };
 
 static_assert( std::is_standard_layout<IFrame>::value );
@@ -73,13 +82,21 @@ struct IFrameLayout {
   static const std::uint32_t kField2Offset = offsetof(IFrame,field2);
 };
 
-inline void IFrame::SetUp( std::uint16_t base , const std::uint32_t* pc ,
-                           bool tcall , std::uint8_t narg , Closure* cls ) {
+inline void IFrame::SetUpAsExtension( std::uint16_t base , const std::uint32_t* pc ,
+                                                           bool tcall ,
+                                                           std::uint8_t narg ,
+                                                           Extension** cls ) {
   std::uint64_t temp = static_cast<std::uint64_t>(base) << 48;
   field1 = temp | reinterpret_cast<std::uint64_t>(pc);
   field2 = (static_cast<std::uint64_t>(tcall) << 56) |
+           (bits::BitOn<std::uint64_t,57,58>::value) |
            (static_cast<std::uint64_t>(narg)  << 48) |
            (reinterpret_cast<std::uint64_t>(cls));
+}
+
+inline void IFrame::set_pc( const std::uint32_t* pc ) {
+  std::uint64_t temp = field1 & (bits::BitOn<std::uint64_t,48,64>::value);
+  field1 = temp | reinterpret_cast<std::uint64_t>(pc);
 }
 
 inline std::uint16_t IFrame::base() const {
@@ -93,7 +110,14 @@ inline const std::uint32_t* IFrame::pc() const {
 }
 
 inline Closure** IFrame::closure() const {
+  lava_debug(NORMAL,lava_verify(call_type() == CLOSURE_CALL););
   return reinterpret_cast<Closure**>(
+      bits::BitOn<std::uint64_t,0,48>::value & field2);
+}
+
+inline Extension** IFrame::extension() const {
+  lava_debug(NORMAL,lava_verify(call_type() == EXTENSION_CALL););
+  return reinterpret_cast<Extension**>(
       bits::BitOn<std::uint64_t,0,48>::value & field2);
 }
 
@@ -102,7 +126,12 @@ inline bool IFrame::tcall() const {
   return static_cast<bool>((temp>>56));
 }
 
-inline std::uint8_t Frame::narg() const {
+inline int IFrame::call_type() const {
+  std::uint64_t temp = field2 & bits::BitOn<std::uint64_t,57,58>::value;
+  return static_cast<int>(temp>>57);
+}
+
+inline std::uint8_t IFrame::narg() const {
   std::uint64_t temp = field2 & bits::BitOn<std::uint64_t,48,56>::value;
   return static_cast<std::uint8_t>(temp >> 48);
 }

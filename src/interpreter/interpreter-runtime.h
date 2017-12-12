@@ -16,7 +16,7 @@ namespace interpreter{
 
 struct Runtime {
   // current interpreted frame information ----------------------
-  Closure**            cur_cls;          // current closure
+  Closure**            cur_cls;          // current closure, if not called by closure , then it is NULL
   Value*               cur_stk;          // current frame's start of stack
   const std::uint32_t* cur_pc;           // current frame's start of PC
 

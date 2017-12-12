@@ -1,4 +1,4 @@
-#include "bytecode-interpreter.h"
+#include "x64-interpreter.h"
 #include "interpreter-frame.h"
 #include "interpreter-runtime.h"
 
@@ -238,7 +238,7 @@ INTERPRETER_REGISTER_EXTERN_SYMBOL(InterpreterPow)
 // Comparison Helper
 //
 // I want to force a jmp table for the following switch, but not sure how to
-// do it in portable C++
+// do it in portable C++. Computed goto ??
 //
 // ---------------------------------------------------------------------------
 bool InterpreterCompare( Runtime* sandbox , const Value& left ,
@@ -748,7 +748,7 @@ void InterpreterArgumentMismatch( Runtime* sandbox , const Value& object,
 INTERPRETER_REGISTER_EXTERN_SYMBOL(InterpreterArgumentMismatch)
 
 bool ResizeStack( Runtime* sandbox ) {
-  return sandbox->context->gc->GrowInterpreterStack(sandbox);
+  return sandbox->context->gc()->GrowInterpreterStack(sandbox);
 }
 INTERPRETER_REGISTER_EXTERN_SYMBOL(ResizeStack)
 
@@ -757,10 +757,62 @@ void InterpreterCallNeedObject( Runtime* sandbox , const Value& object ) {
 }
 INTERPRETER_REGISTER_EXTERN_SYMBOL(InterpreterCallNeedObject)
 
+// This function only handles the Extension type call
+// Assumption are stack is already resized if needed
 bool InterpreterCall( Runtime* sandbox , const Value& expr , std::uint8_t base ,
                                                              std::uint8_t narg ,
                                                              bool tcall ) {
-  return false;
+  if(!expr.IsExtension()) {
+    lava_debug(NORMAL,lava_verify(!expr.IsClosure()););
+    InterpreterCallNeedObject(sandbox,expr);
+    return false;
+  }
+  Handle<Extension> ext(expr.GetExtension());
+
+  // 1. get the new stack pos
+  Value* new_pos = sandbox->cur_stk + base;
+  lava_debug(NORMAL,lava_verify(sandbox->stack_end - new_pos >= 256););
+
+  // 2. setup the *new frame*
+  IFrame* frame = reinterpret_cast<IFrame*>(
+      reinterpret_cast<char*>(new_pos) - sizeof(IFrame));
+
+  // the base *must* multiply by sizeof(Value) since it is offset in bytes stored
+  frame->SetUpAsExtension(base*sizeof(Value),NULL,tcall,narg,ext.ref());
+
+  // 3. record the *current pc* into the current frame.
+  // TODO:: If IC is added, *modify* the PC here since current PC points to
+  //        the feedback slot
+  sandbox->cur_frame()->set_pc(sandbox->cur_pc);
+
+  // 4. store new information into sandbox object
+  {
+    Closure** cls_saved = sandbox->cur_cls;
+    Value*    stk_saved = sandbox->cur_stk;
+    const std::uint32_t* pc_saved = sandbox->cur_pc;
+
+    sandbox->cur_cls = NULL;       // not a closure call
+    sandbox->cur_stk = new_pos;    // set the new stack position
+    sandbox->cur_pc  = NULL;       // not a closure call
+
+    // 5. do the actual call
+    {
+      CallFrame cf(sandbox,INTERPRETER_FRAME,frame);
+      if(!ext->Call(&cf,sandbox->error)) {
+        return false;
+      }
+    }
+
+    // 6. return value are in acc
+    Value ret = sandbox->cur_stk[kAccRegisterIndex];
+
+    // 7. pops the frame and return
+    sandbox->cur_cls = cls_saved;
+    sandbox->cur_stk = stk_saved;
+    sandbox->cur_pc  = pc_saved;
+    sandbox->cur_stk[kAccRegisterIndex] = ret;
+  }
+  return true;
 }
 INTERPRETER_REGISTER_EXTERN_SYMBOL(InterpreterCall)
 
@@ -1643,8 +1695,11 @@ void GenerateHelper( BuildContext* bctx ) {
   |  savepc
   |  mov CARG1, RUNTIME
   |  mov CARG2, qword [STK+ARG2F*8]
+
   |  cvtsi2sd xmm0, ARG3
-  |  movd CARG3, xmm0
+  |  movsd qword [SAVED_SLOT1], xmm0
+  |  lea   CARG3, [SAVED_SLOT1]
+
   |  lea CARG4, qword [STK+ARG1F*8]
   |  fcall InterpreterIdxGet
   |  retbool
@@ -1653,10 +1708,13 @@ void GenerateHelper( BuildContext* bctx ) {
   |->InterpIdxSetI:
   |  savepc
   |  mov CARG1, RUNTIME
-  |  mov CARG2, qword [STK+ARG1F*8]
+  |  lea CARG2, [STK+ARG1F*8]
+
   |  cvtsi2sd xmm0, ARG2
-  |  movd CARG3, xmm0
-  |  mov CARG4, qword [STK+ARG3F*8]
+  |  movsd qword [SAVED_SLOT1], xmm0
+  |  lea CARG3, [SAVED_SLOT1]
+
+  |  lea CARG4, [STK+ARG3F*8]
   |  fcall InterpreterIdxSet
   |  retbool
 
@@ -1664,7 +1722,7 @@ void GenerateHelper( BuildContext* bctx ) {
   |->InterpIdxOutOfBoundSet:
   |  savepc
   |  mov CARG1, RUNTIME
-  |  mov CARG2, qword [STK+ARG2F*8]
+  |  lea CARG2, [STK+ARG2F*8]
   |  mov CARG3L, ARG3
   |  fcall InterpreterIdxOutOfBound
   |  jmp ->InterpFail
@@ -1673,7 +1731,7 @@ void GenerateHelper( BuildContext* bctx ) {
   |->InterpIdxOutOfBoundGet:
   |  savepc
   |  mov CARG1, RUNTIME
-  |  mov CARG2, qword [STK+ARG1F*8]
+  |  lea CARG2, [STK+ARG1F*8]
   |  mov CARG3L, ARG2
   |  fcall InterpreterIdxOutOfBound
   |  jmp ->InterpFail
@@ -1685,7 +1743,7 @@ void GenerateHelper( BuildContext* bctx ) {
   |->InterpCall:
   |  savepc
   |  mov CARG1, RUNTIME
-  |  mov CARG2, qword [STK+ARG2F*8]
+  |  lea CARG2, [STK+ARG1F*8]
   |  mov CARG3L, ARG2
   |  mov CARG4L, ARG3
   |  xor CARG5L, CARG5L
@@ -1696,7 +1754,7 @@ void GenerateHelper( BuildContext* bctx ) {
   |->InterpTCall:
   |  savepc
   |  mov CARG1, RUNTIME
-  |  mov CARG2, qword [STK+ARG2F*8]
+  |  lea CARG2, [STK+ARG1F*8]
   |  mov CARG3L,ARG2
   |  mov CARG4L,ARG3
   |  mov CARG5L,1
@@ -1707,7 +1765,7 @@ void GenerateHelper( BuildContext* bctx ) {
   |->InterpNeedObject:
   |  savepc
   |  mov CARG1, RUNTIME
-  |  mov CARG2, qword [STK+ARG1F*8]
+  |  lea CARG2, [STK+ARG1F*8]
   |  fcall InterpreterCallNeedObject
   |  jmp ->InterpFail
 
@@ -1715,7 +1773,7 @@ void GenerateHelper( BuildContext* bctx ) {
   |->InterpArgumentMismatch:
   |  savepc
   |  mov CARG1, RUNTIME
-  |  mov CARG2, qword [STK+ARG1F*8]
+  |  lea CARG2, [STK+ARG1F*8]
   |  mov CARG3L,ARG3
   |  fcall InterpreterArgumentMismatch
   |  jmp ->InterpFail

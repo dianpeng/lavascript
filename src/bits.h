@@ -42,13 +42,13 @@ namespace detail {
 
 template< typename T , std::size_t Start , std::size_t End >
 struct BitOnImpl {
-  static const std::size_t value = BitOnImpl<T,Start+1,End>::value |
-                                   static_cast<T>(1 << Start);
+  static const T value = BitOnImpl<T,Start+1,End>::value |
+                         static_cast<T>(static_cast<T>(1) << Start);
 };
 
 template< typename T , std::size_t End >
 struct BitOnImpl<T,End,End> {
-  static const std::size_t value = 0;
+  static const T value = 0;
 };
 
 } // namespace detail

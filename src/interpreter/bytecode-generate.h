@@ -4,6 +4,8 @@
 #include <algorithm>
 
 #include "bytecode-builder.h"
+
+#include "src/config.h"
 #include "src/parser/ast/ast.h"
 #include "src/objects.h"
 #include "src/common.h"
@@ -34,7 +36,7 @@ class IFrameReserver;
 class Register {
  public:
   static const Register kAccReg;
-  static const std::size_t kAccIndex = 255;
+  static const std::size_t kAccIndex = kAccRegisterIndex;
 
   explicit Register( std::uint8_t index ): index_(index) {}
   Register():index_(kAccIndex) {}

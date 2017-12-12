@@ -5,16 +5,16 @@
 #include <src/parser/parser.h>
 #include <src/parser/ast/ast.h>
 #include <src/trace.h>
+#include <src/call-frame.h>
 #include <src/os.h>
+#include <src/trace.h>
+#include <src/interpreter/x64-interpreter.h>
 
 #include <gtest/gtest.h>
 #include <cassert>
 #include <iostream>
 #include <gtest/gtest.h>
 #include <cmath>
-
-#include "src/trace.h"
-#include "src/interpreter/bytecode-interpreter.h"
 
 #define stringify(...) #__VA_ARGS__
 
@@ -58,6 +58,31 @@ template < typename T > bool PrimitiveComp( const T& a1 , const T& a2 , int op )
     default: lava_unreach(""); return false;
   }
 }
+
+// helper function extension
+class PrintFn : public ::lavascript::Extension {
+ public:
+  virtual const char* name() const { return "print"; }
+  virtual bool Call( ::lavascript::CallFrame* cf , std::string* error ) {
+    (void)error;
+    Value r; cf->SetReturn(r); // set return to be *null*
+    lava_verify(cf->GetArgumentSize() == 1);
+    Value arg1(cf->GetArgument(0));
+    if(arg1.IsReal()) {
+      std::cout<<arg1.GetReal()<<std::endl;
+    } else if(arg1.IsBoolean()) {
+      std::cout<<(arg1.GetBoolean() ? "true":"false")<<std::endl;
+    } else if(arg1.IsNull()) {
+      std::cout<<"null"<<std::endl;
+    } else if(arg1.IsString()) {
+      std::cout<<arg1.GetString()->ToStdString()<<std::endl;
+    } else {
+      std::cout<<"<"<<arg1.type_name()<<">"<<std::endl;
+    }
+    return true;
+  }
+  virtual ~PrintFn() {}
+};
 
 bool Bench( const char* source ) {
   // Generate assembler everytime, this is kind of slow but nothing hurts
@@ -135,6 +160,8 @@ bool PrimitiveComp( const char* source , const Value& primitive , int op ) {
   {
     obj->Put(ctx.gc(),NewString(ctx.gc(),kGlobalSSO.c_str()),Value(100));
     obj->Put(ctx.gc(),NewString(ctx.gc(),kGlobalLongString.c_str()),Value(1000));
+    Value fn(ctx.gc()->NewExtension<PrintFn>());
+    obj->Put(ctx.gc(),NewString(ctx.gc(),"print"),fn);
   }
 
   Value ret;
@@ -721,8 +748,6 @@ TEST(Interpreter,GFail) {
   NEGATIVE( _1234567890123456789012345678901234567890 = 10; );
 }
 
-#endif
-
 TEST(Interpreter,ForEach) {
   PRIMITIVE_EQ(10,
       var sum = 0;
@@ -741,6 +766,13 @@ TEST(Interpreter,ForEach) {
       }
       return sum;
   );
+}
+
+#endif
+
+TEST(Interpreter,ExtCall) {
+  PRIMITIVE_EQ(,
+      return print("Hello World"););
 }
 
 } // namespace lavascript

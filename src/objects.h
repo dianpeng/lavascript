@@ -288,6 +288,8 @@ class Value final {
   Value& operator = ( const Value& );
   template< typename T >
   explicit Value( const Handle<T>& h ) { SetHandle(h); }
+
+  template< typename T > explicit Value( T** );
 };
 
 // The handle must be as long as a machine word , here for simplicitly we assume
@@ -1182,7 +1184,7 @@ class Extension : public HeapObject {
   virtual Handle<Iterator> NewIterator( GC* , const Handle<Extension>& , std::string* ) const;
 
   // Function Call
-  virtual bool Call( CallFrame* call_frame , std::string* error ) const;
+  virtual bool Call( CallFrame* call_frame , std::string* error );
 
   // Unique type name
   virtual const char* name() const = 0;
@@ -1337,6 +1339,11 @@ inline T* Handle<T>::ptr() const {
 /* --------------------------------------------------------------------
  * Value
  * ------------------------------------------------------------------*/
+template< typename T >
+Value::Value( T** obj ) {
+  static_assert( std::is_base_of<Extension,T>::value );
+  SetHeapObject( reinterpret_cast<HeapObject**>(obj) );
+}
 
 inline Value& Value::operator = ( const Value& that ) {
   if(this != &that) {

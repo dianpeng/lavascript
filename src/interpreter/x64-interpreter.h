@@ -1,5 +1,5 @@
-#ifndef BYTECODE_INTERPRETER_H_
-#define BYTECODE_INTERPRETER_H_
+#ifndef X64_INTERPRETER_H_
+#define X64_INTERPRETER_H_
 #include "src/objects.h"
 #include "bytecode.h"
 
@@ -122,4 +122,4 @@ struct AssemblyInterpreter::InstanceLayout {
 } // namespace lavascript
 
 
-#endif // BYTECODE_INTERPRETER_H_
+#endif // X64_INTERPRETER_H_

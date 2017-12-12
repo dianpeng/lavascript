@@ -2,6 +2,7 @@
 #include "interpreter-frame.h"
 #include "interpreter-runtime.h"
 
+#include "src/call-frame.h"
 #include "src/context.h"
 #include "src/trace.h"
 #include "src/os.h"
@@ -26,12 +27,12 @@ namespace interpreter{
 namespace {
 
 // Used in dynasm library
-int ResolveExternAddress( void**,unsigned char*,int,int );
+int ResolveExternalAddress( void**,unsigned char*,int,int );
 
 // Workaround for ODR
 #include "dep/dynasm/dasm_proto.h"
 
-#define DASM_EXTERN_FUNC(a,b,c,d) ResolveExternAddress((void**)a,b,c,d)
+#define DASM_EXTERN_FUNC(a,b,c,d) ResolveExternalAddress((void**)a,b,c,d)
 #include "dep/dynasm/dasm_x86.h"
 
 // -------------------------------------------------------------
@@ -139,6 +140,20 @@ inline Bytecode CurrentOpcode( Runtime* sandbox ) {
   Bytecode bc = static_cast<Bytecode>(pbc&0xff);
   lava_error("BC:%s",GetBytecodeName(bc));
   return bc;
+}
+
+inline void BranchTo( Runtime* sandbox , std::uint32_t offset ) {
+  Handle<Closure> cls(sandbox->cur_cls);
+  const std::uint32_t* pc_start = cls->code_buffer();
+  sandbox->cur_pc = pc_start + offset;
+}
+
+// Helper to skip the current offset arg. There're some BC has 2 dword encoding,
+// which when calling from interpreter to C++ function, the PC is left to be the
+// value pointed to the second dword of that BC. We need to bump cur_pc one dword
+// forward if the jump is not taken
+inline void BumpPC( Runtime* sandbox ) {
+  sandbox->cur_pc++;
 }
 
 // --------------------------------------------------------------------------
@@ -380,7 +395,7 @@ Handle<Closure> NewClosure( Runtime* sandbox , std::uint32_t ref ,
   // Initialize the UpValue array
   {
     Value* stk = sandbox->cur_stk;
-    Closure* cls = *(sandbox->cur_cls);  // We will *not* Have GC
+    Closure* cls = *(sandbox->cur_cls);  // cannot trigger gc here
     Value* uv_arr = cls->upvalue();
     const std::uint32_t len = entry.prototype->upvalue_size();
     for( std::uint32_t i = 0 ; i < len ; ++i ) {
@@ -504,7 +519,7 @@ bool InterpreterPropSetSSO( Runtime* sandbox , Value obj , std::uint32_t index,
     return obj.GetExtension()->SetProp(obj,key,value,sandbox->error);
   } else if(obj.IsObject()) {
     Handle<String> key(sandbox->cur_proto()->GetSSO(index)->str);
-    if(!obj.GetObject()->Set(sandbox->context->gc(),key,value)) {
+    if(!obj.GetObject()->Update(sandbox->context->gc(),key,value)) {
       ReportError(sandbox,"key %s not found in object, cannot set",key->ToStdString().c_str());
       return false;
     }
@@ -560,9 +575,8 @@ bool InterpreterIdxGet( Runtime* sandbox , const Value& obj , const Value& key ,
 }
 INTERPRETER_REGISTER_EXTERN_SYMBOL(InterpreterIdxGet)
 
-bool InterpreterIdxSet      ( Runtime* sandbox , const Value& obj ,
-                                                 const Value& key ,
-                                                 const Value& val ) {
+bool InterpreterIdxSet( Runtime* sandbox , const Value& obj , const Value& key ,
+                                                              const Value& val ) {
   if(obj.IsExtension()) {
     return obj.GetExtension()->SetProp(obj,key,val,sandbox->error);
   } else if(obj.IsList() && key.IsReal()) {
@@ -576,8 +590,9 @@ bool InterpreterIdxSet      ( Runtime* sandbox , const Value& obj ,
     }
   } else if(obj.IsObject() && key.IsString()) {
     Handle<Object> o(obj.GetObject());
-    if(!o->Set(sandbox->context->gc(),key.GetString(),val)) {
-      ReportError(sandbox,"key %s not found in object, cannot set",key.GetString()->ToStdString().c_str());
+    if(!o->Update(sandbox->context->gc(),key.GetString(),val)) {
+      ReportError(sandbox,"key %s not found in object, cannot set",
+          key.GetString()->ToStdString().c_str());
       return false;
     }
   } else {
@@ -592,104 +607,162 @@ INTERPRETER_REGISTER_EXTERN_SYMBOL(InterpreterIdxSet)
 // ----------------------------------------------------------------------------
 // Global
 // ----------------------------------------------------------------------------
+void InterpreterGGetNotFoundSSO( Runtime* sandbox , SSO* key ) {
+  ReportError(sandbox,"global %s not found",key->ToStdString().c_str());
+}
+INTERPRETER_REGISTER_EXTERN_SYMBOL(InterpreterGGetNotFoundSSO)
+
 bool InterpreterGGet( Runtime* sandbox , Value* output , String** key ) {
-  (void)sandbox;
-  (void)key;
-  (void)output;
-  return false;
+  Handle<Object> global(sandbox->global);
+  Handle<String> k(key);
+  if(!global->Get(k,output)) {
+    ReportError(sandbox,"global %s not found",k->ToStdString().c_str());
+    return false;
+  }
+  return true;
 }
 INTERPRETER_REGISTER_EXTERN_SYMBOL(InterpreterGGet)
 
+void InterpreterGSetNotFoundSSO( Runtime* sandbox , SSO* key ) {
+  ReportError(sandbox,"global %s not found, cannot set",key->ToStdString().c_str());
+}
+INTERPRETER_REGISTER_EXTERN_SYMBOL(InterpreterGSetNotFoundSSO)
+
 bool InterpreterGSet( Runtime* sandbox , String** key , const Value& value ) {
-  (void)sandbox;
-  (void)key;
-  (void)value;
-  return false;
+  Handle<Object> global(sandbox->global);
+  Handle<String> k(key);
+  if(!global->Update(sandbox->context->gc(),k,value)) {
+    ReportError(sandbox,"global %s not found, cannot set",k->ToStdString().c_str());
+    return false;
+  }
+  return true;
 }
 INTERPRETER_REGISTER_EXTERN_SYMBOL(InterpreterGSet)
 
 // ----------------------------------------------------------------------------
 // Loop
 // ----------------------------------------------------------------------------
-bool InterpreterForEnd1     ( Runtime* sandbox , Value lhs , Value rhs ,
-                                                             std::uint32_t offset ) {
-  (void)sandbox;
-  (void)lhs;
-  (void)rhs;
-  return false;
+bool InterpreterForEnd1( Runtime* sandbox , const Value& lhs , const Value& rhs ,
+                                                               std::uint32_t offset ) {
+  if(lhs.IsExtension() || rhs.IsExtension()) {
+    Handle<Extension> ext( lhs.IsExtension() ? lhs.GetExtension() : rhs.GetExtension() );
+    Value result;
+    if(!ext->Lt(lhs,rhs,&result,sandbox->error))
+      return false;
+    lava_debug(NORMAL,lava_verify(result.IsBoolean()););
+    if(result.IsFalse()) {
+      BranchTo(sandbox,offset);
+    }
+  } else if(lhs.IsString() && rhs.IsString()) {
+    if(!(*lhs.GetString() < *rhs.GetString())) {
+      BranchTo(sandbox,offset);
+    }
+  } else if(lhs.IsReal() && rhs.IsReal()) {
+    if(!(lhs.GetReal() < rhs.GetReal())) {
+      BranchTo(sandbox,offset);
+    } else {
+      BumpPC(sandbox);
+    }
+  } else {
+    ReportError(sandbox,"type %s and %s cannot be used for range for loop,"
+                        "no \"<\" operation allowed",
+                        lhs.type_name(),rhs.type_name());
+    return false;
+
+  }
+  return true;
 }
 INTERPRETER_REGISTER_EXTERN_SYMBOL(InterpreterForEnd1)
 
-bool InterpreterForEnd2     ( Runtime* sandbox , Value lhs , Value rhs ,
-                                                             Value cond ,
-                                                             std::uint32_t offset ) {
-  (void)sandbox;
-  (void)lhs;
-  (void)rhs;
-  return false;
+bool InterpreterForEnd2( Runtime* sandbox , const Value& lhs , const Value& rhs ,
+                                                               const Value& step ,
+                                                               std::uint32_t offset ) {
+  Value new_induction;
+
+  // 1. do the addtion part
+  if(lhs.IsExtension() || step.IsExtension()) {
+    Handle<Extension> ext(lhs.IsExtension() ? lhs.GetExtension() : step.GetExtension());
+    if(!ext->Add(lhs,step,&new_induction,sandbox->error))
+      return false;
+  } else if(lhs.IsReal() && step.IsReal()) {
+    new_induction.SetReal( lhs.GetReal() + step.GetReal() );
+  } else {
+    ReportError(sandbox,"type %s and %s cannot be used for range for loop,"
+                        "no \"+\" operation allowed",
+                        lhs.type_name(),step.type_name());
+    return false;
+  }
+
+  // 2. do the comparison part
+  return InterpreterForEnd1(sandbox,new_induction,rhs,offset);
 }
 INTERPRETER_REGISTER_EXTERN_SYMBOL(InterpreterForEnd2)
 
-bool InterpreterFEStart     ( Runtime* sandbox , Value* expr , std::uint32_t offset ) {
-  (void)sandbox;
-  (void)expr;
-  (void)offset;
-  return false;
+bool InterpreterFEStart( Runtime* sandbox , Value* expr , std::uint32_t offset ) {
+  Handle<Iterator> itr;
+  if(expr->IsList()) {
+    itr = expr->GetList()->NewIterator(sandbox->context->gc(),expr->GetList());
+  } else if(expr->IsObject()) {
+    itr = expr->GetObject()->NewIterator(sandbox->context->gc(),expr->GetObject());
+  } else if(expr->IsExtension()) {
+    itr = expr->GetExtension()->NewIterator(sandbox->context->gc(),expr->GetExtension(),
+                                                                   sandbox->error);
+    if(!itr) return false; // Extension doesn't support iterator
+  } else {
+    ReportError(sandbox,"type %s doesn't support iterator",expr->type_name());
+    return false;
+  }
+
+  expr->SetIterator(itr);
+  if(!itr->HasNext()) {
+    BranchTo(sandbox,offset);
+  }
+  return true;
 }
 INTERPRETER_REGISTER_EXTERN_SYMBOL(InterpreterFEStart)
 
-bool InterpreterFEEnd       ( Runtime* sandbox , Value expr , std::uint32_t offset ) {
-  (void)sandbox;
-  (void)expr;
-  (void)offset;
-  return false;
+void InterpreterFEEnd( Runtime* sandbox , const Value& expr , std::uint32_t offset ) {
+  Handle<Iterator> itr(expr.GetIterator());
+  if(itr->Move()) {
+    BranchTo(sandbox,offset); // Jump back if we have anything in iterator
+  }
+  // no need to bump pc since FEEnd doesn't use extra byte
 }
 INTERPRETER_REGISTER_EXTERN_SYMBOL(InterpreterFEEnd)
 
-bool InterpreterIDref       ( Runtime* sandbox , Value expr , Value* key , Value* val ) {
-  (void)sandbox;
-  (void)expr;
-  (void)key;
-  (void)val;
-  return false;
+void InterpreterIDref( Runtime* sandbox , Value* key , Value* val , const Value& expr ) {
+  Handle<Iterator> itr(expr.GetIterator());
+  itr->Deref(key,val);
 }
 INTERPRETER_REGISTER_EXTERN_SYMBOL(InterpreterIDref)
 
 /* ---------------------------------------------------------------------
  * Function call
  * --------------------------------------------------------------------*/
-bool InterpreterCall        ( Runtime* sandbox , Value expr , std::uint8_t base ,
-                                                              std::uint8_t narg ,
-                                                              bool tcall ) {
-  (void)sandbox;
-  (void)expr;
-  (void)base;
-  (void)narg;
-  (void)tcall;
-  return false;
-}
-INTERPRETER_REGISTER_EXTERN_SYMBOL(InterpreterCall)
-
-void InterpreterArgumentMismatch( Runtime* sandbox , Value object ,
+void InterpreterArgumentMismatch( Runtime* sandbox , const Value& object,
                                                      std::uint8_t arg ) {
-  (void)sandbox;
-  (void)object;
-  (void)arg;
+  Handle<Closure> cls(object.GetClosure());
+  ReportError(sandbox,"call closure with wrong argument number, expect %d but get %d",
+      cls->argument_size(),arg);
 }
 INTERPRETER_REGISTER_EXTERN_SYMBOL(InterpreterArgumentMismatch)
 
 bool ResizeStack( Runtime* sandbox ) {
-  (void)sandbox;
-  return false;
+  return sandbox->context->gc->GrowInterpreterStack(sandbox);
 }
 INTERPRETER_REGISTER_EXTERN_SYMBOL(ResizeStack)
 
-void InterpreterCallNeedObject ( Runtime* sandbox , Value object ) {
-  (void)sandbox;
-  (void)object;
+void InterpreterCallNeedObject( Runtime* sandbox , const Value& object ) {
+  ReportError(sandbox,"cannot call on type %s",object.type_name());
 }
 INTERPRETER_REGISTER_EXTERN_SYMBOL(InterpreterCallNeedObject)
 
+bool InterpreterCall( Runtime* sandbox , const Value& expr , std::uint8_t base ,
+                                                             std::uint8_t narg ,
+                                                             bool tcall ) {
+  return false;
+}
+INTERPRETER_REGISTER_EXTERN_SYMBOL(InterpreterCall)
 
 /* ---------------------------------------------------------------------
  *
@@ -708,7 +781,7 @@ INTERPRETER_REGISTER_EXTERN_SYMBOL(InterpreterCallNeedObject)
  * ------------------------------------------------------------------*/
 |.define CHECK_MOD_BY_ZERO
 |.define CHECK_NUMBER_MEMORY,0
-|.define TRACE_OP,1
+|.define TRACE_OP, 1
 |.define USE_CMOV_COMP,0
 
 /* -------------------------------------------------------------------
@@ -730,12 +803,12 @@ inline bool CheckAddress( std::uintptr_t addr ) {
 || if(CheckAddress(reinterpret_cast<std::uintptr_t>(FUNC))) {
 |    call extern FUNC
 || } else {
+     // This branch should be really rare to happen on Linux since Linux map the whole
+     // application binary to first 0-2GB memory.
 ||   lava_warn("%s","Function FUNC address is not in 0-2GB");
 |.if 0
 // I don't know whether this is faster than use rax , need profile. I see
-// this one is used in MoarVM. It uses memory address to work araoud the
-// address space problem. But I am kind of unsure about it since it maybe
-// because MoarVM already allocate rax for other things
+// this one is used in some other places/VM implementation
 |9:
 |.dword (std::uint32_t)((std::uintptr_t)(FUNC)),(std::uint32_t)((std::uintptr_t)((FUNC)>>32))
 |    call qword[<9]
@@ -1086,15 +1159,15 @@ INTERPRETER_REGISTER_EXTERN_SYMBOL(PrintV)
 // It is painful to load a string into its Value format
 |.macro LdStrV,val,index
 |  mov T1 , qword [PROTO]
-|  mov T2 , qword [T1+PrototypeLayout::kStringTableOffset]
-|  mov val, qword [T2+index*8]
+|  mov T1 , qword [T1+PrototypeLayout::kStringTableOffset]
+|  mov val, qword [T1+index*8]
 |  StHeap val
 |.endmacro
 
 |.macro LdStr,val,index
 |  mov T1 , qword [PROTO]
-|  mov T2 , qword [T1+PrototypeLayout::kStringTableOffset]
-|  mov val, qword [T2+index*8]
+|  mov T1 , qword [T1+PrototypeLayout::kStringTableOffset]
+|  mov val, qword [T1+index*8]
 |.endmacro
 
 // Load SSO value from sso table
@@ -1646,6 +1719,51 @@ void GenerateHelper( BuildContext* bctx ) {
   |  mov CARG3L,ARG3
   |  fcall InterpreterArgumentMismatch
   |  jmp ->InterpFail
+
+
+  // ------------------------------------------------------
+  // SSO Hash Lookup Fast Path
+  // ------------------------------------------------------
+
+  // This small assembly routine is used to do a key/value lookup inside
+  // of a Object/Map. This function is roughly the same as doing an normal
+  // open addressing chain resolution when key is SSO inside of Map object.
+
+  // assume objreg is type Map* , pointer to a *Map*
+  // assume ssoref is type SSO* , pointer to a *SSO*
+  // returned slot/entry is in RREG
+  |.macro objfind_sso,objreg,ssoreg,not_found,found
+  |  mov RREGL, dword [ssoreg+SSOLayout::kHashOffset]     // get the sso hash value
+  |  and RREGL, dword [objreg+MapLayout::kMaskOffset]     // do the masking
+
+  // Assuming Entry inside of Map is 24 bytes , 3 machine word
+  |  lea LREG , [objreg+MapLayout::kArrayOffset]          // Store the Entry's start address
+  |  lea RREG , [RREG+RREG*2]                             // RREG * 3
+  |  lea RREG , [LREG+RREG*8]                             // RREG = [start_of_address+LREG*24]
+
+  // check if entry is *deleted* or *used*
+  |2:
+  |  mov  T1L, dword [RREG+MapEntryLayout::kFlagOffset]
+  | // start the chain resolution loop
+  |  test T1L, (Map::Entry::kUseButNotDelBit)
+  |  jz not_found  // not found
+
+  |  mov T0, qword [RREG+MapEntryLayout::kKeyOffset]     // Get the key
+  |  CheckSSO T0, >3
+
+  |  cmp ssoreg, T0
+  |  jne >3
+  // we find our key here , RREG points to the entry
+  |  found
+  |3: // next iteration
+  |  test T1L, (Map::Entry::kMoreBit)
+  |  jz not_found // not found
+  |  and T1L , (bits::BitOn<std::uint32_t,0,29>::value)
+  |  lea T0  , [T1+T1*2]
+  |  lea RREG, [LREG+T0*8]
+  |  jmp <2
+  |.endmacro
+
 }
 
 void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
@@ -2428,6 +2546,7 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
       |  Dispatch
 
       |8:
+      |  savepc
       |  mov CARG1, RUNTIME
       |  mov CARG2, qword [STK+ARG2F*8]
       |  fcall InterpreterNegateFail
@@ -2520,47 +2639,9 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
       break;
 
     // ----------------------------------------------------------
-    // Property/UpValue/Global
+    // Property/Index
     // ---------------------------------------------------------*/
 
-    // This small assembly routine is used to do a key/value lookup inside
-    // of a Object/Map. This function is roughly the same as doing an normal
-    // open addressing chain resolution when key is SSO inside of Map object.
-
-    // assume objreg is type Map* , pointer to a *Map*
-    // assume ssoref is type SSO* , pointer to a *SSO*
-    // returned slot/entry is in RREG
-    |.macro objfind_sso,objreg,ssoreg,not_found,found
-    |  mov RREGL, dword [ssoreg+SSOLayout::kHashOffset]     // get the sso hash value
-    |  and RREGL, dword [objreg+MapLayout::kMaskOffset]     // do the masking
-
-    // Assuming Entry inside of Map is 24 bytes , 3 machine word
-    |  lea LREG , [objreg+MapLayout::kArrayOffset]          // Store the Entry's start address
-    |  lea RREG , [RREG+RREG*2]                             // RREG * 3
-    |  lea RREG , [LREG+RREG*8]                             // RREG = [start_of_address+LREG*24]
-
-    // check if entry is *deleted* or *used*
-    |2:
-    |  mov  T1L, dword [RREG+MapEntryLayout::kFlagOffset]
-    | // start the chain resolution loop
-    |  test T1L, (Map::Entry::kUseButNotDelBit)
-    |  jz not_found  // not found
-
-    |  mov T0, qword [RREG+MapEntryLayout::kKeyOffset]     // Get the key
-    |  CheckSSO T0, >3
-
-    |  cmp ssoreg, T0
-    |  jne >3
-    // we find our key here , RREG points to the entry
-    |  found
-    |3: // next iteration
-    |  test T1L, (Map::Entry::kMoreBit)
-    |  jz not_found // not found
-    |  and T1L , (bits::BitOn<std::uint32_t,0,29>::value)
-    |  lea T0  , [T1+T1*2]
-    |  lea RREG, [LREG+T0*8]
-    |  jmp <2
-    |.endmacro
 
     case BC_PROPGETSSO:
       |.macro getsso_found
@@ -2590,12 +2671,14 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
       |  objfind_sso ARG2F,ARG3F,>8,getsso_found
 
       |8: // not fonud label
+      |  savepc
       |  mov CARG1, RUNTIME
       |  mov CARG2, ARG3F
       |  fcall InterpreterPropGetSSONotFound
       |  jmp ->InterpFail
 
       |9: // failed at *object*
+      |  savepc
       |  mov CARG1, RUNTIME
       |  mov CARG3L, ARG3
       |  lea CARG4, [STK+ARG1F*8]
@@ -2608,6 +2691,7 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
       // just directly fallback to the slow version written in C++
       |=>bc:
       |  instr_D
+      |  savepc
       |  mov   CARG1, RUNTIME
       |  lea   CARG2, [STK+ARG2F*8]
       |  LdStr CARG3, ARG3F
@@ -2640,12 +2724,14 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
       |  objfind_sso ARG1F,ARG2F,>8,setsso_found
 
       |8:
+      |  savepc
       |  mov CARG1, RUNTIME
       |  mov CARG2, ARG2F
       |  fcall InterpreterPropSetSSONotFound
       |  jmp ->InterpFail
 
       |9:
+      |  savepc
       |  mov CARG1, RUNTIME
       |  mov CARG3L, ARG2
       |  lea CARG4, [STK+ARG3F*8]
@@ -2656,6 +2742,7 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
     case BC_PROPSET:
       |=>bc:
       |  instr_D
+      |  savepc
       |  mov CARG1, RUNTIME
       |  lea CARG2, [STK+ARG1F*8]
       |  LdStr CARG3, ARG2F
@@ -2699,6 +2786,7 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
 
       // general type index
       |1:
+      |  savepc
       |  mov CARG1, RUNTIME
       |  lea CARG2, [STK+ARG2F*8]
       |  lea CARG3, [STK+ARG3F*8]
@@ -2764,6 +2852,90 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
       |  set_list,InterpIdxOutOfBoundSet,->InterpIdxSetI
       break;
 
+    /* ========================================================
+     * Globals
+     * =======================================================*/
+    case BC_GGETSSO:
+      // handler for handling key entry found case
+      |.macro ggetsso_found
+      |  mov LREG, qword [RREG+MapEntryLayout::kValueOffset]
+      |  mov qword [STK+ARG1F*8],LREG
+      |  Dispatch
+      |.endmacro
+
+      |=>bc:
+      |  instr_B
+
+      |  mov ARG3F, qword [RUNTIME+RuntimeLayout::kGlobalOffset]
+      |  mov ARG3F, qword [ARG3F]
+
+      |  mov ARG3F, qword [ARG3F+ObjectLayout::kMapOffset]
+      |  mov ARG3F, qword [ARG3F]
+
+      |  LdSSO ARG2F,ARG2F,T0
+
+      |  objfind_sso ARG3F,ARG2F,>8,ggetsso_found
+
+      // Globals not found
+      |8:
+      |  savepc
+      |  mov CARG1, RUNTIME
+      |  mov CARG2, ARG2F
+      |  fcall InterpreterGGetNotFoundSSO
+      |  jmp ->InterpFail
+      break;
+
+    case BC_GGET:
+      |=>bc:
+      |  instr_B
+      |  savepc
+      |  mov CARG1, RUNTIME
+      |  lea CARG2, [STK+ARG1F*8]
+      |  LdStr CARG3, ARG2F
+      |  fcall InterpreterGGet
+      |  retbool
+      break;
+
+    case BC_GSETSSO:
+      |.macro gsetsso_found
+      |  mov LREG, qword [STK+ARG2F*8]
+      |  mov qword [RREG+MapEntryLayout::kValueOffset], LREG
+      |  Dispatch
+      |.endmacro
+
+      |=>bc:
+      |  instr_B
+
+      |  mov ARG3F, qword [RUNTIME+RuntimeLayout::kGlobalOffset]
+      |  mov ARG3F, qword [ARG3F]
+
+      |  mov ARG3F, qword [ARG3F+ObjectLayout::kMapOffset]
+      |  mov ARG3F, qword [ARG3F]
+
+      |  LdSSO ARG1F,ARG1F,T0
+      |  objfind_sso ARG3F,ARG1F,>8,gsetsso_found
+      |8:
+      |  savepc
+      |  mov CARG1, RUNTIME
+      |  mov CARG2, ARG1F
+      |  fcall InterpreterGSetNotFoundSSO
+      |  jmp ->InterpFail
+      break;
+
+    case BC_GSET:
+      |=>bc:
+      |  instr_C
+      |  savepc
+      |  mov CARG1, RUNTIME
+      |  LdStr CARG2, ARG1F
+      |  lea CARG3, [STK+ARG2F*8]
+      |  fcall InterpreterGSet
+      |  retbool
+      break;
+
+    // ==========================================================
+    // Upvalue
+    // ==========================================================
     case BC_UVGET:
       |=>bc:
       |  instr_B
@@ -2780,27 +2952,6 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
       |  Dispatch
       break;
 
-    case BC_GSET:
-      |=>bc:
-      |  instr_C
-      |  savepc
-      |  mov CARG1, RUNTIME
-      |  LdStr CARG2, ARG1F
-      |  mov CARG3, qword [STK+ARG2F*8]
-      |  fcall InterpreterGSet
-      |  retbool
-      break;
-
-    case BC_GGET:
-      |=>bc:
-      |  instr_B
-      |  savepc
-      |  mov CARG1, RUNTIME
-      |  lea CARG2, [STK+ARG1F*8]
-      |  LdStr CARG3, ARG2F
-      |  fcall InterpreterGGet
-      |  retbool
-      break;
 
     /* ========================================================
      * Loop instructions
@@ -2825,10 +2976,10 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
       |=>bc:
       |  instr_E // actually TYPE_H instruction
       |  cmp dword [STK+ARG1F*8+4], Value::FLAG_REAL
-      |  jnb ->InterpreterForEnd1
+      |  jnb >6
 
       |  cmp dword [STK+ARG2F*8+4], Value::FLAG_REAL
-      |  jnb ->InterpreterForEnd1
+      |  jnb >6
 
       |  movsd xmm0, qword [STK+ARG1F*8]
       |  ucomisd xmm0, qword [STK+ARG2F*8]
@@ -2846,8 +2997,8 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
       |6: // fallback for situation that is not integer
       |  savepc
       |  mov CARG1, RUNTIME
-      |  mov CARG2, qword [STK+ARG1F*8]
-      |  mov CARG3, qword [STK+ARG2F*8]
+      |  lea CARG2, [STK+ARG1F*8]
+      |  lea CARG3, [STK+ARG2F*8]
       |  mov CARG4L, dword [PC]
       |  fcall InterpreterForEnd1
       // handle return value
@@ -2886,8 +3037,8 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
       |  savepc
       |  mov CARG1, RUNTIME
       |  lea CARG2, [STK+ARG1F*8]
-      |  mov CARG3, qword [STK+ARG2F*8]
-      |  mov CARG4, qword [STK+ARG3F*8]
+      |  lea CARG3, [STK+ARG2F*8]
+      |  lea CARG4, [STK+ARG3F*8]
       |  mov CARG5L, dword [PC]
       |  fcall InterpreterForEnd2
       |  test eax,eax
@@ -2942,8 +3093,6 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
       |  lea CARG2, [STK+ARG1F*8]
       |  mov CARG3L,ARG2
       |  fcall InterpreterFEEnd
-      |  test eax,eax
-      |  je ->InterpFail
       |  mov PC, qword [RUNTIME+RuntimeLayout::kCurPCOffset]
       |  Dispatch
       break;
@@ -2954,13 +3103,10 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
 
       |  savepc
       |  mov CARG1, RUNTIME
-      |  mov CARG2, qword [STK+ARG1F*8]
-      |  lea CARG3, qword [STK+ARG2F*8]
-      |  lea CARG4, qword [STK+ARG3F*8]
+      |  lea CARG2, [STK+ARG1F*8]
+      |  lea CARG3, [STK+ARG2F*8]
+      |  lea CARG4, [STK+ARG3F*8]
       |  fcall InterpreterIDref
-      |  test eax,eax
-      |  je ->InterpFail
-      |  mov PC, qword [RUNTIME+RuntimeLayout::kCurPCOffset]
       |  Dispatch
       break;
 
@@ -3044,6 +3190,7 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
       // stack overflow
       // ARG2F/ARG3F are caller saved, ARG1F are callee saved
       |9:
+      |  savepc
       |  mov qword [SAVED_SLOT1] , ARG2F
       |  mov qword [SAVED_SLOT2] , ARG2F
       |  mov CARG1, RUNTIME
@@ -3130,9 +3277,9 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
 }
 
 // Help Dasm to resolve external address via Index idx
-int ResolveExternAddress( void** ctx , unsigned char* addr ,
-                                       int idx,
-                                       int type ) {
+int ResolveExternalAddress( void** ctx , unsigned char* addr ,
+                                         int idx,
+                                         int type ) {
   (void)ctx;
 
   ExternSymbolTable* t = GetExternSymbolTable();
@@ -3256,8 +3403,7 @@ std::shared_ptr<AssemblyInterpreter> AssemblyInterpreter::Generate() {
 
   // get the *interpreter's* entry
   int off = dasm_getpclabel(&(bctx.dasm_ctx),INTERP_START);
-  interp->interp_entry_ = reinterpret_cast<void*>(
-      static_cast<char*>(buffer) + off);
+  interp->interp_entry_ = reinterpret_cast<void*>(static_cast<char*>(buffer) + off);
 
   interp->buffer_size_  = new_size;
   interp->code_size_    = code_size;

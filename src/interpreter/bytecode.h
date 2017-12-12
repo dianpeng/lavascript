@@ -148,8 +148,10 @@ static const std::size_t kAllocatableBytecodeRegisterSize = 255;
   __(D,IDXGETI,idxgeti,REG,REG,IMM)             \
   __(E,UVGET  ,uvget ,REG,GARG,_)               \
   __(E,UVSET  ,uvset ,GARG,REG,_)               \
-  __(E,GSET   ,gset  ,SREF,REG,_)               \
   __(E,GGET   ,gget  ,REG,SREF,_)               \
+  __(E,GGETSSO,ggetsso,RREG,SSO,_)              \
+  __(E,GSET   ,gset  ,SREF,REG,_)               \
+  __(E,GSETSSO,gsetsso,REG,SSO,_)               \
   /* subroutine */ \
   __(D,CALL, call , REG , BASE , NARG )         \
   __(D,TCALL, tcall, REG , BASE , NARG )        \

@@ -600,6 +600,11 @@ class GC : AllStatic {
   void Dump( int option , DumpWriter* writer ) { heap_.Dump(option,writer); }
  public:
   /**
+   * General New , should be used for creating internal objects
+   */
+  template< typename T , typename ... ARGS >
+  T** New( ARGS ... args );
+  /**
    * Function to create a new object with type T , the input arguments are
    * ARGS ...args.
    *
@@ -609,15 +614,14 @@ class GC : AllStatic {
    * directly return the GCRef pointer
    */
   template< typename T , typename ... ARGS >
-  T** New( ARGS ...args );
+  T** NewExtension( ARGS ...args );
 
-  /*
-   * This API call allow user to provide a holder and reuse that holder
-   * to store the newly created object. Mostly we use this API to implement
-   * Extend/Rehash for Slice and Map object
+  /**
+   * New a iterator based on input type, the type tag will be forced to
+   * be *iterator*
    */
   template< typename T , typename ... ARGS >
-  T** New( T** holder , ARGS ...args );
+  Iterator** NewIterator( ARGS ...args );
 
   /**
    * Specialized New for String creation since String is handled specially
@@ -741,12 +745,28 @@ class GC : AllStatic {
 };
 
 template< typename T , typename ...ARGS >
-T** GC::New( ARGS ...args ) {
-  return New( reinterpret_cast<T**>(ref_pool_.Grab()) , args... );
+T** GC::NewExtension( ARGS ...args ) {
+  T** holder = reinterpret_cast<T**>(ref_pool_.Grab());
+  *holder = ConstructFromBuffer<T>( heap_.Grab( sizeof(T),
+                                                TYPE_EXTENSION,
+                                                GC_WHITE,
+                                                false ) , args... );
+  return holder;
 }
 
-template< typename T , typename ...ARGS >
-T** GC::New( T** holder , ARGS ...args ) {
+template< typename T , typename ... ARGS >
+Iterator** GC::NewIterator( ARGS ...args ) {
+  Iterator** holder = reinterpret_cast<Iterator**>(ref_pool_.Grab());
+  *holder = reinterpret_cast<Iterator*>(
+    ConstructFromBuffer<T>( heap_.Grab( sizeof(T), TYPE_ITERATOR,
+                                                   GC_WHITE,
+                                                   false ) , args... ));
+  return holder;
+}
+
+template< typename T , typename ... ARGS >
+T** GC::New( ARGS ... args ) {
+  T** holder = reinterpret_cast<T**>(ref_pool_.Grab());
   *holder = ConstructFromBuffer<T>( heap_.Grab( sizeof(T),
                                                 GetObjectType<T>::value,
                                                 GC_WHITE,

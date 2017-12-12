@@ -16,9 +16,9 @@ namespace interpreter{
 
 struct Runtime {
   // current interpreted frame information ----------------------
-  Closure**      cur_cls;          // current closure
-  Value*         cur_stk;          // current frame's start of stack
-  std::uint32_t* cur_pc;           // current frame's start of PC
+  Closure**            cur_cls;          // current closure
+  Value*               cur_stk;          // current frame's start of stack
+  const std::uint32_t* cur_pc;           // current frame's start of PC
 
   Prototype* cur_proto() const { return (*cur_cls)->prototype().ptr(); }
   Handle<Prototype> cur_proto_handle() const { return (*cur_cls)->prototype(); }
@@ -79,7 +79,12 @@ struct RuntimeLayout {
   static const std::uint32_t kCurClsOffset   = offsetof(Runtime,cur_cls);
   static const std::uint32_t kCurStackOffset = offsetof(Runtime,cur_stk);
   static const std::uint32_t kCurPCOffset    = offsetof(Runtime,cur_pc );
+
+  static const std::uint32_t kScriptOffset   = offsetof(Runtime,script);
+  static const std::uint32_t kGlobalOffset   = offsetof(Runtime,global);
+  static const std::uint32_t kContextOffset  = offsetof(Runtime,context);
   static const std::uint32_t kRetOffset      = offsetof(Runtime,ret);
+  static const std::uint32_t kErrorOffset    = offsetof(Runtime,error);
 
   static const std::uint32_t kStackBeginOffset = offsetof(Runtime,stack_begin);
   static const std::uint32_t kStackEndOffset   = offsetof(Runtime,stack_end);

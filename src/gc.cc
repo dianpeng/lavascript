@@ -376,8 +376,8 @@ Slice** GC::NewSlice( std::size_t capacity ) {
 }
 
 Map** GC::NewMap( std::size_t capacity ) {
-  if(!capacity) capacity = 2;        // We cannot allow empty map existed since our interpreter
-                                     // doesn't check the size of the map but just do a search
+  lava_debug(NORMAL,lava_verify(capacity && (!(capacity & (capacity-1)))););
+
   Map* map = ConstructFromBuffer<Map>(
       heap_.Grab( sizeof(Map) + capacity * sizeof(Map::Entry) ,
                   TYPE_MAP,
@@ -519,8 +519,10 @@ void GC::ReturnInterpreterRuntime( interpreter::Runtime* runtime ) {
 
 bool GC::GrowInterpreterStack( interpreter::Runtime* runtime ) {
   lava_debug(NORMAL,lava_verify( runtime == &interp_runtime_ ););
+
   if(runtime->stack_size() >= runtime->max_stack_size)
     return false;
+
   std::size_t nsize = runtime->stack_size() * 2;
 
   if(nsize > runtime->max_stack_size)

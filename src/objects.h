@@ -39,6 +39,7 @@ class Closure;
 class Extension;
 class Script;
 class ScriptBuilder;
+class CallFrame;
 
 namespace interpreter {
 void SetValueFlag( Value* v , std::uint32_t );
@@ -565,7 +566,7 @@ class List final : public HeapObject {
   bool Push( GC* , const Value& );
   void Pop ();
 
-  Handle<Iterator> GetIterator() const;
+  Handle<Iterator> NewIterator( GC* , const Handle<List>& ) const;
 
  public: // Factory functions
   static Handle<List> New( GC* );
@@ -617,8 +618,6 @@ class Slice final : public HeapObject {
   inline const Value& Index( std::size_t ) const;
   Value& operator [] ( std::size_t index ) { return Index(index); }
   const Value& operator [] ( std::size_t index ) const { return Index(index); }
-
-  Handle<Iterator> GetIterator() const;
 
  public: // Factory functions
   static Handle<Slice> Extend( GC* , const Handle<Slice>& old );
@@ -684,7 +683,7 @@ class Object final : public HeapObject {
   inline bool Delete ( const std::string& );
 
  public:
-  Handle<Iterator> GetIterator() const;
+  Handle<Iterator> NewIterator( GC* , const Handle<Object>& ) const;
 
  public: // Factory functions
   static Handle<Object> New( GC* );
@@ -793,7 +792,7 @@ class Map final : public HeapObject {
   inline bool Delete ( const char*   );
   inline bool Delete ( const std::string& );
 
-  Handle<Iterator> GetIterator() const;
+  Handle<Iterator> NewIterator( GC* , const Handle<Map>& ) const;
 
  public: // Factory functions
   static Handle<Map> New( GC* );
@@ -806,7 +805,9 @@ class Map final : public HeapObject {
     mask_(capacity-1),
     size_(0),
     slot_size_(0)
-  { lava_debug(NORMAL,lava_verify(capacity);); }
+  {
+    lava_debug(NORMAL,lava_verify(capacity);lava_verify(!(capacity &(capacity-1))););
+  }
 
  private:
 
@@ -890,7 +891,7 @@ class Iterator : public HeapObject {
   /**
    * Deref the iterator to get the 1) key and 2) value
    */
-  virtual bool Deref( Value* , Value* ) const = 0;
+  virtual void Deref( Value* , Value* ) const = 0;
 
   /**
    * Move the iterator to the next available slots
@@ -903,8 +904,6 @@ class Iterator : public HeapObject {
   virtual ~Iterator() {}
 
   friend class GC;
-
-  LAVA_DISALLOW_COPY_AND_ASSIGN(Iterator);
 };
 
 
@@ -1112,6 +1111,10 @@ class Closure final : public HeapObject {
   bool Visit( T* );
 
  public:
+  // cached attribute accessor
+  const std::uint32_t* code_buffer() const { return code_buffer_; }
+  std::uint8_t argument_size() const { return argument_size_; }
+ public:
   // Create a closure that is used to wrap *main* prototype
   static Handle<Closure> New( GC* , const Handle<Prototype>& );
 
@@ -1156,23 +1159,36 @@ struct ClosureLayout {
 class Extension : public HeapObject {
  public:
    // Arithmetic handler for extension.
-   virtual bool Add( const Value& , const Value& , Value* , std::string* );
-   virtual bool Sub( const Value& , const Value& , Value* , std::string* );
-   virtual bool Mul( const Value& , const Value& , Value* , std::string* );
-   virtual bool Div( const Value& , const Value& , Value* , std::string* );
-   virtual bool Mod( const Value& , const Value& , Value* , std::string* );
-   virtual bool Pow( const Value& , const Value& , Value* , std::string* );
-   // Comparison handler for extension
-   virtual bool Lt ( const Value& , const Value& , Value* , std::string* );
-   virtual bool Le ( const Value& , const Value& , Value* , std::string* );
-   virtual bool Gt ( const Value& , const Value& , Value* , std::string* );
-   virtual bool Ge ( const Value& , const Value& , Value* , std::string* );
-   virtual bool Eq ( const Value& , const Value& , Value* , std::string* );
-   virtual bool Ne ( const Value& , const Value& , Value* , std::string* );
+  virtual bool Add( const Value& , const Value& , Value* , std::string* );
+  virtual bool Sub( const Value& , const Value& , Value* , std::string* );
+  virtual bool Mul( const Value& , const Value& , Value* , std::string* );
+  virtual bool Div( const Value& , const Value& , Value* , std::string* );
+  virtual bool Mod( const Value& , const Value& , Value* , std::string* );
+  virtual bool Pow( const Value& , const Value& , Value* , std::string* );
 
-   // Accessor
-   virtual bool GetProp ( const Value& , const Value& , Value* , std::string* ) const;
-   virtual bool SetProp ( const Value& , const Value& , const Value& , std::string* );
+  // Comparison handler for extension
+  virtual bool Lt ( const Value& , const Value& , Value* , std::string* );
+  virtual bool Le ( const Value& , const Value& , Value* , std::string* );
+  virtual bool Gt ( const Value& , const Value& , Value* , std::string* );
+  virtual bool Ge ( const Value& , const Value& , Value* , std::string* );
+  virtual bool Eq ( const Value& , const Value& , Value* , std::string* );
+  virtual bool Ne ( const Value& , const Value& , Value* , std::string* );
+
+  // Accessor
+  virtual bool GetProp ( const Value& , const Value& , Value* , std::string* ) const;
+  virtual bool SetProp ( const Value& , const Value& , const Value& , std::string* );
+
+  // Iterator
+  virtual Handle<Iterator> NewIterator( GC* , const Handle<Extension>& , std::string* ) const;
+
+  // Function Call
+  virtual bool Call( CallFrame* call_frame , std::string* error ) const;
+
+  // Unique type name
+  virtual const char* name() const = 0;
+
+ public:
+  virtual ~Extension() = 0;
 };
 
 /**
@@ -2566,10 +2582,12 @@ template< typename T >
 bool Prototype::Visit( T* visitor ) {
   if(visitor->Begin(this)) {
     if(!visitor->VisitString(proto_string_)) return false;
+
     {
       String*** arr = string_table();
       for( std::size_t i = 0 ; i < string_table_size_ ; ++i ) {
-        if(!visitor->VisitString(Handle<String>(arr[i]))) return false;
+        if(!visitor->VisitString(Handle<String>(arr[i])))
+          return false;
       }
     }
     return visitor->End(this);

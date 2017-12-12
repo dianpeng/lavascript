@@ -609,15 +609,24 @@ bool Generator::Visit( const ast::Variable& var , ExprResult* result ) {
       return false;
     } else if(ret == FunctionScope::UV_NOT_EXISTED) {
 
-      // it is a global variable so we need to EEMIT global variable stuff
-      std::int32_t ref = func_scope()->bb()->Add(*var.name,context_->gc());
-      if(ref<0) {
-        Error(ERR_REGISTER_OVERFLOW,var);
-        return false;
+      if(var.name->IsSSO()) {
+        std::int32_t ref = func_scope()->bb()->AddSSO(*var.name,context_->gc());
+        if(ref <0) {
+          Error(ERR_TOO_MANY_LITERALS,var);
+          return false;
+        }
+        EEMIT(ggetsso,var.sci(),result->GetHint().Get().index(),ref);
+      } else {
+        // it is a global variable so we need to EEMIT global variable stuff
+        std::int32_t ref = func_scope()->bb()->Add(*var.name,context_->gc());
+        if(ref<0) {
+          Error(ERR_TOO_MANY_LITERALS,var);
+          return false;
+        }
+        // take care of the hint register
+        EEMIT(gget,var.sci(),result->GetHint().Get().index(),ref);
       }
 
-      // take care of the hint register
-      EEMIT(gget,var.sci(),result->GetHint().Get().index(),ref);
       result->SetRegister(result->GetHint().Get());
     } else {
 
@@ -1363,12 +1372,21 @@ bool Generator::VisitSimpleAssign( const ast::Assign& node ) {
       // set it as global variable
       ScopedRegister reg(this);
       if(!VisitExpression(*node.rhs,&reg)) return false;
-      std::int32_t ref = func_scope()->bb()->Add(*node.lhs_var->name,context_->gc());
-      if(ref<0) {
-        Error(ERR_REGISTER_OVERFLOW,node.sci());
-        return false;
+      if(node.lhs_var->name->IsSSO()) {
+        std::int32_t ref = func_scope()->bb()->AddSSO(*(node.lhs_var->name),context_->gc());
+        if(ref<0) {
+          Error(ERR_TOO_MANY_LITERALS,node.sci());
+          return false;
+        }
+        SEMIT(gsetsso,node.sci(),ref,reg.Get().index());
+      } else {
+        std::int32_t ref = func_scope()->bb()->Add(*node.lhs_var->name,context_->gc());
+        if(ref<0) {
+          Error(ERR_TOO_MANY_LITERALS,node.sci());
+          return false;
+        }
+        SEMIT(gset,node.sci(),ref,reg.Get().index());
       }
-      SEMIT(gset,node.sci(),ref,reg.Get().index());
     }
   }
   return true;

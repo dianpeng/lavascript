@@ -36,6 +36,44 @@ Handle<List> List::New( GC* gc , const Handle<Slice>& slice ) {
   return Handle<List>(gc->New<List>(slice));
 }
 
+
+namespace {
+
+// List iterator
+class ListIterator : public Iterator {
+ public:
+  ListIterator( const Handle<List>& list ) :
+    index_(0),
+    list_ (list)
+  {}
+
+  virtual bool HasNext() const {
+    return index_ < list_->size();
+  }
+
+  virtual bool Move() {
+    return ++index_ < list_->size();
+  }
+
+  virtual void Deref( Value* key , Value* val ) const {
+    key->SetReal(static_cast<double>(index_));
+    *val = ( list_->Index(index_) );
+  }
+
+ private:
+  std::uint32_t index_;
+  Handle<List> list_;
+
+  LAVA_DISALLOW_COPY_AND_ASSIGN(ListIterator)
+};
+
+} // namespace
+
+Handle<Iterator> List::NewIterator( GC* gc , const Handle<List>& self ) const {
+  lava_debug(NORMAL,lava_verify(self.ptr() == this););
+  return Handle<Iterator>(gc->NewIterator<ListIterator>(self));
+}
+
 /* ---------------------------------------------------------------
  * Slice
  * -------------------------------------------------------------*/
@@ -56,6 +94,7 @@ Handle<Slice> Slice::New( GC* gc , std::size_t cap ) {
   return Handle<Slice>(gc->NewSlice(cap));
 }
 
+
 /* ---------------------------------------------------------------
  * Object
  * --------------------------------------------------------------*/
@@ -64,11 +103,21 @@ Handle<Object> Object::New( GC* gc ) {
 }
 
 Handle<Object> Object::New( GC* gc , std::size_t capacity ) {
+  if(!capacity) capacity = 2;
+  else {
+    capacity = bits::NextPowerOf2(capacity);
+  }
+
   return Handle<Object>(gc->New<Object>(gc->NewMap(capacity)));
 }
 
 Handle<Object> Object::New( GC* gc , const Handle<Map>& map ) {
   return Handle<Object>(gc->New<Object>(map));
+}
+
+Handle<Iterator> Object::NewIterator( GC* gc , const Handle<Object>& self ) const {
+  lava_debug(NORMAL,lava_verify(self.ptr() == this););
+  return Handle<Iterator>(map_->NewIterator(gc,map_));
 }
 
 /* ---------------------------------------------------------------
@@ -106,6 +155,56 @@ Handle<Map> Map::Rehash( GC* gc , const Handle<Map>& old_map ) {
     }
   }
   return new_map;
+}
+
+namespace {
+
+class MapIterator : public Iterator {
+ public:
+  MapIterator( const Handle<Map>& map ):
+    index_(0),
+    map_  (map) {
+
+    if(!(map_->data()->active()))
+      Move();
+  }
+
+  virtual bool HasNext() const {
+    return index_ < map_->capacity();
+  }
+
+  virtual bool Move() {
+    const std::uint32_t cap = map_->capacity();
+    const Map::Entry* d = map_->data();
+
+    for( ++index_ ; index_ < cap ; ++index_ ) {
+      const Map::Entry* cur = d + index_;
+      if(cur->active()) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  virtual void Deref( Value* key , Value* val ) const {
+    lava_debug(NORMAL,lava_verify(map_->data()[index_].active()););
+    const Map::Entry* e = map_->data() + index_;
+    key->SetString(e->key);
+    *val = e->value;
+  }
+
+ private:
+  std::uint32_t index_;
+  Handle<Map>   map_;
+
+  LAVA_DISALLOW_COPY_AND_ASSIGN(MapIterator)
+};
+
+} // namespace
+
+Handle<Iterator> Map::NewIterator( GC* gc , const Handle<Map>& self ) const {
+  lava_debug(NORMAL,lava_verify(self.ptr() == this););
+  return Handle<Iterator>(gc->NewIterator<MapIterator>(self));
 }
 
 /* ---------------------------------------------------------------
@@ -265,6 +364,72 @@ void Prototype::Dump( DumpWriter* writer , const std::string& source ) const {
 Handle<Closure> Closure::New( GC* gc , const Handle<Prototype>& proto ) {
   return gc->NewClosure(proto.ref());
 }
+
+/* ---------------------------------------------------------------
+ * Extension
+ * --------------------------------------------------------------*/
+// Binary operators
+#define _BINARY(Bin,Name) \
+  bool Extension::Bin( const Value& lhs , const Value& rhs , Value* output ,         \
+                                                             std::string* error ) {  \
+    (void)lhs;                                                                       \
+    (void)rhs;                                                                       \
+    (void)output;                                                                    \
+    Format(error,"binary operator %s is not implemented for type %s",(Name),name()); \
+    return false;                                                                    \
+  }
+
+_BINARY(Add,"+")
+_BINARY(Sub,"-")
+_BINARY(Mul,"*")
+_BINARY(Div,"/")
+_BINARY(Mod,"%")
+_BINARY(Pow,"^")
+_BINARY(Lt,"<")
+_BINARY(Le,"<=")
+_BINARY(Gt,">")
+_BINARY(Ge,">=")
+_BINARY(Eq,"==")
+_BINARY(Ne,"!=")
+
+#undef _BINARY // _BINARY
+
+// Property
+bool Extension::GetProp( const Value& self , const Value& key , Value* output ,
+                                                                std::string* error ) const {
+  (void)self;
+  (void)key;
+  (void)output;
+  Format(error,"opertaor \".\" or \"[]\" is not implemented in type %s,cannot get",name());
+  return false;
+}
+
+bool Extension::SetProp( const Value& self , const Value& key , const Value& val ,
+                                                                std::string* error ) {
+  (void)self;
+  (void)key;
+  (void)val;
+  Format(error,"operator \".\" or \"[]\" is not implemented in type %s,cannot set",name());
+  return false;
+}
+
+// Iterator
+Handle<Iterator> Extension::NewIterator( GC* gc , const Handle<Extension>& self ,
+                                                  std::string* error ) const {
+  (void)gc;
+  (void)self;
+  Format(error,"iterator is not implemented in type %s",name());
+  return Handle<Iterator>();
+}
+
+// Call
+bool Extension::Call( CallFrame* frame , std::string* error ) {
+  (void)frame;
+  Format(error,"call is not implemented in type %s",name());
+  return false;
+}
+
+Extension::~Extension() {}
 
 /* ---------------------------------------------------------------
  * Script

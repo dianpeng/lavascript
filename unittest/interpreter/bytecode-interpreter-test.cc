@@ -22,6 +22,9 @@ using namespace lavascript;
 using namespace lavascript::parser;
 namespace {
 
+static const std::string kGlobalSSO("a_global");
+static const std::string kGlobalLongString("abcdefghijklmnopqrstuvwxyz_abcdefghijklmnopqrstuvwxyz");
+
 bool Compile( Context* context ,const char* source ,
     ScriptBuilder* sb , std::string* error ) {
   zone::Zone zone;
@@ -103,6 +106,10 @@ bool Bench( const char* source ) {
   return r;
 }
 
+Handle<String> NewString( GC* gc , const char* str ) {
+  return (Handle<String>(gc->NewString(str,strlen(str))));
+}
+
 bool PrimitiveComp( const char* source , const Value& primitive , int op ) {
   // Generate assembler everytime, this is kind of slow but nothing hurts
   std::shared_ptr<lavascript::interpreter::AssemblyInterpreter>
@@ -122,7 +129,14 @@ bool PrimitiveComp( const char* source , const Value& primitive , int op ) {
   }
 
   Handle<Script> scp( Script::New(ctx.gc(),&ctx,sb) );
-  Handle<Object> obj( Object::New(ctx.gc()) );
+  Handle<Object> obj( Object::New(ctx.gc()) );  // globals
+
+  // One for SSO, the other for *LONG* string
+  {
+    obj->Put(ctx.gc(),NewString(ctx.gc(),kGlobalSSO.c_str()),Value(100));
+    obj->Put(ctx.gc(),NewString(ctx.gc(),kGlobalLongString.c_str()),Value(1000));
+  }
+
   Value ret;
 
   std::cout<<"-----------------------------------\n";
@@ -650,8 +664,6 @@ TEST(Interpreter,CompareStr) {
       );
 }
 
-#endif
-
 TEST(Interpreter,IdxPropNeedObject) {
   NEGATIVE(var a = 10; return a.a;);
   NEGATIVE(var b = 10; return b["a"];);
@@ -678,6 +690,58 @@ TEST(Interpreter,IdxPropSetFallback) {
   );
 }
 
+TEST(Interpreter,GGetSSO) {
+  PRIMITIVE_EQ(true,
+      return a_global == 100;
+      );
+  ASSERT_TRUE(
+      PrimitiveComp(
+        Format(stringify(return %s == 1000;),kGlobalLongString.c_str()).c_str(),
+        Value(true),
+        COMP_EQ));
+}
+
+TEST(Interpreter,GSetSSO) {
+  PRIMITIVE_EQ(true,
+      a_global = 1;
+      return a_global == 1;
+      );
+  ASSERT_TRUE(
+      PrimitiveComp(
+        Format(stringify(%s = 1; return %s == 1;),kGlobalLongString.c_str(),
+                                                  kGlobalLongString.c_str()).c_str(),
+        Value(true),
+        COMP_EQ));
+}
+
+TEST(Interpreter,GFail) {
+  NEGATIVE(return a == 10;);
+  NEGATIVE(return _1234567890123456789012345678901234567890(); );
+  NEGATIVE( a = 20; );
+  NEGATIVE( _1234567890123456789012345678901234567890 = 10; );
+}
+
+#endif
+
+TEST(Interpreter,ForEach) {
+  PRIMITIVE_EQ(10,
+      var sum = 0;
+      var arr = [1,2,3,4];
+      for( var _ , v in arr ) {
+        sum = sum + v;
+      }
+      return sum;
+  );
+
+  PRIMITIVE_EQ(6,
+      var sum = 0;
+      var arr = { "a" : 1 , "b" : 2 , "c" : 3 };
+      for( var k , v in arr ) {
+        sum = sum + v;
+      }
+      return sum;
+  );
+}
 
 } // namespace lavascript
 } // namespace interpreter

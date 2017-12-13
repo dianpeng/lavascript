@@ -190,6 +190,7 @@ class IFrameReserver {
         iprev = r.Get().index();
       } else {
         lava_debug(NORMAL,lava_verify(iprev+1 == r.Get().index()););
+        ++iprev;
       }
 
       rarr_[i] = r;

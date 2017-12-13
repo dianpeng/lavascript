@@ -834,7 +834,7 @@ INTERPRETER_REGISTER_EXTERN_SYMBOL(InterpreterCall)
  * ------------------------------------------------------------------*/
 |.define CHECK_MOD_BY_ZERO
 |.define CHECK_NUMBER_MEMORY,0
-|.define TRACE_OP, 1
+|.define TRACE_OP, 0
 |.define USE_CMOV_COMP,0
 
 /* -------------------------------------------------------------------
@@ -906,9 +906,9 @@ inline bool CheckAddress( std::uintptr_t addr ) {
 
 // Frame -------------------------------------------------------
 // We store the frame sizeof(IFrame) above STK pointer
-static_assert( sizeof(IFrame) == 16 );
-|.define CFRAME,                STK-16
-|.define FRAMELEN,              16
+static_assert( sizeof(IFrame) == 24 );
+|.define CFRAME,                STK-24
+|.define FRAMELEN,              24
 
 // Instruction's argument
 |.define ARG1_8,                bl
@@ -1481,8 +1481,7 @@ void GenerateInterpMisc( BuildContext* bctx ) {
 
   |=> INTERP_RETURN:
   |->InterpReturn:
-  |  mov rax, RREG
-  |  mov qword [RUNTIME+RuntimeLayout::kRetOffset],rax
+  |  mov qword [RUNTIME+RuntimeLayout::kRetOffset], ARG1F
   |  mov rax,1
 
   |  interp_epilog
@@ -3226,6 +3225,12 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
 
       |  mov qword [T0-8] , RREG   // Set the *closure* pointer into the *new* frame
 
+      /*
+       * Set the CompilationJob field to be NULL which indicates no JIT is pending
+       */
+      |  xor ARG2F,ARG2F
+      |  mov qword [T0-24], ARG2F
+
       // set the needed flag
       |  set_flag
 
@@ -3284,36 +3289,38 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
     |.macro do_ret
 
     |2:
-    |  movzx ARG1F, word [STK-10]
-
-    |  cmp ARG1F,IFRAME_EOF
+    |  movzx ARG2F, word [STK-10]
+    |  cmp ARG2F,IFRAME_EOF
     |  je ->InterpReturn             // Interpreter return from here
 
-    |  sub   STK  , ARG1F            // Now STK points to the *previous* frame
+    // Check if we have a pending compilation job
+    |  mov T0, qword [STK-24]
+    |  test T0, T0
+    |  je >3
+    |  Break // TODO:: Finish compilation job stuff
 
+    |3:
+    |  sub   STK  , ARG2F            // Now STK points to the *previous* frame
     // now STK points to the *previous* frame and we need to check
     // whether the previous frame is a frame we need to skip since
     // it maybe a tail call frame
     |  cmp byte [STK-1], 1
     |  je <2
-
     |1:
     |  mov   LREG , qword [STK-8]    // LREG == Closure**
     |  mov   qword [RUNTIME+RuntimeLayout::kCurClsOffset], LREG
-    |  mov   ARG1F, qword [LREG]
-    |  mov   PROTO, qword [ARG1F+ClosureLayout::kPrototypeOffset]
+    |  mov   ARG2F, qword [LREG]
+    |  mov   PROTO, qword [ARG2F+ClosureLayout::kPrototypeOffset]
     |  mov   PC , qword [STK-16]
     |  and   PC , qword [->PointerMask]
-
-    |  mov   ARG2F, qword [ARG1F+ClosureLayout::kCodeBufferOffset]
+    |  mov   ARG2F, qword [ARG2F+ClosureLayout::kCodeBufferOffset]
     |  mov   qword SAVED_PC, ARG2F
-
     |.endmacro
 
     case BC_RETNULL:
     |=>bc:
     |  instr_X
-    |  mov RREG, qword [->ValueNullConst]
+    |  mov ARG1F, qword [->ValueNullConst]
     |  do_ret
     |  mov dword [STK+ACCFIDX], Value::FLAG_NULL
     |  Dispatch
@@ -3322,9 +3329,9 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
     case BC_RET:
     |=>bc:
     |  instr_X
-    |  mov RREG, qword [ACC]
+    |  mov ARG1F, qword [ACC]
     |  do_ret
-    |  mov qword [ACC], RREG
+    |  mov qword [ACC], ARG1F
     |  Dispatch
     break;
 
@@ -3384,7 +3391,8 @@ AssemblyInterpreterStub::AssemblyInterpreterStub():
 {}
 
 AssemblyInterpreterStub::~AssemblyInterpreterStub() {
-  if(interp_entry_) OS::FreeCodePage(code_buffer_,buffer_size_);
+  if(interp_entry_)
+    OS::FreeCodePage(code_buffer_,buffer_size_);
 }
 
 std::shared_ptr<AssemblyInterpreterStub> AssemblyInterpreterStub::GetInstance() {

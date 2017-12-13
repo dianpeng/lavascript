@@ -9,6 +9,7 @@
 namespace lavascript {
 class Closure;
 class Extension;
+class CompilationJob;
 
 namespace interpreter{
 
@@ -47,8 +48,9 @@ namespace interpreter{
 // write assembly code
 // -----------------------------------------------------------------------
 struct IFrame {
-  std::uint64_t field1; // First  8 bytes
-  std::uint64_t field2; // Second 8 bytes
+  CompilationJob** cjob; // Pointer points CompilationJob
+  std::uint64_t field1;  // First  8 bytes
+  std::uint64_t field2;  // Second 8 bytes
 
  public:
   inline void SetUpAsExtension( std::uint16_t base , const std::uint32_t* pc ,
@@ -70,11 +72,11 @@ struct IFrame {
 };
 
 static_assert( std::is_standard_layout<IFrame>::value );
-static_assert( sizeof(IFrame) == 16 );
+static_assert( sizeof(IFrame) == 24 );
 
 // Reserved slots/register for *holding* this IFrame structure while we are
 // in the *call*
-static const std::size_t kReserveCallStack = 16;
+static const std::size_t kReserveCallStack = 24;
 static const std::size_t kReserveCallStackSlot = kReserveCallStack / sizeof(Value);
 
 struct IFrameLayout {

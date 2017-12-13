@@ -542,10 +542,10 @@ TEST(Map,Map) {
    * -------------------------------------*/
   {
     Handle<Map> map(Map::New(&gc));
-    ASSERT_EQ(0,map->capacity());
+    ASSERT_EQ(2,map->capacity());
     ASSERT_EQ(0,map->size());
     ASSERT_EQ(0,map->slot_size());
-    ASSERT_TRUE(map->NeedRehash());
+    ASSERT_FALSE(map->NeedRehash());
     ASSERT_TRUE(map->IsEmpty());
     Value v;
 

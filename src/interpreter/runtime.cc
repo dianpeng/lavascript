@@ -1,4 +1,4 @@
-#include "interpreter-runtime.h"
+#include "runtime.h"
 
 namespace lavascript {
 

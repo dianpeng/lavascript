@@ -490,11 +490,13 @@ Script** GC::NewScript( Context* context ,
 
 interpreter::Runtime* GC::GetInterpreterRuntime( Script** script ,
                                                  Object** globals,
+                                                 interpreter::Interpreter* interp,
                                                  std::string* err ) {
   // setup the global pointer
   interp_runtime_.script = script;
   interp_runtime_.global = globals;
   interp_runtime_.error  = err;
+  interp_runtime_.interp = interp;
   interp_runtime_.context = context_;
 
   // initialize the stack if needed
@@ -511,6 +513,7 @@ void GC::ReturnInterpreterRuntime( interpreter::Runtime* runtime ) {
   interp_runtime_.script    = NULL;
   interp_runtime_.global    = NULL;
   interp_runtime_.error     = NULL;
+  interp_runtime_.interp    = NULL;
   interp_runtime_.cur_cls   = NULL;
   interp_runtime_.cur_stk   = NULL;
   interp_runtime_.cur_pc    = NULL;

@@ -6,8 +6,8 @@
 #include "objects.h"
 
 // interpreter
-#include "interpreter/interpreter-runtime.h"
-#include "interpreter/interpreter-frame.h"
+#include "interpreter/runtime.h"
+#include "interpreter/iframe.h"
 
 
 namespace lavascript {

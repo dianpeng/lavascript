@@ -1,6 +1,7 @@
 #include "x64-interpreter.h"
-#include "interpreter-frame.h"
-#include "interpreter-runtime.h"
+
+#include "iframe.h"
+#include "runtime.h"
 
 #include "src/call-frame.h"
 #include "src/context.h"
@@ -818,7 +819,7 @@ INTERPRETER_REGISTER_EXTERN_SYMBOL(InterpreterCall)
 
 /* ---------------------------------------------------------------------
  *
- * Implementation of AssemblyInterpreter
+ * Implementation of AssemblyInterpreterStub
  *
  * --------------------------------------------------------------------*/
 |.arch x64
@@ -3371,7 +3372,7 @@ int ResolveExternalAddress( void** ctx , unsigned char* addr ,
 
 } // namespace
 
-AssemblyInterpreter::AssemblyInterpreter():
+AssemblyInterpreterStub::AssemblyInterpreterStub():
   dispatch_interp_(),
   dispatch_record_(),
   dispatch_jit_   (),
@@ -3382,16 +3383,16 @@ AssemblyInterpreter::AssemblyInterpreter():
   buffer_size_    ()
 {}
 
-AssemblyInterpreter::~AssemblyInterpreter() {
+AssemblyInterpreterStub::~AssemblyInterpreterStub() {
   if(interp_entry_) OS::FreeCodePage(code_buffer_,buffer_size_);
 }
 
-std::shared_ptr<AssemblyInterpreter> AssemblyInterpreter::Generate() {
-  static std::shared_ptr<AssemblyInterpreter> interp;
+std::shared_ptr<AssemblyInterpreterStub> AssemblyInterpreterStub::GetInstance() {
+  static std::shared_ptr<AssemblyInterpreterStub> interp;
   if(interp) return interp; // return interp if we already have a interpreter pointer
 
   // create a new interp object since this is our first time
-  interp.reset( new AssemblyInterpreter() );
+  interp.reset( new AssemblyInterpreterStub() );
 
   // create a build context
   BuildContext bctx;
@@ -3436,7 +3437,7 @@ std::shared_ptr<AssemblyInterpreter> AssemblyInterpreter::Generate() {
 
   void* buffer = OS::CreateCodePage(code_size,&new_size);
   if(!buffer) {
-    return std::shared_ptr<AssemblyInterpreter>();
+    return std::shared_ptr<AssemblyInterpreterStub>();
   }
 
   // encode the assembly code into the buffer
@@ -3468,7 +3469,7 @@ std::shared_ptr<AssemblyInterpreter> AssemblyInterpreter::Generate() {
   return interp;
 }
 
-Bytecode AssemblyInterpreter::CheckBytecodeRoutine( void* pc ) const {
+Bytecode AssemblyInterpreterStub::CheckBytecodeRoutine( void* pc ) const {
   for( int i = 0 ; i < SIZE_OF_BYTECODE ; ++i ) {
     void* p = reinterpret_cast<void*>(pc);
     if(p == dispatch_interp_[i]) {
@@ -3478,7 +3479,7 @@ Bytecode AssemblyInterpreter::CheckBytecodeRoutine( void* pc ) const {
   return SIZE_OF_BYTECODE;
 }
 
-int AssemblyInterpreter::CheckHelperRoutine( void* pc ) const {
+int AssemblyInterpreterStub::CheckHelperRoutine( void* pc ) const {
   std::vector<void*>::const_iterator itr =
     std::find( interp_helper_.begin() , interp_helper_.end() , pc );
   if(itr != interp_helper_.end()) {
@@ -3488,7 +3489,7 @@ int AssemblyInterpreter::CheckHelperRoutine( void* pc ) const {
   }
 }
 
-void AssemblyInterpreter::Dump( DumpWriter* writer ) const {
+void AssemblyInterpreterStub::Dump( DumpWriter* writer ) const {
   ZydisDecoder decoder;
   ZydisDecoderInit( &decoder, ZYDIS_MACHINE_MODE_LONG_64,
                               ZYDIS_ADDRESS_WIDTH_64);
@@ -3527,24 +3528,30 @@ void AssemblyInterpreter::Dump( DumpWriter* writer ) const {
   }
 }
 
-AssemblyInterpreter::Instance::Instance( const std::shared_ptr<AssemblyInterpreter>& interp ):
+AssemblyInterpreter::AssemblyInterpreter( feedback::FeedbackManager* feedback_mgr ):
   dispatch_interp_(),
   dispatch_record_(),
   dispatch_jit_   (),
-  interp_         (interp) {
+  interp_entry_   (),
+  feedback_mgr_   (feedback_mgr)
+{
+  std::shared_ptr<AssemblyInterpreterStub> stub(AssemblyInterpreterStub::GetInstance());
+  lava_debug(NORMAL,lava_verify(stub););
 
-  memcpy(dispatch_interp_,interp->dispatch_interp_,sizeof(dispatch_interp_));
-  memcpy(dispatch_record_,interp->dispatch_record_,sizeof(dispatch_record_));
-  memcpy(dispatch_jit_   ,interp->dispatch_jit_   ,sizeof(dispatch_jit_   ));
+  memcpy(dispatch_interp_,stub->dispatch_interp_,sizeof(dispatch_interp_));
+  memcpy(dispatch_record_,stub->dispatch_record_,sizeof(dispatch_record_));
+  memcpy(dispatch_jit_   ,stub->dispatch_jit_   ,sizeof(dispatch_jit_   ));
+
+  interp_entry_ = stub->interp_entry_;
 }
 
-bool AssemblyInterpreter::Instance::Run( Context* context , const Handle<Script>& script ,
-                                                            const Handle<Object>& globals,
-                                                            std::string* error,
-                                                            Value* rval ) {
+bool AssemblyInterpreter::Run( Context* context , const Handle<Script>& script ,
+                                                  const Handle<Object>& globals,
+                                                  Value* rval ,
+                                                  std::string* error ) {
 
   // Get the runtime object pointer
-  Runtime* rt = context->gc()->GetInterpreterRuntime(script.ref(), globals.ref(), error);
+  Runtime* rt = context->gc()->GetInterpreterRuntime(script.ref(), globals.ref(), this , error);
 
   // Main function
   Handle<Prototype> main_proto(script->main());
@@ -3553,15 +3560,13 @@ bool AssemblyInterpreter::Instance::Run( Context* context , const Handle<Script>
   Handle<Closure> cls(Closure::New(context->gc(),main_proto));
 
   // Entry of our assembly interpreter
-  Main m = reinterpret_cast<Main>(interp_->interp_entry_);
+  Main m = reinterpret_cast<Main>(interp_entry_);
 
   // Interpret the bytecode
-  bool ret = m(rt,
-               cls.ref(),
-               (main_proto.ref()),
-               reinterpret_cast<void*>(rt->stack_begin),
-               const_cast<void*>(reinterpret_cast<const void*>(main_proto->code_buffer())),
-               dispatch_interp_);
+  bool ret = m(rt, cls.ref(), (main_proto.ref()),
+                              reinterpret_cast<void*>(rt->stack_begin),
+                              const_cast<void*>(reinterpret_cast<const void*>(main_proto->code_buffer())),
+                              dispatch_interp_);
   // Check return
   if(ret) *rval = rt->ret;
 

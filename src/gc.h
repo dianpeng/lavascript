@@ -17,9 +17,12 @@
 #include "free-list.h"
 #include "bump-allocator.h"
 
-#include "interpreter/interpreter-runtime.h"
+#include "interpreter/runtime.h"
 
 namespace lavascript {
+namespace interpreter{
+class Interpreter;
+} // namespace interpreter
 
 class Context;
 class SSO;
@@ -690,6 +693,7 @@ class GC : AllStatic {
   // context must only have one on going interpreter
   interpreter::Runtime* GetInterpreterRuntime( Script** script_object,
                                                Object** global_object,
+                                               interpreter::Interpreter* interp,
                                                std::string* error );
 
   // Free/Return the interpreter runtmie back to the GC. This just

@@ -1,5 +1,5 @@
-#ifndef INTERPRETER_FRAME_H_
-#define INTERPRETER_FRAME_H_
+#ifndef IFRAME_H_
+#define IFRAME_H_
 #include <string>
 #include <cstdint>
 #include <type_traits>
@@ -144,4 +144,4 @@ void InterpreterStackWalk( const struct IFrame& tos , std::string* buffer );
 } // namespace interpreter
 } // namespace lavascript
 
-#endif // INTERPRETER_FRAME_H_
+#endif // IFRAME_H_

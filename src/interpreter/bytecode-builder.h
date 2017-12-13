@@ -147,7 +147,7 @@ class BytecodeBuilder {
 #define IMPLH(INSTR,C) /* null body */
 
 
-#define __(A,B,C,D,E,F) IMPL##A(BC_##B,C)
+#define __(A,B,C,...) IMPL##A(BC_##B,C)
   LAVASCRIPT_BYTECODE_LIST(__)
 #undef __           // __
 #undef IMPLB        // IMPLB

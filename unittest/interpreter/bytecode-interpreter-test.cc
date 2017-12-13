@@ -85,12 +85,7 @@ class PrintFn : public ::lavascript::Extension {
 };
 
 bool Bench( const char* source ) {
-  // Generate assembler everytime, this is kind of slow but nothing hurts
-  std::shared_ptr<lavascript::interpreter::AssemblyInterpreter>
-    interp( lavascript::interpreter::AssemblyInterpreter::Generate() );
-  lava_verify(interp);
-  lavascript::interpreter::AssemblyInterpreter::Instance ins(interp);
-
+  lavascript::interpreter::AssemblyInterpreter ins(NULL);
 
   Context ctx;
   std::string error;
@@ -112,7 +107,7 @@ bool Bench( const char* source ) {
     static const std::size_t kTimes = 100;
     std::uint64_t start = ::lavascript::OS::NowInMicroSeconds();
     for ( std::size_t i = 0 ; i < kTimes ; ++i ) {
-      r = ins.Run(&ctx,scp,obj,&error,&ret);
+      r = ins.Run(&ctx,scp,obj,&ret,&error);
     }
     std::uint64_t end   = ::lavascript::OS::NowInMicroSeconds();
     if(r) {
@@ -136,11 +131,7 @@ Handle<String> NewString( GC* gc , const char* str ) {
 }
 
 bool PrimitiveComp( const char* source , const Value& primitive , int op ) {
-  // Generate assembler everytime, this is kind of slow but nothing hurts
-  std::shared_ptr<lavascript::interpreter::AssemblyInterpreter>
-    interp( lavascript::interpreter::AssemblyInterpreter::Generate() );
-  lava_verify(interp);
-  lavascript::interpreter::AssemblyInterpreter::Instance ins(interp);
+  lavascript::interpreter::AssemblyInterpreter ins(NULL);
 
   Context ctx;
   std::string error;
@@ -167,7 +158,7 @@ bool PrimitiveComp( const char* source , const Value& primitive , int op ) {
   Value ret;
 
   std::cout<<"-----------------------------------\n";
-  bool r = ins.Run(&ctx,scp,obj,&error,&ret);
+  bool r = ins.Run(&ctx,scp,obj,&ret,&error);
   std::cout<<"-----------------------------------\n";
 
   if(r) {

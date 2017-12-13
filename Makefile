@@ -40,6 +40,20 @@ dep:
 	./build-dep.sh
 .PHONY: dep
 
+# ------------------------------------------------------------------------------
+#
+# Artifacts
+#
+# ------------------------------------------------------------------------------
+INTERP_OBJECT:=src/interpreter/x64-interpreter.dasc.pp.o
+INTERP_SOURCE:=src/interpreter/x64-interpreter.dasc.pp.cc
+
+$(INTERP_SOURCE): src/interpreter/x64-interpreter.dasc
+	./dynasm_pp.sh src/interpreter/x64-interpreter.dasc 1> src/interpreter/x64-interpreter.dasc.pp.cc
+
+$(INTERP_OBJECT): $(INTERP_SOURCE)
+	$(CXX) $(CXXFLAGS) -c src/interpreter/x64-interpreter.dasc.pp.cc -o $(INTERP_OBJECT) $(LDFLAGS)
+
 # -------------------------------------------------------------------------------
 #
 # Flags for different types of build
@@ -65,7 +79,7 @@ src/%.o : src/%.cc src/%.h
 #  Testing Library
 #
 # -------------------------------------------------------------------------------
-unittest/%.t : unittest/%.cc $(OBJECT) $(INCLUDE) $(SOURCE)
+unittest/%.t : unittest/%.cc  $(INTERP_OBJECT) $(OBJECT) $(INCLUDE) $(SOURCE)
 	$(CXX) $(OBJECT) $(CXXFLAGS) -o $@ $< $(LDFLAGS)
 
 test: CXXFLAGS += $(TEST_FLAGS)
@@ -79,11 +93,13 @@ test: $(TESTOBJECT)
 # -------------------------------------------------------------------------------
 release: CXXFLAGS += $(RELEASE_FLAGS)
 release: LDFLAGS += $(RELEASE_LIBS)
-release: $(OBJECT)
-	ar rcs liblavascript.a $(OBJECT)
+release: $(OBJECT) $(INTERP_OBJECT)
+	ar rcs liblavascript.a $(OBJECT) $(INTERP_OBJECT)
 
 .PHONY:clean
 clean:
 	rm -rf $(OBJECT)
+	rm -rf $(INTERP_OBJECT)
+	rm -rf $(INTERP_SOURCE)
 	rm -rf $(TESTOBJECT)
 	rm -rf liblavascript.a

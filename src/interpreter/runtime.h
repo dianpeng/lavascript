@@ -1,10 +1,10 @@
-#ifndef INTERPRETER_RUNTIME_H_
-#define INTERPRETER_RUNTIME_H_
+#ifndef RUNTIME_H_
+#define RUNTIME_H_
 
 #include "src/config.h"
 #include "src/objects.h"
 
-#include "interpreter-frame.h"
+#include "iframe.h"
 
 namespace lavascript {
 
@@ -13,6 +13,8 @@ LAVA_DECLARE_INT32(Interpreter,max_stack_size);
 LAVA_DECLARE_INT32(Interpreter,max_call_size);
 
 namespace interpreter{
+
+class Interpreter;
 
 struct Runtime {
   // current interpreted frame information ----------------------
@@ -35,6 +37,7 @@ struct Runtime {
   Context* context;
   Value ret;
   std::string* error;
+  Interpreter* interp;      // Which interpreter is used to interpreting it
 
   Value* stack_begin;       // Start of the stack
   Value* stack_end  ;       // End of the stack
@@ -66,6 +69,7 @@ inline Runtime::Runtime( Context* context , Value* init_stack ,
   context  (NULL),
   ret      (),
   error    (NULL),
+  interp   (NULL),
 
   stack_begin(init_stack),
   stack_end  (init_stack + init_stack_size),
@@ -85,6 +89,7 @@ struct RuntimeLayout {
   static const std::uint32_t kContextOffset  = offsetof(Runtime,context);
   static const std::uint32_t kRetOffset      = offsetof(Runtime,ret);
   static const std::uint32_t kErrorOffset    = offsetof(Runtime,error);
+  static const std::uint32_t kInterpOffset   = offsetof(Runtime,interp);
 
   static const std::uint32_t kStackBeginOffset = offsetof(Runtime,stack_begin);
   static const std::uint32_t kStackEndOffset   = offsetof(Runtime,stack_end);
@@ -96,4 +101,4 @@ struct RuntimeLayout {
 } // namespace interpreter
 } // namespace lavascript
 
-#endif // INTERPRETER_RUNTIME_H_
+#endif // RUNTIME_H_

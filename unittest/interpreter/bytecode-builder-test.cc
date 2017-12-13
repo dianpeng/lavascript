@@ -98,7 +98,7 @@ TEST(BytecodeBuilder,Coverage) {
    * try to generate *all* bytecodes
    * inside of the bytecode builder
    * --------------------------------*/
-#define __(A,B,C,D,E,F) GE_##A(C);
+#define __(A,B,C,...) GE_##A(C);
 
 #define GE_B(FUNC) bb.FUNC(0,SourceCodeInfo(),1,65535)
 #define GE_C(FUNC) bb.FUNC(0,SourceCodeInfo(),65535,1)
@@ -125,7 +125,7 @@ TEST(BytecodeBuilder,Coverage) {
    * now we need to test against it here.   |
    * ---------------------------------------*/
 
-#define __(A,B,C,D,E,F) \
+#define __(A,B,C,...) \
   do {                                      \
     ++count;                                \
     ASSERT_TRUE(itr.HasNext());             \

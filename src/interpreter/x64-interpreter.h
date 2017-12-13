@@ -1,6 +1,8 @@
 #ifndef X64_INTERPRETER_H_
 #define X64_INTERPRETER_H_
 #include "src/objects.h"
+
+#include "interpreter.h"
 #include "bytecode.h"
 
 #include <memory>
@@ -8,54 +10,31 @@
 
 namespace lavascript {
 class Context;
+
+namespace feedback {
+class FeedbackManager;
+} // namespace feedback
+
 namespace interpreter{
 
-struct AssemblyInterpreterLayout;
+class AssemblyInterpreter;
+struct AssemblyInterpreterStubLayout;
 
-// AssemblyInterpreter represents a interpreter function/routine that is generated
+// AssemblyInterpreterStub represents a interpreter function/routine that is generated
 // on the fly. It should be just generated *once* and all the created context just
 // use this one. It is a function so it doesn't contain *states*.
-class AssemblyInterpreter {
+class AssemblyInterpreterStub {
  public:
-  // Create an AssemblyInterpreter. After creation , the machine code for the
+  // Create an AssemblyInterpreterStub. After creation , the machine code for the
   // interpreter will be generated and also the dispatch table will be setup
   // correctly.
   //
   // Here we use a shared_ptr since we will use this assembly interpreter always
   // because we don't need to create a new assembly interpreter everytime. Sort
   // of like Singleton but just via a shared_ptr.
-  static std::shared_ptr<AssemblyInterpreter> Generate();
+  static std::shared_ptr<AssemblyInterpreterStub> GetInstance();
  public:
-  ~AssemblyInterpreter();
-
-  struct InstanceLayout;
-
-  // Instance maintains a stateful dispatch table due to the fact that we need this
-  // state for *recording/tracing* and jitting purpose. The entry/function for interpreter
-  // doesn't have state but it requires certain state to properly execute.
-  class Instance {
-   public:
-    Instance( const std::shared_ptr<AssemblyInterpreter>& interp );
-
-    // Execute the *script* starting from its *main* function with *environment*
-    bool Run( Context* context , const Handle<Script>& , const Handle<Object>& ,
-                                                         std::string* ,
-                                                         Value* );
-
-   private:
-    // Purposely duplicate these 3 fields to ease the pain of access them
-    // inside of assembly code.
-    void* dispatch_interp_ [ SIZE_OF_BYTECODE ];
-    void* dispatch_record_ [ SIZE_OF_BYTECODE ];
-    void* dispatch_jit_    [ SIZE_OF_BYTECODE ];
-
-    std::shared_ptr<AssemblyInterpreter> interp_;
-
-    friend struct InstanceLayout;
-    LAVA_DISALLOW_COPY_AND_ASSIGN(Instance);
-  };
-
- public:
+  ~AssemblyInterpreterStub();
 
   // Dump the interpreter into human readable assembly into the DumpWriter
   void Dump( DumpWriter* ) const;
@@ -65,7 +44,7 @@ class AssemblyInterpreter {
   int      CheckHelperRoutine  ( void* pc ) const;
 
  private:
-  AssemblyInterpreter();
+  AssemblyInterpreterStub();
 
   // The following table are *not* modified and should not modified. The instance object
   // contains a mutable dispatch table instance and those are the tables that *should* be
@@ -96,26 +75,56 @@ class AssemblyInterpreter {
   // the actual buffer size , this number will be aligned with page size
   std::size_t buffer_size_;
 
-  friend class Instance;
-  friend struct AssemblyInterpreterLayout;
-  LAVA_DISALLOW_COPY_AND_ASSIGN(AssemblyInterpreter);
+  friend struct AssemblyInterpreterStubLayout;
+  friend class AssemblyInterpreter;
+
+  LAVA_DISALLOW_COPY_AND_ASSIGN(AssemblyInterpreterStub)
 };
 
-static_assert( std::is_standard_layout<AssemblyInterpreter>::value );
+static_assert( std::is_standard_layout<AssemblyInterpreterStub>::value );
 
-struct AssemblyInterpreterLayout {
-  static const std::uint32_t kDispatchInterpOffset = offsetof(AssemblyInterpreter,dispatch_interp_);
-  static const std::uint32_t kDispatchRecordOffset = offsetof(AssemblyInterpreter,dispatch_record_);
-  static const std::uint32_t kDispatchJitOffset    = offsetof(AssemblyInterpreter,dispatch_jit_   );
-  static const std::uint32_t kInterpEntryOffset    = offsetof(AssemblyInterpreter,interp_entry_   );
-  static const std::size_t   kCodeSizeOffset       = offsetof(AssemblyInterpreter,code_size_      );
-  static const std::size_t   kBufferSizeOffset     = offsetof(AssemblyInterpreter,buffer_size_    );
+struct AssemblyInterpreterStubLayout {
+  static const std::uint32_t kDispatchInterpOffset = offsetof(AssemblyInterpreterStub,dispatch_interp_);
+  static const std::uint32_t kDispatchRecordOffset = offsetof(AssemblyInterpreterStub,dispatch_record_);
+  static const std::uint32_t kDispatchJitOffset    = offsetof(AssemblyInterpreterStub,dispatch_jit_   );
+  static const std::uint32_t kInterpEntryOffset    = offsetof(AssemblyInterpreterStub,interp_entry_   );
+  static const std::size_t   kCodeSizeOffset       = offsetof(AssemblyInterpreterStub,code_size_      );
+  static const std::size_t   kBufferSizeOffset     = offsetof(AssemblyInterpreterStub,buffer_size_    );
 };
 
-struct AssemblyInterpreter::InstanceLayout {
-  static const std::uint32_t kDispatchInterpOffset = offsetof(AssemblyInterpreter::Instance,dispatch_interp_);
-  static const std::uint32_t kDispatchRecordOffset = offsetof(AssemblyInterpreter::Instance,dispatch_record_);
-  static const std::uint32_t kDispatchJitOffset    = offsetof(AssemblyInterpreter::Instance,dispatch_jit_   );
+// Concret class implementation for Interpreter interface
+class AssemblyInterpreter : public Interpreter {
+ public:
+  // Using feedback manager to manage the *feedback* during the profiling. Obviously
+  // profiling only supported in assembly interpreter
+  AssemblyInterpreter( feedback::FeedbackManager* );
+
+ public:
+  virtual bool Run( Context* , const Handle<Script>& , const Handle<Object>& ,
+                                                       Value*,
+                                                       std::string* );
+
+  virtual bool Run( Context* , const Handle<Closure>&, const Handle<Object>& ,
+                                                       Value*,
+                                                       std::string* ) {
+    return false;
+  }
+
+  virtual feedback::FeedbackManager* feedback_manager() const {
+    return feedback_mgr_;
+  }
+
+  virtual ~AssemblyInterpreter() {}
+
+ private:
+  void* dispatch_interp_[SIZE_OF_BYTECODE];
+  void* dispatch_record_[SIZE_OF_BYTECODE];
+  void* dispatch_jit_   [SIZE_OF_BYTECODE];
+  void* interp_entry_;
+
+  feedback::FeedbackManager* feedback_mgr_;
+
+  LAVA_DISALLOW_COPY_AND_ASSIGN(AssemblyInterpreter)
 };
 
 } // namespace interpreter

@@ -931,9 +931,6 @@ class Prototype final : public HeapObject {
    static_assert(sizeof(SSOTableEntry) == 16);
 
  public:
-  // const vm::Bytecode& bytecode() const { return bytecode_; }
-  // const vm::ConstantTable& constant_table() const { return constant_table_; }
-  // const vm::UpValueIndexArray& upvalue_array() const { return upvalue_array_; }
   Handle<String> proto_string() const { return proto_string_; }
   std::uint8_t argument_size() const { return argument_size_; }
 

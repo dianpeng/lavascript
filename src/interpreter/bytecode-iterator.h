@@ -41,6 +41,9 @@ class BytecodeIterator {
   inline void GetOperand( std::uint16_t* , std::uint8_t* );
   inline void GetOperand( std::uint8_t* , std::uint16_t* );
 
+  // Get current code position pointer
+  const std::uint32_t* code_position() const { return code_buffer_ + cursor_; }
+
  private:
   // Decode the stuff from current cursor's pointed position
   void Decode();

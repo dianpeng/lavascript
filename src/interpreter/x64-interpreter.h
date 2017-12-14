@@ -11,10 +11,6 @@
 namespace lavascript {
 class Context;
 
-namespace feedback {
-class FeedbackManager;
-} // namespace feedback
-
 namespace interpreter{
 
 class AssemblyInterpreter;
@@ -43,6 +39,15 @@ class AssemblyInterpreterStub {
   Bytecode CheckBytecodeRoutine( void* pc ) const;
   int      CheckHelperRoutine  ( void* pc ) const;
 
+  // Generate the dispatch interp
+  bool GenerateDispatchInterp();
+
+  // Generate the dispatch profile handler, *MUST* be called after GenerateDispatchInterp
+  bool GenerateDispatchProfile();
+
+  // Call it after instantiate the object
+  bool Init();
+
  private:
   AssemblyInterpreterStub();
 
@@ -54,7 +59,7 @@ class AssemblyInterpreterStub {
   void* dispatch_interp_[ SIZE_OF_BYTECODE ];
 
   // dispatch table for each bytecode in recording mode
-  void* dispatch_record_[ SIZE_OF_BYTECODE ];
+  void* dispatch_profile_[ SIZE_OF_BYTECODE ];
 
   // dispatch table for each bytecode in jitting mode
   void* dispatch_jit_   [ SIZE_OF_BYTECODE ];
@@ -66,14 +71,31 @@ class AssemblyInterpreterStub {
   // we can use inline assembly to jmp to this routine
   void* interp_entry_;
 
-  // code buffer
-  void* code_buffer_;
+  struct CodeBuffer {
+    void* entry;
+    std::size_t code_size;
+    std::size_t buffer_size;
 
-  // code size for this buffer
-  std::size_t code_size_;
+    void Set( void* e , std::size_t cs , std::size_t bs ) {
+      entry = e;
+      code_size = cs;
+      buffer_size= bs;
+    }
 
-  // the actual buffer size , this number will be aligned with page size
-  std::size_t buffer_size_;
+    CodeBuffer():
+      entry      (NULL),
+      code_size  (0),
+      buffer_size(0)
+    {}
+
+    void FreeIfNeeded();
+  };
+
+  // buffer to hold dispatch_interp_ handler
+  CodeBuffer interp_code_buffer_;
+
+  // buffer to hold dispatch_profile_ handler
+  CodeBuffer profile_code_buffer_;
 
   friend struct AssemblyInterpreterStubLayout;
   friend class AssemblyInterpreter;
@@ -85,11 +107,9 @@ static_assert( std::is_standard_layout<AssemblyInterpreterStub>::value );
 
 struct AssemblyInterpreterStubLayout {
   static const std::uint32_t kDispatchInterpOffset = offsetof(AssemblyInterpreterStub,dispatch_interp_);
-  static const std::uint32_t kDispatchRecordOffset = offsetof(AssemblyInterpreterStub,dispatch_record_);
+  static const std::uint32_t kDispatchRecordOffset = offsetof(AssemblyInterpreterStub,dispatch_profile_);
   static const std::uint32_t kDispatchJitOffset    = offsetof(AssemblyInterpreterStub,dispatch_jit_   );
   static const std::uint32_t kInterpEntryOffset    = offsetof(AssemblyInterpreterStub,interp_entry_   );
-  static const std::size_t   kCodeSizeOffset       = offsetof(AssemblyInterpreterStub,code_size_      );
-  static const std::size_t   kBufferSizeOffset     = offsetof(AssemblyInterpreterStub,buffer_size_    );
 };
 
 // Concret class implementation for Interpreter interface
@@ -97,7 +117,7 @@ class AssemblyInterpreter : public Interpreter {
  public:
   // Using feedback manager to manage the *feedback* during the profiling. Obviously
   // profiling only supported in assembly interpreter
-  AssemblyInterpreter( feedback::FeedbackManager* );
+  AssemblyInterpreter();
 
  public:
   virtual bool Run( Context* , const Handle<Script>& , const Handle<Object>& ,
@@ -110,19 +130,17 @@ class AssemblyInterpreter : public Interpreter {
     return false;
   }
 
-  virtual feedback::FeedbackManager* feedback_manager() const {
-    return feedback_mgr_;
-  }
-
   virtual ~AssemblyInterpreter() {}
 
- private:
-  void* dispatch_interp_[SIZE_OF_BYTECODE];
-  void* dispatch_record_[SIZE_OF_BYTECODE];
-  void* dispatch_jit_   [SIZE_OF_BYTECODE];
-  void* interp_entry_;
+ public:
+  const void* dispatch_interp() const { return dispatch_interp_; }
+  const void* dispatch_profile()const { return dispatch_profile_;}
 
-  feedback::FeedbackManager* feedback_mgr_;
+ private:
+  void* dispatch_interp_ [SIZE_OF_BYTECODE];
+  void* dispatch_profile_[SIZE_OF_BYTECODE];
+  void* dispatch_jit_    [SIZE_OF_BYTECODE];
+  void* interp_entry_;
 
   LAVA_DISALLOW_COPY_AND_ASSIGN(AssemblyInterpreter)
 };

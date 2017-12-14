@@ -16,8 +16,14 @@ namespace interpreter{
 
 class Interpreter;
 
+// This serves as a global state holder object cross interpretation and JIT compliation.
+// It is kind of mess but it is easy for us to hold these core data fields in a single
+// place since we could just easily and efficiently pass this object's pointer around and
+// mess with it.
 struct Runtime {
-  // current interpreted frame information ----------------------
+  // ---------------------------------------------------------
+  // current interpreted frame information
+  // ---------------------------------------------------------
   Closure**            cur_cls;          // current closure, if not called by closure , then it is NULL
   Value*               cur_stk;          // current frame's start of stack
   const std::uint32_t* cur_pc;           // current frame's start of PC
@@ -31,7 +37,9 @@ struct Runtime {
       reinterpret_cast<char*>(cur_stk) - sizeof(IFrame));
   }
 
-  // global interpretation information --------------------------
+  // ---------------------------------------------------------
+  // global interpretation information
+  // ---------------------------------------------------------
   Script** script;
   Object** global;
   Context* context;
@@ -44,10 +52,45 @@ struct Runtime {
   std::uint32_t stack_size() const { return stack_begin ? stack_end - stack_begin : 0; }
   std::uint32_t call_size ; // how many function call is on going
 
-  // runtime threshold/constraints ------------------------------
+  // ---------------------------------------------------------
+  // interpreter threshold/constraints
+  // ---------------------------------------------------------
   std::uint32_t max_stack_size;
   std::uint32_t max_call_size;
 
+  // ---------------------------------------------------------
+  // JIT
+  // ---------------------------------------------------------
+  CompilationJob** cjob;    // This field will be set to a CompilerJob object
+                            // if a JIT is pending in states *profile*. If profile
+                            // is done, this field will be set to NULL again
+
+  // This array will be used to store the *interpreter* time hot count recording.
+  // There're 3+2 == 5 instructions will trigger a hot count recording, they are
+  // 1) forend1
+  // 2) forend2
+  // 3) fevrend
+  //
+  // 4) call
+  // 5) tcall
+  //
+  // When it is triggered, its current PC will be feeded into hash function to gen key to
+  // index the hot count array , once the hot count array reaches 0 it means we need to
+  // trigger the JIT.
+  //
+  // The first 3 BC will use loop_hot_count array and the rest 2 will use call_hot_count.
+  //
+  //
+  // The hash is ((PC >> 2) & 0xff) , basically after shifting by 2 and then the least
+  // significant 8 bits since the kHotCountArraySize is 256 and must be 256.
+  compiler::hotcount_t loop_hot_count[ compiler::kHotCountArraySize ];
+  compiler::hotcount_t call_hot_count[ compiler::kHotCountArraySize ];
+
+
+  // Whether we enable JIT compilation or not. This is useful for debugging purpose
+  bool jit_enable;
+
+ public:
   inline Runtime( Context* context , Value* init_stack ,
                                      std::uint32_t init_stack_size,
                                      std::uint32_t max_stack_size ,
@@ -76,7 +119,12 @@ inline Runtime::Runtime( Context* context , Value* init_stack ,
   call_size(0),
 
   max_stack_size(max_stack_size),
-  max_call_size (max_call_size)
+  max_call_size (max_call_size),
+
+  cjob          (NULL),
+  loop_hot_count(),
+  call_hot_count(),
+  jit_enable    (true)
 {}
 
 struct RuntimeLayout {
@@ -96,6 +144,10 @@ struct RuntimeLayout {
 
   static const std::uint32_t kMaxStackSizeOffset = offsetof(Runtime,max_stack_size);
   static const std::uint32_t kMaxCallSizeOffset  = offsetof(Runtime,max_call_size);
+
+  static const std::uint32_t kCompilerJobOffset  = offsetof(Runtime,cjob);
+  static const std::uint32_t kLoopHotCountOffset = offsetof(Runtime,loop_hot_count);
+  static const std::uint32_t kCallHotCountOffset = offsetof(Runtime,call_hot_count);
 };
 
 } // namespace interpreter

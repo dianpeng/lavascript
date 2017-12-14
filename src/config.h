@@ -20,7 +20,6 @@ static const std::size_t kMaxObjectEntryCount      = 256;
 static const std::size_t kMaxPrototypeSize         = 65536;
 static const std::size_t kMaxPrototypeCount        = 65535;
 
-
 // Interpreter related confugration options
 namespace interpreter {
 
@@ -31,6 +30,14 @@ static const std::size_t kMaxUpValueSize           = 256;
 static const std::uint8_t kAccRegisterIndex        = 255;
 
 } // namespace interpreter
+
+namespace compiler {
+
+static const std::size_t kHotCountArraySize = 256;
+// type of hot count
+typedef std::uint16_t hotcount_t;
+
+} // namespace compiler
 
 
 // Initialize the dynamic configuration via command line options

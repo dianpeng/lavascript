@@ -5,9 +5,6 @@
 #include <string>
 
 namespace lavascript {
-namespace feedback {
-class FeedbackManager;
-} // namespace feedback
 
 class Context;
 namespace interpreter{
@@ -29,11 +26,6 @@ class Interpreter {
   virtual bool Run( Context* , const Handle<Closure>& , const Handle<Object>& ,
                                                         Value* ,
                                                         std::string* ) = 0;
-
-  // returns the feedback manager, if this interpreter doesn't support feedback
-  // or jit , then just return NULL
-  virtual feedback::FeedbackManager* feedback_manager() const { return NULL; }
-
  public:
   virtual ~Interpreter() {}
 };

@@ -89,18 +89,22 @@ typedef bool (*Main)(Runtime*,Closure**,Prototype**,void*,void*,void*);
 // phase
 //
 // ------------------------------------------------------------------
-typedef std::map<std::string,void*> ExternSymbolTable;
+typedef std::map<std::string,void*> ExternalSymbolTable;
 
-ExternSymbolTable* GetExternSymbolTable() {
-  static ExternSymbolTable kTable;
+inline ExternalSymbolTable* GetExternalSymbolTable() {
+  static ExternalSymbolTable kTable;
   return &kTable;
+}
+
+inline bool InsertExternalSymbolTable(const char* name, void* address) {
+  return GetExternalSymbolTable()->insert(std::make_pair(name,address)).second;
 }
 
 // Macro to register a external function's symbol name into global table
 #define INTERPRETER_REGISTER_EXTERN_SYMBOL(XX)                               \
   struct XX##_Registry {                                                     \
     XX##_Registry() {                                                        \
-      ExternSymbolTable* table = GetExternSymbolTable();                     \
+      ExternalSymbolTable* table = GetExternalSymbolTable();                 \
       table->insert(std::make_pair(#XX,reinterpret_cast<void*>(&XX)));       \
     }                                                                        \
   };                                                                         \
@@ -782,8 +786,6 @@ bool InterpreterCall( Runtime* sandbox , const Value& expr , std::uint8_t base ,
   frame->SetUpAsExtension(base*sizeof(Value),NULL,tcall,narg,ext.ref());
 
   // 3. record the *current pc* into the current frame.
-  // TODO:: If IC is added, *modify* the PC here since current PC points to
-  //        the feedback slot
   sandbox->cur_frame()->set_pc(sandbox->cur_pc);
 
   // 4. store new information into sandbox object
@@ -816,6 +818,30 @@ bool InterpreterCall( Runtime* sandbox , const Value& expr , std::uint8_t base ,
   return true;
 }
 INTERPRETER_REGISTER_EXTERN_SYMBOL(InterpreterCall)
+
+/* ---------------------------------------------------------------------
+ * JIT
+ * --------------------------------------------------------------------*/
+enum { HC_LOOP = 0 , HC_CALL };
+
+// Triggering the JIT compilation
+const void* JITProfileStart( Runtime* runtime , int type , const std::uint32_t* pc ) {
+  (void)type;
+
+  lava_debug(NORMAL,
+      lava_verify(dynamic_cast<AssemblyInterpreter*>(runtime->interp) != NULL););
+
+  return NULL;
+}
+INTERPRETER_REGISTER_EXTERN_SYMBOL(JITProfileStart)
+
+void* JITProfileBC( Runtime* runtime , const std::uint32_t* pc ) {
+  // do nothing for now
+  (void)runtime;
+  (void)pc;
+  return (NULL);
+}
+INTERPRETER_REGISTER_EXTERN_SYMBOL(JITProfileBC)
 
 /* ---------------------------------------------------------------------
  *
@@ -1039,6 +1065,7 @@ INTERPRETER_REGISTER_EXTERN_SYMBOL(PrintV)
 /* ---------------------------------------------------------------
  * dispatch table                                                |
  * --------------------------------------------------------------*/
+
 |.macro Dispatch
 |.if TRACE_OP
 |  mov INSTR,dword [PC]
@@ -1051,6 +1078,55 @@ INTERPRETER_REGISTER_EXTERN_SYMBOL(PrintV)
 |  add PC,4              // 1 uops
 |  shr INSTR,8           // 1 uops
 |  jmp aword [DISPATCH+OP*8]
+|.endmacro
+
+// Used by the profile bytecode handler
+|.macro ResumeDispatch,PCI
+|  mov INSTR, dword [PCI]
+|  shr INSTR, 8
+|.endmacro
+
+/* ---------------------------------------------------------------
+ * HotLoop/HotCall count                                         |
+ * --------------------------------------------------------------*/
+static_assert( sizeof(compiler::hotcount_t) == 2 );
+
+// The following code MUST be called *after* handling of the BC
+|.macro hc_hash,temp
+|  lea temp, [PC-4]
+|  shr temp, 2
+|  and temp, 0xff
+|.endmacro
+
+|.macro HCLoop,temp
+|  hc_hash temp
+|  sub dword [RUNTIME+temp*2+RuntimeLayout::kLoopHotCountOffset], 1
+|  jz ->JITProfileStartHotLoop
+|.endmacro
+
+|.macro HCCall,temp
+|  hc_hash temp
+|  sub dword [RUNTIME+temp*2+RuntimeLayout::kCallHotCountOffset], 1
+|  jz ->JITProfileStartHotCall
+|.endmacro
+
+// Used to check whether a CompilationJob is finished ,which means
+// we can jump into the JITTed code. This code can only be executed
+// in bytecode that allows us to *JUMP* into the jitted code. These
+// BCs are 1) fend1 2) fend2 3) feend 4) fevrend 5) call 6) tcall
+|.macro CheckJIT,temp,fail
+|  mov temp, qword [STK-24]   // the CompilationJob is stored on IFrame
+|  test temp, temp
+|  je fail
+|  mov temp, qword [temp]     // Can be optimized ?
+// TODO:: add code for checking the stats of the CompilationJob
+|  Break
+|.endmacro
+
+|.macro DispatchCheckJIT,tag
+|  CheckJIT, rax , >tag
+|tag:
+|  Dispatch
 |.endmacro
 
 /* ---------------------------------------------------------------
@@ -1343,6 +1419,9 @@ INTERPRETER_REGISTER_EXTERN_SYMBOL(PrintV)
   __(INTERP_TCALL,InterpTCall)                        \
   __(INTERP_NEEDOBJECT,InterpNeedObject)              \
   __(INTERP_ARGUMENTMISMATCH,InterpArgumentMismatch)  \
+  /* JIT */                                           \
+  __(JIT_TRIGGER_HOT_LOOP,JITProfileStartHotLoop)          \
+  __(JIT_TRIGGER_HOT_CALL,JITProfileStartHotCall)          \
   /* ---- Debug Helper ---- */                        \
   __(PRINT_OP,PrintOP)                                \
   __(PRINT2  ,Print2 )                                \
@@ -1748,7 +1827,11 @@ void GenerateHelper( BuildContext* bctx ) {
   |  mov CARG4L, ARG3
   |  xor CARG5L, CARG5L
   |  fcall InterpreterCall
-  |  retbool
+  |  test eax,eax
+  |  je ->InterpFail
+
+  // Need to check whether the JIT is done
+  |  DispatchCheckJIT 1
 
   |=> INTERP_TCALL:
   |->InterpTCall:
@@ -1759,7 +1842,11 @@ void GenerateHelper( BuildContext* bctx ) {
   |  mov CARG4L,ARG3
   |  mov CARG5L,1
   |  fcall InterpreterCall
-  |  retbool
+  |  test eax,eax
+
+  // Need to check whether the JIT is done
+  |  je ->InterpFail
+  |  DispatchCheckJIT 1
 
   |=> INTERP_NEEDOBJECT:
   |->InterpNeedObject:
@@ -1778,6 +1865,30 @@ void GenerateHelper( BuildContext* bctx ) {
   |  fcall InterpreterArgumentMismatch
   |  jmp ->InterpFail
 
+  // ------------------------------------------------------
+  // JIT
+  // ------------------------------------------------------
+  |=> JIT_TRIGGER_HOT_LOOP:
+  |->JITProfileStartHotLoop:
+  |  savepc
+  |  mov CARG1, RUNTIME
+  |  xor CARG2L,CARG2L
+  |  lea CARG3, [PC-4]
+  |  fcall JITProfileStart
+  |  test eax,eax
+  |  cmovne DISPATCH, rax   // the table has been patched, use new dispatch table
+  |  Dispatch
+
+  |=> JIT_TRIGGER_HOT_CALL:
+  |->JITProfileStartHotCall:
+  |  savepc
+  |  mov CARG1, RUNTIME
+  |  mov CARG1, 1
+  |  lea CARG3, [PC-4]
+  |  fcall JITProfileStart
+  |  test eax,eax
+  |  cmovne DISPATCH, rax  // the table has been patched, use new dispatch table
+  |  Dispatch
 
   // ------------------------------------------------------
   // SSO Hash Lookup Fast Path
@@ -1824,7 +1935,7 @@ void GenerateHelper( BuildContext* bctx ) {
 
 }
 
-void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
+void GenBytecode( BuildContext* bctx, Bytecode bc ) {
   switch(bc) {
     /** =====================================================
      *  Register Move                                       |
@@ -3046,7 +3157,7 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
       |  mov ARG1, dword [PC]
       |  branch_to ARG1F,ARG3F
       |7:
-      |  Dispatch
+      |  DispatchCheckJIT 2
       |8:
       |  // skip the 4th argument
       |  add PC,4
@@ -3063,7 +3174,7 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
       |  test eax,eax
       |  je ->InterpFail
       |  mov PC, qword [RUNTIME+RuntimeLayout::kCurPCOffset]
-      |  Dispatch
+      |  jmp <7
       break;
 
     case BC_FEND2:
@@ -3086,7 +3197,7 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
       |  mov ARG1, dword [PC]
       |  branch_to ARG1F,ARG3F
       |7:
-      |  Dispatch
+      |  DispatchCheckJIT 2
       |8:
       |  add PC,4
       |  jmp <7
@@ -3102,7 +3213,7 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
       |  test eax,eax
       |  je ->InterpFail
       |  mov PC, qword [RUNTIME+RuntimeLayout::kCurPCOffset]
-      |  Dispatch
+      |  jmp <7
       break;
 
     case BC_FEVRSTART:
@@ -3115,7 +3226,7 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
       |=>bc:
       |  instr_G
       |  branch_to ARG1F,ARG3F
-      |  Dispatch
+      |  DispatchCheckJIT 1
       break;
 
     case BC_BRK:
@@ -3152,7 +3263,8 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
       |  mov CARG3L,ARG2
       |  fcall InterpreterFEEnd
       |  mov PC, qword [RUNTIME+RuntimeLayout::kCurPCOffset]
-      |  Dispatch
+
+      |  DispatchCheckJIT 1
       break;
 
     case BC_IDREF:
@@ -3249,7 +3361,8 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
       |  mov qword [RUNTIME+RuntimeLayout::kCurStackOffset], T0
 
       |  mov qword SAVED_PC, PC       // set the savedpc
-      |  Dispatch
+
+      |  DispatchCheckJIT 1
 
       // stack overflow
       // ARG2F/ARG3F are caller saved, ARG1F are callee saved
@@ -3342,14 +3455,217 @@ void GenerateOneBytecode( BuildContext* bctx, Bytecode bc ) {
   }
 }
 
+// Routine to generate profiler version of bytecode, assuming ExternalSymbolTable already
+// get entry for the actual jumpping stuff
+void GenBytecodeProfile( BuildContext* bctx , Bytecode bc ) {
+
+  // Calls out to do the actual recording/profiling of the Bytecode
+  |=>bc:
+  |  mov CARG1, RUNTIME
+  |  lea CARG2, [PC-4]
+  |  fcall JITProfileBC
+  |  test eax,eax
+  |  cmovne STK,rax
+  |  ResumeDispatch PC-4
+
+  // Unfortunately, dasm doesn't support to get a jmp address from calling
+  // a function so we have to hard code them via large switch case.
+  // TODO:: Use external tool to generate this code stub
+  switch(bc) {
+    /* arithmetic */
+    case BC_ADDRV:
+      |  jmp extern addrv
+      break;
+    case BC_ADDVR:
+      |  jmp extern addvr
+      break;
+    case BC_ADDVV:
+      |  jmp extern addvv
+      break;
+    case BC_SUBRV:
+      |  jmp extern subrv
+      break;
+    case BC_SUBVR:
+      |  jmp extern subvr
+      break;
+    case BC_SUBVV:
+      |  jmp extern subvv
+      break;
+    case BC_MULRV:
+      |  jmp extern mulrv
+      break;
+    case BC_MULVR:
+      |  jmp extern mulvr
+      break;
+    case BC_MULVV:
+      |  jmp extern mulvv
+      break;
+    case BC_DIVRV:
+      |  jmp extern divrv
+      break;
+    case BC_DIVVR:
+      |  jmp extern divvr
+      break;
+    case BC_DIVVV:
+      |  jmp extern divvv
+      break;
+    case BC_MODVR:
+      |  jmp extern modvr
+      break;
+    case BC_MODRV:
+      |  jmp extern modrv
+      break;
+    case BC_MODVV:
+      |  jmp extern modvv
+      break;
+    case BC_POWRV:
+      |  jmp extern powrv
+      break;
+    case BC_POWVR:
+      |  jmp extern powvr
+      break;
+    case BC_POWVV:
+      |  jmp extern powvv
+      break;
+    /* comparison */
+    case BC_LTRV:
+      |  jmp extern ltrv
+      break;
+    case BC_LTVR:
+      |  jmp extern ltvr
+      break;
+    case BC_LTVV:
+      |  jmp extern ltvv
+      break;
+    case BC_LERV:
+      |  jmp extern lerv
+      break;
+    case BC_LEVR:
+      |  jmp extern levr
+      break;
+    case BC_LEVV:
+      |  jmp extern levv
+      break;
+    case BC_GTRV:
+      |  jmp extern gtrv
+      break;
+    case BC_GTVR:
+      |  jmp extern gtvr
+      break;
+    case BC_GTVV:
+      |  jmp extern gtvv
+      break;
+    case BC_GERV:
+      |  jmp extern gerv
+      break;
+    case BC_GEVR:
+      |  jmp extern gevr
+      break;
+    case BC_GEVV:
+      |  jmp extern gevv
+      break;
+    case BC_EQRV:
+      |  jmp extern eqrv
+      break;
+    case BC_EQVR:
+      |  jmp extern eqvr
+      break;
+    case BC_EQSV:
+      |  jmp extern eqsv
+      break;
+    case BC_EQVS:
+      |  jmp extern eqvs
+      break;
+    case BC_EQVV:
+      |  jmp extern eqvv
+      break;
+    case BC_NERV:
+      |  jmp extern nerv
+      break;
+    case BC_NEVR:
+      |  jmp extern nevr
+      break;
+    case BC_NESV:
+      |  jmp extern nesv
+      break;
+    case BC_NEVS:
+      |  jmp extern nevs
+      break;
+    case BC_NEVV:
+      |  jmp extern nevv
+      break;
+    /* unary */
+    case BC_NEGATE:
+      |  jmp extern negate
+      break;
+    case BC_NOT:
+      |  jmp extern not_
+      break;
+    /* property */
+    case BC_PROPGET:
+      |  jmp extern propget
+      break;
+    case BC_PROPGETSSO:
+      |  jmp extern propgetsso
+      break;
+    case BC_PROPSET:
+      |  jmp extern propset
+      break;
+    case BC_PROPSETSSO:
+      |  jmp extern propsetsso
+      break;
+    case BC_IDXGET:
+      |  jmp extern idxget
+      break;
+    case BC_IDXSET:
+      |  jmp extern idxset
+      break;
+    case BC_IDXSETI:
+      |  jmp extern idxseti
+      break;
+    case BC_IDXGETI:
+      |  jmp extern idxgeti
+      break;
+    /* call */
+    case BC_CALL:
+      |  jmp extern call
+      break;
+    case BC_TCALL:
+      |  jmp extern tcall
+      break;
+    /* loop */
+    case BC_FEND1:
+      |  jmp extern fend1
+      break;
+    case BC_FEND2:
+      |  jmp extern fend2
+      break;
+    case BC_FEEND:
+      |  jmp extern feend
+      break;
+    case BC_FEVREND:
+      |  jmp extern fevrend
+      break;
+    case BC_FSTART:
+      |  jmp extern fstart
+      break;
+    case BC_FESTART:
+      |  jmp extern festart
+      break;
+    default:
+      lava_unreachF("Bytecode %s cannot have Feedback",GetBytecodeName(bc));
+      break;
+  }
+}
+
 // Help Dasm to resolve external address via Index idx
 int ResolveExternalAddress( void** ctx , unsigned char* addr ,
                                          int idx,
                                          int type ) {
   (void)ctx;
 
-  ExternSymbolTable* t = GetExternSymbolTable();
-  ExternSymbolTable::iterator itr = t->find(extnames[idx]);
+  ExternalSymbolTable* t = GetExternalSymbolTable();
+  ExternalSymbolTable::iterator itr = t->find(extnames[idx]);
 
   lava_verify( itr != t->end() );
 
@@ -3380,28 +3696,16 @@ int ResolveExternalAddress( void** ctx , unsigned char* addr ,
 } // namespace
 
 AssemblyInterpreterStub::AssemblyInterpreterStub():
-  dispatch_interp_(),
-  dispatch_record_(),
-  dispatch_jit_   (),
-  interp_helper_  (),
-  interp_entry_   (),
-  code_buffer_    (),
-  code_size_      (),
-  buffer_size_    ()
+  dispatch_interp_      (),
+  dispatch_profile_     (),
+  dispatch_jit_         (),
+  interp_helper_        (),
+  interp_entry_         (),
+  interp_code_buffer_   (),
+  profile_code_buffer_  ()
 {}
 
-AssemblyInterpreterStub::~AssemblyInterpreterStub() {
-  if(interp_entry_)
-    OS::FreeCodePage(code_buffer_,buffer_size_);
-}
-
-std::shared_ptr<AssemblyInterpreterStub> AssemblyInterpreterStub::GetInstance() {
-  static std::shared_ptr<AssemblyInterpreterStub> interp;
-  if(interp) return interp; // return interp if we already have a interpreter pointer
-
-  // create a new interp object since this is our first time
-  interp.reset( new AssemblyInterpreterStub() );
-
+bool AssemblyInterpreterStub::GenerateDispatchInterp() {
   // create a build context
   BuildContext bctx;
 
@@ -3431,21 +3735,18 @@ std::shared_ptr<AssemblyInterpreterStub> AssemblyInterpreterStub::GetInstance() 
 
   // generate all bytecode's routine
   for( int i = 0 ; i < SIZE_OF_BYTECODE ; ++i ) {
-    GenerateOneBytecode(&bctx,static_cast<Bytecode>(i));
+    GenBytecode(&bctx,static_cast<Bytecode>(i));
   }
 
   std::size_t code_size;
+  std::size_t buf_size;
 
   // we should never fail at *linking* if our code is *correct*
   lava_verify(dasm_link(&(bctx.dasm_ctx),&code_size) ==0);
 
-  // generate a buffer and set the proper protection field for that piece of
-  // memory to make our code *work*
-  std::size_t new_size;
-
-  void* buffer = OS::CreateCodePage(code_size,&new_size);
+  void* buffer = OS::CreateCodePage(code_size,&buf_size);
   if(!buffer) {
-    return std::shared_ptr<AssemblyInterpreterStub>();
+    return false;
   }
 
   // encode the assembly code into the buffer
@@ -3454,27 +3755,84 @@ std::shared_ptr<AssemblyInterpreterStub> AssemblyInterpreterStub::GetInstance() 
   // get all pc labels for entry of bytecode routine
   for( int i = 0 ; i < SIZE_OF_BYTECODE ; ++i ) {
     int off = dasm_getpclabel(&(bctx.dasm_ctx),i);
-    interp->dispatch_interp_[i] =
+    dispatch_interp_[i] =
       reinterpret_cast<void*>(static_cast<char*>(buffer) + off);
   }
 
   // get all pc labels for helper routines
   for( int i = INTERP_HELPER_START ; i < DASM_GROWABLE_PC_SIZE ; ++i ) {
     int off = dasm_getpclabel(&(bctx.dasm_ctx),i);
-    interp->interp_helper_.push_back(
+    interp_helper_.push_back(
         reinterpret_cast<void*>(static_cast<char*>(buffer)+off));
   }
 
-  // start of the code buffer
-  interp->code_buffer_  = buffer;
-
   // get the *interpreter's* entry
   int off = dasm_getpclabel(&(bctx.dasm_ctx),INTERP_START);
-  interp->interp_entry_ = reinterpret_cast<void*>(static_cast<char*>(buffer) + off);
 
-  interp->buffer_size_  = new_size;
-  interp->code_size_    = code_size;
-  return interp;
+  // set the corresponding field
+  interp_entry_ = reinterpret_cast<void*>(static_cast<char*>(buffer) + off);
+  interp_code_buffer_.Set(buffer,code_size,buf_size);
+  return true;
+}
+
+bool AssemblyInterpreterStub::GenerateDispatchProfile() {
+  // 1. register all BC handler into the symbol table later on for generating
+  //    the profiler handler use case
+  for( int i = 0 ; i < SIZE_OF_BYTECODE ; ++i ) {
+    lava_verify(InsertExternalSymbolTable(
+            GetBytecodeName(static_cast<Bytecode>(i)),dispatch_interp_[i]));
+  }
+
+  // 2. build context to generate bytecode handler
+  BuildContext bctx;
+  dasm_init(&(bctx.dasm_ctx),2);
+  void* glb_arr[GLBNAME__MAX];
+  dasm_setupglobal(&(bctx.dasm_ctx),glb_arr,GLBNAME__MAX);
+  dasm_setup(&(bctx.dasm_ctx),actions);
+  bctx.tag = SIZE_OF_BYTECODE;
+  dasm_growpc(&(bctx.dasm_ctx), SIZE_OF_BYTECODE);
+
+  for( int i = 0 ; i < SIZE_OF_BYTECODE ; ++i ) {
+    if(DoesBytecodeHasFeedback(static_cast<Bytecode>(i)))
+      GenBytecodeProfile(&bctx,static_cast<Bytecode>(i));
+  }
+
+  std::size_t code_size , buf_size;
+  lava_verify(dasm_link(&(bctx.dasm_ctx),&code_size)==0);
+  void* buffer = OS::CreateCodePage(code_size,&buf_size);
+  if(!buffer) {
+    return false;
+  }
+
+  dasm_encode(&(bctx.dasm_ctx),buffer);
+
+  // get all PC labels for profile bytecode
+  for( int i = 0 ; i < SIZE_OF_BYTECODE ; ++i ) {
+    int off = dasm_getpclabel(&(bctx.dasm_ctx),i);
+    dispatch_profile_[i] =
+      reinterpret_cast<void*>(static_cast<char*>(buffer)+off);
+  }
+  profile_code_buffer_.Set(buffer,code_size,buf_size);
+  return true;
+}
+
+bool AssemblyInterpreterStub::Init() {
+  return GenerateDispatchInterp() && GenerateDispatchProfile();
+}
+
+AssemblyInterpreterStub::~AssemblyInterpreterStub() {
+  interp_code_buffer_.FreeIfNeeded();
+  profile_code_buffer_.FreeIfNeeded();
+}
+
+std::shared_ptr<AssemblyInterpreterStub> AssemblyInterpreterStub::GetInstance() {
+  static std::shared_ptr<AssemblyInterpreterStub> kInterp;
+  if(!kInterp) {
+    kInterp.reset( new AssemblyInterpreterStub() );
+    if(!kInterp->Init())
+      return std::shared_ptr<AssemblyInterpreterStub>();
+  }
+  return kInterp;
 }
 
 Bytecode AssemblyInterpreterStub::CheckBytecodeRoutine( void* pc ) const {
@@ -3497,6 +3855,12 @@ int AssemblyInterpreterStub::CheckHelperRoutine( void* pc ) const {
   }
 }
 
+void AssemblyInterpreterStub::CodeBuffer::FreeIfNeeded() {
+  if(entry) {
+    OS::FreeCodePage(entry,buffer_size);
+  }
+}
+
 void AssemblyInterpreterStub::Dump( DumpWriter* writer ) const {
   ZydisDecoder decoder;
   ZydisDecoderInit( &decoder, ZYDIS_MACHINE_MODE_LONG_64,
@@ -3505,11 +3869,11 @@ void AssemblyInterpreterStub::Dump( DumpWriter* writer ) const {
   ZydisFormatter formatter;
   ZydisFormatterInit(&formatter,ZYDIS_FORMATTER_STYLE_INTEL);
 
-  std::uint64_t pc = reinterpret_cast<std::uint64_t>(code_buffer_);
-  std::uint8_t* rp = static_cast<std::uint8_t*>(code_buffer_);
-  std::size_t size = code_size_;
+  std::uint64_t pc = reinterpret_cast<std::uint64_t>(interp_code_buffer_.entry);
+  std::uint8_t* rp = static_cast<std::uint8_t*>(interp_code_buffer_.entry);
+  std::size_t size = interp_code_buffer_.code_size;
 
-  writer->WriteL("CodeSize:%zu",code_size_);
+  writer->WriteL("CodeSize:%zu",size);
   ZydisDecodedInstruction instr;
   while(ZYDIS_SUCCESS(
         ZydisDecoderDecodeBuffer(&decoder,rp,size,pc,&instr))) {
@@ -3536,18 +3900,17 @@ void AssemblyInterpreterStub::Dump( DumpWriter* writer ) const {
   }
 }
 
-AssemblyInterpreter::AssemblyInterpreter( feedback::FeedbackManager* feedback_mgr ):
+AssemblyInterpreter::AssemblyInterpreter():
   dispatch_interp_(),
-  dispatch_record_(),
+  dispatch_profile_(),
   dispatch_jit_   (),
-  interp_entry_   (),
-  feedback_mgr_   (feedback_mgr)
+  interp_entry_   ()
 {
   std::shared_ptr<AssemblyInterpreterStub> stub(AssemblyInterpreterStub::GetInstance());
   lava_debug(NORMAL,lava_verify(stub););
 
   memcpy(dispatch_interp_,stub->dispatch_interp_,sizeof(dispatch_interp_));
-  memcpy(dispatch_record_,stub->dispatch_record_,sizeof(dispatch_record_));
+  memcpy(dispatch_profile_,stub->dispatch_profile_,sizeof(dispatch_profile_));
   memcpy(dispatch_jit_   ,stub->dispatch_jit_   ,sizeof(dispatch_jit_   ));
 
   interp_entry_ = stub->interp_entry_;

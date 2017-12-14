@@ -110,7 +110,6 @@ static const std::size_t kAllocatableBytecodeRegisterSize = 255;
   __(E,NEGATE, negate, REG,REG,_ , FB )        \
   __(E,NOT   , not_  , REG,REG,_ , FB )        \
   /* branch */ \
-  __(B,JMPT , jmpt ,REG,PC,_, _  )             \
   __(B,JMPF , jmpf ,REG,PC,_, _  )             \
   __(B,AND  , and_ ,REG,PC,_, _  )             \
   __(B,OR   , or_  ,REG,PC,_, _  )             \

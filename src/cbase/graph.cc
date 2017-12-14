@@ -4,32 +4,13 @@
 #include "dest/interpreter/bytecode-iterator.h"
 
 #include <vector>
+#include <set>
 
 namespace lavascript {
 namespace cbase {
 using namespace ::lavascript::interpreter;
 
 namespace {
-
-// Used to simulate multiple branch/target and loop
-struct GraphBuilderContext {
-  std::vector<ir::Node*> stack;
-  std::uint32_t base;
-  ir::Node* region;
-};
-
-// Temporarily change GraphBuilderContext inside of GraphBuilder due
-// to we need to d a branch scope IR building. This context adding is
-// temporarily and will be merged back inside of its destructor
-class BranchContext {
- public:
-  BranchContext( GraphBuilder* );
-  ~BranchContext();
-
- private:
-  GraphBuilderContext* context_;
-  GraphBuilder* builder_;
-};
 
 // Temporarily change GraphBuilderContext inside of GraphBuilder due
 // to *inline* The GraphBuilderContext will be poped out inside of
@@ -47,12 +28,15 @@ class GraphBuilder {
                                    std::uint32_t stack_base = 0 ):
     zone_        (zone),
     closure_     (closure),
+    prototype_   (closure->prototype()),
     script_      (script),
     osr_         (osr),
     start_       (NULL),
     end_         (NULL),
     stack_base_  () ,
-    cur_ctl_     ()
+    stack_       () ,
+    region_      (NULL),
+    branch_      ()
   {
     stack_base_.push_back(stack_base);
   }
@@ -76,23 +60,19 @@ class GraphBuilder {
  private: // Stack accessing
 
   void StackSet( std::uint32_t index , ir::Node* value ) {
-    return current_context().stack[ current_context().base + index ] = value;
+    stack_[index+stack_base_.back()] = value;
   }
 
   ir::Node* StackGet( std::uint32_t index ) {
-    return &(current_context().stack[ current_context().base + index ]);
+    return stack_[index+stack_base_.back()];
   }
 
   std::uint32_t StackIndex( std::uint32_t index ) const {
-    return index + current_context().base;
+    return stack_base_.back()+index;
   }
-
- private: // Region
-  ir::Node* region() { return current_context().region; }
 
  private: // Constant handling
   ir::Node* NewConstNumber( std::int32_t );
-
   ir::Node* NewNumber( std::uint8_t ref );
   ir::Node* NewString( std::uint8_t ref );
   ir::Node* NewSSO   ( std::uint8_t ref );
@@ -103,6 +83,7 @@ class GraphBuilder {
  private:
   zone::Zone* zone_;
   Handle<Closure> closure_;
+  Handle<Prototype> prototype_;
   Handle<Script>  script_;
   const std::uint32_t* osr_;
   ir::ConstantFactory* const_factory_;
@@ -110,8 +91,18 @@ class GraphBuilder {
   ir::End*   end_;
 
   // Working set data , used when doing inline and other stuff
-  std::vector<std::uint32_t> stack_base_;
-  std::vector<GraphBuilderContext> context_;
+  std::vector<ir::Node*> stack_;
+  ir::Node* region_;
+
+  struct FuncInfo {
+    Handle<Closure> closure;
+    Handle<Prototype> prototype;
+    std::uint32_t base;
+    bool IsLocalVar( std::uint8_t slot ) const {
+      return slot < prototype->max_local_var_size();
+    }
+  };
+  std::vector<FuncInfo> func_info_;
 };
 
 

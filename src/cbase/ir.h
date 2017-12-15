@@ -49,7 +49,7 @@ using namespace ::lavascript;
   __(GGet,GGET  , "gget" )                      \
   __(GSet,GSET  , "gset" )                      \
   /* iterator */                                \
-  __(ItrTest,ITRTEST,"itrtest")                 \
+  __(ItrNew ,ITRNEW ,"itrnew" )                 \
   __(ItrNext,ITRNEXT,"itrnext")                 \
   __(ItrDref,ITRDREF,"itrdref")                 \
   /* call     */                                \
@@ -74,6 +74,8 @@ using namespace ::lavascript;
   __(Start,START,"start")                       \
   __(Loop,Loop,LOOP ,"loop" )                   \
   __(LoopExit,LOOP_EXIT,"loop_exit")            \
+  __(If,IF,"if")                                \
+  __(Jump,JUMP,"jump")                          \
   __(Region,REGION,"region")                    \
   __(Ret,RET  , "ret" )                         \
   __(End,END  , "end" )                         \
@@ -499,6 +501,18 @@ class End   : public ControlFlow {
 class Region: public ControlFlow {
  private:
   LAVA_DISALLOW_COPY_AND_ASSIGN(Merge)
+};
+
+class If : public ControlFlow {
+ private:
+  LAVA_DISALLOW_COPY_AND_ASSIGN(If)
+};
+
+// This unconditional JUMP it is needed to mark bytecode that is doing
+// continue/break.
+class Jump : public ControlFlow {
+ private:
+  LAVA_DISALLOW_COPY_AND_ASSIGN(Jump)
 };
 
 

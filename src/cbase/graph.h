@@ -10,21 +10,28 @@ namespace cbase {
 // Represent everything about the IR construction
 class Graph {
  public:
-  Graph( const Handle<Closure>& closure , const Handle<Script> & script  ,
-                                          const std::uint32_t* osr_bc   );
+  // Represent a frame of a call. Used to deoptimize certain code if needed
+  struct FrameInfo {
+
+  };
+
+ public:
+  Graph( const Handle<Closure>& closure , const std::uint32_t* osr_bc   );
   // Build the graph
   bool BuildGraph();
  public:
   Zone* zone() { return &zone_; }
+  NodeFactory* node_factory() { return &node_factory_; }
 
  private:
   Zone zone_;
+  NodeFactory node_factory_;
+  const std::uint32_t* osr_bc_;
+
   ir::Start* start_;
   ir::End*   end_  ;
-  OSRStart* osr_start_;
-  Vector<OSRExit*> osr_exit_;
+  zone::Vector<FrameInfo*> frame_info_;
   Handle<Closure> closure_;
-  Handle<Script>  script_;
 
   LAVA_DISALLOW_COPY_AND_ASSIGN(Graph)
 };

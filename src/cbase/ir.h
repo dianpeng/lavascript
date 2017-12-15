@@ -34,6 +34,8 @@ using namespace ::lavascript;
  */
 
 #define CBASE_IR_LIST(__)                       \
+  /* base for all none control flow */          \
+  __(Expr,EXPR,"expr")                          \
   /* ariethmetic/comparison node */             \
   __(Binary,BINARY,"binary")                    \
   __(Unary,UNARY ,"unary" )                     \
@@ -72,7 +74,6 @@ using namespace ::lavascript;
   __(Start,START,"start")                       \
   __(Loop,Loop,LOOP ,"loop" )                   \
   __(LoopExit,LOOP_EXIT,"loop_exit")            \
-  __(Merge,MERGE,"merge")                       \
   __(Region,REGION,"region")                    \
   __(Ret,RET  , "ret" )                         \
   __(End,END  , "end" )                         \
@@ -101,20 +102,24 @@ const char* IRTypeGetName( IRType );
 
 struct BytecodeInfo {
   std::int32_t saved_slot;  // Where this will be if it is interpreted
+  std::uint32_t call_frame; // Which call frame this Node resides
   const std::uint32_t* pc;  // Pointer points to the BC for this ir node
 
   BytecodeInfo():
     saved_slot(-1),
+    call_frame(0) ,
     pc(NULL)
   {}
 
-  BytecodeInfo( std::int32_t idx , const std::uint32_t* p ):
-    saved_slot(idx),
+  BytecodeInfo( std::int32_t idx , std::uint32_t cf , const std::uint32_t* p ):
+    saved_slot (idx),
+    call_frame (cf),
     pc         (p)
   {}
 
   BytecodeInfo( const std::uint32_t* p ):
-    saved_slot(-1),
+    saved_slot (-1),
+    call_frame (0),
     pc         (p)
   {}
 };
@@ -132,13 +137,16 @@ CBASE_IR_LIST(__)
 // hash implementation. Since once the primitive constant number is unique,
 // we could use its *address* to identify its equality which align to rest of
 // the node hash.
-class ConstantFactory {
+class NodeFactory {
  public:
   const std::int32_t* GetInt32( std::int32_t );
   const std::int64_t* GetInt64( std::int64_t );
   const double*       GetFloat64( double );
   const bool*         GetTrue();
   const bool*         GetFalse();
+
+ public:
+  zone::Zone* zone() const { return zone_; }
  private:
   zone::Zone* zone_;
   const bool* true_;
@@ -148,7 +156,7 @@ class ConstantFactory {
   std::vector<double*>       f64_pool_;
   std::vector<zone::String*> str_pool_;
 
-  LAVA_DISALLOW_COPY_AND_ASSIGN(ConstantFactory)
+  LAVA_DISALLOW_COPY_AND_ASSIGN(NodeFactory)
 };
 
 
@@ -165,22 +173,9 @@ class Node : public zone::ZoneObject {
   // a unique id for this node , it can be used to indexed into secondary storage
   std::uint32_t id() const { return id_; }
 
-  const BytecodeInfo& bytecode_info() const {
-    return bytecode_info_;
-  }
-
   // the zone used to allocate Node object
-  zone::Zone* zone() const { return zone_; }
-
- public: // side effect
-  bool side_effect() const { return side_effect_; }
-  bool propogate_effect() const { return propogate_effect_; }
-
- public: // input/output
-  const zone::Vector<Node*>& input() const  { return input_ ; }
-  const zone::Vector<Node*>& output() const { return output_; }
-  zone::Vector<Node*>& input() { return input_; }
-  zone::Vector<Node*>& output(){ return output_;}
+  NodeFactory* node_factory() const { return node_factory_; }
+  zone::Zone* zone() const { return node_factory()->zone(); }
 
  public: // Cast
 #define __(A,...) A* As##A() { lava_verify(type_ == IRTYPE_##B); return static_cast<A*>(this); }
@@ -197,37 +192,70 @@ class Node : public zone::ZoneObject {
  public: // GVN supports
 
  protected:
-  Node( IRType type , std::uint32_t id , const BytecodeInfo& binfo, zone::Zone* zone ,
-                                                                    bool side_effect ,
-                                                                    bool propogate_effect ):
+  Node( IRType type , NodeFactory* factory , std::uint32_t id ):
     type_    (type),
     id_      (id),
-    bytecode_info_(binfo),
-    propogate_effect_(propogate_effect)
-    input_   () ,
-    output_  (),
-    zone_    (zone)
+    node_factory_ (factory)
  {}
 
  private:
   IRType type_;
   std::uint32_t id_;
-  BytecodeInfo bytecode_info_;
-  bool side_effect_;
-  bool propogate_effect_;
-  zone::Vector<Node*> input_;
-  zone::Vector<Node*> output_;
-  zone::Zone* zone_;
+  NodeFactory* node_factory_;
 
   LAVA_DISALLOW_COPY_AND_ASSIGN(Node)
 };
 
 // ================================================================
+// Expr
+//
+//   This node is the mother all other expression node and its solo
+//   goal is to expose def-use and use-def chain into different types
+// ================================================================
+class Expr : public Node {
+ public:
+  // return a list of node that *uses* this node
+  const zone::Vector<ir::Node*>& use_chain() const { return use_chain_; }
+  zone::Vector<ir::Node*>& use_chain() { return use_chain_; }
+
+  // return a list of node that is *used* by this node
+  const zone::Vector<ir::Node*>& def_chain() const { return def_chain_; }
+  zone::Vector<ir::Node*>& def_chain() { return use_chain_; }
+
+  bool side_effect() const { return side_effect_; }
+  bool propogate_effect() const { return propogate_effect_; }
+
+ public:
+  const BytecodeInfo& bytecode_info() const {
+    return bytecode_info_;
+  }
+
+ protected:
+  Expr( IRType type , zone::Zone* zone , std::uint32_t id , const BytecodeInfo& binfo ,
+                                                            bool side_effect,
+                                                            bool propogate_effect ):
+    Node(type,zone,id,binfo),
+    use_chain_(),
+    def_chain_(),
+    bytecode_info_(binfo),
+    side_effect_(side_effect),
+    propogate_effect_(propogate_effect)
+  {}
+
+ private:
+  zone::Vector<ir::Node*> use_chain_;
+  zone::Vector<ir::Node*> def_chain_;
+  BytecodeInfo bytecode_info_;
+  bool side_effect_;
+  bool propogate_effect_;
+};
+
+// ================================================================
 // Const
 // ================================================================
-class Int32 : public Node {
+class Int32 : public Expr {
  public:
-  static Int32* New( ConstantFactory* , std::int32_t , const BytecodeInfo& );
+  static Int32* New( NodeFactory* , std::int32_t , const BytecodeInfo& );
 
  public:
   const std::int32_t* value_label() const { return value_label_; }
@@ -239,9 +267,9 @@ class Int32 : public Node {
   LAVA_DISALLOW_COPY_AND_ASSIGN(Int32)
 };
 
-class Int64: public Node {
+class Int64: public Expr {
  public:
-  static Int64* New( ConstantFactory* , std::int64_t , const BytecodeInfo& );
+  static Int64* New( NodeFactory* , std::int64_t , const BytecodeInfo& );
 
  public:
   const std::int64_t* value_label() const { return value_label_; }
@@ -252,9 +280,9 @@ class Int64: public Node {
   LAVA_DISALLOW_COPY_AND_ASSIGN(Int64)
 };
 
-class Float64 : public Node {
+class Float64 : public Expr {
  public:
-  static Float64* New( ConstantFactory* , double , const BytecodeInfo& );
+  static Float64* New( NodeFactory* , double , const BytecodeInfo& );
  public:
   const double* value_label() const { return value_label_; }
   double value_label() const { return *value_label_; }
@@ -264,9 +292,9 @@ class Float64 : public Node {
   LAVA_DISALLOW_COPY_AND_ASSIGN(Float64)
 };
 
-class Boolean : public Node {
+class Boolean : public Expr {
  public:
-  static Boolean* New( ConstantFactory* , bool , const BytecodeInfo& );
+  static Boolean* New( NodeFactory* , bool , const BytecodeInfo& );
  public:
   const bool* value_label() const { return value_label_; }
   bool value() const { return *value_label_; }
@@ -277,9 +305,9 @@ class Boolean : public Node {
   LAVA_DISALLOW_COPY_AND_ASSIGN(Boolean)
 };
 
-class LStr : public Node {
+class LStr : public Expr {
  public:
-  static LStr* New( ConstantFactory* , String** , const BytecodeInfo& );
+  static LStr* New( NodeFactory* , String** , const BytecodeInfo& );
  public:
   const zone::String* value_label() const { return value_label_; }
   const zone::String& value() const { return *value_label_; }
@@ -289,9 +317,9 @@ class LStr : public Node {
   LAVA_DSIALLOW_COPY_AND_ASSIGN(LStr)
 };
 
-class SSO : public Node {
+class SSO : public Expr {
  public:
-  static SSO* New( ConstantFactory* , SSO* , const BytecodeInfo& );
+  static SSO* New( NodeFactory* , SSO* , const BytecodeInfo& );
  public:
   const zone::String* value_label() const { return value_label_; }
   const zone::String& value() const { return *value_label_; }
@@ -301,9 +329,9 @@ class SSO : public Node {
   LAVA_DISALLOW_COPY_AND_ASSIGN(SSO)
 };
 
-class Null : public Node {
+class Null : public Expr {
  public:
-  static Null* New( ConstantFactory* , const BytecodeInfo& );
+  static Null* New( NodeFactory* , const BytecodeInfo& );
  public:
   // We use NULL/0 to represent Null's value label and we cannot
   // use this address anywhere else
@@ -313,10 +341,47 @@ class Null : public Node {
   LAVA_DSIALLOW_COPY_AND_ASSIGN(Null)
 };
 
+class IRList : public Expr {
+ public:
+  static IRList* New( NodeFactory* , const BytecodeInfo& );
+
+ private:
+  LAVA_DISALLOW_COPY_AND_ASSIGN(IRList)
+};
+
+class IRObject : public Expr {
+ public:
+  static IRObject* New( NodeFactory* , const BytecodeInfo& );
+
+ private:
+  LAVA_DISALLOW_COPY_AND_ASSIGN(IRObject)
+};
+
+class IRClosure : public Expr {
+ public:
+  static IRClosure* New( NodeFactory* , const BytecodeInfo& );
+ private:
+  LAVA_DISALLOW_COPY_AND_ASSIGN(IRClosure)
+};
+
+class IRExtension : public Expr {
+ public:
+  static IRExtension* New( NodeFactory* , const BytecodeInfo& );
+ private:
+  LAVA_DISALLOW_COPY_AND_ASSIGN(IRExtension)
+};
+
+class Box : public Expr {
+ public:
+  static Box* New( NodeFactory* , const BytecodeInfo& );
+ private:
+  LAVA_DISALLOW_COPY_AND_ASSIGN(Box)
+};
+
 // ==============================================================
 // Arithmetic Node
 // ==============================================================
-class Binary : public Node {
+class Binary : public Expr {
  public:
   enum Operator {
     ADD,
@@ -334,7 +399,7 @@ class Binary : public Node {
   };
 
   // Create a binary node
-  static Binary* New( zone::Zone* zone , Node* lhs , Node* rhs , Operator op ,
+  static Binary* New( NodeFactory* zone , Node* lhs , Node* rhs , Operator op ,
                                                            const BytecodeInfo& bc );
 
   static Operator BytecodeToOperator( interpreter::Bytecode );
@@ -352,7 +417,7 @@ class Binary : public Node {
   LAVA_DISALLOW_COPY_AND_ASSIGN(Binary)
 };
 
-class Unary : public Node {
+class Unary : public Expr {
  public:
   enum Operator {
     MINUS,
@@ -366,7 +431,7 @@ class Unary : public Node {
       return NOT;
   }
 
-  static Unary* New( zone::Zone* zone , Node* operand , Operator op ,
+  static Unary* New( NodeFactory* zone , Node* operand , Operator op ,
                                                   const BytecodeInfo& bc );
 
  public:
@@ -379,6 +444,64 @@ class Unary : public Node {
 
   LAVA_DISALLOW_COPY_AND_ASSIGN(Unary)
 };
+
+// ==============================================================
+// Control Flow
+// ==============================================================
+class ControlFlow : public Node {
+ public: // backward edge and forward edge
+  const zone::Vector<ir::Node*>& backward_edge() const { return backward_edge_; }
+  zone::Vector<ir::Node*>& backedge_edge() { return backward_edge_; }
+  void AddBackwardEdge( ir::ControlFlow* edge ) { backward_edge_.Add(zone(),edge); }
+
+  const zone::Vector<ir::Node*>& forward_edge() const { return forward_edge_; }
+  zone::Vector<ir::Node*>& forward_edge() { return forward_edge_; }
+  void AddForwardEdge( ir::ControlFlow* edge ) { forward_edge_.Add(zone(),edge); }
+
+  // Bounded expression/statement -------------------------------------------------------
+  // Due to the natural way of sea-of-nodes, we may lose some statement though
+  // they have side effect.
+  // Example as this:
+  //   foo();
+  //   var bar = 3;
+  //
+  // During the construction of the graph, the call "foo()" will not be used as
+  // input by any expression , since it has no reference its side effect , return
+  // value will sit inside the stack and no one uses it. However since this node
+  // has *side effect*, we cannot discard it automatically. We need to make it bound
+  // inside of the certain node. This where bounded expression take into play.
+  //
+  // We lazily add this kind of statement into bounded list for the current control
+  // flow list only when we find out this node is not added into any expression basically
+  // its use chain is 0.
+  // ------------------------------------------------------------------------------------
+  const zone::Vector<ir::Expr*> effect_expr() const { return effect_expr_; }
+
+ private:
+  zone::Vector<ir::ControlFlow*> backward_edge_;
+  zone::Vector<ir::ControlFlow*> forward_edge_ ;
+  zone::Vector<ir:Expr* > effect_expr_;
+
+  LAVA_DISALLOW_COPY_AND_ASSIGN(ControlFlow)
+};
+
+// Special node of the graph
+class Start : public ControlFlow {
+ private:
+  LAVA_DISALLOW_COPY_AND_ASSIGN(Start)
+};
+
+class End   : public ControlFlow {
+ private:
+  LAVA_DISALLOW_COPY_AND_ASSIGN(End)
+};
+
+class Region: public ControlFlow {
+ private:
+  LAVA_DISALLOW_COPY_AND_ASSIGN(Merge)
+};
+
+
 
 } // namespace ir
 } // namespace cbase

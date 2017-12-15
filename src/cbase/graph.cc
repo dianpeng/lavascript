@@ -35,7 +35,6 @@ class GraphBuilder {
     end_         (NULL),
     stack_base_  () ,
     stack_       () ,
-    region_      (NULL),
     branch_      ()
   {
     stack_base_.push_back(stack_base);
@@ -92,12 +91,12 @@ class GraphBuilder {
 
   // Working set data , used when doing inline and other stuff
   std::vector<ir::Node*> stack_;
-  ir::Node* region_;
 
   struct FuncInfo {
     Handle<Closure> closure;
     Handle<Prototype> prototype;
     std::uint32_t base;
+    ir::Node* region;
     bool IsLocalVar( std::uint8_t slot ) const {
       return slot < prototype->max_local_var_size();
     }

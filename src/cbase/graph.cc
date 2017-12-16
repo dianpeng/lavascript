@@ -57,9 +57,10 @@ struct FuncInfo {
   std::uint32_t base;
   std::uint8_t  max_local_var_size;
   std::uint16_t  nested_loop_size;
-  bool rhs_branch;
+  bool gen_phi;
   std::vector<LoopInfo> loop_info;
 
+ public:
   bool IsLocalVar( std::uint8_t slot ) const {
     return slot < max_local_var_size;
   }
@@ -70,10 +71,10 @@ struct FuncInfo {
   void LeaveLoop() { loop_info.pop_back(); }
 
   // check whether we have loop currently
-  bool has_loop() const { return !loop_info.empty(); }
+  bool HasLoop() const { return !loop_info.empty(); }
 
   // get the current loop's LoopInfo structure
-  LoopInfo& cur_loop() { return loop_info.back(); }
+  LoopInfo& CurrentLoop() { return loop_info.back(); }
 
 };
 
@@ -131,6 +132,8 @@ class GraphBuilder {
     return func_info_.back();
   }
 
+  bool IsTopFunction() const { return func_info_.size() == 1; }
+
   const Handle<Closure>& closure() const {
     return func_info().closure;
   }
@@ -151,12 +154,12 @@ class GraphBuilder {
     func_info().region = new_region;
   }
 
-  bool rhs_branch() const {
-    return func_info().rhs_branch;
+  bool gen_phi() const {
+    return func_info().gen_phi;
   }
 
-  void set_rhs_branch( bool b ) {
-    func_info().rhs_branch = b;
+  void set_gen_phi( bool b ) {
+    func_info().gen_phi = b;
   }
 
  private: // Constant handling
@@ -181,7 +184,7 @@ class GraphBuilder {
   // since it is expected other routine to consume those BCs
   void BuildBytecode   ( BytecodeIterator* itr );
 
-  StopReason BuildUntil( BytecodeIterator* itr , const std::uint32_t* end_pc = NULL );
+  StopReason BuildBlock( BytecodeIterator* itr , const std::uint32_t* end_pc = NULL );
 
   // Build branch IR graph
   StopReason BuildBranch( BytecodeIterator* itr );
@@ -226,7 +229,7 @@ LoopScope::~LoopScope() {
 }
 
 inline GraphBuilder::StackSet( std::uint32_t index , ir::Expr* node , const std::uint32_t* pc ) {
-  if(rhs_branch()) {
+  if(gen_phi()) {
     /**
      * This right hand side branch so we need to check wether we need to
      * insert a PHI node here or not
@@ -238,6 +241,8 @@ inline GraphBuilder::StackSet( std::uint32_t index , ir::Expr* node , const std:
     } else {
       stack_[StackIndex(index)] = node;
     }
+  } else {
+    stack_[StackIndex(index)] = node;
   }
 }
 
@@ -246,6 +251,8 @@ GraphBuilder::StopReason GraphBuilder::BuildLogic( BytecodeIterator* itr ) {
   bool op_and = itr->opcode() == BC_AND ? true : false;
   std::uint8_t reg; std::uint16_t offset;
   itr->GetOperand(&reg,&offset);
+
+  // where we should end for the other part of the logical cominator
   const std::uint32_t* end_pc = itr->code_buffer() + pc;
 
   // save the fallthrough value for PHI node later on
@@ -260,7 +267,7 @@ GraphBuilder::StopReason GraphBuilder::BuildLogic( BytecodeIterator* itr ) {
     ir::Region* false_region = ir::Region::New(node_factory_,region());
 
     lava_verify(itr->Next());
-    StopReason reason = BuildUntil(itr,end_pc);
+    StopReason reason = BuildBlock(itr,end_pc);
     lava_verify(reason == STOP_END);
 
     // note for the false and true region order
@@ -273,7 +280,7 @@ GraphBuilder::StopReason GraphBuilder::BuildLogic( BytecodeIterator* itr ) {
     ir::Region* true_region = ir::Region::New(node_factory_,region());
 
     lava_verify(itr->Next());
-    StopReason reason = BuildUntil(itr,end_pc);
+    StopReason reason = BuildBlock(itr,end_pc);
     lava_verify(reason == STOP_END);
 
     fallthrough_region->AddBackwardEdge(region());
@@ -300,10 +307,10 @@ GraphBuilder::StopReason
 GraphBuilder::BuildLoopBlock( BytecodeIterator* itr ) {
   for( ; itr->HasNext(); itr->Next() ) {
     switch(itr->opcode()) {
-      case BC_FEEND:
-      case BC_FEND1:
-      case BC_FEND2:
-      case BC_FEVREND:
+      case BC_FEEND: case BC_FEND1: case BC_FEND2: case BC_FEVREND:
+        return STOP_SUCCESS;
+      case BC_CONT: case BC_BRK:
+        BuildBytecode(itr);
         return STOP_SUCCESS;
       default:
         BuildBytecode(itr);
@@ -324,21 +331,21 @@ GraphBuilder::BuildLoop( BytecodeIterator* itr ) {
   if(itr->opcode() == BC_FEVRSTART)
     return BuildForeverLoop(itr);
 
-  std::uint16_t jump;
-  ir::If* loop_header = NULL;
-  ir::Loop* body = NULL;
+  std::uint16_t after_pc , exit_pc;
+  ir::If*       loop_header = NULL;
+  ir::Loop*     body = NULL;
   ir::LoopExit* exit = NULL;
-  ir::Merge*  after  = NULL; // the region right after the loop body
+  ir::Merge*    after  = NULL; // the region right after the loop body
 
   // 1. construct the loop's first branch. all loop here are automatically
   //    inversed
   if(itr->opcode() == BC_FSTART) {
     std::uint8_t a1;
-    itr->GetArgument(&a1,&jump);
+    itr->GetArgument(&a1,&after_pc);
     loop_header = ir::If::New(node_factory_,StackGet(a1),region());
   } else {
     std::uint8_t a1;
-    itr->GetArgument(&a1,&jump);
+    itr->GetArgument(&a1,&after_pc);
     // create ir ItrNew which basically initialize the itr and also do
     // a test against the iterator to see whether it is workable
     ir::ItrNew* inew = ir::ItrNew::New(node_factory_,StackGet(a1),
@@ -347,25 +354,12 @@ GraphBuilder::BuildLoop( BytecodeIterator* itr ) {
   }
   itr->Next();
 
-  set_region(loop_header); // new region
+  set_region(loop_header);
 
-  // 2. do the false branch of each loop_header
-  {
-    std::size_t old_cursor = itr->cursor();
-    itr->BranchTo(jump);
+  // reserve the after region and iterate its bytecode later on
+  after = ir::Merge::New(node_factory_,loop_header);
 
-    // initialize after region since we are gonna evaluate Bytecode that is
-    // *after* the loop body
-    after = ir::Merge::New(node_factory_,region());
-    set_region(after);
-
-    StopReason reason = BuildUntil(itr);
-    lava_debug(NORMAL,lava_verify(reason == STOP_EOF););
-
-    itr->BranchTo(old_cursor); // resume to previous position
-  }
-
-  // 3. enter into the loop's body
+  // 2. enter into the loop's body
   {
     LoopScope lscope(this);
 
@@ -375,9 +369,13 @@ GraphBuilder::BuildLoop( BytecodeIterator* itr ) {
     // set it as the current region node
     set_region(body);
 
-    // the current bytecode iterator should points into the
-    // very first bytecode inside of the loop's body
-    lava_verify(BuildLoopBlock(itr) == STOP_SUCCESS);
+    // iterate all the BCs inside of the loop body and also mark to generate PHI
+    func_info().set_gen_phi(true);
+
+    StopReason reason = BuildLoopBlock(itr);
+    lava_debug(NORMAL, lava_verify(reason == STOP_SUCCESS || reason == STOP_JUMP););
+
+    func_info().set_gen_phi(false);
 
     // now we should stop at the FEND1/FEND2/FEEND instruction
     switch(itr->opcode()) {
@@ -388,21 +386,29 @@ GraphBuilder::BuildLoop( BytecodeIterator* itr ) {
 
           ir::Binary* comparison;
 
-          if(itr->opcode() == ) {
-            comparison = ir::Binary::New(node_factory_,StackGet(a1),
-                                                       StackGet(a2),
-                                                       ir::Binary::LT,
-                                                       GetBytecode(itr->pc()));
+          if(itr->opcode() == BC_FEEND) {
+            comparison = ir::Binary::New(node_factory_,StackGet(a1), StackGet(a2), ir::Binary::LT,
+                                                                                   GetBytecode(itr->pc()));
           } else {
-            // |a1| + |a3| < |a2|
-            ir::Binary* addition = ir::Binary::New(node_factory_,StackGet(a1),
-                                                                 StackGet(a3),
-                                                                 ir::Binary::ADD,
-                                                                 GetBytecode(itr->pc()));
+            // |a1| + |a3| < |a2| , here we should take care of the PHI node insertion
+            ir::Binary* loop_induction = ir::Phi::New(node_factory_,GetBytecode(itr->pc()));
 
-            comparison = ir::Binary::New(node_factory_,addition,StackGet(a2),
-                                                                ir::Binary::LT,
-                                                                GetBytecode(itr->pc()));
+            // left handside of the PHI are original a1
+            loop_induction->AddDef( StackGet(a1) );
+
+            // the addition node will use the PHI node as its left hand side
+            ir::Binary* addition = ir::Binary::New(node_factory_,loop_induction,StackGet(a3),
+                                                                                ir::Binary::ADD,
+                                                                                GetBytecode(itr->pc()));
+            // finish the PHI node construction
+            loop_induction->AddDef(addition);
+
+            // store the PHI node back to the slot
+            StackSet(a1,loop_induction,itr->pc());
+
+            // construct comparison node
+            comparison = ir::Binary::New(node_factory_,addition,StackGet(a2), ir::Binary::LT,
+                                                                              GetBytecode(itr->pc()));
           }
 
           // exit points back to the body of the loop
@@ -425,17 +431,38 @@ GraphBuilder::BuildLoop( BytecodeIterator* itr ) {
         break;
     }
 
+    // what is the loop exit block's PC
+    exit_pc = itr->pc();
+
+    // skip the last end instruction
+    itr->Next();
+
     // patch all the pending continue and break node
+    for( auto &e : func_info().CurrentLoop().pending_break ) {
+      lava_debug(NORMAL,lava_verify(e.pc == after_pc););
+      after->AddBackwardEdge(e.node);
+    }
+
+    for( auto &e : func_info().CurrentLoop().pending_continue ) {
+      lava_debug(NORMAL,lava_verify(e.pc ==  exit_pc););
+      exit->AddContinueEdge(e.node);
+    }
   }
+
+  lava_debug(NORMAL,lava_verify(itr->pc() == after_pc););
+  set_region(after);
+
+  return STOP_SUCCESS;
 }
 
 GraphBuilder::StopReason BuildBranchBlock( BytecodeIterator* itr ,
                                            const std::uint32_t* pc ) {
   for( ; itr->HasNext(); itr->Next() ) {
+    // check whether we reache end of PC where we suppose to stop
     if(pc == itr->pc()) return STOP_END;
 
-    if(itr->opcode() == BC_JUMP)
-      return STOP_JUMP;
+    // check whether we have a unconditional jump or not
+    if(itr->opcode() == BC_JUMP) return STOP_JUMP;
 
     BuildBytecode(itr);
   }
@@ -489,7 +516,7 @@ GraphBuilder::BuildBranch( BytecodeIterator* itr ) {
     set_region(true_region);
 
     // enable PHI insertion
-    set_rhs_branch(true);
+    set_gen_phi(true);
 
     StopReason reason = BuildBranchBlock(itr,false_pc);
     lava_debug(NORMAL,
@@ -497,9 +524,9 @@ GraphBuilder::BuildBranch( BytecodeIterator* itr ) {
           lava_verify(false_pc == itr->pc()););
 
     // disable PHI insertion
-    set_rhs_branch(false);
+    set_gen_phi(false);
 
-    // We may have new true_region since BuildUntil can add new
+    // We may have new true_region since BuildBlock can add new
     // region on the fly due to loop/continue/break
     true_region = region();
   }
@@ -637,7 +664,7 @@ void GraphBuilder::BuildBytecode( BytecodeIterator* itr ) {
 
     /* jumps */
     case BC_BRK: case BC_CONT:
-      lava_debug(NORMAL,lava_verify(func_info().has_loop());); // Must be inside of a loop body
+      lava_debug(NORMAL,lava_verify(func_info().HasLoop());); // Must be inside of a loop body
       {
         std::uint16_t pc;
         itr.GetArgument(&pc);
@@ -648,21 +675,30 @@ void GraphBuilder::BuildBytecode( BytecodeIterator* itr ) {
         set_region(jump);
 
         if(itr.opcode() == BC_BRK)
-          func_info().cur_loop().AddBreak(jump,pc);
+          func_info().CurrentLoop().AddBreak(jump,pc);
         else
-          func_info().cur_loop().AddContinue(jump,pc);
+          func_info().CurrentLoop().AddContinue(jump,pc);
       }
       break;
   }
 }
 
 GraphBuilder::StopReason
-GraphBuilder::BuildUntil( BytecodeIterator* itr , const std::uint32_t* end_pc ) {
+GraphBuilder::BuildBlock( BytecodeIterator* itr , const std::uint32_t* end_pc ) {
   for( ; itr->HasNext() ; itr->Next() ) {
     if(itr->code_position() == end_pc)
       return STOP_END;
-    StopReason reason = BuildBytecode(itr);
+
+    // build this instruction
+    BuildBytecode(itr);
+
+    // check if last opcode is break or continue which is unconditional
+    // jump. so we can just abort the construction of this basic block 
+    if(itr->opcode() == BC_BRK || itr->opcode() == BC_CONT)
+      return STOP_JUMP;
   }
+
+  return STOP_SUCCESS;
 }
 
 

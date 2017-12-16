@@ -217,12 +217,14 @@ class Node : public zone::ZoneObject {
 class Expr : public Node {
  public:
   // return a list of node that *uses* this node
-  const zone::Vector<ir::Node*>& use_chain() const { return use_chain_; }
-  zone::Vector<ir::Node*>& use_chain() { return use_chain_; }
+  const zone::Vector<ir::Expr*>& use_chain() const { return use_chain_; }
+  zone::Vector<ir::Expr*>& use_chain() { return use_chain_; }
+  void AddUse( ir::Expr* );
 
   // return a list of node that is *used* by this node
-  const zone::Vector<ir::Node*>& def_chain() const { return def_chain_; }
-  zone::Vector<ir::Node*>& def_chain() { return use_chain_; }
+  const zone::Vector<ir::Expr*>& def_chain() const { return def_chain_; }
+  zone::Vector<ir::Expr*>& def_chain() { return use_chain_; }
+  void AddDef( ir::Expr* );
 
   bool side_effect() const { return side_effect_; }
   bool propogate_effect() const { return propogate_effect_; }
@@ -245,8 +247,8 @@ class Expr : public Node {
   {}
 
  private:
-  zone::Vector<ir::Node*> use_chain_;
-  zone::Vector<ir::Node*> def_chain_;
+  zone::Vector<ir::Expr*> use_chain_;
+  zone::Vector<ir::Expr*> def_chain_;
   BytecodeInfo bytecode_info_;
   bool side_effect_;
   bool propogate_effect_;
@@ -456,10 +458,6 @@ class ControlFlow : public Node {
   zone::Vector<ir::Node*>& backedge_edge() { return backward_edge_; }
   void AddBackwardEdge( ir::ControlFlow* edge ) { backward_edge_.Add(zone(),edge); }
 
-  const zone::Vector<ir::Node*>& forward_edge() const { return forward_edge_; }
-  zone::Vector<ir::Node*>& forward_edge() { return forward_edge_; }
-  void AddForwardEdge( ir::ControlFlow* edge ) { forward_edge_.Add(zone(),edge); }
-
   // Bounded expression/statement -------------------------------------------------------
   // Due to the natural way of sea-of-nodes, we may lose some statement though
   // they have side effect.
@@ -481,10 +479,18 @@ class ControlFlow : public Node {
 
  private:
   zone::Vector<ir::ControlFlow*> backward_edge_;
-  zone::Vector<ir::ControlFlow*> forward_edge_ ;
   zone::Vector<ir:Expr* > effect_expr_;
 
   LAVA_DISALLOW_COPY_AND_ASSIGN(ControlFlow)
+};
+
+class LoopExit : public ControlFlow {
+ public:
+  // add a *jump/continue* node as its output
+  void AddContinueEdge( ir::Jump* );
+ private:
+  zone::Vector<ir::Jump*> continue_;
+  LAVA_DISALLOW_COPY_AND_ASSIGN(LoopExit)
 };
 
 // Special node of the graph

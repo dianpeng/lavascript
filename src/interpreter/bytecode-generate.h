@@ -289,6 +289,8 @@ class LexicalScope : public Scope {
     return GetLoopIter1();
   }
 
+  void FreeLoopIter() { loop_iter_avail_ = 0; }
+
   // Size of variables defined in *this* scope
   std::size_t var_size() const { return local_vars_.size(); }
 
@@ -403,12 +405,11 @@ class FunctionScope : public Scope {
   inline bool FindUpValue( const zone::String& , std::uint16_t* );
   inline void AddUpValue ( const zone::String& , std::uint16_t  );
 
-  // get local variable register mapping
-  Register GetLocalVarRegister( const zone::String& ) const;
-
   // get next iterator register mapping
-  Register GetScopeBoundIterator();
-  void FreeScopeBoundIterator   ( std::size_t cnt );
+  Register GetLocalVarRegister();
+
+  // free all the local variable register
+  void FreeLocalVarRegister( std::size_t cnt );
 
  private:
   // Bytecode builder for this Function
@@ -434,24 +435,11 @@ class FunctionScope : public Scope {
   // function node
   const ast::Chunk* body_;
 
-  // all register mapping for local variables inside of this function
-  struct LocalVar {
-    const zone::String* name;
-    Register reg;
-    LocalVar():name(NULL),reg(){}
-    LocalVar( const zone::String* n, const Register& r ): name(n), reg(r) {}
-
-    bool operator == ( const zone::String& n ) const {
-      return (*name) == n;
-    }
-  };
-  std::vector<LocalVar> local_vars_;
-
-  // all *iterator* registers
-  std::vector<Register> iterators_;
+  // all local variable registers , including iterators
+  std::vector<Register> register_;
 
   // cursor points next avaiable iterator register
-  std::size_t next_iterator_;
+  std::size_t next_register_;
 
   friend class LexicalScope;
 
@@ -890,9 +878,8 @@ inline FunctionScope::FunctionScope( Generator* gen , const ast::Function& node 
   upvalue_ (),
   lexical_scope_list_(),
   body_(node.body),
-  local_vars_(),
-  iterators_ (),
-  next_iterator_(0)
+  register_(),
+  next_register_(0)
 {
   gen->func_scope_ = this;
   gen->lexical_scope_ = NULL;
@@ -905,9 +892,8 @@ inline FunctionScope::FunctionScope( Generator* gen , const ast::Chunk& node ):
   upvalue_ (),
   lexical_scope_list_(),
   body_(&node),
-  local_vars_(),
-  iterators_ (),
-  next_iterator_(0)
+  register_(),
+  next_register_(0)
 {
   gen->func_scope_ = this;
   gen->lexical_scope_ = NULL;

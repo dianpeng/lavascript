@@ -207,6 +207,7 @@ bool PrimitiveComp( const char* source , const Value& primitive , int op ) {
 namespace lavascript {
 namespace interpreter {
 
+
 TEST(Interpreter,Load) {
   PRIMITIVE_EQ(0,return 0;);
   PRIMITIVE_EQ(-1,return -1;);
@@ -761,6 +762,7 @@ TEST(Interpreter,ExtCall) {
   PRIMITIVE_EQ(,
       return print("Hello World"););
 }
+
 
 } // namespace lavascript
 } // namespace interpreter

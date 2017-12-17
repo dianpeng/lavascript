@@ -43,8 +43,19 @@ TEST(BytecodeGenerate,Basic) {
   std::string error;
   {
     std::string script(stringify(
-          var a = b.c;
-          e.f = a;
+          var a = 10; var b = 20;
+          if(true) {
+            var c = 20;
+            var d = 30;
+          }
+          if(false) {
+            var a = 20;
+            var e = 30;
+            var d = 40;
+          }
+
+          for( var _ , k in e ) {}
+          for( var a = 100 ; 1 ; 2 ) {}
           ));
 
     ScriptBuilder sb("a",script);

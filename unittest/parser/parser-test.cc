@@ -235,6 +235,20 @@ TEST(Parser,Expression) {
      );
 
   positive( for( var a , b in mm ) {} );
+  positive(
+      var a = 0;
+      var b = 1;
+      if(true) {
+        var c = 20;
+        var d = 30;
+      }
+
+      if(false) {
+        var a = 20;
+        var e = 30;
+        var d = 40;
+      }
+      );
 }
 
 } // namespace parser

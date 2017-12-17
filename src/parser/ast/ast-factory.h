@@ -281,7 +281,7 @@ inline Root* AstFactory::NewRoot( size_t start , size_t end , Chunk* chunk ,
 }
 
 inline LocVarContext* AstFactory::NewLocVarContext() {
-  return new (zone_) LocVarContext( ::lavascript::zone::Vector<Variable*>::New(zone_) );
+  return new (zone_) LocVarContext();
 }
 
 } // namespace ast

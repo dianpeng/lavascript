@@ -1539,9 +1539,10 @@ void GenerateInterpMisc( BuildContext* bctx ) {
   // setup the call frame
   |  mov eax,  IFRAME_EOF
   |  shl rax,  48
-  |  mov qword [STK],   rax             // Set the IFrame upper 8 bytes to be 0
-  |  mov qword [STK+8], CARG2           // Reset the flag/narg and set the Caller to be PROTO
-  |  add STK,16                         // Bump the STK register
+  |  mov qword [STK]  , 0
+  |  mov qword [STK+8],   rax           // Set the IFrame upper 8 bytes to be 0
+  |  mov qword [STK+16], CARG2          // Reset the flag/narg and set the Caller to be PROTO
+  |  add STK,24                         // Bump the STK register
 
   |  mov qword [RUNTIME+RuntimeLayout::kCurClsOffset], CARG2
   |  mov qword [RUNTIME+RuntimeLayout::kCurStackOffset], STK

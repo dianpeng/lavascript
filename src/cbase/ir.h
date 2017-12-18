@@ -58,7 +58,7 @@ using namespace ::lavascript;
   __(Int32,INT32  ,"int32"  )                   \
   __(Int64,INT64  ,"int64"  )                   \
   __(Float64,FLOAT64,"float64")                 \
-  __(LStr,LSTR   ,"lstr"   )                    \
+  __(LongString,LONG_STRING   ,"lstr"   )                    \
   __(SSO, SSO    ,"sso"    )                    \
   __(Boolean,BOOLEAN,"boolean")                 \
   __(Null,NULL   ,"null"   )                    \
@@ -309,16 +309,16 @@ class Boolean : public Expr {
   LAVA_DISALLOW_COPY_AND_ASSIGN(Boolean)
 };
 
-class LStr : public Expr {
+class LongString : public Expr {
  public:
-  static LStr* New( NodeFactory* , String** , const BytecodeInfo& );
+  static LongString* New( NodeFactory* , String** , const BytecodeInfo& );
  public:
   const zone::String* value_label() const { return value_label_; }
   const zone::String& value() const { return *value_label_; }
  private:
   const zone::String* value_label_;
 
-  LAVA_DSIALLOW_COPY_AND_ASSIGN(LStr)
+  LAVA_DSIALLOW_COPY_AND_ASSIGN(LongString)
 };
 
 class SSO : public Expr {

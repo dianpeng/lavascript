@@ -5,6 +5,7 @@
 
 #include <vector>
 #include <set>
+#include <unordered_map>
 
 namespace lavascript {
 namespace cbase {
@@ -12,6 +13,139 @@ using namespace ::lavascript::interpreter;
 
 namespace {
 class GraphBuilder;
+
+/**
+ * Bytecode liveness analyze.
+ *
+ * We will do a simple bytecode analyze before we start do the IR graph
+ * construction due to the fact we need to let this analyze to figure out
+ * the local variable / register slot assignment for each bytecode. This
+ * is used when constructing PHI node inside of the loop
+ */
+
+class BytecodeLiveness {
+ public:
+  BytecodeLiveness( const Handle<Prototype>& proto ) :
+    map_(),
+    proto_(proto),
+    max_local_var_size_(proto_->max_local_var_size())
+  {}
+
+ public:
+  // Construct the bytecode lieveness with certain iterator
+  void BuildLiveness();
+ private:
+  // build the liveness for a single bytecode; bytecode cannot be control
+  // flow transfer
+  void BuildBytecode( BytecodeIterator* , LivenessSet* );
+  void BuildBlock   ( BytecodeIterator* , LivenessSet* );
+
+  bool IsLocalVar   ( std::uint8_t reg ) const {
+    return reg < max_local_var_size_;
+  }
+
+ private:
+  struct LivenessSet {
+    const std::uint32_t* end;
+    std::set<std::uint8_t> register_set;
+
+    void Add( std::uint8_t reg ) { register_set.insert(reg); }
+  };
+
+  // bytecode address to LivenessSet mapping. This map only contains
+  // top level function's liveness information for each bytecode and
+  // also it is definitly not the most coarsed one since we have no
+  // CFG and we cannot do a backward analyze
+  //
+  // The pc is the jump that starts a new basic block. NOTES: there're
+  // no CFG that is established
+  typedef std::unordered_map<const void*,LivenessSet> LivenessMap;
+  LivenessMap map_;
+  Handle<Prototype> proto_;
+  std::uint8_t max_local_var_size_;
+};
+
+void BytecodeLiveness::BuildBytecode( BytecodeIterator* itr , LivenessSet* set ) {
+  switch(itr->opcode()) {
+    case BC_ADDRV: case BC_ADDVR: case BC_ADDVV:
+    case BC_SUBRV: case BC_SUBVR: case BC_SUBVV:
+    case BC_MULRV: case BC_MULVR: case BC_MULVV:
+    case BC_DIVRV: case BC_DIVVR: case BC_DIVVV:
+    case BC_MODRV: case BC_MODVR: case BC_MODVV:
+    case BC_POWRV: case BC_POWVR: case BC_POWVV:
+    case BC_LTRV : case BC_LTVR : case BC_LTVV :
+    case BC_LERV : case BC_LEVR : case BC_LEVV :
+    case BC_GTRV : case BC_GTVR : case BC_GTVV :
+    case BC_GERV : case BC_GEVR : case BC_GEVV :
+    case BC_EQRV : case BC_EQVR : case BC_EQSV : case BC_EQVS: case BC_EQVV:
+    case BC_NERV : case BC_NEVR : case BC_NESV : case BC_NEVS: case BC_NEVV:
+      {
+        std::uint8_t a1,a2,a3;
+        itr->GetOperand(&a1,&a2,&a3);
+        if(IsLocalVar(a1)) set->Add(a1);
+      }
+      break;
+    case BC_NEGATE: case BC_NOT: case BC_MOVE:
+      {
+        std::uint8_t a1,a2;
+        itr->GetOperand(&a1,&a2);
+        if(IsLocalVar(a1)) set->Add(a1);
+      }
+      break;
+    case BC_LOAD0: case BC_LOAD1: case BC_LOADN1:
+    case BC_LOADTRUE: case BC_LOADFALSE: case BC_LOADNULL:
+      {
+        std::uint8_t a1; itr->GetOperand(&a1);
+        if(IsLocalVar(a1)) set->Add(a1);
+      }
+      break;
+    case BC_LOADR: case BC_LOADSTR:
+      {
+        std::uint8_t a1,a2; itr->GetOperand(&a1,&a2);
+        if(IsLocalVar(a1)) set->Add(a1);
+      }
+      break;
+    case BC_LOADLIST0: case BC_LOADOBJ0:
+      {
+        std::uint8_t a1; itr->GetOperand(&a1);
+        if(IsLocalVar(a1)) set->Add(a1);
+      }
+      break;
+    case BC_LOADLIST1:
+      {
+        std::uint8_t a1,a2;
+        itr->GetOperand(&a1,&a2);
+        if(IsLocalVar(a1)) set->Add(a1);
+      }
+      break;
+    case BC_LOADLIST2: case BC_LOADOBJ1:
+      {
+        std::uint8_t a1,a2,a3;
+        itr->GetOperand(&a1,&a2,&a3);
+        if(IsLocalVar(a1)) set->Add(a1);
+      }
+      break;
+    case BC_NEWLIST: case BC_NEWOBJ:
+      {
+        std::uint8_t a1; std::uint16_t a2;
+        itr->GetOperand(&a1,&a2);
+        if(IsLocalVar(a1)) set->Add(a1);
+      }
+      break;
+    case BC_ADDLIST: case BC_ADDOBJ:
+      /** pass , since these 2 are definitly followed by newlist/newobj */
+      break;
+    case BC_LOADCLS:
+      {
+        std::uint8_t a1; std::uint16_t a2;
+        itr->GetOperand(&a1,&a2);
+        if(IsLocalVar(a1)) set->Add(a1);
+      }
+      break;
+  }
+}
+
+
 
 // Loop info encapsulate the information needed to construct
 // IR related to loop , like continue jump and break jump
@@ -163,10 +297,10 @@ class GraphBuilder {
   }
 
  private: // Constant handling
-  ir::Node* NewConstNumber( std::int32_t );
-  ir::Node* NewNumber( std::uint8_t ref );
-  ir::Node* NewString( std::uint8_t ref );
-  ir::Node* NewSSO   ( std::uint8_t ref );
+  ir::Expr* NewConstNumber( std::int32_t );
+  ir::Expr* NewNumber( std::uint8_t ref );
+  ir::Expr* NewString( std::uint8_t ref );
+  ir::Expr* NewSSO   ( std::uint8_t ref );
 
   // Helper function for constructing Bytecode
 
@@ -681,6 +815,8 @@ void GraphBuilder::BuildBytecode( BytecodeIterator* itr ) {
       }
       break;
   }
+
+  itr->Next(); // consume this bytecode
 }
 
 GraphBuilder::StopReason

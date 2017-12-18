@@ -134,7 +134,7 @@ static const std::size_t kAllocatableBytecodeRegisterSize = 255;
   __(D,LOADOBJ1, loadobj1, REG , REG , REG , _ )    \
   __(B,NEWOBJ  , newobj , REG , NARG  , _  , _ )    \
   __(D,ADDOBJ  , addobj , REG , REG , REG , _ )     \
-  __(C,LOADCLS  , loadcls  , REG , GARG , _ , _ )   \
+  __(B,LOADCLS  , loadcls  , REG , GARG , _ , _ )   \
   __(G,INITCLS , initcls, GARG , _ , _ , _ )        \
   /* property/upvalue/global value */              \
   __(D,PROPGET,propget,REG,REG,SRE,FB)             \

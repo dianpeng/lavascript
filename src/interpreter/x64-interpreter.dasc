@@ -2124,7 +2124,7 @@ void GenBytecode( BuildContext* bctx, Bytecode bc ) {
       break;
     case BC_LOADCLS:
       |=>bc:
-      |  instr_C
+      |  instr_B
       |  savepc
       |  mov CARG1 , RUNTIME
       |  mov CARG2L, ARG2

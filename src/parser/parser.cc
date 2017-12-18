@@ -12,23 +12,50 @@
 namespace lavascript {
 namespace parser {
 
+using namespace lavascript::zone;
+
 // Help to modify lctx_ field in Parser whennever a new function is setup
 class LocVarContextAdder {
  public:
   LocVarContextAdder( Parser* p ):
-    old_var_(p->lctx_),p_(p)
-  { p->lctx_ = p->ast_factory_.NewLocVarContext(); }
+    old_var_(p->function_scope_info_),
+    temp_   (p->ast_factory_.NewLocVarContext()),
+    p_      (p)
+  {
+    p->function_scope_info_ = &temp_;
+  }
 
   ~LocVarContextAdder() {
-    p_->lctx_ = old_var_;
+    p_->function_scope_info_->CalculateFunctionScopeInfo();
+    p_->function_scope_info_ = old_var_;
   }
  private:
-  ast::LocVarContext* old_var_;
+  Parser::FunctionScopeInfo* old_var_;
+  Parser::FunctionScopeInfo temp_;
   Parser* p_;
+
   LAVA_DISALLOW_COPY_AND_ASSIGN(LocVarContextAdder);
 };
 
-using namespace lavascript::zone;
+class LexicalScopeAdder {
+ public:
+  LexicalScopeAdder( Parser* p ):
+    parser_(p)
+  {
+    int idx = ++(p->function_scope_info()->current_scope);
+    if(static_cast<std::size_t>(idx) ==
+        p->function_scope_info()->lexical_scope_info.size()) {
+      p->function_scope_info()->lexical_scope_info.push_back(Parser::LexicalScopeInfo());
+    }
+  }
+
+  ~LexicalScopeAdder() {
+    --parser_->function_scope_info()->current_scope;
+  }
+ private:
+  Parser* parser_;
+};
+
 
 void Parser::ErrorAtV( size_t start , size_t end , const char* format , va_list vl ) {
   if(lexer_.lexeme().token == Token::kError) {
@@ -737,59 +764,67 @@ ast::Node* Parser::ParseStatement() {
   return ret;
 }
 
-void Parser::AddLocVarContextVar( ast::Variable* v ) {
-  lava_verify( lctx_ );
-  const std::size_t len = lctx_->local_vars->size();
-  for( std::size_t i = 0 ; i < len ; ++i ) {
-    ast::Variable* new_v = lctx_->local_vars->Index(i);
-    if(*new_v->name == *v->name) {
-      return;
-    }
-  }
-  lctx_->local_vars->Add(zone_,v);
-}
-
-void Parser::AddLocVarContextIter( std::size_t cnt ) {
-  lava_verify( lctx_ );
-  lctx_->iterator_count += cnt;
-}
-
-std::size_t Parser::AddChunkStmt( ast::Node* stmt , Vector<ast::Variable*>* lv ) {
+Parser::ChunkStmtAddResult
+Parser::AddChunkStmt( ast::Node* stmt , Vector<ast::Variable*>* lv ) {
   /**
    * Sort out all the local variable declaration and put them
    * into the local_vars list. The code generator will first
    * reserve the needed register for those local variable to
    * maintain register allocation in order
    */
-  std::size_t ret = 0;
+  ChunkStmtAddResult ret = VARIABLE_OKAY; // nothing would happen
 
   if(stmt->IsVar()) {
-    lv->Add(zone_,stmt->AsVar()->var);
-    AddLocVarContextVar(stmt->AsVar()->var);
+    /* check if this variable existed or not */
+    ast::Variable* v = stmt->AsVar()->var;
+    if(!CheckArgumentExisted(*lv,*v->name)) {
+      return VARIABLE_EXISTED;
+    }
+    lv->Add(zone_,v);
+    ret = VARIABLE_OKAY;
+
   } else if(stmt->IsFor()) {
     ast::Var* v = stmt->AsFor()->_1st;
     if(v) {
-      lv->Add(zone_,v->var);
-      AddLocVarContextVar(v->var);
+      ast::Variable* var = v->var;
+      /** for pratical reason, we silently ignore variable has duplicated
+       *  definition here. so yes you could redefine a variable inside of
+       *  a for range loop */
+      if(CheckArgumentExisted(*lv,*var->name)) {
+        lv->Add(zone_,var);
+      }
     }
 
     // Figure out how much reserved iterator needs to be in this chunk
     // for this loop. We reserve loop condition and step variable to
     // have very simple loop bytecode.
     {
-      std::size_t cnt = 0;
-      if(stmt->AsFor()->_2nd) cnt++;
-      if(stmt->AsFor()->_3rd) cnt++;
-      if(cnt > ret) ret = cnt;
+      int temp = 0;
+      if(stmt->AsFor()->_2nd) temp++;
+      if(stmt->AsFor()->_3rd) temp++;
+      ret = static_cast<ChunkStmtAddResult>(temp);
     }
   } else if(stmt->IsForEach()) {
-    lv->Add(zone_,stmt->AsForEach()->key);
-    AddLocVarContextVar(stmt->AsForEach()->key);
+    /**
+     * Same as for range loop , we don't complain about redefinition of variable
+     * for key and value for pratical reason they literally just over-shadow the
+     * same name variable in same lexical scope
+     */
+    {
+      ast::Variable* key = stmt->AsForEach()->key;
+      if(CheckArgumentExisted(*lv,*key->name)) {
+        lv->Add(zone_,key);
+      }
+    }
 
-    lv->Add(zone_,stmt->AsForEach()->val);
-    AddLocVarContextVar(stmt->AsForEach()->val);
+    {
+      ast::Variable* val = stmt->AsForEach()->val;
+      if(CheckArgumentExisted(*lv,*val->name)) {
+        lv->Add(zone_,val);
+      }
+    }
 
-    if(!ret) ret = 1; // This is for hidden iterator
+    ret = ITERATOR_NEED1;
   }
 
   return ret;
@@ -797,6 +832,8 @@ std::size_t Parser::AddChunkStmt( ast::Node* stmt , Vector<ast::Variable*>* lv )
 
 ast::Chunk* Parser::ParseChunk() {
   lava_verify( lexer_.lexeme().token == Token::kLBra );
+  LexicalScopeAdder lscope(this); // enter lexical scope
+
   size_t expr_start = lexer_.lexeme().start;
   size_t expr_end   = lexer_.lexeme().end;
 
@@ -810,12 +847,18 @@ ast::Chunk* Parser::ParseChunk() {
                                                                lv ,
                                                                0 );
   } else {
-    std::size_t cnt = 0;
+    std::size_t iter_cnt = 0;
     do {
       ast::Node* stmt = ParseStatement();
       if(!stmt) return NULL;
-      std::size_t n = AddChunkStmt(stmt,lv);
-      if(cnt <n) cnt = n;
+      ChunkStmtAddResult result = AddChunkStmt(stmt,lv);
+
+      if(result == VARIABLE_EXISTED) {
+        Error("variable %s already defined",stmt->AsVar()->var->name->data());
+        return NULL;
+      }
+      std::size_t temp = static_cast<std::size_t>(result);
+      if(iter_cnt < temp) iter_cnt = temp;
 
       ck->Add(zone_,stmt);
     } while( lexer_.lexeme().token != Token::kEof &&
@@ -829,10 +872,10 @@ ast::Chunk* Parser::ParseChunk() {
     expr_end = lexer_.lexeme().end;
     lexer_.Next(); // Skip the last }
 
-    // Add iterator to loc var context if we have iterator
-    AddLocVarContextIter(cnt);
+    // update local variable count information
+    CalculateLexcialScopeInfo(lv->size(),iter_cnt);
 
-    return ast_factory_.NewChunk(expr_start,expr_end,ck,lv,cnt);
+    return ast_factory_.NewChunk(expr_start,expr_end,ck,lv,iter_cnt);
   }
 }
 
@@ -840,17 +883,27 @@ ast::Chunk* Parser::ParseSingleStatementOrChunk() {
   if(lexer_.lexeme().token == Token::kLBra)
     return ParseChunk();
   else {
+    LexicalScopeAdder lscope(this);
+
     Vector<ast::Node*>* ck = Vector<ast::Node*>::New(zone_);
     ast::Node* stmt = ParseStatement();
     if(!stmt) return NULL;
+
     Vector<ast::Variable*>* lv = Vector<ast::Variable*>::New(zone_);
-    std::size_t cnt = AddChunkStmt(stmt,lv);
+
+    ChunkStmtAddResult result = AddChunkStmt(stmt,lv);
+    if(result == VARIABLE_EXISTED) {
+      Error("variable %s already defined",stmt->AsVar()->var->name->data());
+      return NULL;
+    }
+
     ck->Add(zone_,stmt);
 
-    // Add iterator to loc var context if we have iterator
-    AddLocVarContextIter(cnt);
+    std::size_t iter_cnt = static_cast<std::size_t>(result);
 
-    return ast_factory_.NewChunk(stmt->start,stmt->end,ck,lv,cnt);
+    CalculateLexcialScopeInfo(lv->size(),iter_cnt);
+
+    return ast_factory_.NewChunk(stmt->start,stmt->end,ck,lv,iter_cnt);
   }
 }
 
@@ -859,9 +912,9 @@ bool Parser::CheckArgumentExisted( const Vector<ast::Variable*>& arg_list,
 
   for( size_t i = 0 ; i < arg_list.size() ; ++i ) {
     const ast::Variable* v = arg_list.Index(i);
-    if(*(v->name) == arg) return true;
+    if(*(v->name) == arg) return false;
   }
-  return false;
+  return true;
 }
 
 Vector<ast::Variable*>* Parser::ParseFunctionPrototype() {
@@ -875,26 +928,26 @@ Vector<ast::Variable*>* Parser::ParseFunctionPrototype() {
     do {
       if( lexer_.lexeme().token == Token::kIdentifier ) {
 
-        if(CheckArgumentExisted(*arg_list,*lexer_.lexeme().str_value)) {
-          Error("Argument existed");
+        ast::Variable* v = ast_factory_.NewVariable(lexer_.lexeme().start,
+                                                    lexer_.lexeme().end,
+                                                    lexer_.lexeme().str_value);
+        // just use add chunkstmt to add argument and then check whether an
+        // argument is existed or not
+        if(AddChunkStmt(v,arg_list) == VARIABLE_EXISTED) {
+          Error("argument %s already exists",v->name->data());
           return NULL;
         }
 
-        ast::Variable* v = ast_factory_.NewVariable(lexer_.lexeme().start,
-                                                     lexer_.lexeme().end,
-                                                     lexer_.lexeme().str_value);
-        arg_list->Add(zone_,v);
+        // add the count back to the top level lexical scope's variable counter
+        function_scope_info()->top_scope()->var_count++;
 
-        if(arg_list->size() > interpreter::kMaxFunctionArgumentCount) {
+        if(arg_list->size() == interpreter::kMaxFunctionArgumentCount) {
           Error("Too many function argument, at most %zu is allowed",
                 interpreter::kMaxFunctionArgumentCount);
           return NULL;
         }
 
-        // Add it into loc var context as well since argument are treated
-        // as local variables as well
-        AddLocVarContextVar(v);
-
+        arg_list->Add(zone_,v);
         lexer_.Next();
       } else {
         Error("Expect a identifier to represent function argument");
@@ -925,6 +978,7 @@ ast::Function* Parser::ParseFunction() {
   }
 
   LocVarContextAdder lctx_adder(this);
+  LexicalScopeAdder  lscope    (this);
 
   ast::Variable* fname = ast_factory_.NewVariable(lexer_.lexeme().start,
                                                   lexer_.lexeme().end,
@@ -942,6 +996,7 @@ ast::Function* Parser::ParseFunction() {
     return NULL;
   }
 
+  /** this will actually open a new lexical scope but nothing hurt */
   ast::Chunk* body = ParseChunk();
   if(!body) return NULL;
 
@@ -950,7 +1005,7 @@ ast::Function* Parser::ParseFunction() {
                                   fname,
                                   arg_list,
                                   body,
-                                  lctx_);
+                                  function_scope_info()->var_context);
 }
 
 ast::Function* Parser::ParseAnonymousFunction() {
@@ -962,6 +1017,7 @@ ast::Function* Parser::ParseAnonymousFunction() {
   }
 
   LocVarContextAdder lctx_adder(this);
+  LexicalScopeAdder  lscope    (this);
 
   Vector<ast::Variable*>* arg_list = ParseFunctionPrototype();
   if(!arg_list) return NULL;
@@ -977,33 +1033,40 @@ ast::Function* Parser::ParseAnonymousFunction() {
                                   NULL,
                                   arg_list,
                                   body,
-                                  lctx_);
+                                  function_scope_info()->var_context);
 }
 
 ast::Root* Parser::Parse() {
   size_t expr_start = lexer_.lexeme().start;
   Vector<ast::Node*>* main_body = Vector<ast::Node*>::New(zone_);
   Vector<ast::Variable*>* lv = Vector<ast::Variable*>::New(zone_);
-  std::size_t cnt = 0;
+  std::size_t iter_cnt = 0;
 
   LocVarContextAdder lctx_adder(this);
+  LexicalScopeAdder lscope(this);
 
   while( lexer_.lexeme().token != Token::kEof ) {
     ast::Node* stmt = ParseStatement();
     if(!stmt) return NULL;
     main_body->Add(zone_,stmt);
-    std::size_t n = AddChunkStmt(stmt,lv);
-    if( cnt < n ) cnt = n;
+
+    ChunkStmtAddResult result = AddChunkStmt(stmt,lv);
+    if(result == VARIABLE_EXISTED) {
+      Error("variable %s already defined",stmt->AsVar()->var->name->data());
+      return NULL;
+    }
+    std::size_t temp = static_cast<std::size_t>(result);
+    if(iter_cnt < temp) iter_cnt = temp;
   }
 
   // Add iterator to loc var context if we have iterator
-  AddLocVarContextIter(cnt);
+  CalculateLexcialScopeInfo(lv->size(),iter_cnt);
 
   return ast_factory_.NewRoot(expr_start, lexer_.lexeme().start,
       ast_factory_.NewChunk(expr_start, lexer_.lexeme().start,main_body,
                                                               lv,
-                                                              cnt),
-      lctx_);
+                                                              iter_cnt),
+      function_scope_info()->var_context);
 }
 
 } // namespace parser

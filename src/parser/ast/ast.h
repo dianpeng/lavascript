@@ -402,16 +402,10 @@ struct Chunk : public Node {
 // slots for all local variables and iterator objects. This will
 // make our call instruction no need to move arguments around.
 struct LocVarContext : public zone::ZoneObject {
-  zone::Vector<Variable*>* local_vars;          // How many local variables are needed at most
-  std::size_t iterator_count;                   // How many iterators object is needed nestedly
-
-  LocVarContext( zone::Vector<Variable*>* v ):
-    local_vars(v),
-    iterator_count(0)
-  {}
-
+  std::size_t var_count; // variable count
+  LocVarContext(): var_count(0) {}
   std::size_t local_variable_count() const {
-    return local_vars->size() + iterator_count;
+    return var_count;
   }
 };
 

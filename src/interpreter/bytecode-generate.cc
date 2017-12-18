@@ -195,12 +195,11 @@ void LexicalScope::Init( const ast::Chunk& node ) {
   const std::size_t len = node.local_vars->size();
   for( std::size_t i = 0; i < len; ++i ) {
     const zone::String* name = node.local_vars->Index(i)->name;
-    local_vars_.push_back(
-        LocalVar(name,Register(func_scope()->GetLocalVarRegister(*name).index())));
+    local_vars_.push_back(LocalVar(name,func_scope()->GetLocalVarRegister()));
   }
 
   for( std::size_t i = 0 ; i < node.iterator_count ; ++i )
-    loop_iter_.push_back(func_scope()->GetScopeBoundIterator());
+    loop_iter_.push_back(func_scope()->GetLocalVarRegister());
 }
 
 void LexicalScope::Init( const ast::Function& node ) {
@@ -208,7 +207,7 @@ void LexicalScope::Init( const ast::Function& node ) {
     const std::size_t len = node.proto->size();
     for( std::size_t i = 0 ; i < len ; ++i ) {
       const zone::String* name = node.proto->Index(i)->name;
-      local_vars_.push_back(LocalVar(name,func_scope()->GetLocalVarRegister(*name)));
+      local_vars_.push_back(LocalVar(name,func_scope()->GetLocalVarRegister()));
     }
   }
 }
@@ -257,7 +256,11 @@ LexicalScope::~LexicalScope() {
   func_scope()->lexical_scope_list_.pop_back();
   generator()->lexical_scope_ = parent()->IsFunctionScope() ? NULL :
                                                               parent()->AsLexicalScope();
-  func_scope()->FreeScopeBoundIterator(loop_iter_.size());
+
+  {
+    std::size_t local_var_size = local_vars_.size() + loop_iter_.size();
+    func_scope()->FreeLocalVarRegister(local_var_size);
+  }
 }
 
 LexicalScope* LexicalScope::GetNearestLoopScope() {
@@ -331,55 +334,37 @@ int FunctionScope::GetUpValue( const zone::String& name ,
 }
 
 Optional<Register> FunctionScope::GetLocalVar( const zone::String& name ) {
-  for( auto &e : lexical_scope_list_ ) {
-    Optional<Register> r(e->GetLocalVarInPlace(name));
+  for( std::vector<LexicalScope*>::reverse_iterator itr =
+      lexical_scope_list_.rbegin() ; itr != lexical_scope_list_.rend() ; ++itr ) {
+    Optional<Register> r((*itr)->GetLocalVarInPlace(name));
     if(r) return r;
   }
   return Optional<Register>();
 }
 
 bool FunctionScope::Init( const ast::LocVarContext& lctx ) {
-  const std::size_t lvar_size = lctx.local_vars->size() + lctx.iterator_count;
+  const std::size_t lvar_size = lctx.var_count;
   if(lvar_size == 0) return true;  // no need to anything
 
   std::uint8_t base;
   if(!ra()->EnterScope(lvar_size,&base))
     return false;
 
-  // 1. allocate registers for local variables
-  {
-    const std::size_t l = lctx.local_vars->size();
-    for( std::size_t i = 0 ; i < l ; ++i ) {
-      local_vars_.push_back(LocalVar(lctx.local_vars->Index(i)->name,
-                                     Register(base+static_cast<std::uint8_t>(i))));
-    }
-    base += static_cast<std::uint8_t>(l);
-  }
-
-  // 2. allocate registers for iterators
-  {
-    for( std::size_t i = 0 ; i < lctx.iterator_count ; ++i ) {
-      iterators_.push_back(Register(base + static_cast<std::uint8_t>(i)));
-    }
+  for( std::uint8_t i = base ; i < lvar_size ; ++i ) {
+    register_.push_back(Register(i));
   }
 
   return true;
 }
 
-Register FunctionScope::GetLocalVarRegister( const zone::String& name ) const {
-  std::vector<LocalVar>::const_iterator itr =
-    std::find( local_vars_.begin() , local_vars_.end() , name );
-  lava_debug(NORMAL,lava_verify(itr != local_vars_.end()););
-  return itr->reg;
+Register FunctionScope::GetLocalVarRegister() {
+  lava_debug(NORMAL,lava_verify(next_register_ < register_.size()););
+  return register_[next_register_++];
 }
 
-Register FunctionScope::GetScopeBoundIterator() {
-  lava_debug(NORMAL,lava_verify(next_iterator_ < iterators_.size()););
-  return iterators_[next_iterator_++];
-}
-
-void FunctionScope::FreeScopeBoundIterator( std::size_t cnt ) {
-  next_iterator_ -= cnt;
+void FunctionScope::FreeLocalVarRegister( size_t cnt ) {
+  lava_debug(NORMAL,lava_verify( cnt <= next_register_ ););
+  next_register_ -= cnt;
 }
 
 std::uint8_t kBinSpecialOpLookupTable [][3] = {
@@ -1661,6 +1646,9 @@ bool Generator::Visit( const ast::For& node ) {
         static_cast<std::uint16_t>(func_scope()->bb()->CodePosition()));
   }
 
+  // Free all loop iterator register
+  lexical_scope()->FreeLoopIter();
+
   return true;
 }
 
@@ -1710,6 +1698,9 @@ bool Generator::Visit( const ast::ForEach& node ) {
 
   forward.Patch(
       static_cast<std::uint16_t>(func_scope()->bb()->CodePosition()));
+
+  // Free all loop iterator register
+  lexical_scope()->FreeLoopIter();
 
   return true;
 }

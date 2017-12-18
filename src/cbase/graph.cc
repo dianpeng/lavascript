@@ -38,18 +38,41 @@ class BytecodeLiveness {
   // build the liveness for a single bytecode; bytecode cannot be control
   // flow transfer
   void BuildBytecode( BytecodeIterator* , LivenessSet* );
-  void BuildBlock   ( BytecodeIterator* , LivenessSet* );
+  void BuildBlock   ( BytecodeIterator* , const LivenessSet* prev );
+
+
+  void BuildUntilJump( BytecodeIterator* itr , const std::uint32_t* pc );
+
+  void BuildBranch  ( BytecodeIterator* , const LivenessSet* prev );
+  void BuildLogic   ( BytecodeIterator* , const LivenessSet* prev );
+  void BuildLoop    ( BytecodeIterator* , const LivenessSet* prev );
 
   bool IsLocalVar   ( std::uint8_t reg ) const {
     return reg < max_local_var_size_;
   }
 
+  LivenessMap* AddNewScope( const void* pc , const LivenessSet* prev ) {
+    std::pair<LivenessMap::iterator,bool> ret =
+      map_.insert( std::make_pair(pc,LivenessMap(prev)) );
+    lava_debug(NORMAL,lava_verify(ret.second););
+    return &(ret.first.second);
+  }
  private:
   struct LivenessSet {
-    const std::uint32_t* end;
+    void Add( std::uint8_t reg ) { register_set.insert(reg); }
+    bool IsAlive( std::uint8_t reg );
+
+    // instead of duplicate all the liveness information into the
+    // nested scope, we just chain them based on this *pointer*
+    const LivenessSet* prev;
+    const std::uint32_t*   end;
     std::set<std::uint8_t> register_set;
 
-    void Add( std::uint8_t reg ) { register_set.insert(reg); }
+    LivenessSet( const LivenessSet* p ):
+      prev(p),
+      end (NULL),
+      register_set()
+    {}
   };
 
   // bytecode address to LivenessSet mapping. This map only contains
@@ -61,9 +84,40 @@ class BytecodeLiveness {
   // no CFG that is established
   typedef std::unordered_map<const void*,LivenessSet> LivenessMap;
   LivenessMap map_;
+
   Handle<Prototype> proto_;
   std::uint8_t max_local_var_size_;
 };
+
+// build the liveness against basic block
+void BytecodeLiveness::BuildBlock( BytecodeIterator* itr , const LivenessSet* prev ) {
+  LivenessSet* set = AddNewScope(itr->pc(),prev);
+
+  for( ; itr->HasNext() ; itr->Next() ) {
+    switch(itr->opcode()) {
+      /** all are control flow instruction/bytecode **/
+      case BC_JMPF: BuildBranch(itr,set); break;
+      case BC_AND:  BuildLogic (itr,set); break;
+      case BC_OR:   BuildLogic (itr,set); break;
+      case BC_FEVRSTART:
+      case BC_FESTART:
+      case BC_FSTART:
+        BuildForeverLoop(itr);
+        break;
+
+      case BC_CONT:
+      case BC_BRK:
+      case BC_RET:
+      case BC_RETNULL:
+        break; /* end of the basic block */
+      default:
+        BuildBytecode(itr,set);
+    }
+  }
+}
+
+void BytecodeLiveness::BuildBranch( BytecodeIterator* itr ) {
+}
 
 void BytecodeLiveness::BuildBytecode( BytecodeIterator* itr , LivenessSet* set ) {
   switch(itr->opcode()) {
@@ -132,15 +186,68 @@ void BytecodeLiveness::BuildBytecode( BytecodeIterator* itr , LivenessSet* set )
         if(IsLocalVar(a1)) set->Add(a1);
       }
       break;
-    case BC_ADDLIST: case BC_ADDOBJ:
-      /** pass , since these 2 are definitly followed by newlist/newobj */
-      break;
     case BC_LOADCLS:
       {
         std::uint8_t a1; std::uint16_t a2;
         itr->GetOperand(&a1,&a2);
         if(IsLocalVar(a1)) set->Add(a1);
       }
+      break;
+    case BC_PROPGET:
+    case BC_PROPGETSSO:
+    case BC_IDXGET:
+    case BC_IDXGETI:
+      {
+        std::uint8_t a1,a2,a3;
+        itr->GetOperand(&a1,&a2,&a3);
+        if(IsLocalVar(a1)) set->Add(a1);
+      }
+      break;
+
+    case BC_UVGET: case BC_GGET:
+      {
+        std::uint8_t a1; std::uint16_t a2;
+        itr->GetOperand(&a1,&a2);
+        if(IsLocalVar(a1)) set->Add(a1);
+      }
+      break;
+
+    case BC_GGETSSO:
+      {
+        std::uint8_t a1 , a2;
+        itr->GetOperand(&a1,&a2);
+        if(IsLocalVar(a1)) set->Add(a1);
+      }
+      break;
+
+    case BC_IDREF:
+      {
+        std::uint8_t a1 , a2, a3;
+        itr->GetOperand(&a1,&a2);
+        if(IsLocalVar(a2)) set->Add(a2);
+        if(IsLocalVar(a3)) set->Add(a3);
+      }
+      break;
+
+    /** these bytecodes just need to sink , no special operations */
+    case BC_ADDLIST:
+    case BC_ADDOBJ:
+    case BC_INITCLS:
+
+    case BC_PROPSET:
+    case BC_PROPSETSSO:
+    case BC_IDXSET:
+    case BC_IDXSETI:
+    case BC_UVSET:
+    case BC_GSET:
+    case BC_GSETSSO:
+
+    case BC_CALL:
+    case BC_TCALL:
+      break;
+
+    default:
+      lava_unreachF("cannot reach here, bytecode %s",itr->opcode_name());
       break;
   }
 }

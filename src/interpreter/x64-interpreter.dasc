@@ -2774,27 +2774,43 @@ void GenBytecode( BuildContext* bctx, Bytecode bc ) {
 
     case BC_AND:
       |=>bc:
-      |  instr_B
+      |  instr_E
       |  cmp word  [STK+ARG1F*8+6], Value::FLAG_HEAP
       |  je >1
       |  cmp dword [STK+ARG1F*8+4], Value::FLAG_FALSECOND
       |  jbe >1
+
+      // move the value from ARG1F --> ARG2F
+      |  mov ARG3F , qword [STK+ARG1F*8]
+      |  mov qword [STK+ARG2F*8] , ARG3F
+
+      |  mov ARG2  , dword [PC] // extra slot contains branch target
       |  branch_to ARG2F,ARG3F
-      |1: // fallthrough
+      |2: // fallthrough
       |  Dispatch
+      |1:
+      |  add PC,4
+      |  jmp <2
       break;
 
     case BC_OR:
       |=>bc:
-      |  instr_B
+      |  instr_E
       |  cmp word  [STK+ARG1F*8+6], Value::FLAG_HEAP
       |  je >2
       |  cmp dword [STK+ARG1F*8+4], Value::FLAG_FALSECOND
       |  ja >1
       |2:
+      |  mov ARG3F, qword [STK+ARG1F*8]
+      |  mov qword [STK+ARG2F*8], ARG3F
+
+      |  mov ARG2 , dword [PC]
       |  branch_to ARG2F,ARG3F
-      |1: // fallthrough
+      |3: // fallthrough
       |  Dispatch
+      |1:
+      |  add PC,4
+      |  jmp <3
       break;
 
     |.macro absolute_jmp,BC
@@ -3652,6 +3668,19 @@ void GenBytecodeProfile( BuildContext* bctx , Bytecode bc ) {
       break;
     case BC_FESTART:
       |  jmp extern festart
+      break;
+    /* jump/and/or */
+    case BC_JMPF:
+      |  jmp extern jmpf
+      break;
+    case BC_JMPT:
+      |  jmp extern jmpt
+      break;
+    case BC_AND:
+      |  jmp extern and_
+      break;
+    case BC_OR:
+      |  jmp extern or_
       break;
     default:
       lava_unreachF("Bytecode %s cannot have Feedback",GetBytecodeName(bc));

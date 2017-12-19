@@ -1000,24 +1000,37 @@ bool Generator::VisitLogic( const ast::Binary& node , ExprResult* result ) {
 
   Register dst(result->GetHint().Get());
 
+  // Get a temporary register
+  ScopedRegister temp(this);
+  if(!temp.Reset(func_scope()->ra()->Grab())) {
+    Error(ERR_REGISTER_OVERFLOW,node.sci());
+    return false;
+  }
+
   // Left hand side
-  if(!VisitExpressionWithOutputRegister(*node.lhs,dst))
+  if(!VisitExpressionWithOutputRegister(*node.lhs,temp.Get()))
     return false;
 
   // And or Or instruction
   BytecodeBuilder::Label label;
 
   if(node.op == Token::kAnd) {
-    label = func_scope()->bb()->and_(func_scope()->ra()->base(), node.lhs->sci(),dst.index());
+    label = func_scope()->bb()->and_(func_scope()->ra()->base(), node.lhs->sci(),
+                                                                 temp.Get().index(),
+                                                                 dst.index());
   } else {
-    label = func_scope()->bb()->or_ (func_scope()->ra()->base(), node.lhs->sci(),dst.index());
+    label = func_scope()->bb()->or_ (func_scope()->ra()->base(), node.lhs->sci(),
+                                                                 temp.Get().index(),
+                                                                 dst.index());
   }
   if(!label) {
     Error(ERR_FUNCTION_TOO_LONG,func_scope()->body());
     return false;
   }
 
-  // Right hand side expression evaluation
+  // Right hand side expression evaluation , notes we directly store the value into
+  // the destination register since we don't need to hold the value of destination
+  // register in its right hand side now
   if(!VisitExpressionWithOutputRegister(*node.rhs,dst)) return false;
 
   // Patch the branch label

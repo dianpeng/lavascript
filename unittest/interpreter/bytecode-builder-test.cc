@@ -219,10 +219,10 @@ TEST(BytecodeBuilder,Patch) {
   l = (bb.jmpf(0,SourceCodeInfo(),255));
   l.Patch(1024);
 
-  l = (bb.and_(0,SourceCodeInfo(),255));
+  l = (bb.and_(0,SourceCodeInfo(),255,255));
   l.Patch(1024);
 
-  l = (bb.or_ (0,SourceCodeInfo(),255));
+  l = (bb.or_ (0,SourceCodeInfo(),255,255));
   l.Patch(1024);
 
   l = (bb.jmp(0,SourceCodeInfo()));

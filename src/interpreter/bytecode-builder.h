@@ -74,6 +74,7 @@ class BytecodeBuilder {
     bool IsOk() const { return builder_ != NULL; }
     operator bool () const { return IsOk(); }
     inline void Patch( std::uint16_t );
+    inline void PatchDWord( std::uint32_t );
    private:
     BytecodeType type_;
     std::size_t index_;
@@ -179,8 +180,10 @@ class BytecodeBuilder {
    * ----------------------------------------------------*/
   inline Label jmpt   ( std::uint8_t reg , const SourceCodeInfo& si , std::uint8_t r );
   inline Label jmpf   ( std::uint8_t reg , const SourceCodeInfo& si , std::uint8_t r );
-  inline Label and_   ( std::uint8_t reg , const SourceCodeInfo& si , std::uint8_t r );
-  inline Label or_    ( std::uint8_t reg , const SourceCodeInfo& si , std::uint8_t r );
+  inline Label and_   ( std::uint8_t reg , const SourceCodeInfo& si , std::uint8_t,
+                                                                      std::uint8_t   );
+  inline Label or_    ( std::uint8_t reg , const SourceCodeInfo& si , std::uint8_t,
+                                                                      std::uint8_t   );
   inline Label jmp    ( std::uint8_t reg , const SourceCodeInfo& si );
   inline Label brk    ( std::uint8_t reg , const SourceCodeInfo& si );
   inline Label cont   ( std::uint8_t reg , const SourceCodeInfo& si );
@@ -382,6 +385,7 @@ inline BytecodeBuilder::Label BytecodeBuilder::EmitAt( std::uint8_t reg ,
       if(A2) encode |= (a2 <<24);
       break;
     case TYPE_D:
+    case TYPE_H:
       if(A1) encode |= (a1 << 8);
       if(A2) encode |= (a2 <<16);
       if(A3) encode |= (a3 <<24);
@@ -401,6 +405,13 @@ inline BytecodeBuilder::Label BytecodeBuilder::EmitAt( std::uint8_t reg ,
   code_buffer_.push_back(encode);
   debug_info_.push_back(sci);
   reg_offset_table_.push_back(reg);
+
+  /** handle type_h since it has an extra slot **/
+  if(TP == TYPE_H) {
+    code_buffer_.push_back(0);
+    debug_info_.push_back(sci);
+    reg_offset_table_.push_back(reg);
+  }
 
   return Label(this,idx,static_cast<BytecodeType>(TP));
 }
@@ -437,14 +448,16 @@ inline BytecodeBuilder::Label BytecodeBuilder::jmpf( std::uint8_t reg ,
 
 inline BytecodeBuilder::Label BytecodeBuilder::and_( std::uint8_t reg ,
                                                      const SourceCodeInfo& sci ,
-                                                     std::uint8_t a1 ) {
-  return EmitAt<BC_AND,TYPE_B,true,false,false>(reg,sci,a1);
+                                                     std::uint8_t a1 ,
+                                                     std::uint8_t a2 ) {
+  return EmitAt<BC_AND,TYPE_H,true,true,false>(reg,sci,a1,a2);
 }
 
 inline BytecodeBuilder::Label BytecodeBuilder::or_ ( std::uint8_t reg ,
                                                      const SourceCodeInfo& sci ,
-                                                     std::uint8_t a1 ) {
-  return EmitAt<BC_OR,TYPE_B,true,false,false>(reg,sci,a1);
+                                                     std::uint8_t a1 ,
+                                                     std::uint8_t a2 ) {
+  return EmitAt<BC_OR,TYPE_H,true,true,false>(reg,sci,a1,a2);
 }
 
 inline BytecodeBuilder::Label BytecodeBuilder::jmp ( std::uint8_t reg ,
@@ -525,14 +538,22 @@ inline void BytecodeBuilder::Label::Patch( std::uint16_t pc ) {
   std::uint32_t v = builder_->code_buffer_[index_];
   switch(type_) {
     case TYPE_B:
-      builder_->code_buffer_[index_] = (v | (static_cast<uint32_t>(pc) << 16));
+      builder_->code_buffer_[index_] = (v | (static_cast<std::uint32_t>(pc) << 16));
       break;
     case TYPE_G:
-      builder_->code_buffer_[index_] = (v | (static_cast<uint32_t>(pc) << 8));
+      builder_->code_buffer_[index_] = (v | (static_cast<std::uint32_t>(pc) << 8));
+      break;
+    case TYPE_H:
+      builder_->code_buffer_[index_+1] = (static_cast<std::uint32_t>(pc));
       break;
     default:
       lava_unreach("not implemented bytecode type or broken type");
   }
+}
+
+inline void BytecodeBuilder::Label::PatchDWord( std::uint32_t pc ) {
+  lava_debug(NORMAL,lava_verify(type_ == TYPE_H););
+  builder_->code_buffer_[index_+1] = pc;
 }
 
 inline BytecodeBuilder::BytecodeBuilder():

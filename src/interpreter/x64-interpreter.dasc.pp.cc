@@ -862,7 +862,7 @@ INTERPRETER_REGISTER_EXTERN_SYMBOL(JITProfileBC)
 #endif
 #line 852 "src/interpreter/x64-interpreter.dasc"
 //|.actionlist actions
-static const unsigned char actions[8355] = {
+static const unsigned char actions[8485] = {
   254,1,248,10,237,237,255,248,11,248,12,237,237,255,248,13,0,0,0,0,0,0,252,
   255,252,255,255,248,14,237,255,248,15,237,255,248,16,0,0,0,0,237,255,248,
   17,0,0,0,0,0,0,0,0,255,254,0,249,248,18,255,72,131,252,236,72,76,137,100,
@@ -1111,61 +1111,66 @@ static const unsigned char actions[8355] = {
   248,1,139,69,0,72,15,182,200,72,131,197,4,193,232,8,65,252,255,36,207,255,
   249,72,15,182,216,193,232,8,102,65,129,124,253,222,6,238,15,132,244,248,65,
   129,124,253,222,4,239,15,134,244,248,72,139,12,36,72,141,44,129,248,2,139,
-  69,0,72,15,182,200,72,131,197,4,193,232,8,65,252,255,36,207,255,249,72,15,
-  182,216,193,232,8,102,65,129,124,253,222,6,238,15,132,244,247,65,129,124,
-  253,222,4,239,15,134,244,247,72,139,12,36,72,141,44,129,248,1,139,69,0,72,
-  15,182,200,72,131,197,4,193,232,8,65,252,255,36,207,255,249,72,15,183,216,
-  72,139,12,36,72,141,44,153,139,69,0,72,15,182,200,72,131,197,4,193,232,8,
-  65,252,255,36,207,255,102,65,129,124,253,198,6,238,15,133,244,33,255,73,141,
-  52,198,73,139,4,198,72,35,5,244,11,72,139,0,128,184,233,235,15,133,244,255,
-  255,72,139,128,233,72,139,0,255,73,139,125,0,72,139,191,233,72,193,225,4,
-  72,139,12,15,255,139,145,233,35,144,233,72,141,176,233,72,141,20,82,72,141,
-  20,214,248,2,68,139,154,233,65,252,247,195,237,15,132,244,254,72,139,186,
-  233,72,139,63,128,191,233,235,15,133,244,249,72,139,63,72,57,252,249,15,133,
-  244,249,72,139,186,233,73,137,60,222,139,69,0,72,15,182,200,72,131,197,4,
-  193,232,8,65,252,255,36,207,248,3,65,252,247,195,237,15,132,244,254,255,65,
-  129,227,239,75,141,60,91,72,141,20,252,254,252,233,244,2,255,248,8,73,137,
-  172,253,36,233,76,137,231,72,137,206,255,232,251,1,25,255,248,9,73,137,172,
-  253,36,233,76,137,231,137,202,73,141,12,222,255,232,251,1,26,255,249,72,15,
-  182,216,193,232,8,15,182,204,37,252,255,0,0,0,73,137,172,253,36,233,76,137,
-  231,73,141,52,198,77,139,93,0,77,139,155,233,73,139,20,203,73,141,12,222,
-  255,232,251,1,27,255,249,255,72,15,182,216,193,232,8,15,182,204,37,252,255,
-  0,0,0,102,65,129,124,253,222,6,238,15,133,244,33,255,73,141,52,222,73,139,
-  28,222,72,35,29,244,11,72,139,27,128,187,233,235,15,133,244,255,255,72,139,
-  155,233,72,139,27,73,139,125,0,72,139,191,233,72,193,224,4,72,139,4,7,255,
-  139,144,233,35,147,233,72,141,179,233,72,141,20,82,72,141,20,214,248,2,68,
-  139,154,233,65,252,247,195,237,15,132,244,254,72,139,186,233,72,139,63,128,
-  191,233,235,15,133,244,249,72,139,63,72,57,252,248,15,133,244,249,73,139,
-  60,206,72,137,186,233,139,69,0,72,15,182,200,72,131,197,4,193,232,8,65,252,
-  255,36,207,248,3,65,252,247,195,237,15,132,244,254,255,248,8,73,137,172,253,
-  36,233,76,137,231,72,137,198,255,232,251,1,28,255,248,9,73,137,172,253,36,
-  233,76,137,231,137,194,73,141,12,206,255,232,251,1,29,255,249,72,15,182,216,
-  193,232,8,15,182,204,37,252,255,0,0,0,73,137,172,253,36,233,76,137,231,73,
-  141,52,222,77,139,93,0,77,139,155,233,73,139,20,195,73,141,12,206,255,232,
-  251,1,30,255,249,72,15,182,216,193,232,8,15,182,204,37,252,255,0,0,0,65,129,
-  124,253,206,4,239,15,131,244,247,252,242,73,15,45,60,206,72,133,252,255,15,
-  136,244,247,255,72,137,252,249,102,65,129,124,253,198,6,238,15,133,244,33,
-  73,139,52,198,72,35,53,244,11,72,139,54,128,190,233,235,15,133,244,34,59,
-  142,233,15,131,244,37,72,139,150,233,72,139,2,72,139,132,253,200,233,73,137,
-  4,222,139,69,0,72,15,182,200,72,131,197,4,193,232,8,65,252,255,36,207,255,
-  248,1,73,137,172,253,36,233,76,137,231,73,141,52,198,73,141,20,206,73,141,
-  12,222,255,249,72,15,182,216,193,232,8,15,182,204,37,252,255,0,0,0,102,65,
-  129,124,253,198,6,238,15,133,244,33,73,139,52,198,72,35,53,244,11,72,139,
-  54,128,190,233,235,15,133,244,34,59,142,233,15,131,244,37,72,139,150,233,
-  72,139,2,72,139,132,253,200,233,73,137,4,222,139,69,0,72,15,182,200,72,131,
-  197,4,193,232,8,65,252,255,36,207,255,65,129,124,253,198,4,239,15,131,244,
-  247,255,252,242,73,15,45,60,198,72,133,252,255,15,132,244,247,255,72,137,
-  252,248,102,65,129,124,253,222,6,238,15,133,244,33,73,139,52,222,72,35,53,
-  244,11,72,139,54,128,190,233,235,15,133,244,35,59,134,233,15,131,244,36,72,
-  139,150,233,72,139,26,73,139,52,206,72,137,180,253,195,233,139,69,0,72,15,
-  182,200,72,131,197,4,193,232,8,65,252,255,36,207,255,248,1,73,137,172,253,
-  36,233,76,137,231,73,141,52,222,73,141,20,198,73,141,12,206,255,249,72,15,
-  182,216,193,232,8,15,182,204,37,252,255,0,0,0,102,65,129,124,253,222,6,238,
-  15,133,244,33,73,139,52,222,72,35,53,244,11,72,139,54,128,190,233,235,15,
-  133,244,35,59,134,233,15,131,244,36,72,139,150,233,72,139,26,73,139,52,206,
-  72,137,180,253,195,233,139,69,0,72,15,182,200,72,131,197,4,193,232,8,65,252,
-  255,36,207,255,249,72,15,182,216,193,232,8,255,73,139,140,253,36,233,72,139,
-  9,255,72,139,137,233,72,139,9,255,139,144,233,35,145,233,72,141,177,233,72,
+  69,0,72,15,182,200,72,131,197,4,193,232,8,65,252,255,36,207,255,249,15,182,
+  216,193,232,8,102,65,129,124,253,222,6,238,15,132,244,247,65,129,124,253,
+  222,4,239,15,134,244,247,255,73,139,12,222,73,137,12,198,255,139,69,0,72,
+  139,12,36,72,141,44,129,248,2,139,69,0,72,15,182,200,72,131,197,4,193,232,
+  8,65,252,255,36,207,248,1,72,131,197,4,252,233,244,2,255,249,15,182,216,193,
+  232,8,102,65,129,124,253,222,6,238,15,132,244,248,65,129,124,253,222,4,239,
+  15,135,244,247,248,2,73,139,12,222,73,137,12,198,255,139,69,0,72,139,12,36,
+  72,141,44,129,248,3,139,69,0,72,15,182,200,72,131,197,4,193,232,8,65,252,
+  255,36,207,248,1,72,131,197,4,252,233,244,3,255,249,72,15,183,216,72,139,
+  12,36,72,141,44,153,139,69,0,72,15,182,200,72,131,197,4,193,232,8,65,252,
+  255,36,207,255,102,65,129,124,253,198,6,238,15,133,244,33,255,73,141,52,198,
+  73,139,4,198,72,35,5,244,11,72,139,0,128,184,233,235,15,133,244,255,255,72,
+  139,128,233,72,139,0,255,73,139,125,0,72,139,191,233,72,193,225,4,72,139,
+  12,15,255,139,145,233,35,144,233,72,141,176,233,72,141,20,82,72,141,20,214,
+  248,2,68,139,154,233,65,252,247,195,237,15,132,244,254,72,139,186,233,72,
+  139,63,128,191,233,235,15,133,244,249,72,139,63,72,57,252,249,15,133,244,
+  249,72,139,186,233,73,137,60,222,139,69,0,72,15,182,200,72,131,197,4,193,
+  232,8,65,252,255,36,207,248,3,65,252,247,195,237,15,132,244,254,255,65,129,
+  227,239,75,141,60,91,72,141,20,252,254,252,233,244,2,255,248,8,73,137,172,
+  253,36,233,76,137,231,72,137,206,255,232,251,1,25,255,248,9,73,137,172,253,
+  36,233,76,137,231,137,202,73,141,12,222,255,232,251,1,26,255,249,72,15,182,
+  216,193,232,8,15,182,204,37,252,255,0,0,0,73,137,172,253,36,233,76,137,231,
+  73,141,52,198,77,139,93,0,77,139,155,233,73,139,20,203,73,141,12,222,255,
+  232,251,1,27,255,249,255,72,15,182,216,193,232,8,15,182,204,37,252,255,0,
+  0,0,102,65,129,124,253,222,6,238,15,133,244,33,255,73,141,52,222,73,139,28,
+  222,72,35,29,244,11,72,139,27,128,187,233,235,15,133,244,255,255,72,139,155,
+  233,72,139,27,73,139,125,0,72,139,191,233,72,193,224,4,72,139,4,7,255,139,
+  144,233,35,147,233,72,141,179,233,72,141,20,82,72,141,20,214,248,2,68,139,
+  154,233,65,252,247,195,237,15,132,244,254,72,139,186,233,72,139,63,128,191,
+  233,235,15,133,244,249,72,139,63,72,57,252,248,15,133,244,249,73,139,60,206,
+  72,137,186,233,139,69,0,72,15,182,200,72,131,197,4,193,232,8,65,252,255,36,
+  207,248,3,65,252,247,195,237,15,132,244,254,255,248,8,73,137,172,253,36,233,
+  76,137,231,72,137,198,255,232,251,1,28,255,248,9,73,137,172,253,36,233,76,
+  137,231,137,194,73,141,12,206,255,232,251,1,29,255,249,72,15,182,216,193,
+  232,8,15,182,204,37,252,255,0,0,0,73,137,172,253,36,233,76,137,231,73,141,
+  52,222,77,139,93,0,77,139,155,233,73,139,20,195,73,141,12,206,255,232,251,
+  1,30,255,249,72,15,182,216,193,232,8,15,182,204,37,252,255,0,0,0,65,129,124,
+  253,206,4,239,15,131,244,247,252,242,73,15,45,60,206,72,133,252,255,15,136,
+  244,247,255,72,137,252,249,102,65,129,124,253,198,6,238,15,133,244,33,73,
+  139,52,198,72,35,53,244,11,72,139,54,128,190,233,235,15,133,244,34,59,142,
+  233,15,131,244,37,72,139,150,233,72,139,2,72,139,132,253,200,233,73,137,4,
+  222,139,69,0,72,15,182,200,72,131,197,4,193,232,8,65,252,255,36,207,255,248,
+  1,73,137,172,253,36,233,76,137,231,73,141,52,198,73,141,20,206,73,141,12,
+  222,255,249,72,15,182,216,193,232,8,15,182,204,37,252,255,0,0,0,102,65,129,
+  124,253,198,6,238,15,133,244,33,73,139,52,198,72,35,53,244,11,72,139,54,128,
+  190,233,235,15,133,244,34,59,142,233,15,131,244,37,72,139,150,233,72,139,
+  2,72,139,132,253,200,233,73,137,4,222,139,69,0,72,15,182,200,72,131,197,4,
+  193,232,8,65,252,255,36,207,255,65,129,124,253,198,4,239,15,131,244,247,255,
+  252,242,73,15,45,60,198,72,133,252,255,15,132,244,247,255,72,137,252,248,
+  102,65,129,124,253,222,6,238,15,133,244,33,73,139,52,222,72,35,53,244,11,
+  72,139,54,128,190,233,235,15,133,244,35,59,134,233,15,131,244,36,72,139,150,
+  233,72,139,26,73,139,52,206,72,137,180,253,195,233,139,69,0,72,15,182,200,
+  72,131,197,4,193,232,8,65,252,255,36,207,255,248,1,73,137,172,253,36,233,
+  76,137,231,73,141,52,222,73,141,20,198,73,141,12,206,255,249,72,15,182,216,
+  193,232,8,15,182,204,37,252,255,0,0,0,102,65,129,124,253,222,6,238,15,133,
+  244,33,73,139,52,222,72,35,53,244,11,72,139,54,128,190,233,235,15,133,244,
+  35,59,134,233,15,131,244,36,72,139,150,233,72,139,26,73,139,52,206,72,137,
+  180,253,195,233,139,69,0,72,15,182,200,72,131,197,4,193,232,8,65,252,255,
+  36,207,255,249,72,15,182,216,193,232,8,255,73,139,140,253,36,233,72,139,9,
+  255,72,139,137,233,72,139,9,255,139,144,233,35,145,233,72,141,177,233,72,
   141,20,82,72,141,20,214,248,2,68,139,154,233,65,252,247,195,237,15,132,244,
   254,72,139,186,233,72,139,63,128,191,233,235,15,133,244,249,72,139,63,72,
   57,252,248,15,133,244,249,72,139,178,233,73,137,52,222,139,69,0,72,15,182,
@@ -1252,7 +1257,8 @@ static const unsigned char actions[8355] = {
   233,251,1,87,255,252,233,251,1,88,255,252,233,251,1,89,255,252,233,251,1,
   90,255,252,233,251,1,91,255,252,233,251,1,92,255,252,233,251,1,93,255,252,
   233,251,1,94,255,252,233,251,1,95,255,252,233,251,1,96,255,252,233,251,1,
-  97,255,252,233,251,1,98,255,252,233,251,1,99,255
+  97,255,252,233,251,1,98,255,252,233,251,1,99,255,252,233,251,1,100,255,252,
+  233,251,1,101,255,252,233,251,1,102,255,252,233,251,1,103,255
 };
 
 #line 853 "src/interpreter/x64-interpreter.dasc"
@@ -1436,6 +1442,10 @@ static const char *const extnames[] = {
   "fevrend",
   "fstart",
   "festart",
+  "jmpf",
+  "jmpt",
+  "and_",
+  "or_",
   (const char *)0
 };
 #line 856 "src/interpreter/x64-interpreter.dasc"
@@ -3966,31 +3976,53 @@ void GenBytecode( BuildContext* bctx, Bytecode bc ) {
 
     case BC_AND:
       //|=>bc:
-      //|  instr_B
+      //|  instr_E
       //|  cmp word  [STK+ARG1F*8+6], Value::FLAG_HEAP
       //|  je >1
       //|  cmp dword [STK+ARG1F*8+4], Value::FLAG_FALSECOND
       //|  jbe >1
-      //|  branch_to ARG2F,ARG3F
-      //|1: // fallthrough
-      //|  Dispatch
       dasm_put(Dst, 5369, bc, Value::FLAG_HEAP, Value::FLAG_FALSECOND);
-#line 2785 "src/interpreter/x64-interpreter.dasc"
+#line 2782 "src/interpreter/x64-interpreter.dasc"
+
+      // move the value from ARG1F --> ARG2F
+      //|  mov ARG3F , qword [STK+ARG1F*8]
+      //|  mov qword [STK+ARG2F*8] , ARG3F
+      dasm_put(Dst, 5400);
+#line 2786 "src/interpreter/x64-interpreter.dasc"
+
+      //|  mov ARG2  , dword [PC] // extra slot contains branch target
+      //|  branch_to ARG2F,ARG3F
+      //|2: // fallthrough
+      //|  Dispatch
+      //|1:
+      //|  add PC,4
+      //|  jmp <2
+      dasm_put(Dst, 5409);
+#line 2794 "src/interpreter/x64-interpreter.dasc"
       break;
 
     case BC_OR:
       //|=>bc:
-      //|  instr_B
+      //|  instr_E
       //|  cmp word  [STK+ARG1F*8+6], Value::FLAG_HEAP
       //|  je >2
       //|  cmp dword [STK+ARG1F*8+4], Value::FLAG_FALSECOND
       //|  ja >1
       //|2:
+      //|  mov ARG3F, qword [STK+ARG1F*8]
+      //|  mov qword [STK+ARG2F*8], ARG3F
+      dasm_put(Dst, 5452, bc, Value::FLAG_HEAP, Value::FLAG_FALSECOND);
+#line 2806 "src/interpreter/x64-interpreter.dasc"
+
+      //|  mov ARG2 , dword [PC]
       //|  branch_to ARG2F,ARG3F
-      //|1: // fallthrough
+      //|3: // fallthrough
       //|  Dispatch
-      dasm_put(Dst, 5245, bc, Value::FLAG_HEAP, Value::FLAG_FALSECOND);
-#line 2798 "src/interpreter/x64-interpreter.dasc"
+      //|1:
+      //|  add PC,4
+      //|  jmp <3
+      dasm_put(Dst, 5493);
+#line 2814 "src/interpreter/x64-interpreter.dasc"
       break;
 
     //|.macro absolute_jmp,BC
@@ -4002,8 +4034,8 @@ void GenBytecode( BuildContext* bctx, Bytecode bc ) {
 
     case BC_JMP:
       //|  absolute_jmp,BC_JMP
-      dasm_put(Dst, 5430, BC_JMP);
-#line 2809 "src/interpreter/x64-interpreter.dasc"
+      dasm_put(Dst, 5536, BC_JMP);
+#line 2825 "src/interpreter/x64-interpreter.dasc"
       break;
 
     // ----------------------------------------------------------
@@ -4021,52 +4053,52 @@ void GenBytecode( BuildContext* bctx, Bytecode bc ) {
       //|=>bc:
       //|  instr_D
       dasm_put(Dst, 2567, bc);
-#line 2825 "src/interpreter/x64-interpreter.dasc"
+#line 2841 "src/interpreter/x64-interpreter.dasc"
       // Check ARG2F points to a *Object*
       //|  cmp word [STK+ARG2F*8+6], Value::FLAG_HEAP
       //|  jne ->InterpPropNeedObject
-      dasm_put(Dst, 5463, Value::FLAG_HEAP);
-#line 2828 "src/interpreter/x64-interpreter.dasc"
+      dasm_put(Dst, 5569, Value::FLAG_HEAP);
+#line 2844 "src/interpreter/x64-interpreter.dasc"
 
       //|  lea  CARG2, [STK+ARG2F*8]
       //|  mov ARG2F, qword [STK+ARG2F*8]
       //|  CheckObj ARG2F, >9
-      dasm_put(Dst, 5476, -HOH_TYPE_OFFSET, OBJECT_BIT_PATTERN);
-#line 2832 "src/interpreter/x64-interpreter.dasc"
+      dasm_put(Dst, 5582, -HOH_TYPE_OFFSET, OBJECT_BIT_PATTERN);
+#line 2848 "src/interpreter/x64-interpreter.dasc"
 
       // Load *Map* object into ARG2F
       //|  mov ARG2F, qword [ARG2F+ObjectLayout::kMapOffset]
       //|  mov ARG2F, qword [ARG2F]
-      dasm_put(Dst, 5501, ObjectLayout::kMapOffset);
-#line 2836 "src/interpreter/x64-interpreter.dasc"
+      dasm_put(Dst, 5607, ObjectLayout::kMapOffset);
+#line 2852 "src/interpreter/x64-interpreter.dasc"
 
       // Load SSO/key into ARG3F
       //|  LdSSO ARG3F,ARG3F,T0
-      dasm_put(Dst, 5509, PrototypeLayout::kSSOTableOffset);
-#line 2839 "src/interpreter/x64-interpreter.dasc"
+      dasm_put(Dst, 5615, PrototypeLayout::kSSOTableOffset);
+#line 2855 "src/interpreter/x64-interpreter.dasc"
 
       // Do the search
       //|  objfind_sso ARG2F,ARG3F,>8,getsso_found
-      dasm_put(Dst, 5526, SSOLayout::kHashOffset, MapLayout::kMaskOffset, MapLayout::kArrayOffset, MapEntryLayout::kFlagOffset, (Map::Entry::kUseButNotDelBit), MapEntryLayout::kKeyOffset, -HOH_TYPE_OFFSET, SSO_BIT_PATTERN, MapEntryLayout::kValueOffset, (Map::Entry::kMoreBit));
-      dasm_put(Dst, 5624, (bits::BitOn<std::uint32_t,0,29>::value));
-#line 2842 "src/interpreter/x64-interpreter.dasc"
+      dasm_put(Dst, 5632, SSOLayout::kHashOffset, MapLayout::kMaskOffset, MapLayout::kArrayOffset, MapEntryLayout::kFlagOffset, (Map::Entry::kUseButNotDelBit), MapEntryLayout::kKeyOffset, -HOH_TYPE_OFFSET, SSO_BIT_PATTERN, MapEntryLayout::kValueOffset, (Map::Entry::kMoreBit));
+      dasm_put(Dst, 5730, (bits::BitOn<std::uint32_t,0,29>::value));
+#line 2858 "src/interpreter/x64-interpreter.dasc"
 
       //|8: // not fonud label
       //|  savepc
       //|  mov CARG1, RUNTIME
       //|  mov CARG2, ARG3F
       //|  fcall InterpreterPropGetSSONotFound
-      dasm_put(Dst, 5642, RuntimeLayout::kCurPCOffset);
+      dasm_put(Dst, 5748, RuntimeLayout::kCurPCOffset);
        if(CheckAddress(reinterpret_cast<std::uintptr_t>(InterpreterPropGetSSONotFound))) {
-      dasm_put(Dst, 5657);
+      dasm_put(Dst, 5763);
        } else {
          lava_warn("%s","Function InterpreterPropGetSSONotFound address is not in 0-2GB");
       dasm_put(Dst, 283, (unsigned int)(reinterpret_cast<std::uintptr_t>(InterpreterPropGetSSONotFound)), (unsigned int)((reinterpret_cast<std::uintptr_t>(InterpreterPropGetSSONotFound))>>32));
        }
-#line 2848 "src/interpreter/x64-interpreter.dasc"
+#line 2864 "src/interpreter/x64-interpreter.dasc"
       //|  jmp ->InterpFail
       dasm_put(Dst, 495);
-#line 2849 "src/interpreter/x64-interpreter.dasc"
+#line 2865 "src/interpreter/x64-interpreter.dasc"
 
       //|9: // failed at *object*
       //|  savepc
@@ -4074,17 +4106,17 @@ void GenBytecode( BuildContext* bctx, Bytecode bc ) {
       //|  mov CARG3L, ARG3
       //|  lea CARG4, [STK+ARG1F*8]
       //|  fcall InterpreterPropGetSSO
-      dasm_put(Dst, 5662, RuntimeLayout::kCurPCOffset);
+      dasm_put(Dst, 5768, RuntimeLayout::kCurPCOffset);
        if(CheckAddress(reinterpret_cast<std::uintptr_t>(InterpreterPropGetSSO))) {
-      dasm_put(Dst, 5680);
+      dasm_put(Dst, 5786);
        } else {
          lava_warn("%s","Function InterpreterPropGetSSO address is not in 0-2GB");
       dasm_put(Dst, 283, (unsigned int)(reinterpret_cast<std::uintptr_t>(InterpreterPropGetSSO)), (unsigned int)((reinterpret_cast<std::uintptr_t>(InterpreterPropGetSSO))>>32));
        }
-#line 2856 "src/interpreter/x64-interpreter.dasc"
+#line 2872 "src/interpreter/x64-interpreter.dasc"
       //|  retbool
       dasm_put(Dst, 291);
-#line 2857 "src/interpreter/x64-interpreter.dasc"
+#line 2873 "src/interpreter/x64-interpreter.dasc"
       break;
 
     case BC_PROPGET:
@@ -4098,17 +4130,17 @@ void GenBytecode( BuildContext* bctx, Bytecode bc ) {
       //|  LdStr CARG3, ARG3F
       //|  lea   CARG4, [STK+ARG1F*8]
       //|  fcall InterpreterPropGet
-      dasm_put(Dst, 5685, bc, RuntimeLayout::kCurPCOffset, PrototypeLayout::kStringTableOffset);
+      dasm_put(Dst, 5791, bc, RuntimeLayout::kCurPCOffset, PrototypeLayout::kStringTableOffset);
        if(CheckAddress(reinterpret_cast<std::uintptr_t>(InterpreterPropGet))) {
-      dasm_put(Dst, 5732);
+      dasm_put(Dst, 5838);
        } else {
          lava_warn("%s","Function InterpreterPropGet address is not in 0-2GB");
       dasm_put(Dst, 283, (unsigned int)(reinterpret_cast<std::uintptr_t>(InterpreterPropGet)), (unsigned int)((reinterpret_cast<std::uintptr_t>(InterpreterPropGet))>>32));
        }
-#line 2870 "src/interpreter/x64-interpreter.dasc"
+#line 2886 "src/interpreter/x64-interpreter.dasc"
       //|  retbool
       dasm_put(Dst, 291);
-#line 2871 "src/interpreter/x64-interpreter.dasc"
+#line 2887 "src/interpreter/x64-interpreter.dasc"
       break;
 
     case BC_PROPSETSSO:
@@ -4118,49 +4150,49 @@ void GenBytecode( BuildContext* bctx, Bytecode bc ) {
       //|  mov qword [RREG+MapEntryLayout::kValueOffset], T0
       //|  Dispatch
       //|.endmacro
-      dasm_put(Dst, 5737, bc);
-#line 2880 "src/interpreter/x64-interpreter.dasc"
+      dasm_put(Dst, 5843, bc);
+#line 2896 "src/interpreter/x64-interpreter.dasc"
 
       //|  instr_D
       //|  cmp word [STK+ARG1F*8+6], Value::FLAG_HEAP
       //|  jne ->InterpPropNeedObject
-      dasm_put(Dst, 5739, Value::FLAG_HEAP);
-#line 2884 "src/interpreter/x64-interpreter.dasc"
+      dasm_put(Dst, 5845, Value::FLAG_HEAP);
+#line 2900 "src/interpreter/x64-interpreter.dasc"
 
       //|  lea CARG2, [STK+ARG1F*8]
       //|  mov ARG1F, qword [STK+ARG1F*8]
       //|  CheckObj ARG1F, >9
-      dasm_put(Dst, 5768, -HOH_TYPE_OFFSET, OBJECT_BIT_PATTERN);
-#line 2888 "src/interpreter/x64-interpreter.dasc"
+      dasm_put(Dst, 5874, -HOH_TYPE_OFFSET, OBJECT_BIT_PATTERN);
+#line 2904 "src/interpreter/x64-interpreter.dasc"
 
       // Load the *Map* object into ARG1F
       //|  mov ARG1F, qword [ARG1F+ObjectLayout::kMapOffset]
       //|  mov ARG1F, qword [ARG1F]
       //|  LdSSO ARG2F,ARG2F,T0
-      dasm_put(Dst, 5793, ObjectLayout::kMapOffset, PrototypeLayout::kSSOTableOffset);
-#line 2893 "src/interpreter/x64-interpreter.dasc"
+      dasm_put(Dst, 5899, ObjectLayout::kMapOffset, PrototypeLayout::kSSOTableOffset);
+#line 2909 "src/interpreter/x64-interpreter.dasc"
 
       //|  objfind_sso ARG1F,ARG2F,>8,setsso_found
-      dasm_put(Dst, 5817, SSOLayout::kHashOffset, MapLayout::kMaskOffset, MapLayout::kArrayOffset, MapEntryLayout::kFlagOffset, (Map::Entry::kUseButNotDelBit), MapEntryLayout::kKeyOffset, -HOH_TYPE_OFFSET, SSO_BIT_PATTERN, MapEntryLayout::kValueOffset, (Map::Entry::kMoreBit));
-      dasm_put(Dst, 5624, (bits::BitOn<std::uint32_t,0,29>::value));
-#line 2895 "src/interpreter/x64-interpreter.dasc"
+      dasm_put(Dst, 5923, SSOLayout::kHashOffset, MapLayout::kMaskOffset, MapLayout::kArrayOffset, MapEntryLayout::kFlagOffset, (Map::Entry::kUseButNotDelBit), MapEntryLayout::kKeyOffset, -HOH_TYPE_OFFSET, SSO_BIT_PATTERN, MapEntryLayout::kValueOffset, (Map::Entry::kMoreBit));
+      dasm_put(Dst, 5730, (bits::BitOn<std::uint32_t,0,29>::value));
+#line 2911 "src/interpreter/x64-interpreter.dasc"
 
       //|8:
       //|  savepc
       //|  mov CARG1, RUNTIME
       //|  mov CARG2, ARG2F
       //|  fcall InterpreterPropSetSSONotFound
-      dasm_put(Dst, 5915, RuntimeLayout::kCurPCOffset);
+      dasm_put(Dst, 6021, RuntimeLayout::kCurPCOffset);
        if(CheckAddress(reinterpret_cast<std::uintptr_t>(InterpreterPropSetSSONotFound))) {
-      dasm_put(Dst, 5930);
+      dasm_put(Dst, 6036);
        } else {
          lava_warn("%s","Function InterpreterPropSetSSONotFound address is not in 0-2GB");
       dasm_put(Dst, 283, (unsigned int)(reinterpret_cast<std::uintptr_t>(InterpreterPropSetSSONotFound)), (unsigned int)((reinterpret_cast<std::uintptr_t>(InterpreterPropSetSSONotFound))>>32));
        }
-#line 2901 "src/interpreter/x64-interpreter.dasc"
+#line 2917 "src/interpreter/x64-interpreter.dasc"
       //|  jmp ->InterpFail
       dasm_put(Dst, 495);
-#line 2902 "src/interpreter/x64-interpreter.dasc"
+#line 2918 "src/interpreter/x64-interpreter.dasc"
 
       //|9:
       //|  savepc
@@ -4168,17 +4200,17 @@ void GenBytecode( BuildContext* bctx, Bytecode bc ) {
       //|  mov CARG3L, ARG2
       //|  lea CARG4, [STK+ARG3F*8]
       //|  fcall InterpreterPropSetSSO
-      dasm_put(Dst, 5935, RuntimeLayout::kCurPCOffset);
+      dasm_put(Dst, 6041, RuntimeLayout::kCurPCOffset);
        if(CheckAddress(reinterpret_cast<std::uintptr_t>(InterpreterPropSetSSO))) {
-      dasm_put(Dst, 5953);
+      dasm_put(Dst, 6059);
        } else {
          lava_warn("%s","Function InterpreterPropSetSSO address is not in 0-2GB");
       dasm_put(Dst, 283, (unsigned int)(reinterpret_cast<std::uintptr_t>(InterpreterPropSetSSO)), (unsigned int)((reinterpret_cast<std::uintptr_t>(InterpreterPropSetSSO))>>32));
        }
-#line 2909 "src/interpreter/x64-interpreter.dasc"
+#line 2925 "src/interpreter/x64-interpreter.dasc"
       //|  retbool
       dasm_put(Dst, 291);
-#line 2910 "src/interpreter/x64-interpreter.dasc"
+#line 2926 "src/interpreter/x64-interpreter.dasc"
       break;
 
     case BC_PROPSET:
@@ -4190,17 +4222,17 @@ void GenBytecode( BuildContext* bctx, Bytecode bc ) {
       //|  LdStr CARG3, ARG2F
       //|  lea CARG4, [STK+ARG3F*8]
       //|  fcall InterpreterPropSet
-      dasm_put(Dst, 5958, bc, RuntimeLayout::kCurPCOffset, PrototypeLayout::kStringTableOffset);
+      dasm_put(Dst, 6064, bc, RuntimeLayout::kCurPCOffset, PrototypeLayout::kStringTableOffset);
        if(CheckAddress(reinterpret_cast<std::uintptr_t>(InterpreterPropSet))) {
-      dasm_put(Dst, 6005);
+      dasm_put(Dst, 6111);
        } else {
          lava_warn("%s","Function InterpreterPropSet address is not in 0-2GB");
       dasm_put(Dst, 283, (unsigned int)(reinterpret_cast<std::uintptr_t>(InterpreterPropSet)), (unsigned int)((reinterpret_cast<std::uintptr_t>(InterpreterPropSet))>>32));
        }
-#line 2921 "src/interpreter/x64-interpreter.dasc"
+#line 2937 "src/interpreter/x64-interpreter.dasc"
       //|  retbool
       dasm_put(Dst, 291);
-#line 2922 "src/interpreter/x64-interpreter.dasc"
+#line 2938 "src/interpreter/x64-interpreter.dasc"
       break;
 
     // Assume the ARG3F *already* contains index value ,4 bytes
@@ -4231,14 +4263,14 @@ void GenBytecode( BuildContext* bctx, Bytecode bc ) {
       //|  cvtsd2si T0, qword [STK+ARG3F*8]
       //|  test T0,T0
       //|  js >1 // negative index, cannot handle
-      dasm_put(Dst, 6010, bc, Value::FLAG_REAL);
-#line 2952 "src/interpreter/x64-interpreter.dasc"
+      dasm_put(Dst, 6116, bc, Value::FLAG_REAL);
+#line 2968 "src/interpreter/x64-interpreter.dasc"
 
       // do the indexing for list or array
       //|  mov ARG3F, T0
       //|  index_list,InterpIdxOutOfBoundGet,->InterpIdxGetI
-      dasm_put(Dst, 6054, Value::FLAG_HEAP, -HOH_TYPE_OFFSET, LIST_BIT_PATTERN, ListLayout::kSizeOffset, ListLayout::kSliceOffset, SliceLayout::kArrayOffset);
-#line 2956 "src/interpreter/x64-interpreter.dasc"
+      dasm_put(Dst, 6160, Value::FLAG_HEAP, -HOH_TYPE_OFFSET, LIST_BIT_PATTERN, ListLayout::kSizeOffset, ListLayout::kSliceOffset, SliceLayout::kArrayOffset);
+#line 2972 "src/interpreter/x64-interpreter.dasc"
 
       // general type index
       //|1:
@@ -4248,25 +4280,25 @@ void GenBytecode( BuildContext* bctx, Bytecode bc ) {
       //|  lea CARG3, [STK+ARG3F*8]
       //|  lea CARG4, [STK+ARG1F*8]
       //|  fcall InterpreterIdxGet
-      dasm_put(Dst, 6134, RuntimeLayout::kCurPCOffset);
+      dasm_put(Dst, 6240, RuntimeLayout::kCurPCOffset);
        if(CheckAddress(reinterpret_cast<std::uintptr_t>(InterpreterIdxGet))) {
       dasm_put(Dst, 712);
        } else {
          lava_warn("%s","Function InterpreterIdxGet address is not in 0-2GB");
       dasm_put(Dst, 283, (unsigned int)(reinterpret_cast<std::uintptr_t>(InterpreterIdxGet)), (unsigned int)((reinterpret_cast<std::uintptr_t>(InterpreterIdxGet))>>32));
        }
-#line 2965 "src/interpreter/x64-interpreter.dasc"
+#line 2981 "src/interpreter/x64-interpreter.dasc"
       //|  retbool
       dasm_put(Dst, 291);
-#line 2966 "src/interpreter/x64-interpreter.dasc"
+#line 2982 "src/interpreter/x64-interpreter.dasc"
       break;
 
     case BC_IDXGETI:
       //|=>bc:
       //|  instr_D
       //|  index_list,InterpIdxOutOfBoundGet,->InterpIdxGetI
-      dasm_put(Dst, 6158, bc, Value::FLAG_HEAP, -HOH_TYPE_OFFSET, LIST_BIT_PATTERN, ListLayout::kSizeOffset, ListLayout::kSliceOffset, SliceLayout::kArrayOffset);
-#line 2972 "src/interpreter/x64-interpreter.dasc"
+      dasm_put(Dst, 6264, bc, Value::FLAG_HEAP, -HOH_TYPE_OFFSET, LIST_BIT_PATTERN, ListLayout::kSizeOffset, ListLayout::kSliceOffset, SliceLayout::kArrayOffset);
+#line 2988 "src/interpreter/x64-interpreter.dasc"
       break;
 
     //|.macro set_list,oob,not_list
@@ -4292,24 +4324,24 @@ void GenBytecode( BuildContext* bctx, Bytecode bc ) {
       //|=>bc:
       //|  instr_D
       dasm_put(Dst, 2567, bc);
-#line 2996 "src/interpreter/x64-interpreter.dasc"
+#line 3012 "src/interpreter/x64-interpreter.dasc"
 
       // check the idx is a number
       //|  cmp dword [STK+ARG2F*8+4], Value::FLAG_REAL
       //|  jnb >1
-      dasm_put(Dst, 6251, Value::FLAG_REAL);
-#line 3000 "src/interpreter/x64-interpreter.dasc"
+      dasm_put(Dst, 6357, Value::FLAG_REAL);
+#line 3016 "src/interpreter/x64-interpreter.dasc"
       // conversion
       //|  cvtsd2si T0, qword [STK+ARG2F*8]
       //|  test T0, T0
       //|  jz >1
-      dasm_put(Dst, 6263);
-#line 3004 "src/interpreter/x64-interpreter.dasc"
+      dasm_put(Dst, 6369);
+#line 3020 "src/interpreter/x64-interpreter.dasc"
 
       //|  mov ARG2F, T0
       //|  set_list,InterpIdxOutOfBoundSet,->InterpIdxSetI
-      dasm_put(Dst, 6279, Value::FLAG_HEAP, -HOH_TYPE_OFFSET, LIST_BIT_PATTERN, ListLayout::kSizeOffset, ListLayout::kSliceOffset, SliceLayout::kArrayOffset);
-#line 3007 "src/interpreter/x64-interpreter.dasc"
+      dasm_put(Dst, 6385, Value::FLAG_HEAP, -HOH_TYPE_OFFSET, LIST_BIT_PATTERN, ListLayout::kSizeOffset, ListLayout::kSliceOffset, SliceLayout::kArrayOffset);
+#line 3023 "src/interpreter/x64-interpreter.dasc"
 
       //|1:
       //|  savepc
@@ -4318,17 +4350,17 @@ void GenBytecode( BuildContext* bctx, Bytecode bc ) {
       //|  lea CARG3, [STK+ARG2F*8]
       //|  lea CARG4, [STK+ARG3F*8]
       //|  fcall InterpreterIdxSet
-      dasm_put(Dst, 6359, RuntimeLayout::kCurPCOffset);
+      dasm_put(Dst, 6465, RuntimeLayout::kCurPCOffset);
        if(CheckAddress(reinterpret_cast<std::uintptr_t>(InterpreterIdxSet))) {
       dasm_put(Dst, 757);
        } else {
          lava_warn("%s","Function InterpreterIdxSet address is not in 0-2GB");
       dasm_put(Dst, 283, (unsigned int)(reinterpret_cast<std::uintptr_t>(InterpreterIdxSet)), (unsigned int)((reinterpret_cast<std::uintptr_t>(InterpreterIdxSet))>>32));
        }
-#line 3015 "src/interpreter/x64-interpreter.dasc"
+#line 3031 "src/interpreter/x64-interpreter.dasc"
       //|  retbool
       dasm_put(Dst, 291);
-#line 3016 "src/interpreter/x64-interpreter.dasc"
+#line 3032 "src/interpreter/x64-interpreter.dasc"
       break;
 
 
@@ -4336,8 +4368,8 @@ void GenBytecode( BuildContext* bctx, Bytecode bc ) {
       //|=>bc:
       //|  instr_D // ARG1 == object; ARG2 == imm; ARG3 == value
       //|  set_list,InterpIdxOutOfBoundSet,->InterpIdxSetI
-      dasm_put(Dst, 6383, bc, Value::FLAG_HEAP, -HOH_TYPE_OFFSET, LIST_BIT_PATTERN, ListLayout::kSizeOffset, ListLayout::kSliceOffset, SliceLayout::kArrayOffset);
-#line 3023 "src/interpreter/x64-interpreter.dasc"
+      dasm_put(Dst, 6489, bc, Value::FLAG_HEAP, -HOH_TYPE_OFFSET, LIST_BIT_PATTERN, ListLayout::kSizeOffset, ListLayout::kSliceOffset, SliceLayout::kArrayOffset);
+#line 3039 "src/interpreter/x64-interpreter.dasc"
       break;
 
     /* ========================================================
@@ -4353,27 +4385,27 @@ void GenBytecode( BuildContext* bctx, Bytecode bc ) {
 
       //|=>bc:
       //|  instr_B
-      dasm_put(Dst, 6476, bc);
-#line 3038 "src/interpreter/x64-interpreter.dasc"
+      dasm_put(Dst, 6582, bc);
+#line 3054 "src/interpreter/x64-interpreter.dasc"
 
       //|  mov ARG3F, qword [RUNTIME+RuntimeLayout::kGlobalOffset]
       //|  mov ARG3F, qword [ARG3F]
-      dasm_put(Dst, 6485, RuntimeLayout::kGlobalOffset);
-#line 3041 "src/interpreter/x64-interpreter.dasc"
+      dasm_put(Dst, 6591, RuntimeLayout::kGlobalOffset);
+#line 3057 "src/interpreter/x64-interpreter.dasc"
 
       //|  mov ARG3F, qword [ARG3F+ObjectLayout::kMapOffset]
       //|  mov ARG3F, qword [ARG3F]
-      dasm_put(Dst, 6495, ObjectLayout::kMapOffset);
-#line 3044 "src/interpreter/x64-interpreter.dasc"
+      dasm_put(Dst, 6601, ObjectLayout::kMapOffset);
+#line 3060 "src/interpreter/x64-interpreter.dasc"
 
       //|  LdSSO ARG2F,ARG2F,T0
-      dasm_put(Dst, 5800, PrototypeLayout::kSSOTableOffset);
-#line 3046 "src/interpreter/x64-interpreter.dasc"
+      dasm_put(Dst, 5906, PrototypeLayout::kSSOTableOffset);
+#line 3062 "src/interpreter/x64-interpreter.dasc"
 
       //|  objfind_sso ARG3F,ARG2F,>8,ggetsso_found
-      dasm_put(Dst, 6503, SSOLayout::kHashOffset, MapLayout::kMaskOffset, MapLayout::kArrayOffset, MapEntryLayout::kFlagOffset, (Map::Entry::kUseButNotDelBit), MapEntryLayout::kKeyOffset, -HOH_TYPE_OFFSET, SSO_BIT_PATTERN, MapEntryLayout::kValueOffset, (Map::Entry::kMoreBit));
-      dasm_put(Dst, 5624, (bits::BitOn<std::uint32_t,0,29>::value));
-#line 3048 "src/interpreter/x64-interpreter.dasc"
+      dasm_put(Dst, 6609, SSOLayout::kHashOffset, MapLayout::kMaskOffset, MapLayout::kArrayOffset, MapEntryLayout::kFlagOffset, (Map::Entry::kUseButNotDelBit), MapEntryLayout::kKeyOffset, -HOH_TYPE_OFFSET, SSO_BIT_PATTERN, MapEntryLayout::kValueOffset, (Map::Entry::kMoreBit));
+      dasm_put(Dst, 5730, (bits::BitOn<std::uint32_t,0,29>::value));
+#line 3064 "src/interpreter/x64-interpreter.dasc"
 
       // Globals not found
       //|8:
@@ -4381,17 +4413,17 @@ void GenBytecode( BuildContext* bctx, Bytecode bc ) {
       //|  mov CARG1, RUNTIME
       //|  mov CARG2, ARG2F
       //|  fcall InterpreterGGetNotFoundSSO
-      dasm_put(Dst, 5915, RuntimeLayout::kCurPCOffset);
+      dasm_put(Dst, 6021, RuntimeLayout::kCurPCOffset);
        if(CheckAddress(reinterpret_cast<std::uintptr_t>(InterpreterGGetNotFoundSSO))) {
-      dasm_put(Dst, 6601);
+      dasm_put(Dst, 6707);
        } else {
          lava_warn("%s","Function InterpreterGGetNotFoundSSO address is not in 0-2GB");
       dasm_put(Dst, 283, (unsigned int)(reinterpret_cast<std::uintptr_t>(InterpreterGGetNotFoundSSO)), (unsigned int)((reinterpret_cast<std::uintptr_t>(InterpreterGGetNotFoundSSO))>>32));
        }
-#line 3055 "src/interpreter/x64-interpreter.dasc"
+#line 3071 "src/interpreter/x64-interpreter.dasc"
       //|  jmp ->InterpFail
       dasm_put(Dst, 495);
-#line 3056 "src/interpreter/x64-interpreter.dasc"
+#line 3072 "src/interpreter/x64-interpreter.dasc"
       break;
 
     case BC_GGET:
@@ -4402,17 +4434,17 @@ void GenBytecode( BuildContext* bctx, Bytecode bc ) {
       //|  lea CARG2, [STK+ARG1F*8]
       //|  LdStr CARG3, ARG2F
       //|  fcall InterpreterGGet
-      dasm_put(Dst, 6606, bc, RuntimeLayout::kCurPCOffset, PrototypeLayout::kStringTableOffset);
+      dasm_put(Dst, 6712, bc, RuntimeLayout::kCurPCOffset, PrototypeLayout::kStringTableOffset);
        if(CheckAddress(reinterpret_cast<std::uintptr_t>(InterpreterGGet))) {
-      dasm_put(Dst, 6640);
+      dasm_put(Dst, 6746);
        } else {
          lava_warn("%s","Function InterpreterGGet address is not in 0-2GB");
       dasm_put(Dst, 283, (unsigned int)(reinterpret_cast<std::uintptr_t>(InterpreterGGet)), (unsigned int)((reinterpret_cast<std::uintptr_t>(InterpreterGGet))>>32));
        }
-#line 3066 "src/interpreter/x64-interpreter.dasc"
+#line 3082 "src/interpreter/x64-interpreter.dasc"
       //|  retbool
       dasm_put(Dst, 291);
-#line 3067 "src/interpreter/x64-interpreter.dasc"
+#line 3083 "src/interpreter/x64-interpreter.dasc"
       break;
 
     case BC_GSETSSO:
@@ -4424,39 +4456,39 @@ void GenBytecode( BuildContext* bctx, Bytecode bc ) {
 
       //|=>bc:
       //|  instr_B
-      dasm_put(Dst, 6476, bc);
-#line 3078 "src/interpreter/x64-interpreter.dasc"
+      dasm_put(Dst, 6582, bc);
+#line 3094 "src/interpreter/x64-interpreter.dasc"
 
       //|  mov ARG3F, qword [RUNTIME+RuntimeLayout::kGlobalOffset]
       //|  mov ARG3F, qword [ARG3F]
-      dasm_put(Dst, 6485, RuntimeLayout::kGlobalOffset);
-#line 3081 "src/interpreter/x64-interpreter.dasc"
+      dasm_put(Dst, 6591, RuntimeLayout::kGlobalOffset);
+#line 3097 "src/interpreter/x64-interpreter.dasc"
 
       //|  mov ARG3F, qword [ARG3F+ObjectLayout::kMapOffset]
       //|  mov ARG3F, qword [ARG3F]
-      dasm_put(Dst, 6495, ObjectLayout::kMapOffset);
-#line 3084 "src/interpreter/x64-interpreter.dasc"
+      dasm_put(Dst, 6601, ObjectLayout::kMapOffset);
+#line 3100 "src/interpreter/x64-interpreter.dasc"
 
       //|  LdSSO ARG1F,ARG1F,T0
       //|  objfind_sso ARG3F,ARG1F,>8,gsetsso_found
-      dasm_put(Dst, 6645, PrototypeLayout::kSSOTableOffset, SSOLayout::kHashOffset, MapLayout::kMaskOffset, MapLayout::kArrayOffset, MapEntryLayout::kFlagOffset, (Map::Entry::kUseButNotDelBit), MapEntryLayout::kKeyOffset, -HOH_TYPE_OFFSET, SSO_BIT_PATTERN, MapEntryLayout::kValueOffset, (Map::Entry::kMoreBit));
-#line 3087 "src/interpreter/x64-interpreter.dasc"
+      dasm_put(Dst, 6751, PrototypeLayout::kSSOTableOffset, SSOLayout::kHashOffset, MapLayout::kMaskOffset, MapLayout::kArrayOffset, MapEntryLayout::kFlagOffset, (Map::Entry::kUseButNotDelBit), MapEntryLayout::kKeyOffset, -HOH_TYPE_OFFSET, SSO_BIT_PATTERN, MapEntryLayout::kValueOffset, (Map::Entry::kMoreBit));
+#line 3103 "src/interpreter/x64-interpreter.dasc"
       //|8:
       //|  savepc
       //|  mov CARG1, RUNTIME
       //|  mov CARG2, ARG1F
       //|  fcall InterpreterGSetNotFoundSSO
-      dasm_put(Dst, 6759, (bits::BitOn<std::uint32_t,0,29>::value), RuntimeLayout::kCurPCOffset);
+      dasm_put(Dst, 6865, (bits::BitOn<std::uint32_t,0,29>::value), RuntimeLayout::kCurPCOffset);
        if(CheckAddress(reinterpret_cast<std::uintptr_t>(InterpreterGSetNotFoundSSO))) {
-      dasm_put(Dst, 6791);
+      dasm_put(Dst, 6897);
        } else {
          lava_warn("%s","Function InterpreterGSetNotFoundSSO address is not in 0-2GB");
       dasm_put(Dst, 283, (unsigned int)(reinterpret_cast<std::uintptr_t>(InterpreterGSetNotFoundSSO)), (unsigned int)((reinterpret_cast<std::uintptr_t>(InterpreterGSetNotFoundSSO))>>32));
        }
-#line 3092 "src/interpreter/x64-interpreter.dasc"
+#line 3108 "src/interpreter/x64-interpreter.dasc"
       //|  jmp ->InterpFail
       dasm_put(Dst, 495);
-#line 3093 "src/interpreter/x64-interpreter.dasc"
+#line 3109 "src/interpreter/x64-interpreter.dasc"
       break;
 
     case BC_GSET:
@@ -4467,17 +4499,17 @@ void GenBytecode( BuildContext* bctx, Bytecode bc ) {
       //|  LdStr CARG2, ARG1F
       //|  lea CARG3, [STK+ARG2F*8]
       //|  fcall InterpreterGSet
-      dasm_put(Dst, 6796, bc, RuntimeLayout::kCurPCOffset, PrototypeLayout::kStringTableOffset);
+      dasm_put(Dst, 6902, bc, RuntimeLayout::kCurPCOffset, PrototypeLayout::kStringTableOffset);
        if(CheckAddress(reinterpret_cast<std::uintptr_t>(InterpreterGSet))) {
-      dasm_put(Dst, 6830);
+      dasm_put(Dst, 6936);
        } else {
          lava_warn("%s","Function InterpreterGSet address is not in 0-2GB");
       dasm_put(Dst, 283, (unsigned int)(reinterpret_cast<std::uintptr_t>(InterpreterGSet)), (unsigned int)((reinterpret_cast<std::uintptr_t>(InterpreterGSet))>>32));
        }
-#line 3103 "src/interpreter/x64-interpreter.dasc"
+#line 3119 "src/interpreter/x64-interpreter.dasc"
       //|  retbool
       dasm_put(Dst, 291);
-#line 3104 "src/interpreter/x64-interpreter.dasc"
+#line 3120 "src/interpreter/x64-interpreter.dasc"
       break;
 
     // ==========================================================
@@ -4489,8 +4521,8 @@ void GenBytecode( BuildContext* bctx, Bytecode bc ) {
       //|  LdUV LREG,ARG2F
       //|  mov  qword [STK+ARG1F*8], LREG
       //|  Dispatch
-      dasm_put(Dst, 6835, bc, RuntimeLayout::kCurClsOffset, ClosureLayout::kUpValueOffset);
-#line 3115 "src/interpreter/x64-interpreter.dasc"
+      dasm_put(Dst, 6941, bc, RuntimeLayout::kCurClsOffset, ClosureLayout::kUpValueOffset);
+#line 3131 "src/interpreter/x64-interpreter.dasc"
       break;
 
     case BC_UVSET:
@@ -4499,8 +4531,8 @@ void GenBytecode( BuildContext* bctx, Bytecode bc ) {
       //|  mov RREG, qword [STK+ARG2F*8]
       //|  StUV ARG1F,RREG
       //|  Dispatch
-      dasm_put(Dst, 6881, bc, RuntimeLayout::kCurClsOffset, ClosureLayout::kUpValueOffset);
-#line 3123 "src/interpreter/x64-interpreter.dasc"
+      dasm_put(Dst, 6987, bc, RuntimeLayout::kCurClsOffset, ClosureLayout::kUpValueOffset);
+#line 3139 "src/interpreter/x64-interpreter.dasc"
       break;
 
 
@@ -4513,8 +4545,8 @@ void GenBytecode( BuildContext* bctx, Bytecode bc ) {
     case BC_FSTART:
       //|=>bc:
       //|  instr_B
-      dasm_put(Dst, 6476, bc);
-#line 3135 "src/interpreter/x64-interpreter.dasc"
+      dasm_put(Dst, 6582, bc);
+#line 3151 "src/interpreter/x64-interpreter.dasc"
       // must be boolean flag here
       //|  cmp dword [STK+ACCFIDX], Value::FLAG_FALSE
       //|  je >1
@@ -4523,8 +4555,8 @@ void GenBytecode( BuildContext* bctx, Bytecode bc ) {
       //|1:
       //|  branch_to ARG2F,ARG3F
       //|  jmp <2
-      dasm_put(Dst, 6927, Value::FLAG_FALSE);
-#line 3143 "src/interpreter/x64-interpreter.dasc"
+      dasm_put(Dst, 7033, Value::FLAG_FALSE);
+#line 3159 "src/interpreter/x64-interpreter.dasc"
       break;
 
     case BC_FEND1:
@@ -4532,19 +4564,19 @@ void GenBytecode( BuildContext* bctx, Bytecode bc ) {
       //|  instr_E // actually TYPE_H instruction
       //|  cmp dword [STK+ARG1F*8+4], Value::FLAG_REAL
       //|  jnb >6
-      dasm_put(Dst, 6977, bc, Value::FLAG_REAL);
-#line 3150 "src/interpreter/x64-interpreter.dasc"
+      dasm_put(Dst, 7083, bc, Value::FLAG_REAL);
+#line 3166 "src/interpreter/x64-interpreter.dasc"
 
       //|  cmp dword [STK+ARG2F*8+4], Value::FLAG_REAL
       //|  jnb >6
-      dasm_put(Dst, 6996, Value::FLAG_REAL);
-#line 3153 "src/interpreter/x64-interpreter.dasc"
+      dasm_put(Dst, 7102, Value::FLAG_REAL);
+#line 3169 "src/interpreter/x64-interpreter.dasc"
 
       //|  movsd xmm0, qword [STK+ARG1F*8]
       //|  ucomisd xmm0, qword [STK+ARG2F*8]
       //|  jae >8 // loop exit
-      dasm_put(Dst, 7008);
-#line 3157 "src/interpreter/x64-interpreter.dasc"
+      dasm_put(Dst, 7114);
+#line 3173 "src/interpreter/x64-interpreter.dasc"
 
       //|  mov ARG1, dword [PC]
       //|  branch_to ARG1F,ARG3F
@@ -4554,8 +4586,8 @@ void GenBytecode( BuildContext* bctx, Bytecode bc ) {
       //|  // skip the 4th argument
       //|  add PC,4
       //|  jmp <7
-      dasm_put(Dst, 7026);
-#line 3166 "src/interpreter/x64-interpreter.dasc"
+      dasm_put(Dst, 7132);
+#line 3182 "src/interpreter/x64-interpreter.dasc"
 
       //|6: // fallback for situation that is not integer
       //|  savepc
@@ -4564,21 +4596,21 @@ void GenBytecode( BuildContext* bctx, Bytecode bc ) {
       //|  lea CARG3, [STK+ARG2F*8]
       //|  mov CARG4L, dword [PC]
       //|  fcall InterpreterForEnd1
-      dasm_put(Dst, 7087, RuntimeLayout::kCurPCOffset);
+      dasm_put(Dst, 7193, RuntimeLayout::kCurPCOffset);
        if(CheckAddress(reinterpret_cast<std::uintptr_t>(InterpreterForEnd1))) {
-      dasm_put(Dst, 7110);
+      dasm_put(Dst, 7216);
        } else {
          lava_warn("%s","Function InterpreterForEnd1 address is not in 0-2GB");
       dasm_put(Dst, 283, (unsigned int)(reinterpret_cast<std::uintptr_t>(InterpreterForEnd1)), (unsigned int)((reinterpret_cast<std::uintptr_t>(InterpreterForEnd1))>>32));
        }
-#line 3174 "src/interpreter/x64-interpreter.dasc"
+#line 3190 "src/interpreter/x64-interpreter.dasc"
       // handle return value
       //|  test eax,eax
       //|  je ->InterpFail
       //|  mov PC, qword [RUNTIME+RuntimeLayout::kCurPCOffset]
       //|  jmp <7
-      dasm_put(Dst, 7115, RuntimeLayout::kCurPCOffset);
-#line 3179 "src/interpreter/x64-interpreter.dasc"
+      dasm_put(Dst, 7221, RuntimeLayout::kCurPCOffset);
+#line 3195 "src/interpreter/x64-interpreter.dasc"
       break;
 
     case BC_FEND2:
@@ -4590,16 +4622,16 @@ void GenBytecode( BuildContext* bctx, Bytecode bc ) {
       //|  jnb >6
       //|  cmp dword [STK+ARG3F*8+4], Value::FLAG_REAL
       //|  jnb >6
-      dasm_put(Dst, 7132, bc, Value::FLAG_REAL, Value::FLAG_REAL, Value::FLAG_REAL);
-#line 3190 "src/interpreter/x64-interpreter.dasc"
+      dasm_put(Dst, 7238, bc, Value::FLAG_REAL, Value::FLAG_REAL, Value::FLAG_REAL);
+#line 3206 "src/interpreter/x64-interpreter.dasc"
 
       //|  movsd xmm0, qword [STK+ARG1F*8]
       //|  addsd xmm0, qword [STK+ARG3F*8]
       //|  ucomisd xmm0, qword [STK+ARG2F*8]
       //|  movsd qword [STK+ARG1F*8], xmm0 // need to write back
       //|  jae >8 // loop exit
-      dasm_put(Dst, 7183);
-#line 3196 "src/interpreter/x64-interpreter.dasc"
+      dasm_put(Dst, 7289);
+#line 3212 "src/interpreter/x64-interpreter.dasc"
 
       // fallthrough
       //|  mov ARG1, dword [PC]
@@ -4609,8 +4641,8 @@ void GenBytecode( BuildContext* bctx, Bytecode bc ) {
       //|8:
       //|  add PC,4
       //|  jmp <7
-      dasm_put(Dst, 7026);
-#line 3205 "src/interpreter/x64-interpreter.dasc"
+      dasm_put(Dst, 7132);
+#line 3221 "src/interpreter/x64-interpreter.dasc"
 
       //|6:
       //|  savepc
@@ -4620,28 +4652,28 @@ void GenBytecode( BuildContext* bctx, Bytecode bc ) {
       //|  lea CARG4, [STK+ARG3F*8]
       //|  mov CARG5L, dword [PC]
       //|  fcall InterpreterForEnd2
-      dasm_put(Dst, 7215, RuntimeLayout::kCurPCOffset);
+      dasm_put(Dst, 7321, RuntimeLayout::kCurPCOffset);
        if(CheckAddress(reinterpret_cast<std::uintptr_t>(InterpreterForEnd2))) {
-      dasm_put(Dst, 7243);
+      dasm_put(Dst, 7349);
        } else {
          lava_warn("%s","Function InterpreterForEnd2 address is not in 0-2GB");
       dasm_put(Dst, 283, (unsigned int)(reinterpret_cast<std::uintptr_t>(InterpreterForEnd2)), (unsigned int)((reinterpret_cast<std::uintptr_t>(InterpreterForEnd2))>>32));
        }
-#line 3214 "src/interpreter/x64-interpreter.dasc"
+#line 3230 "src/interpreter/x64-interpreter.dasc"
       //|  test eax,eax
       //|  je ->InterpFail
       //|  mov PC, qword [RUNTIME+RuntimeLayout::kCurPCOffset]
       //|  jmp <7
-      dasm_put(Dst, 7115, RuntimeLayout::kCurPCOffset);
-#line 3218 "src/interpreter/x64-interpreter.dasc"
+      dasm_put(Dst, 7221, RuntimeLayout::kCurPCOffset);
+#line 3234 "src/interpreter/x64-interpreter.dasc"
       break;
 
     case BC_FEVRSTART:
       //|=>bc:
       //|  instr_X
       //|  Dispatch
-      dasm_put(Dst, 7248, bc);
-#line 3224 "src/interpreter/x64-interpreter.dasc"
+      dasm_put(Dst, 7354, bc);
+#line 3240 "src/interpreter/x64-interpreter.dasc"
       break;
 
     case BC_FEVREND:
@@ -4649,28 +4681,28 @@ void GenBytecode( BuildContext* bctx, Bytecode bc ) {
       //|  instr_G
       //|  branch_to ARG1F,ARG3F
       //|  DispatchCheckJIT 1
-      dasm_put(Dst, 7269, bc);
-#line 3231 "src/interpreter/x64-interpreter.dasc"
+      dasm_put(Dst, 7375, bc);
+#line 3247 "src/interpreter/x64-interpreter.dasc"
       break;
 
     case BC_BRK:
       //|  absolute_jmp BC_BRK
-      dasm_put(Dst, 5430, BC_BRK);
-#line 3235 "src/interpreter/x64-interpreter.dasc"
+      dasm_put(Dst, 5536, BC_BRK);
+#line 3251 "src/interpreter/x64-interpreter.dasc"
       break;
 
     case BC_CONT:
       //|  absolute_jmp BC_CONT
-      dasm_put(Dst, 5430, BC_CONT);
-#line 3239 "src/interpreter/x64-interpreter.dasc"
+      dasm_put(Dst, 5536, BC_CONT);
+#line 3255 "src/interpreter/x64-interpreter.dasc"
       break;
 
     // Foreach instructions
     case BC_FESTART:
       //|=>bc:
       //|  instr_B
-      dasm_put(Dst, 6476, bc);
-#line 3245 "src/interpreter/x64-interpreter.dasc"
+      dasm_put(Dst, 6582, bc);
+#line 3261 "src/interpreter/x64-interpreter.dasc"
 
       //|  savepc
       //|  mov CARG1, RUNTIME
@@ -4679,25 +4711,25 @@ void GenBytecode( BuildContext* bctx, Bytecode bc ) {
       //|  fcall InterpreterFEStart
       dasm_put(Dst, 789, RuntimeLayout::kCurPCOffset);
        if(CheckAddress(reinterpret_cast<std::uintptr_t>(InterpreterFEStart))) {
-      dasm_put(Dst, 7320);
+      dasm_put(Dst, 7426);
        } else {
          lava_warn("%s","Function InterpreterFEStart address is not in 0-2GB");
       dasm_put(Dst, 283, (unsigned int)(reinterpret_cast<std::uintptr_t>(InterpreterFEStart)), (unsigned int)((reinterpret_cast<std::uintptr_t>(InterpreterFEStart))>>32));
        }
-#line 3251 "src/interpreter/x64-interpreter.dasc"
+#line 3267 "src/interpreter/x64-interpreter.dasc"
       //|  test eax,eax
       //|  je ->InterpFail
       //|  mov PC, qword [RUNTIME+RuntimeLayout::kCurPCOffset]
       //|  Dispatch
-      dasm_put(Dst, 7325, RuntimeLayout::kCurPCOffset);
-#line 3255 "src/interpreter/x64-interpreter.dasc"
+      dasm_put(Dst, 7431, RuntimeLayout::kCurPCOffset);
+#line 3271 "src/interpreter/x64-interpreter.dasc"
       break;
 
     case BC_FEEND:
       //|=>bc:
       //|  instr_B
-      dasm_put(Dst, 6476, bc);
-#line 3260 "src/interpreter/x64-interpreter.dasc"
+      dasm_put(Dst, 6582, bc);
+#line 3276 "src/interpreter/x64-interpreter.dasc"
 
       //|  savepc
       //|  mov CARG1, RUNTIME
@@ -4706,26 +4738,26 @@ void GenBytecode( BuildContext* bctx, Bytecode bc ) {
       //|  fcall InterpreterFEEnd
       dasm_put(Dst, 789, RuntimeLayout::kCurPCOffset);
        if(CheckAddress(reinterpret_cast<std::uintptr_t>(InterpreterFEEnd))) {
-      dasm_put(Dst, 7357);
+      dasm_put(Dst, 7463);
        } else {
          lava_warn("%s","Function InterpreterFEEnd address is not in 0-2GB");
       dasm_put(Dst, 283, (unsigned int)(reinterpret_cast<std::uintptr_t>(InterpreterFEEnd)), (unsigned int)((reinterpret_cast<std::uintptr_t>(InterpreterFEEnd))>>32));
        }
-#line 3266 "src/interpreter/x64-interpreter.dasc"
+#line 3282 "src/interpreter/x64-interpreter.dasc"
       //|  mov PC, qword [RUNTIME+RuntimeLayout::kCurPCOffset]
-      dasm_put(Dst, 7362, RuntimeLayout::kCurPCOffset);
-#line 3267 "src/interpreter/x64-interpreter.dasc"
+      dasm_put(Dst, 7468, RuntimeLayout::kCurPCOffset);
+#line 3283 "src/interpreter/x64-interpreter.dasc"
 
       //|  DispatchCheckJIT 1
       dasm_put(Dst, 841);
-#line 3269 "src/interpreter/x64-interpreter.dasc"
+#line 3285 "src/interpreter/x64-interpreter.dasc"
       break;
 
     case BC_IDREF:
       //|=>bc:
       //|  instr_D
       dasm_put(Dst, 2567, bc);
-#line 3274 "src/interpreter/x64-interpreter.dasc"
+#line 3290 "src/interpreter/x64-interpreter.dasc"
 
       //|  savepc
       //|  mov CARG1, RUNTIME
@@ -4735,15 +4767,15 @@ void GenBytecode( BuildContext* bctx, Bytecode bc ) {
       //|  fcall InterpreterIDref
       dasm_put(Dst, 1380, RuntimeLayout::kCurPCOffset);
        if(CheckAddress(reinterpret_cast<std::uintptr_t>(InterpreterIDref))) {
-      dasm_put(Dst, 7369);
+      dasm_put(Dst, 7475);
        } else {
          lava_warn("%s","Function InterpreterIDref address is not in 0-2GB");
       dasm_put(Dst, 283, (unsigned int)(reinterpret_cast<std::uintptr_t>(InterpreterIDref)), (unsigned int)((reinterpret_cast<std::uintptr_t>(InterpreterIDref))>>32));
        }
-#line 3281 "src/interpreter/x64-interpreter.dasc"
+#line 3297 "src/interpreter/x64-interpreter.dasc"
       //|  Dispatch
       dasm_put(Dst, 157);
-#line 3282 "src/interpreter/x64-interpreter.dasc"
+#line 3298 "src/interpreter/x64-interpreter.dasc"
       break;
 
     /* ------------------------------------------------------------
@@ -4858,31 +4890,31 @@ void GenBytecode( BuildContext* bctx, Bytecode bc ) {
     case BC_CALL:
       //|=>bc:
       //|  do_call call_flag,InterpCall
-      dasm_put(Dst, 7374, bc, RuntimeLayout::kStackEndOffset, Value::FLAG_HEAP, -HOH_TYPE_OFFSET, CLOSURE_BIT_PATTERN, ClosureLayout::kArgumentSizeOffset, RuntimeLayout::kCurClsOffset, ClosureLayout::kPrototypeOffset, ClosureLayout::kCodeBufferOffset);
-      dasm_put(Dst, 7501, RuntimeLayout::kCurStackOffset, RuntimeLayout::kCurPCOffset);
+      dasm_put(Dst, 7480, bc, RuntimeLayout::kStackEndOffset, Value::FLAG_HEAP, -HOH_TYPE_OFFSET, CLOSURE_BIT_PATTERN, ClosureLayout::kArgumentSizeOffset, RuntimeLayout::kCurClsOffset, ClosureLayout::kPrototypeOffset, ClosureLayout::kCodeBufferOffset);
+      dasm_put(Dst, 7607, RuntimeLayout::kCurStackOffset, RuntimeLayout::kCurPCOffset);
        if(CheckAddress(reinterpret_cast<std::uintptr_t>(ResizeStack))) {
-      dasm_put(Dst, 7574);
+      dasm_put(Dst, 7680);
        } else {
          lava_warn("%s","Function ResizeStack address is not in 0-2GB");
       dasm_put(Dst, 283, (unsigned int)(reinterpret_cast<std::uintptr_t>(ResizeStack)), (unsigned int)((reinterpret_cast<std::uintptr_t>(ResizeStack))>>32));
        }
-      dasm_put(Dst, 7579);
-#line 3396 "src/interpreter/x64-interpreter.dasc"
+      dasm_put(Dst, 7685);
+#line 3412 "src/interpreter/x64-interpreter.dasc"
       break;
 
     case BC_TCALL:
       //|=>bc:
       //|  do_call tcall_flag,InterpTCall
-      dasm_put(Dst, 7600, bc, RuntimeLayout::kStackEndOffset, Value::FLAG_HEAP, -HOH_TYPE_OFFSET, CLOSURE_BIT_PATTERN, ClosureLayout::kArgumentSizeOffset, RuntimeLayout::kCurClsOffset, ClosureLayout::kPrototypeOffset, ClosureLayout::kCodeBufferOffset);
-      dasm_put(Dst, 7501, RuntimeLayout::kCurStackOffset, RuntimeLayout::kCurPCOffset);
+      dasm_put(Dst, 7706, bc, RuntimeLayout::kStackEndOffset, Value::FLAG_HEAP, -HOH_TYPE_OFFSET, CLOSURE_BIT_PATTERN, ClosureLayout::kArgumentSizeOffset, RuntimeLayout::kCurClsOffset, ClosureLayout::kPrototypeOffset, ClosureLayout::kCodeBufferOffset);
+      dasm_put(Dst, 7607, RuntimeLayout::kCurStackOffset, RuntimeLayout::kCurPCOffset);
        if(CheckAddress(reinterpret_cast<std::uintptr_t>(ResizeStack))) {
-      dasm_put(Dst, 7574);
+      dasm_put(Dst, 7680);
        } else {
          lava_warn("%s","Function ResizeStack address is not in 0-2GB");
       dasm_put(Dst, 283, (unsigned int)(reinterpret_cast<std::uintptr_t>(ResizeStack)), (unsigned int)((reinterpret_cast<std::uintptr_t>(ResizeStack))>>32));
        }
-      dasm_put(Dst, 7579);
-#line 3401 "src/interpreter/x64-interpreter.dasc"
+      dasm_put(Dst, 7685);
+#line 3417 "src/interpreter/x64-interpreter.dasc"
       break;
 
     //|.macro do_ret
@@ -4923,8 +4955,8 @@ void GenBytecode( BuildContext* bctx, Bytecode bc ) {
     //|  do_ret
     //|  mov dword [STK+ACCFIDX], Value::FLAG_NULL
     //|  Dispatch
-    dasm_put(Dst, 7733, bc, IFRAME_EOF, RuntimeLayout::kCurClsOffset, ClosureLayout::kPrototypeOffset, ClosureLayout::kCodeBufferOffset, Value::FLAG_NULL);
-#line 3441 "src/interpreter/x64-interpreter.dasc"
+    dasm_put(Dst, 7839, bc, IFRAME_EOF, RuntimeLayout::kCurClsOffset, ClosureLayout::kPrototypeOffset, ClosureLayout::kCodeBufferOffset, Value::FLAG_NULL);
+#line 3457 "src/interpreter/x64-interpreter.dasc"
     break;
 
     case BC_RET:
@@ -4934,15 +4966,15 @@ void GenBytecode( BuildContext* bctx, Bytecode bc ) {
     //|  do_ret
     //|  mov qword [ACC], ARG1F
     //|  Dispatch
-    dasm_put(Dst, 7852, bc, IFRAME_EOF, RuntimeLayout::kCurClsOffset, ClosureLayout::kPrototypeOffset, ClosureLayout::kCodeBufferOffset);
-#line 3450 "src/interpreter/x64-interpreter.dasc"
+    dasm_put(Dst, 7958, bc, IFRAME_EOF, RuntimeLayout::kCurClsOffset, ClosureLayout::kPrototypeOffset, ClosureLayout::kCodeBufferOffset);
+#line 3466 "src/interpreter/x64-interpreter.dasc"
     break;
 
     default:
       //|=> bc:
       //|  Break
-      dasm_put(Dst, 7973,  bc);
-#line 3455 "src/interpreter/x64-interpreter.dasc"
+      dasm_put(Dst, 8079,  bc);
+#line 3471 "src/interpreter/x64-interpreter.dasc"
       break;
   }
 }
@@ -4956,19 +4988,19 @@ void GenBytecodeProfile( BuildContext* bctx , Bytecode bc ) {
   //|  mov CARG1, RUNTIME
   //|  lea CARG2, [PC-4]
   //|  fcall JITProfileBC
-  dasm_put(Dst, 7977, bc);
+  dasm_put(Dst, 8083, bc);
    if(CheckAddress(reinterpret_cast<std::uintptr_t>(JITProfileBC))) {
-  dasm_put(Dst, 7987);
+  dasm_put(Dst, 8093);
    } else {
      lava_warn("%s","Function JITProfileBC address is not in 0-2GB");
   dasm_put(Dst, 283, (unsigned int)(reinterpret_cast<std::uintptr_t>(JITProfileBC)), (unsigned int)((reinterpret_cast<std::uintptr_t>(JITProfileBC))>>32));
    }
-#line 3468 "src/interpreter/x64-interpreter.dasc"
+#line 3484 "src/interpreter/x64-interpreter.dasc"
   //|  test eax,eax
   //|  cmovne STK,rax
   //|  ResumeDispatch PC-4
-  dasm_put(Dst, 7992);
-#line 3471 "src/interpreter/x64-interpreter.dasc"
+  dasm_put(Dst, 8098);
+#line 3487 "src/interpreter/x64-interpreter.dasc"
 
   // Unfortunately, dasm doesn't support to get a jmp address from calling
   // a function so we have to hard code them via large switch case.
@@ -4977,298 +5009,319 @@ void GenBytecodeProfile( BuildContext* bctx , Bytecode bc ) {
     /* arithmetic */
     case BC_ADDRV:
       //|  jmp extern addrv
-      dasm_put(Dst, 8007);
-#line 3479 "src/interpreter/x64-interpreter.dasc"
+      dasm_put(Dst, 8113);
+#line 3495 "src/interpreter/x64-interpreter.dasc"
       break;
     case BC_ADDVR:
       //|  jmp extern addvr
-      dasm_put(Dst, 8013);
-#line 3482 "src/interpreter/x64-interpreter.dasc"
+      dasm_put(Dst, 8119);
+#line 3498 "src/interpreter/x64-interpreter.dasc"
       break;
     case BC_ADDVV:
       //|  jmp extern addvv
-      dasm_put(Dst, 8019);
-#line 3485 "src/interpreter/x64-interpreter.dasc"
+      dasm_put(Dst, 8125);
+#line 3501 "src/interpreter/x64-interpreter.dasc"
       break;
     case BC_SUBRV:
       //|  jmp extern subrv
-      dasm_put(Dst, 8025);
-#line 3488 "src/interpreter/x64-interpreter.dasc"
+      dasm_put(Dst, 8131);
+#line 3504 "src/interpreter/x64-interpreter.dasc"
       break;
     case BC_SUBVR:
       //|  jmp extern subvr
-      dasm_put(Dst, 8031);
-#line 3491 "src/interpreter/x64-interpreter.dasc"
+      dasm_put(Dst, 8137);
+#line 3507 "src/interpreter/x64-interpreter.dasc"
       break;
     case BC_SUBVV:
       //|  jmp extern subvv
-      dasm_put(Dst, 8037);
-#line 3494 "src/interpreter/x64-interpreter.dasc"
+      dasm_put(Dst, 8143);
+#line 3510 "src/interpreter/x64-interpreter.dasc"
       break;
     case BC_MULRV:
       //|  jmp extern mulrv
-      dasm_put(Dst, 8043);
-#line 3497 "src/interpreter/x64-interpreter.dasc"
+      dasm_put(Dst, 8149);
+#line 3513 "src/interpreter/x64-interpreter.dasc"
       break;
     case BC_MULVR:
       //|  jmp extern mulvr
-      dasm_put(Dst, 8049);
-#line 3500 "src/interpreter/x64-interpreter.dasc"
+      dasm_put(Dst, 8155);
+#line 3516 "src/interpreter/x64-interpreter.dasc"
       break;
     case BC_MULVV:
       //|  jmp extern mulvv
-      dasm_put(Dst, 8055);
-#line 3503 "src/interpreter/x64-interpreter.dasc"
+      dasm_put(Dst, 8161);
+#line 3519 "src/interpreter/x64-interpreter.dasc"
       break;
     case BC_DIVRV:
       //|  jmp extern divrv
-      dasm_put(Dst, 8061);
-#line 3506 "src/interpreter/x64-interpreter.dasc"
+      dasm_put(Dst, 8167);
+#line 3522 "src/interpreter/x64-interpreter.dasc"
       break;
     case BC_DIVVR:
       //|  jmp extern divvr
-      dasm_put(Dst, 8067);
-#line 3509 "src/interpreter/x64-interpreter.dasc"
+      dasm_put(Dst, 8173);
+#line 3525 "src/interpreter/x64-interpreter.dasc"
       break;
     case BC_DIVVV:
       //|  jmp extern divvv
-      dasm_put(Dst, 8073);
-#line 3512 "src/interpreter/x64-interpreter.dasc"
+      dasm_put(Dst, 8179);
+#line 3528 "src/interpreter/x64-interpreter.dasc"
       break;
     case BC_MODVR:
       //|  jmp extern modvr
-      dasm_put(Dst, 8079);
-#line 3515 "src/interpreter/x64-interpreter.dasc"
+      dasm_put(Dst, 8185);
+#line 3531 "src/interpreter/x64-interpreter.dasc"
       break;
     case BC_MODRV:
       //|  jmp extern modrv
-      dasm_put(Dst, 8085);
-#line 3518 "src/interpreter/x64-interpreter.dasc"
+      dasm_put(Dst, 8191);
+#line 3534 "src/interpreter/x64-interpreter.dasc"
       break;
     case BC_MODVV:
       //|  jmp extern modvv
-      dasm_put(Dst, 8091);
-#line 3521 "src/interpreter/x64-interpreter.dasc"
+      dasm_put(Dst, 8197);
+#line 3537 "src/interpreter/x64-interpreter.dasc"
       break;
     case BC_POWRV:
       //|  jmp extern powrv
-      dasm_put(Dst, 8097);
-#line 3524 "src/interpreter/x64-interpreter.dasc"
+      dasm_put(Dst, 8203);
+#line 3540 "src/interpreter/x64-interpreter.dasc"
       break;
     case BC_POWVR:
       //|  jmp extern powvr
-      dasm_put(Dst, 8103);
-#line 3527 "src/interpreter/x64-interpreter.dasc"
+      dasm_put(Dst, 8209);
+#line 3543 "src/interpreter/x64-interpreter.dasc"
       break;
     case BC_POWVV:
       //|  jmp extern powvv
-      dasm_put(Dst, 8109);
-#line 3530 "src/interpreter/x64-interpreter.dasc"
+      dasm_put(Dst, 8215);
+#line 3546 "src/interpreter/x64-interpreter.dasc"
       break;
     /* comparison */
     case BC_LTRV:
       //|  jmp extern ltrv
-      dasm_put(Dst, 8115);
-#line 3534 "src/interpreter/x64-interpreter.dasc"
+      dasm_put(Dst, 8221);
+#line 3550 "src/interpreter/x64-interpreter.dasc"
       break;
     case BC_LTVR:
       //|  jmp extern ltvr
-      dasm_put(Dst, 8121);
-#line 3537 "src/interpreter/x64-interpreter.dasc"
+      dasm_put(Dst, 8227);
+#line 3553 "src/interpreter/x64-interpreter.dasc"
       break;
     case BC_LTVV:
       //|  jmp extern ltvv
-      dasm_put(Dst, 8127);
-#line 3540 "src/interpreter/x64-interpreter.dasc"
+      dasm_put(Dst, 8233);
+#line 3556 "src/interpreter/x64-interpreter.dasc"
       break;
     case BC_LERV:
       //|  jmp extern lerv
-      dasm_put(Dst, 8133);
-#line 3543 "src/interpreter/x64-interpreter.dasc"
+      dasm_put(Dst, 8239);
+#line 3559 "src/interpreter/x64-interpreter.dasc"
       break;
     case BC_LEVR:
       //|  jmp extern levr
-      dasm_put(Dst, 8139);
-#line 3546 "src/interpreter/x64-interpreter.dasc"
+      dasm_put(Dst, 8245);
+#line 3562 "src/interpreter/x64-interpreter.dasc"
       break;
     case BC_LEVV:
       //|  jmp extern levv
-      dasm_put(Dst, 8145);
-#line 3549 "src/interpreter/x64-interpreter.dasc"
+      dasm_put(Dst, 8251);
+#line 3565 "src/interpreter/x64-interpreter.dasc"
       break;
     case BC_GTRV:
       //|  jmp extern gtrv
-      dasm_put(Dst, 8151);
-#line 3552 "src/interpreter/x64-interpreter.dasc"
+      dasm_put(Dst, 8257);
+#line 3568 "src/interpreter/x64-interpreter.dasc"
       break;
     case BC_GTVR:
       //|  jmp extern gtvr
-      dasm_put(Dst, 8157);
-#line 3555 "src/interpreter/x64-interpreter.dasc"
+      dasm_put(Dst, 8263);
+#line 3571 "src/interpreter/x64-interpreter.dasc"
       break;
     case BC_GTVV:
       //|  jmp extern gtvv
-      dasm_put(Dst, 8163);
-#line 3558 "src/interpreter/x64-interpreter.dasc"
+      dasm_put(Dst, 8269);
+#line 3574 "src/interpreter/x64-interpreter.dasc"
       break;
     case BC_GERV:
       //|  jmp extern gerv
-      dasm_put(Dst, 8169);
-#line 3561 "src/interpreter/x64-interpreter.dasc"
+      dasm_put(Dst, 8275);
+#line 3577 "src/interpreter/x64-interpreter.dasc"
       break;
     case BC_GEVR:
       //|  jmp extern gevr
-      dasm_put(Dst, 8175);
-#line 3564 "src/interpreter/x64-interpreter.dasc"
+      dasm_put(Dst, 8281);
+#line 3580 "src/interpreter/x64-interpreter.dasc"
       break;
     case BC_GEVV:
       //|  jmp extern gevv
-      dasm_put(Dst, 8181);
-#line 3567 "src/interpreter/x64-interpreter.dasc"
+      dasm_put(Dst, 8287);
+#line 3583 "src/interpreter/x64-interpreter.dasc"
       break;
     case BC_EQRV:
       //|  jmp extern eqrv
-      dasm_put(Dst, 8187);
-#line 3570 "src/interpreter/x64-interpreter.dasc"
+      dasm_put(Dst, 8293);
+#line 3586 "src/interpreter/x64-interpreter.dasc"
       break;
     case BC_EQVR:
       //|  jmp extern eqvr
-      dasm_put(Dst, 8193);
-#line 3573 "src/interpreter/x64-interpreter.dasc"
+      dasm_put(Dst, 8299);
+#line 3589 "src/interpreter/x64-interpreter.dasc"
       break;
     case BC_EQSV:
       //|  jmp extern eqsv
-      dasm_put(Dst, 8199);
-#line 3576 "src/interpreter/x64-interpreter.dasc"
+      dasm_put(Dst, 8305);
+#line 3592 "src/interpreter/x64-interpreter.dasc"
       break;
     case BC_EQVS:
       //|  jmp extern eqvs
-      dasm_put(Dst, 8205);
-#line 3579 "src/interpreter/x64-interpreter.dasc"
+      dasm_put(Dst, 8311);
+#line 3595 "src/interpreter/x64-interpreter.dasc"
       break;
     case BC_EQVV:
       //|  jmp extern eqvv
-      dasm_put(Dst, 8211);
-#line 3582 "src/interpreter/x64-interpreter.dasc"
+      dasm_put(Dst, 8317);
+#line 3598 "src/interpreter/x64-interpreter.dasc"
       break;
     case BC_NERV:
       //|  jmp extern nerv
-      dasm_put(Dst, 8217);
-#line 3585 "src/interpreter/x64-interpreter.dasc"
+      dasm_put(Dst, 8323);
+#line 3601 "src/interpreter/x64-interpreter.dasc"
       break;
     case BC_NEVR:
       //|  jmp extern nevr
-      dasm_put(Dst, 8223);
-#line 3588 "src/interpreter/x64-interpreter.dasc"
+      dasm_put(Dst, 8329);
+#line 3604 "src/interpreter/x64-interpreter.dasc"
       break;
     case BC_NESV:
       //|  jmp extern nesv
-      dasm_put(Dst, 8229);
-#line 3591 "src/interpreter/x64-interpreter.dasc"
+      dasm_put(Dst, 8335);
+#line 3607 "src/interpreter/x64-interpreter.dasc"
       break;
     case BC_NEVS:
       //|  jmp extern nevs
-      dasm_put(Dst, 8235);
-#line 3594 "src/interpreter/x64-interpreter.dasc"
+      dasm_put(Dst, 8341);
+#line 3610 "src/interpreter/x64-interpreter.dasc"
       break;
     case BC_NEVV:
       //|  jmp extern nevv
-      dasm_put(Dst, 8241);
-#line 3597 "src/interpreter/x64-interpreter.dasc"
+      dasm_put(Dst, 8347);
+#line 3613 "src/interpreter/x64-interpreter.dasc"
       break;
     /* unary */
     case BC_NEGATE:
       //|  jmp extern negate
-      dasm_put(Dst, 8247);
-#line 3601 "src/interpreter/x64-interpreter.dasc"
+      dasm_put(Dst, 8353);
+#line 3617 "src/interpreter/x64-interpreter.dasc"
       break;
     case BC_NOT:
       //|  jmp extern not_
-      dasm_put(Dst, 8253);
-#line 3604 "src/interpreter/x64-interpreter.dasc"
+      dasm_put(Dst, 8359);
+#line 3620 "src/interpreter/x64-interpreter.dasc"
       break;
     /* property */
     case BC_PROPGET:
       //|  jmp extern propget
-      dasm_put(Dst, 8259);
-#line 3608 "src/interpreter/x64-interpreter.dasc"
+      dasm_put(Dst, 8365);
+#line 3624 "src/interpreter/x64-interpreter.dasc"
       break;
     case BC_PROPGETSSO:
       //|  jmp extern propgetsso
-      dasm_put(Dst, 8265);
-#line 3611 "src/interpreter/x64-interpreter.dasc"
+      dasm_put(Dst, 8371);
+#line 3627 "src/interpreter/x64-interpreter.dasc"
       break;
     case BC_PROPSET:
       //|  jmp extern propset
-      dasm_put(Dst, 8271);
-#line 3614 "src/interpreter/x64-interpreter.dasc"
+      dasm_put(Dst, 8377);
+#line 3630 "src/interpreter/x64-interpreter.dasc"
       break;
     case BC_PROPSETSSO:
       //|  jmp extern propsetsso
-      dasm_put(Dst, 8277);
-#line 3617 "src/interpreter/x64-interpreter.dasc"
+      dasm_put(Dst, 8383);
+#line 3633 "src/interpreter/x64-interpreter.dasc"
       break;
     case BC_IDXGET:
       //|  jmp extern idxget
-      dasm_put(Dst, 8283);
-#line 3620 "src/interpreter/x64-interpreter.dasc"
+      dasm_put(Dst, 8389);
+#line 3636 "src/interpreter/x64-interpreter.dasc"
       break;
     case BC_IDXSET:
       //|  jmp extern idxset
-      dasm_put(Dst, 8289);
-#line 3623 "src/interpreter/x64-interpreter.dasc"
+      dasm_put(Dst, 8395);
+#line 3639 "src/interpreter/x64-interpreter.dasc"
       break;
     case BC_IDXSETI:
       //|  jmp extern idxseti
-      dasm_put(Dst, 8295);
-#line 3626 "src/interpreter/x64-interpreter.dasc"
+      dasm_put(Dst, 8401);
+#line 3642 "src/interpreter/x64-interpreter.dasc"
       break;
     case BC_IDXGETI:
       //|  jmp extern idxgeti
-      dasm_put(Dst, 8301);
-#line 3629 "src/interpreter/x64-interpreter.dasc"
+      dasm_put(Dst, 8407);
+#line 3645 "src/interpreter/x64-interpreter.dasc"
       break;
     /* call */
     case BC_CALL:
       //|  jmp extern call
-      dasm_put(Dst, 8307);
-#line 3633 "src/interpreter/x64-interpreter.dasc"
+      dasm_put(Dst, 8413);
+#line 3649 "src/interpreter/x64-interpreter.dasc"
       break;
     case BC_TCALL:
       //|  jmp extern tcall
-      dasm_put(Dst, 8313);
-#line 3636 "src/interpreter/x64-interpreter.dasc"
+      dasm_put(Dst, 8419);
+#line 3652 "src/interpreter/x64-interpreter.dasc"
       break;
     /* loop */
     case BC_FEND1:
       //|  jmp extern fend1
-      dasm_put(Dst, 8319);
-#line 3640 "src/interpreter/x64-interpreter.dasc"
+      dasm_put(Dst, 8425);
+#line 3656 "src/interpreter/x64-interpreter.dasc"
       break;
     case BC_FEND2:
       //|  jmp extern fend2
-      dasm_put(Dst, 8325);
-#line 3643 "src/interpreter/x64-interpreter.dasc"
+      dasm_put(Dst, 8431);
+#line 3659 "src/interpreter/x64-interpreter.dasc"
       break;
     case BC_FEEND:
       //|  jmp extern feend
-      dasm_put(Dst, 8331);
-#line 3646 "src/interpreter/x64-interpreter.dasc"
+      dasm_put(Dst, 8437);
+#line 3662 "src/interpreter/x64-interpreter.dasc"
       break;
     case BC_FEVREND:
       //|  jmp extern fevrend
-      dasm_put(Dst, 8337);
-#line 3649 "src/interpreter/x64-interpreter.dasc"
+      dasm_put(Dst, 8443);
+#line 3665 "src/interpreter/x64-interpreter.dasc"
       break;
     case BC_FSTART:
       //|  jmp extern fstart
-      dasm_put(Dst, 8343);
-#line 3652 "src/interpreter/x64-interpreter.dasc"
+      dasm_put(Dst, 8449);
+#line 3668 "src/interpreter/x64-interpreter.dasc"
       break;
     case BC_FESTART:
       //|  jmp extern festart
-      dasm_put(Dst, 8349);
-#line 3655 "src/interpreter/x64-interpreter.dasc"
+      dasm_put(Dst, 8455);
+#line 3671 "src/interpreter/x64-interpreter.dasc"
+      break;
+    /* jump/and/or */
+    case BC_JMPF:
+      //|  jmp extern jmpf
+      dasm_put(Dst, 8461);
+#line 3675 "src/interpreter/x64-interpreter.dasc"
+      break;
+    case BC_JMPT:
+      //|  jmp extern jmpt
+      dasm_put(Dst, 8467);
+#line 3678 "src/interpreter/x64-interpreter.dasc"
+      break;
+    case BC_AND:
+      //|  jmp extern and_
+      dasm_put(Dst, 8473);
+#line 3681 "src/interpreter/x64-interpreter.dasc"
+      break;
+    case BC_OR:
+      //|  jmp extern or_
+      dasm_put(Dst, 8479);
+#line 3684 "src/interpreter/x64-interpreter.dasc"
       break;
     default:
       lava_unreachF("Bytecode %s cannot have Feedback",GetBytecodeName(bc));

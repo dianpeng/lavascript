@@ -5,7 +5,7 @@
 
 #include <vector>
 #include <set>
-#include <unordered_map>
+#include <map>
 
 namespace lavascript {
 namespace cbase {
@@ -15,111 +15,315 @@ namespace {
 class GraphBuilder;
 
 /**
- * Bytecode liveness analyze.
+ * Simple bytecode analysis to help build Graph. This pass will figure out
+ * several information :
  *
- * We will do a simple bytecode analyze before we start do the IR graph
- * construction due to the fact we need to let this analyze to figure out
- * the local variable / register slot assignment for each bytecode. This
- * is used when constructing PHI node inside of the loop
+ * 1) at the start of each basic block, the local variable mapping
+ *
+ * 2) different loop header and also which variable has been modified inside
+ *    of it since we need to insert PHI (this doesn't include variable bounded
+ *    inside of the loop)
+ *
+ * 3) nested loop information , which allow us to do loop peeling when do OSR
+ *    compilation
  */
 
-class BytecodeLiveness {
+class BytecodeAnalysis {
  public:
-  BytecodeLiveness( const Handle<Prototype>& proto ) :
-    map_(),
-    proto_(proto),
-    max_local_var_size_(proto_->max_local_var_size())
-  {}
+  // For loop scope, just need to use this class to push the scope, it will push
+  // basic block scope and loop scope
+  class LoopScope;
 
- public:
-  // Construct the bytecode lieveness with certain iterator
-  void BuildLiveness();
+  // For none loop scope, use this class to push the scope since it will only push
+  // basic block scope
+  class BasicBlockScope;
+
+  BytecodeAnalysis( const Handle<Prototype>& proto );
+  void DoAnalysis();
+
+  struct BasicBlockVariable {
+    const BasicBlockVariable* prev;  // parent scope
+    std::set<std::uint8_t> variable;
+    const std::uint32_t* start;
+    const std::uint32_t* end  ;      // this is end of the BB it stops when a jump/return happened
+    BasicBlockVariable(): prev(NULL), variable(), start(NULL), end(NULL) {}
+
+    // Whether a register slot is alive at this BB , excludes any nested BB inside of this BB
+    bool IsAlive( std::uint8_t ) const;
+  };
+
+
+  // LoopHeaderInfo captures the loop's internal body information and its nested
+  // information
+  struct LoopHeaderInfo {
+    const LoopHeaderInfo* prev ;  // this pointer points to its parental loop if it has one
+    const BasicBlockVariable* bb; // corresponding basic block
+    const std::uint32_t* start ;  // start of the bytecode
+    const std::uint32_t* end   ;  // end   of the bytecode
+    std::set<std::uint8_t> phis;  // variables that have been modified and need to insert PHI
+                                  // ahead of the loop
+    LoopHeaderInfo(): prev(NULL), bb(NULL), start(NULL), end(NULL) , phis() {}
+
+    const BasicBlockVariable* enclosed_bb() const {
+      return bb->prev;
+    }
+  };
+
+  typedef std::map<const std::uint32_t*,LoopHeaderInfo> LoopHeaderInfoMap;
+  typedef std::map<const std::uint32_t*,BasicBlockVariable> BasicBlockVariableMap;
+
  private:
   // build the liveness for a single bytecode; bytecode cannot be control
   // flow transfer
-  void BuildBytecode( BytecodeIterator* , LivenessSet* );
-  void BuildBlock   ( BytecodeIterator* , const LivenessSet* prev );
+  bool BuildBytecode( BytecodeIterator* );
+  void BuildBlock   ( BytecodeIterator* );
 
-
-  void BuildUntilJump( BytecodeIterator* itr , const std::uint32_t* pc );
-
-  void BuildBranch  ( BytecodeIterator* , const LivenessSet* prev );
-  void BuildLogic   ( BytecodeIterator* , const LivenessSet* prev );
-  void BuildLoop    ( BytecodeIterator* , const LivenessSet* prev );
+  void BuildBranch  ( BytecodeIterator* );
+  void BuildLogic   ( BytecodeIterator* );
+  void BuildLoop    ( BytecodeIterator* );
 
   bool IsLocalVar   ( std::uint8_t reg ) const {
     return reg < max_local_var_size_;
   }
 
-  LivenessMap* AddNewScope( const void* pc , const LivenessSet* prev ) {
-    std::pair<LivenessMap::iterator,bool> ret =
-      map_.insert( std::make_pair(pc,LivenessMap(prev)) );
-    lava_debug(NORMAL,lava_verify(ret.second););
-    return &(ret.first.second);
-  }
+  // Properly handle register kill event
+  void Kill( std::uint8_t reg );
+
  private:
-  struct LivenessSet {
-    void Add( std::uint8_t reg ) { register_set.insert(reg); }
-    bool IsAlive( std::uint8_t reg );
+  BasicBlockVariable* NewBasicBlockVar( const std::uint32_t* start ) {
+    std::pair<BasicBlockVariableMap::iterator,bool>
+      ret = basic_block_variable_.insert(std::make_pair(start,BasicBlockVariable()));
+    lava_debug(NORMAL,lava_verify(ret.second););
+    BasicBlockVariable* node = &(ret.first->second);
+    node->prev   = basic_block_stack_.empty() ? NULL : basic_block_stack_.back();
+    node->start  = start;
+    return node;
+  }
 
-    // instead of duplicate all the liveness information into the
-    // nested scope, we just chain them based on this *pointer*
-    const LivenessSet* prev;
-    const std::uint32_t*   end;
-    std::set<std::uint8_t> register_set;
+  LoopHeaderInfo* NewLoopHeaderInfo( const BasicBlockVariable* bb ,
+                                     const std::uint32_t* start ) {
+    std::pair<LoopHeaderInfoMap::iterator,bool>
+      ret = loop_header_info_.insert(std::make_pair(start,LoopHeaderInfoMap()));
+    lava_debug(NORMAL,lava_verify(ret.second););
+    LoopHeaderInfo* node = &(ret.first->second);
+    node->prev = loop_stack_.empty() ? NULL : loop_stack_.back();
+    node->start= start;
+    node->bb   = bb;
+    return node;
+  }
 
-    LivenessSet( const LivenessSet* p ):
-      prev(p),
-      end (NULL),
-      register_set()
-    {}
-  };
+  LoopHeaderInfo* current_loop() { return loop_stack_.empty() ? NULL : loop_satck_.back(); }
 
-  // bytecode address to LivenessSet mapping. This map only contains
-  // top level function's liveness information for each bytecode and
-  // also it is definitly not the most coarsed one since we have no
-  // CFG and we cannot do a backward analyze
-  //
-  // The pc is the jump that starts a new basic block. NOTES: there're
-  // no CFG that is established
-  typedef std::unordered_map<const void*,LivenessSet> LivenessMap;
-  LivenessMap map_;
+  BasicBlockVariable* current_bb() { return basic_block_stack_.back(); }
 
+ private:
   Handle<Prototype> proto_;
   std::uint8_t max_local_var_size_;
+
+  // loop header information , pay attention that all the memory is
+  // owned by the std::map
+  LoopHeaderInfoMap loop_header_info_;
+
+  // basic block variable map information
+  BasicBlockVariableMap basic_block_variable_;
+
+  // loop stack , context/state information
+  std::vector<LoopHeaderInfo*> loop_stack_;
+
+  // basic block stack, context/state information
+  std::vector<BasicBlockVariable*> basic_block_stack_;
+
+  friend class LoopScope;
+  friend class BasicBlockScope;
 };
 
-// build the liveness against basic block
-void BytecodeLiveness::BuildBlock( BytecodeIterator* itr , const LivenessSet* prev ) {
-  LivenessSet* set = AddNewScope(itr->pc(),prev);
+class BytecodeAnalysis::LoopScope {
+ public:
+  LoopScope( BytecodeAnalysis* ba , const std::uint32_t* bb_start ,
+                                    const std::uint32_t* loop_start ):
+    ba_(ba)
+  {
+    /** the input PC is a FESTART/FSTART bytecode which is not part
+     *  of the basic block **/
 
-  for( ; itr->HasNext() ; itr->Next() ) {
-    switch(itr->opcode()) {
-      /** all are control flow instruction/bytecode **/
-      case BC_JMPF: BuildBranch(itr,set); break;
-      case BC_AND:  BuildLogic (itr,set); break;
-      case BC_OR:   BuildLogic (itr,set); break;
-      case BC_FEVRSTART:
-      case BC_FESTART:
-      case BC_FSTART:
-        BuildForeverLoop(itr);
-        break;
+    ba->basic_block_stack_.push_back(ba->NewBasicBlockVar(bb_start));
+    ba->loop_stack_.push_back(ba->NewLoopHeaderInfo(current_bb(),loop_start));
+  }
 
-      case BC_CONT:
-      case BC_BRK:
-      case BC_RET:
-      case BC_RETNULL:
-        break; /* end of the basic block */
-      default:
-        BuildBytecode(itr,set);
+  ~LoopScope() {
+    ba_->loop_stack_.pop_back();
+    ba_->basic_block_stack_.pop_back();
+  }
+
+ private:
+  BytecodeAnalysis* ba_;
+};
+
+class BytecodeAnalysis::BasicBlockScope {
+ public:
+  BasicBlockScope( BytecodeAnalysis* ba , const std::uint32_t* pc ):
+    ba_(ba)
+  {
+    ba->basic_block_stack_.push_back(ba->NewBasicBlockVar(pc));
+  }
+
+  ~BasicBlockScope() {
+    ba_->basic_block_stack_.pop_back();
+  }
+ private:
+  BytecodeAnalysis* ba_;
+};
+
+bool BytecodeAnalysis::BasicBlockVariable::IsAlive( std::uint8_t reg ) const {
+  BasicBlockVariable* scope = this;
+  do {
+    if(scope->variable.find(reg) != scope->variable.end())
+      return true;
+    scope = scope->prev;
+  } while(scope);
+  return false;
+}
+
+void BytecodeAnalysis::Kill( std::uint8_t reg ) {
+  // update information of the basic block
+  current_bb()->Add(reg);
+
+  /**
+   * Update the variable use case if we are in loop body.
+   */
+  if(current_loop()) {
+    lava_debug(NORMAL,lava_verify(current_loop()->enclosed_bb()););
+    // since we have a loop so we try to check whether we need to
+    // insert this reg into loop modified variable
+    if(current_loop()->enclosed_bb()->IsAlive(reg)) {
+      // this means this variable is not bounded inside of this loop
+      // block but in its enclosed lexical scope chain
+      current_loop()->phis.insert(reg);
     }
   }
 }
 
-void BytecodeLiveness::BuildBranch( BytecodeIterator* itr ) {
+// build the liveness against basic block
+void BytecodeAnalysis::BuildBlock( BytecodeIterator* itr ) {
+  BasicBlockScope scope(this,itr->pc());
+  for( ; itr->HasNext() && BuildBytecode(itr) ; itr->Next() )
+    ;
+  current_bb()->end = itr->pc();
 }
 
-void BytecodeLiveness::BuildBytecode( BytecodeIterator* itr , LivenessSet* set ) {
+void BytecodeAnalysis::BuildBranch( BytecodeIterator* itr ) {
+  lava_debug(NORMAL,lava_verify(itr->bytecode() == BC_JMPF););
+  std::uint8_t a1; std::uint16_t a2;
+  itr->GetOperand(&a1,&a2);
+  const std::uint32_t* false_pc = itr->OffsetAt(a2);
+
+  // true branch
+  itr->Next();
+  {
+    BasicBlockScope scope(this,itr->pc()); // add new basic block
+    for( ; itr->HasNext() ; itr->Next() ) {
+      if(itr->pc() == false_pc) break;
+      if(itr->opcode() == BC_JMP) {
+        lava_debug(NORMAL,lava_verify(itr->pc()+1 == false_pc););
+        break;
+      }
+      if(!BuildBytecode(itr)) {
+        itr->BranchTo(a2);  // set the itr to the start of next bb
+        break;
+      }
+    }
+  }
+
+  // false branch
+  lava_debug(NORMAL,lava_verify(itr->pc() == false_pc););
+  {
+    BasicBlockScope scope(this,itr->pc());
+    BuildBlock(itr);
+  }
+}
+
+void BytecodeAnalysis::BuildLogic( BytecodeIterator* itr ) {
+  lava_debug(NORMAL,lava_verify(itr->opcode() == BC_OR || itr->opcode() == BC_AND););
+  /**
+   * Don't need to do anything and we can safely skip the body of OR/AND since
+   * this is expression level control flow and doesn't really have any needed
+   * information
+   */
+  std::uint8_t a1; std::uint16_t a2;
+  itr->GetOperand(&a1,&a2);
+  if(IsLocalVar(a1)) Kill(a1);
+  itr->BranchTo(a2);
+}
+
+void BytecodeAnalysis::BuildLoop( BytecodeIterator* itr ) {
+  lava_debug(NORMAL,lava_verify(itr->opcode() == BC_FSTART ||
+                                itr->opcode() == BC_FESTART););
+  const std::uint32_t* loop_start_pc = itr->pc();
+  std::uint16_t offset;
+
+  {
+    std::uint8_t a1;
+    itr->GetOperand(&a1,&offset);
+    if(IsLocalVar(a1)) Kill(a1); // loop induction variable
+  }
+
+  itr->Next();
+  { // enter into loop body
+    LoopScope scope(this,itr->pc(),loop_start_pc);
+
+    for( ; itr->HasNext(); itr->Next()) {
+      switch(itr->opcode()) {
+        case BC_FEND1: case BC_FEND2: case BC_FEEND:
+          /** end of the loop */
+          goto done;
+        default:
+          if(!BuildBytecode(itr)) goto done;
+      }
+    }
+done:
+    current_loop()->end = itr->pc();
+    lava_debug(NORMAL,
+          if(itr->opcode() == BC_FEND1 ||
+                       itr->opcode() == BC_FEND2 ||
+                       itr->opcode() == BC_FEEND) {
+            itr->Next(); lava_verify(itr->pc() == itr->OffsetAt(offset));
+          }
+        );
+    itr->BranchTo(offset);
+  }
+}
+
+void BytecodeAnalysis::BuildForeverLoop( BytecodeIterator* itr ) {
+  lava_debug(NORMAL,lava_verify(itr->opcode() == BC_FEVRSTART););
+  std::uint16_t offset;
+  const std::uint32_t* loop_start_pc = itr->pc();
+
+  itr->GetOperand(&offset);
+  itr->Next();
+
+  { // enter into loop body
+    LoopScope scope(this,itr->pc(),loop_start_pc);
+
+    for( ; itr->HasNext() ; itr->Next()) {
+      switch(itr->opcode()) {
+        case BC_FEVREND: goto done;
+        default: if(!BuildBytecode(itr)) goto done;
+      }
+    }
+
+done:
+    current_loop()->end = itr->pc();
+    lava_debug(NORMAL,
+        if(itr->opcode() == BC_FEVREND) {
+          itr->Next();
+          lava_verify(itr->pc() == itr->OffsetAt(offset));
+        }
+      );
+  }
+  itr->BranchTo(offset);
+}
+
+bool BytecodeAnalysis::BuildBytecode( BytecodeIterator* itr ) {
   switch(itr->opcode()) {
     case BC_ADDRV: case BC_ADDVR: case BC_ADDVV:
     case BC_SUBRV: case BC_SUBVR: case BC_SUBVV:
@@ -136,61 +340,61 @@ void BytecodeLiveness::BuildBytecode( BytecodeIterator* itr , LivenessSet* set )
       {
         std::uint8_t a1,a2,a3;
         itr->GetOperand(&a1,&a2,&a3);
-        if(IsLocalVar(a1)) set->Add(a1);
+        if(IsLocalVar(a1)) Kill(a1);
       }
       break;
     case BC_NEGATE: case BC_NOT: case BC_MOVE:
       {
         std::uint8_t a1,a2;
         itr->GetOperand(&a1,&a2);
-        if(IsLocalVar(a1)) set->Add(a1);
+        if(IsLocalVar(a1)) Kill(a1);
       }
       break;
     case BC_LOAD0: case BC_LOAD1: case BC_LOADN1:
     case BC_LOADTRUE: case BC_LOADFALSE: case BC_LOADNULL:
       {
         std::uint8_t a1; itr->GetOperand(&a1);
-        if(IsLocalVar(a1)) set->Add(a1);
+        if(IsLocalVar(a1)) Kill(a1);
       }
       break;
     case BC_LOADR: case BC_LOADSTR:
       {
         std::uint8_t a1,a2; itr->GetOperand(&a1,&a2);
-        if(IsLocalVar(a1)) set->Add(a1);
+        if(IsLocalVar(a1)) Kill(a1);
       }
       break;
     case BC_LOADLIST0: case BC_LOADOBJ0:
       {
         std::uint8_t a1; itr->GetOperand(&a1);
-        if(IsLocalVar(a1)) set->Add(a1);
+        if(IsLocalVar(a1)) Kill(a1);
       }
       break;
     case BC_LOADLIST1:
       {
         std::uint8_t a1,a2;
         itr->GetOperand(&a1,&a2);
-        if(IsLocalVar(a1)) set->Add(a1);
+        if(IsLocalVar(a1)) Kill(a1);
       }
       break;
     case BC_LOADLIST2: case BC_LOADOBJ1:
       {
         std::uint8_t a1,a2,a3;
         itr->GetOperand(&a1,&a2,&a3);
-        if(IsLocalVar(a1)) set->Add(a1);
+        if(IsLocalVar(a1)) Kill(a1);
       }
       break;
     case BC_NEWLIST: case BC_NEWOBJ:
       {
         std::uint8_t a1; std::uint16_t a2;
         itr->GetOperand(&a1,&a2);
-        if(IsLocalVar(a1)) set->Add(a1);
+        if(IsLocalVar(a1)) Kill(a1);
       }
       break;
     case BC_LOADCLS:
       {
         std::uint8_t a1; std::uint16_t a2;
         itr->GetOperand(&a1,&a2);
-        if(IsLocalVar(a1)) set->Add(a1);
+        if(IsLocalVar(a1)) Kill(a1);
       }
       break;
     case BC_PROPGET:
@@ -200,7 +404,7 @@ void BytecodeLiveness::BuildBytecode( BytecodeIterator* itr , LivenessSet* set )
       {
         std::uint8_t a1,a2,a3;
         itr->GetOperand(&a1,&a2,&a3);
-        if(IsLocalVar(a1)) set->Add(a1);
+        if(IsLocalVar(a1)) Kill(a1);
       }
       break;
 
@@ -208,7 +412,7 @@ void BytecodeLiveness::BuildBytecode( BytecodeIterator* itr , LivenessSet* set )
       {
         std::uint8_t a1; std::uint16_t a2;
         itr->GetOperand(&a1,&a2);
-        if(IsLocalVar(a1)) set->Add(a1);
+        if(IsLocalVar(a1)) Kill(a1);
       }
       break;
 
@@ -216,7 +420,7 @@ void BytecodeLiveness::BuildBytecode( BytecodeIterator* itr , LivenessSet* set )
       {
         std::uint8_t a1 , a2;
         itr->GetOperand(&a1,&a2);
-        if(IsLocalVar(a1)) set->Add(a1);
+        if(IsLocalVar(a1)) current-bb()->Add(a1);
       }
       break;
 
@@ -224,8 +428,8 @@ void BytecodeLiveness::BuildBytecode( BytecodeIterator* itr , LivenessSet* set )
       {
         std::uint8_t a1 , a2, a3;
         itr->GetOperand(&a1,&a2);
-        if(IsLocalVar(a2)) set->Add(a2);
-        if(IsLocalVar(a3)) set->Add(a3);
+        if(IsLocalVar(a2)) Kill(a2);
+        if(IsLocalVar(a3)) Kill(a3);
       }
       break;
 
@@ -246,13 +450,34 @@ void BytecodeLiveness::BuildBytecode( BytecodeIterator* itr , LivenessSet* set )
     case BC_TCALL:
       break;
 
+    /** all are control flow instruction/bytecode **/
+    case BC_JMPF: BuildBranch(itr); break;
+    case BC_AND:  BuildLogic (itr); break;
+    case BC_OR:   BuildLogic (itr); break;
+
+    case BC_FEVRSTART: BuildForeverLoop(itr); break;
+
+    case BC_FESTART: case BC_FSTART:
+      BuildLoop(itr); break;
+
+    /** terminated Bytecode which abort this basic block **/
+    case BC_CONT:
+    case BC_BRK:
+    case BC_RET:
+    case BC_RETNULL:
+      return false;
+
     default:
       lava_unreachF("cannot reach here, bytecode %s",itr->opcode_name());
       break;
   }
 }
 
-
+/* ====================================================================
+ *
+ * Graph Builder
+ *
+ * ===================================================================*/
 
 // Loop info encapsulate the information needed to construct
 // IR related to loop , like continue jump and break jump
@@ -268,7 +493,7 @@ struct LoopJump {
 // created on demand and pop out when loop is constructed
 struct LoopInfo {
   std::vector<LoopJump> pending_break;
-  std::vector<LoopJump*> pending_continue;
+  std::vector<LoopJump> pending_continue;
 
   void AddBreak( ir::Jump* node , std::uint16_t target ) {
     pending_break.push_back(LoopJump(node,target));
@@ -318,6 +543,11 @@ struct FuncInfo {
   LoopInfo& CurrentLoop() { return loop_info.back(); }
 
 };
+
+/**
+ * A SOS graph builder , use BytecodeAnalysis to collect needed information.
+ * It is a 2 pass Graph builder
+ */
 
 class GraphBuilder {
  public:
@@ -936,7 +1166,7 @@ GraphBuilder::BuildBlock( BytecodeIterator* itr , const std::uint32_t* end_pc ) 
     BuildBytecode(itr);
 
     // check if last opcode is break or continue which is unconditional
-    // jump. so we can just abort the construction of this basic block 
+    // jump. so we can just abort the construction of this basic block
     if(itr->opcode() == BC_BRK || itr->opcode() == BC_CONT)
       return STOP_JUMP;
   }

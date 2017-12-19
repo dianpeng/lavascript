@@ -186,6 +186,7 @@ class BytecodeBuilder {
   inline Label cont   ( std::uint8_t reg , const SourceCodeInfo& si );
   inline Label fstart ( std::uint8_t reg , const SourceCodeInfo& si , std::uint8_t a1 );
   inline Label festart( std::uint8_t reg , const SourceCodeInfo& si , std::uint8_t a1 );
+  inline Label fevrstart ( std::uint8_t reg , const SourceCodeInfo& si );
 
  public:
   // This function will create a Closure object from the BytecodeBuilder
@@ -471,6 +472,11 @@ inline BytecodeBuilder::Label BytecodeBuilder::festart( std::uint8_t reg,
                                                         const SourceCodeInfo& sci ,
                                                         std::uint8_t a1 ) {
   return EmitAt<BC_FESTART,TYPE_B,true,false,false>(reg,sci,a1);
+}
+
+inline BytecodeBuilder::Label BytecodeBuilder::fevrstart ( std::uint8_t reg ,
+                                                           const SourceCodeInfo& si ) {
+  return EmitAt<BC_FEVRSTART,TYPE_G,false,false,false>(reg,sci);
 }
 
 inline bool BytecodeBuilder::AddUpValue( UpValueState state , std::uint16_t idx ,

@@ -160,7 +160,7 @@ static const std::size_t kAllocatableBytecodeRegisterSize = 255;
   __(B,FSTART,fstart,REG,PC,_,FB)                \
   __(H,FEND1,fend1 ,REG,REG,_,FB)                \
   __(H,FEND2,fend2 ,REG,REG,REG,FB)              \
-  __(X,FEVRSTART,fevrstart,_,_,_,_)              \
+  __(G,FEVRSTART,fevrstart,PC,_,_,_)             \
   /* fevrend also has feedback , thouth it is empty, we need it */ \
   /* simply because we can use the fevrend to stop a profile trace */ \
   /* and kicks in the actual compilation job */  \

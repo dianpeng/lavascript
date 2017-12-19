@@ -1599,7 +1599,7 @@ bool Generator::Visit( const ast::For& node ) {
                                                                       induct_reg.index() );
   } else {
     lava_debug(NORMAL,if(!node._1st) lava_verify(!node._3rd););
-    SEMIT(fevrstart,node.sci());
+    forward = func_scope()->bb()->fevrstart( func_scope()->ra()->base(), node.sci() );
   }
 
   /* ------------------------------------------
@@ -1641,10 +1641,9 @@ bool Generator::Visit( const ast::For& node ) {
     scope.PatchBreak(
         static_cast<std::uint16_t>(func_scope()->bb()->CodePosition()));
   }
-  if(forward) {
-    forward.Patch(
-        static_cast<std::uint16_t>(func_scope()->bb()->CodePosition()));
-  }
+
+  forward.Patch(
+      static_cast<std::uint16_t>(func_scope()->bb()->CodePosition()));
 
   // Free all loop iterator register
   lexical_scope()->FreeLoopIter();

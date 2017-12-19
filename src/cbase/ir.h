@@ -39,6 +39,9 @@ using namespace ::lavascript;
   /* ariethmetic/comparison node */             \
   __(Binary,BINARY,"binary")                    \
   __(Unary,UNARY ,"unary" )                     \
+  /* logic node */                              \
+  __(And,AND,"and")                             \
+  __(Or ,OR , "or")                             \
   /* upvalue */                                 \
   __(UGet,UGET  ,"uget"  )                      \
   __(USet,USET  ,"uset"  )                      \
@@ -58,7 +61,7 @@ using namespace ::lavascript;
   __(Int32,INT32  ,"int32"  )                   \
   __(Int64,INT64  ,"int64"  )                   \
   __(Float64,FLOAT64,"float64")                 \
-  __(LongString,LONG_STRING   ,"lstr"   )                    \
+  __(LongString,LONG_STRING   ,"lstr"   )       \
   __(SSO, SSO    ,"sso"    )                    \
   __(Boolean,BOOLEAN,"boolean")                 \
   __(Null,NULL   ,"null"   )                    \
@@ -447,6 +450,18 @@ class Unary : public Expr {
   Operator   op_;
 
   LAVA_DISALLOW_COPY_AND_ASSIGN(Unary)
+};
+
+class And : public Expr {
+ public:
+  static And* New( NodeFactory* zone , Expr* lhs , Expr* rhs ,
+                                                   const BytecodeInfo& bc );
+};
+
+class Or  : public Expr {
+ public:
+  static Or* New ( NodeFacotry* zone , Expr* lhs , Expr* rhs ,
+                                                   const BytecodeInfo& bc );
 };
 
 // ==============================================================

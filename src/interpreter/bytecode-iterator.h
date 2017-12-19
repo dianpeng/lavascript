@@ -43,7 +43,11 @@ class BytecodeIterator {
 
   // Get current code position pointer
   const std::uint32_t* code_buffer() const { return code_buffer_; }
+  const std::uint32_t* end() const { return code_buffer_ + cursor_; }
   const std::uint32_t* pc() const { return code_buffer_ + cursor_; }
+  const std::uint32_t* OffsetAt( std::uint32_t offset ) {
+    return code_buffer_ + offset;
+  }
   std::size_t cursor() const { return cursor_; }
   void BranchTo( const std::uint32_t offset ) {
     cursor_ = offset;

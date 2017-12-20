@@ -1197,7 +1197,8 @@ bool Generator::Visit( const ast::Ternary& node , ExprResult* result ) {
     if(!VisitExpression(*node._1st,&cond)) return false;
     // Based on the current condition to branch
     cond_label =
-      func_scope()->bb()->jmpf( func_scope()->ra()->base(),node.sci(),cond.Get().index());
+      func_scope()->bb()->tern( func_scope()->ra()->base(),node.sci(),cond.Get().index(),
+                                                                      output.index() );
     if(!cond_label) {
       Error(ERR_FUNCTION_TOO_LONG,node);
       return false;

@@ -28,10 +28,10 @@ TEST(BytecodeBuilder,AllBytecodeType) {
     bb.loadcls(0,SourceCodeInfo(),1,2);
     BytecodeIterator itr(bb.GetIterator());
     ASSERT_TRUE(itr.HasNext());
-    ASSERT_TRUE(itr.type() == TYPE_C);
+    ASSERT_TRUE(itr.type() == TYPE_B);
     ASSERT_EQ(BC_LOADCLS,itr.opcode()) << itr.opcode_name();
-    std::uint16_t a1;
-    std::uint8_t a2;
+    std::uint8_t a1;
+    std::uint16_t a2;
     itr.GetOperand(&a1,&a2);
     ASSERT_EQ(a1,1);
     ASSERT_EQ(a2,2);
@@ -129,7 +129,7 @@ TEST(BytecodeBuilder,Coverage) {
   do {                                      \
     ++count;                                \
     ASSERT_TRUE(itr.HasNext());             \
-    if(BC_##B != BC_FEND1 && BC_##B != BC_FEND2) { \
+    if(GetBytecodeType(BC_##B) != TYPE_H) { \
       ASSERT_EQ(BC_##B,itr.opcode()) << itr.opcode_name();     \
    }                                                           \
     BCTEST_##A();                           \
@@ -240,6 +240,9 @@ TEST(BytecodeBuilder,Patch) {
   l = (bb.festart(0,SourceCodeInfo(),255));
   l.Patch(1024);
 
+  l = (bb.tern(0,SourceCodeInfo(),255,255));
+  l.Patch(1024);
+
   BytecodeIterator itr(bb.GetIterator());
 
 #define TEST1(OPCODE) \
@@ -261,15 +264,28 @@ TEST(BytecodeBuilder,Patch) {
     ASSERT_EQ(1024,a2);                                  \
   } while(false)
 
+#define TEST3(OPCODE) \
+  do {                                                   \
+    ASSERT_TRUE(itr.HasNext());                          \
+    ASSERT_EQ(OPCODE,itr.opcode()) << itr.opcode_name(); \
+    std::uint8_t a1; std::uint8_t a2;                    \
+    std::uint8_t a3; std::uint32_t a4;                   \
+    itr.GetOperand(&a1,&a2,&a3,&a4);                     \
+    ASSERT_EQ(255,a1);                                   \
+    ASSERT_EQ(1024,a4);                                  \
+  } while(false)
+
+
   TEST2(BC_JMPT); ASSERT_TRUE(itr.Next());
   TEST2(BC_JMPF); ASSERT_TRUE(itr.Next());
-  TEST2(BC_AND) ; ASSERT_TRUE(itr.Next());
-  TEST2(BC_OR)  ; ASSERT_TRUE(itr.Next());
+  TEST3(BC_AND) ; ASSERT_TRUE(itr.Next());
+  TEST3(BC_OR)  ; ASSERT_TRUE(itr.Next());
   TEST1(BC_JMP) ; ASSERT_TRUE(itr.Next());
   TEST1(BC_BRK) ; ASSERT_TRUE(itr.Next());
   TEST1(BC_CONT); ASSERT_TRUE(itr.Next());
   TEST2(BC_FSTART); ASSERT_TRUE(itr.Next());
-  TEST2(BC_FESTART);ASSERT_FALSE(itr.Next());
+  TEST2(BC_FESTART);ASSERT_TRUE(itr.Next());
+  TEST3(BC_TERN); ASSERT_FALSE(itr.Next());
 
 #undef TEST1  // TEST1
 #undef TEST2  // TEST2

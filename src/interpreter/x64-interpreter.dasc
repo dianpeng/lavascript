@@ -2772,6 +2772,22 @@ void GenBytecode( BuildContext* bctx, Bytecode bc ) {
       |  Dispatch
       break;
 
+    case BC_TERN:
+      |=>bc:
+      |  instr_E
+      |  cmp word  [STK+ARG1F*8+6], Value::FLAG_HEAP
+      |  je >2
+      |  cmp dword [STK+ARG1F*8+4], Value::FLAG_FALSECOND
+      |  jbe >2
+      |  mov ARG2, dword [PC]
+      |  branch_to ARG2F,ARG3F
+      |1: // fallthrough
+      |  Dispatch
+      |2:
+      |  add PC,4
+      |  jmp <1
+      break;
+
     case BC_AND:
       |=>bc:
       |  instr_E
@@ -3670,6 +3686,9 @@ void GenBytecodeProfile( BuildContext* bctx , Bytecode bc ) {
       |  jmp extern festart
       break;
     /* jump/and/or */
+    case BC_TERN:
+      |  jmp extern tern
+      break;
     case BC_JMPF:
       |  jmp extern jmpf
       break;

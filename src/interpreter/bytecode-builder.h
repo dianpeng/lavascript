@@ -180,9 +180,12 @@ class BytecodeBuilder {
    * ----------------------------------------------------*/
   inline Label jmpt   ( std::uint8_t reg , const SourceCodeInfo& si , std::uint8_t r );
   inline Label jmpf   ( std::uint8_t reg , const SourceCodeInfo& si , std::uint8_t r );
+
   inline Label and_   ( std::uint8_t reg , const SourceCodeInfo& si , std::uint8_t,
                                                                       std::uint8_t   );
   inline Label or_    ( std::uint8_t reg , const SourceCodeInfo& si , std::uint8_t,
+                                                                      std::uint8_t   );
+  inline Label tern   ( std::uint8_t reg , const SourceCodeInfo& si , std::uint8_t,
                                                                       std::uint8_t   );
   inline Label jmp    ( std::uint8_t reg , const SourceCodeInfo& si );
   inline Label brk    ( std::uint8_t reg , const SourceCodeInfo& si );
@@ -457,6 +460,13 @@ inline BytecodeBuilder::Label BytecodeBuilder::or_ ( std::uint8_t reg ,
                                                      std::uint8_t a1 ,
                                                      std::uint8_t a2 ) {
   return EmitAt<BC_OR,TYPE_H,true,true,false>(reg,sci,a1,a2);
+}
+
+inline BytecodeBuilder::Label BytecodeBuilder::tern( std::uint8_t reg ,
+                                                     const SourceCodeInfo& sci ,
+                                                     std::uint8_t a1 ,
+                                                     std::uint8_t a2 ) {
+  return EmitAt<BC_TERN,TYPE_H,true,true,false>(reg,sci,a1,a2);
 }
 
 inline BytecodeBuilder::Label BytecodeBuilder::jmp ( std::uint8_t reg ,

@@ -115,8 +115,6 @@ struct AssemblyInterpreterStubLayout {
 // Concret class implementation for Interpreter interface
 class AssemblyInterpreter : public Interpreter {
  public:
-  // Using feedback manager to manage the *feedback* during the profiling. Obviously
-  // profiling only supported in assembly interpreter
   AssemblyInterpreter();
 
  public:

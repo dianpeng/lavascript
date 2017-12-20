@@ -80,6 +80,7 @@ class BytecodeAnalysis {
 
   void BuildBranch  ( BytecodeIterator* );
   void BuildLogic   ( BytecodeIterator* );
+  void BuildTernary ( BytecodeIterator* );
   void BuildLoop    ( BytecodeIterator* );
 
   bool IsLocalVar   ( std::uint8_t reg ) const {
@@ -255,6 +256,18 @@ void BytecodeAnalysis::BuildLogic( BytecodeIterator* itr ) {
   itr->GetOperand(&a1,&a2);
   if(IsLocalVar(a1)) Kill(a1);
   itr->BranchTo(a2);
+}
+
+void BytecodeAnalysis::BuildTernary( BytecodeIterator* itr ) {
+  lava_debug(NORMAL,lava_verify(itr->opcode() == BC_TERN););
+  /**
+   * Pretty much like BuildLogic just need to figure out the value/register
+   * and Kill it
+   */
+  std::uint8_t a1,a2,a3; std::uint32_t x;
+  itr->GetOperand(&a1,&a2,&a3,&x);
+  if(IsLocalVar(a1)) Kill(a2); // a1 is the condition , a2 is the value/variable register
+  itr->BranchTo(x);
 }
 
 void BytecodeAnalysis::BuildLoop( BytecodeIterator* itr ) {
@@ -453,12 +466,16 @@ bool BytecodeAnalysis::BuildBytecode( BytecodeIterator* itr ) {
       break;
 
     /** all are control flow instruction/bytecode **/
-    case BC_JMPF: BuildBranch(itr); break;
-    case BC_AND:  BuildLogic (itr); break;
-    case BC_OR:   BuildLogic (itr); break;
-
-    case BC_FEVRSTART: BuildForeverLoop(itr); break;
-
+    case BC_JMPF:
+      BuildBranch(itr); break;
+    case BC_AND: case BC_OR:
+      BuildLogic (itr);
+      break;
+    case BC_TERN:
+      BuildTernary(itr);
+      break;
+    case BC_FEVRSTART:
+      BuildForeverLoop(itr); break;
     case BC_FESTART: case BC_FSTART:
       BuildLoop(itr); break;
 

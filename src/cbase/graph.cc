@@ -189,9 +189,8 @@ void BytecodeAnalysis::Kill( std::uint8_t reg ) {
   // update information of the basic block
   current_bb()->Add(reg);
 
-  /**
-   * Update the variable use case if we are in loop body.
-   */
+  /** Update the variable use case if we are in loop body. */
+
   if(current_loop()) {
     lava_debug(NORMAL,lava_verify(current_loop()->enclosed_bb()););
     // since we have a loop so we try to check whether we need to
@@ -293,6 +292,7 @@ void BytecodeAnalysis::BuildLoop( BytecodeIterator* itr ) {
           goto done;
         default:
           if(!BuildBytecode(itr)) goto done;
+          break;
       }
     }
 done:
@@ -322,7 +322,9 @@ void BytecodeAnalysis::BuildForeverLoop( BytecodeIterator* itr ) {
     for( ; itr->HasNext() ; itr->Next()) {
       switch(itr->opcode()) {
         case BC_FEVREND: goto done;
-        default: if(!BuildBytecode(itr)) goto done;
+        default:
+          if(!BuildBytecode(itr)) goto done;
+          break;
       }
     }
 
@@ -537,8 +539,8 @@ struct FuncInfo {
   std::uint8_t  max_local_var_size;
   std::uint16_t  nested_loop_size;
   std::vector<LoopInfo> loop_info;
+  BytecodeAnalysis analysis; // information for bytecode analysis
 
- public:
   bool IsLocalVar( std::uint8_t slot ) const {
     return slot < max_local_var_size;
   }
@@ -885,7 +887,7 @@ GraphBuilder::BuildBranch( BytecodeIterator* itr ) {
   ir::Merge * merge = ir::Merge::New(node_factory_,false_region,true_region);
   ValueStack true_stack;
 
-  const std::uint32_t* false_pc; 
+  const std::uint32_t* false_pc;
   std::uint16_t final_cursor;
   bool have_false_branch;
 
@@ -931,6 +933,60 @@ GraphBuilder::BuildBranch( BytecodeIterator* itr ) {
 
   return STOP_SUCCESS;
 }
+
+/* --------------------------------------------------------------------------------------
+ *
+ * Loop IR building
+ *
+ * The Loop IR is little complicated to build , and here we have to consider OSR.
+ *
+ * 1) normal loop
+ *   the normal loop is built based on the normal way, one thing to note is loop will
+ *   be inversed during construction. The phi node in loop will be generated ahead of
+ *   the loop based on the information provided by the BytecodeAnalysis since it will
+ *   tell us which variable that is not bounded in loop is modified during the loop.
+ *   Due to the fact the PHI node requires a operand that is not available when loop
+ *   header is generated, we will need to patch each PHI node afterwards when the loop
+ *   body is done. We will record pending PHI node. For break/continue they will be
+ *   recorded according during the loop construction and its jump target will be correct
+ *   patched once loop_exit is generated.
+ *
+ *
+ * 2) OSR loop
+ *   If this is a OSR compliation, then we will have to generate OSR related code. The
+ *   OSR code generation will be *start* at OSR. Due to the fact we will be able to tell
+ *   which variable are alive at the header of the LOOP, we will generate OSR IR to load
+ *   all the needed value from OSR provider's buffer according to OSR ABI. Afterwards the
+ *   loop generation will be like some sort of loop peeling.
+ *
+ *   We start at the loop where OSR jumps into and generate IR for it , if any inner loop
+ *   nested it will also be generated normally. Then we start to peel some instructions
+ *   from the outer loop that enclose the OSR loop , example as following:
+ *
+ *   for(...) { // loop A
+ *     for(...) {  // loop B
+ *       for(...) { // OSR entry , loop C
+ *         for( ... ) { // loop D
+ *         }
+ *         // blabla
+ *       }
+ *       // blabla
+ *     }
+ *     // blabla
+ *   }
+ *
+ *
+ *   So we will first generate loop body for "loop C" since it is OSR entry , including loop D
+ *   will be generated. Then we will generate IR for the peeling part which is whatever that
+ *   is left after the loop C finish its body. And then go back to the header of loop B to generate
+ *   whatever block that is before the loop C. Same style goes to the loop A. Basically for all
+ *   enclosed loop we gonna do a simple peeling ; for whatever that is enclosed/nested, normal way.
+ *
+ *   After these nested loop cluster been generated, our code generation will be done here. In our
+ *   case is when we exit loop A there will be a deoptimization happened and we will fallback to
+ *   the interpreter.
+ *
+ * ---------------------------------------------------------------------------------------*/
 
 GraphBuilder::StopReason
 GraphBuilder::BuildLoopBlock( BytecodeIterator* itr ) {

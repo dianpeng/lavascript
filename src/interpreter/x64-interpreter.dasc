@@ -1420,8 +1420,8 @@ static_assert( sizeof(compiler::hotcount_t) == 2 );
   __(INTERP_NEEDOBJECT,InterpNeedObject)              \
   __(INTERP_ARGUMENTMISMATCH,InterpArgumentMismatch)  \
   /* JIT */                                           \
-  __(JIT_TRIGGER_HOT_LOOP,JITProfileStartHotLoop)          \
-  __(JIT_TRIGGER_HOT_CALL,JITProfileStartHotCall)          \
+  __(JIT_TRIGGER_HOT_LOOP,JITProfileStartHotLoop)     \
+  __(JIT_TRIGGER_HOT_CALL,JITProfileStartHotCall)     \
   /* ---- Debug Helper ---- */                        \
   __(PRINT_OP,PrintOP)                                \
   __(PRINT2  ,Print2 )                                \

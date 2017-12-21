@@ -42,6 +42,8 @@ using namespace ::lavascript;
   /* logic node */                              \
   __(And,AND,"and")                             \
   __(Or ,OR , "or")                             \
+  /* ternary node */                            \
+  __(Ternary,TERNARY,"ternary")                 \
   /* upvalue */                                 \
   __(UGet,UGET  ,"uget"  )                      \
   __(USet,USET  ,"uset"  )                      \
@@ -462,6 +464,12 @@ class Or  : public Expr {
  public:
   static Or* New ( NodeFacotry* zone , Expr* lhs , Expr* rhs ,
                                                    const BytecodeInfo& bc );
+};
+
+class Ternary: public Expr {
+ public:
+  static Ternary* New( NodeFacotry* zone , Expr* cond , Expr* lhs , Expr* rhs,
+                                                                    const BytecodeInfo& );
 };
 
 // ==============================================================

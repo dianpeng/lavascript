@@ -669,6 +669,9 @@ class GraphBuilder {
   // Build logical IR graph
   StopReason BuildLogic ( BytecodeIterator* itr );
 
+  // Build ternary IR graph
+  StopReason BuildTernary( BytecodeIterator* itr );
+
   // Build loop IR graph
   //
   // Loop IR graph construction is little bit tricky because of the cycle. However due
@@ -789,6 +792,142 @@ GraphBuilder::StopReason GraphBuilder::BuildLogic( BytecodeIterator* itr ) {
     StackSet(reg,ir::And(node_factory_,lhs,StackGet(reg),GetBytecodeInfo(itr->pc())),itr->pc());
   else
     StackSet(reg,ir::Or (node_factory_,lhs,StackGet(reg),GetBytecodeInfo(itr->pc())),itr->pc());
+
+  return STOP_SUCCESS;
+}
+
+GraphBuilder::StopReason GraphBuilder::BuildTernary( BytecodeIterator* itr ) {
+  lava_debug(NORMAL,lava_verify(itr->opcode() == BC_TERN););
+  std::uint8_t cond , result , dummy;
+  std::uint32_t offset;
+  std::uint16_t final_cursor;
+  ir::Expr* lhs, *rhs;
+
+  itr->GetOperand(&cond,&result,&dummy,&offset);
+
+  { // evaluate the fall through branch
+    for( itr->Next() ; itr->HasNext() ; itr->Next() ) {
+      if(itr->opcode() == BC_JUMP) break; // end of the first ternary fall through branch
+      BytecodeIterator(itr);
+    }
+
+    lava_debug(NORMAL,lava_verify(itr->opcode() == BC_JUMP););
+    itr->GetOperand(&final_cursor);
+    lhs = StackGet(result);
+  }
+
+  const std::uint32_t* end_pc = itr->OffsetAt(final_cursor);
+
+  { // evaluate the jump branch
+    lava_debug(NORMAL,StackReset(result););
+
+    lava_debug(NORMAL,itr->Next();lava_verify(itr->pc() == itr->OffsetAt(offset)););
+    for( itr->Next() ; itr->HasNext() ; itr->Next() ) {
+      if(itr->pc() == end_pc) break;
+      BytecodeIterator(itr);
+    }
+
+    lava_debug(NORMAL,lava_verify(StackGet(i)););
+    rhs = StackGet(result);
+  }
+
+  StackSet(i, ir::Ternary::New(node_factory_,StackGet(cond),lhs,rhs,GetBytecodeInfo(itr->pc())));
+
+  return STOP_SUCCESS;
+}
+
+GraphBuilder::StopReason GraphBuilder::GotoBranchEnd( BytecodeIterator* itr,
+                                                      const std::uint32_t* pc ) {
+  for( ; itr->HasNext() ; itr->Next() ) {
+    if(itr->pc() == pc) return STOP_END;
+    if(itr->opcode() == BC_JUMP) return STOP_JUMP;
+  }
+  lava_unreachF("cannot reach here since it is end of the stream %p:%p",itr->pc(),pc);
+  return STOP_EOF;
+}
+
+GraphBuilder::StopReason GraphBuilder::BuildBranchBlock( BytecodeIterator* itr ,
+                                                         const std::uint32_t* pc ) {
+  for( ; itr->HasNext(); itr->Next() ) {
+    // check whether we reache end of PC where we suppose to stop
+    if(pc == itr->pc()) return STOP_END;
+
+    // check whether we have a unconditional jump or not
+    if(itr->opcode() == BC_JUMP) return STOP_JUMP;
+    switch(itr->opcode()) {
+      case BC_JUMP: return STOP_JUMP;
+      case BC_CONT: case BC_BRK:
+        BuildBytecode(itr); itr->Next();
+        return GotoBranchEnd(itr,pc);
+      default:
+        BuildBytecode(itr);
+        break;
+    }
+  }
+  lava_unreachF("cannot reach here since it is end of the stream %p:%p",itr->pc(),pc);
+  return STOP_EOF;
+}
+
+GraphBuilder::StopReason
+GraphBuilder::BuildBranch( BytecodeIterator* itr ) {
+  lava_debug(NORMAL,lava_verify(itr->opcode() == BC_JMPF););
+
+  // skip the BC_JMPF
+  lava_verify(itr->Next(););
+
+  std::uint8_t cond; std::uint16_t offset;
+  itr->GetOperand(&cond,&offset);
+
+  // create the leading If node
+  ir::If* if_region = ir::Region::New(node_factory_,StackGet(cond),region());
+  ir::Region* false_region = ir::Region::New(node_factory_,if_region);
+  ir::Region* true_region  = ir::Region::New(node_factory_,if_region);
+  ir::Merge * merge = ir::Merge::New(node_factory_,false_region,true_region);
+  ValueStack true_stack;
+
+  const std::uint32_t* false_pc; 
+  std::uint16_t final_cursor;
+  bool have_false_branch;
+
+  // 1. Build code inside of the *true* branch and it will also help us to identify whether we
+  //    have dangling elif/else branch
+  {
+    itr->Next(); // skip the BC_JMPF
+
+    BackupStack(&true_Stack); // back up the old stack and use new stack
+
+    set_region(true_region);  // switch to true region
+
+    StopReason reason = BuildBranchBlock(itr,itr->OffsetAt(offset));
+
+    if(reason == STOP_JUMP) {
+      // we do have a none empty false_branch
+      have_false_branch = true;
+      lava_debug(NORMAL,lava_verify(itr->opcode() == BC_JUMP););
+      itr->GetOperand(&final_cursor);
+    } else {
+      lava_debug(NORMAL,lava_verify(reason == STOP_END););
+      have_false_branch = false;
+    }
+  }
+
+  // 2. Build code inside of the *true* branch
+  if(have_false_branch) {
+
+    set_region(false_region);
+
+    itr->BranchTo(offset); // go to the false branch
+
+    StopReason reason = BuildBranch(itr,itr->OffsetAt(final_cursor));
+  } else {
+    final_cursor = offset; // we don't have a else/elif branch
+  }
+
+  // 3. handle PHI node
+  InsertPhi(*stack_ /* false stack */, true_stack /* true stack */ , itr->OffsetAt(final_cursor));
+
+  itr->BranchTo(final_cursor);
+  set_region(merge);
 
   return STOP_SUCCESS;
 }
@@ -937,102 +1076,6 @@ GraphBuilder::BuildLoop( BytecodeIterator* itr ) {
 
   lava_debug(NORMAL,lava_verify(itr->pc() == after_pc););
   set_region(after);
-
-  return STOP_SUCCESS;
-}
-
-GraphBuilder::StopReason GraphBuilder::GotoBranchEnd( BytecodeIterator* itr,
-                                                      const std::uint32_t* pc ) {
-  for( ; itr->HasNext() ; itr->Next() ) {
-    if(itr->pc() == pc) return STOP_END;
-    if(itr->opcode() == BC_JUMP) return STOP_JUMP;
-  }
-  lava_unreachF("cannot reach here since it is end of the stream %p:%p",itr->pc(),pc);
-  return STOP_EOF;
-}
-
-GraphBuilder::StopReason GraphBuilder::BuildBranchBlock( BytecodeIterator* itr ,
-                                                         const std::uint32_t* pc ) {
-  for( ; itr->HasNext(); itr->Next() ) {
-    // check whether we reache end of PC where we suppose to stop
-    if(pc == itr->pc()) return STOP_END;
-
-    // check whether we have a unconditional jump or not
-    if(itr->opcode() == BC_JUMP) return STOP_JUMP;
-    switch(itr->opcode()) {
-      case BC_JUMP: return STOP_JUMP;
-      case BC_CONT: case BC_BRK:
-        BuildBytecode(itr); itr->Next();
-        return GotoBranchEnd(itr,pc);
-      default:
-        BuildBytecode(itr);
-        break;
-    }
-  }
-  lava_unreachF("cannot reach here since it is end of the stream %p:%p",itr->pc(),pc);
-  return STOP_EOF;
-}
-
-GraphBuilder::StopReason
-GraphBuilder::BuildBranch( BytecodeIterator* itr ) {
-  lava_debug(NORMAL,lava_verify(itr->opcode() == BC_JMPF););
-
-  // skip the BC_JMPF
-  lava_verify(itr->Next(););
-
-  std::uint8_t cond; std::uint16_t offset;
-  itr->GetOperand(&cond,&offset);
-
-  // create the leading If node
-  ir::If* if_region = ir::Region::New(node_factory_,StackGet(cond),region());
-  ir::Region* false_region = ir::Region::New(node_factory_,if_region);
-  ir::Region* true_region  = ir::Region::New(node_factory_,if_region);
-  ir::Merge * merge = ir::Merge::New(node_factory_,false_region,true_region);
-  ValueStack true_stack;
-
-  const std::uint32_t* false_pc; 
-  std::uint16_t final_cursor;
-  bool have_false_branch;
-
-  // 1. Build code inside of the *true* branch and it will also help us to identify whether we
-  //    have dangling elif/else branch
-  {
-    itr->Next(); // skip the BC_JMPF
-
-    BackupStack(&true_Stack); // back up the old stack and use new stack
-
-    set_region(true_region);  // switch to true region
-
-    StopReason reason = BuildBranchBlock(itr,itr->OffsetAt(offset));
-
-    if(reason == STOP_JUMP) {
-      // we do have a none empty false_branch
-      have_false_branch = true;
-      lava_debug(NORMAL,lava_verify(itr->opcode() == BC_JUMP););
-      itr->GetOperand(&final_cursor);
-    } else {
-      lava_debug(NORMAL,lava_verify(reason == STOP_END););
-      have_false_branch = false;
-    }
-  }
-
-  // 2. Build code inside of the *true* branch
-  if(have_false_branch) {
-
-    set_region(false_region);
-
-    itr->BranchTo(offset); // go to the false branch
-
-    StopReason reason = BuildBranch(itr,itr->OffsetAt(final_cursor));
-  } else {
-    final_cursor = offset; // we don't have a else/elif branch
-  }
-
-  // 3. handle PHI node
-  InsertPhi(*stack_ /* false stack */, true_stack /* true stack */ , itr->OffsetAt(final_cursor));
-
-  itr->BranchTo(final_cursor);
-  set_region(merge);
 
   return STOP_SUCCESS;
 }

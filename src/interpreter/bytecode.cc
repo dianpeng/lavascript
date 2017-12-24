@@ -4,6 +4,26 @@
 namespace lavascript {
 namespace interpreter{
 
+namespace {
+
+#define __(T,NAME,PNAME,A1,A2,A3,A4,FB)     \
+  BytecodeUsage{BytecodeUsage::A1,          \
+                BytecodeUsage::A2,          \
+                BytecodeUsage::A3,          \
+                BytecodeUsage::A4,          \
+                TYPE_##T,                   \
+                FB},
+
+BytecodeUsage kBytecodeUsage[] = {
+  LAVASCRIPT_BYTECODE_LIST(__)
+
+  BytecodeUsage{}
+};
+
+#undef __ // __
+
+} // namespace
+
 const char* GetBytecodeName( Bytecode bc ) {
   switch(bc) {
 
@@ -15,32 +35,22 @@ LAVASCRIPT_BYTECODE_LIST(__)
   }
 }
 
-BytecodeType GetBytecodeType( Bytecode bc ) {
-  switch(bc) {
-
-#define __(A,B,...) case BC_##B: return TYPE_##A;
-LAVASCRIPT_BYTECODE_LIST(__)
-#undef __ // __
-
-    default: lava_unreach(""); return TYPE_X;
+const char* GetBytecodeTypeName( BytecodeType type ) {
+  switch(type) {
+    case TYPE_B: return "b";
+    case TYPE_C: return "c";
+    case TYPE_D: return "d";
+    case TYPE_E: return "e";
+    case TYPE_F: return "f";
+    case TYPE_G: return "g";
+    case TYPE_H: return "h";
+    default: return "x";
   }
 }
 
-bool DoesBytecodeHasFeedback( Bytecode bc ) {
-#define RESULT_FB true
-#define RESULT__  false
-
-  switch(bc) {
-#define __(A,B,C,D,E,F,G) case BC_##B: return RESULT_##G;
-  LAVASCRIPT_BYTECODE_LIST(__)
-#undef __
-    default: return false;
-  }
-
-#undef RESULT_TB // RESULT_TB
-#undef RESULT__  // RESULT__
+const BytecodeUsage& GetBytecodeUsage( Bytecode bc ) {
+  return kBytecodeUsage[static_cast<int>(bc)];
 }
-
 
 } // namespace interpreter
 } // namespace lavascript

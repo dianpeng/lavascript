@@ -7,11 +7,12 @@
 
 /** ---------------------------------------------------------------------
  *
- * Bytecode iterator. Used to decode bytecode in a
- * bytecode stream. This is mainly used for dumpping
- * and debugging purpose. The main interpreter will
- * not use this iterator but directly write assembly
- * to decode.
+ * Bytecode iterator. Used to decode bytecode inside of a bytecode stream.
+ * The interpreter doesn't use it. It is mainly used in compiler's backend
+ *
+ * Currently it doesn't support reverse iteration due to the variable length
+ * bytecode's nature. It may be extended to reversely iterate the bytecode
+ * stream.
  *
  * ----------------------------------------------------------------------*/
 
@@ -32,7 +33,10 @@ class BytecodeIterator {
   inline Bytecode opcode() const;
   inline const char* opcode_name() const;
   inline BytecodeType type() const;
-  inline std::size_t offset() const { return offset_; }
+
+  std::size_t offset() const { return offset_; }
+  const BytecodeUsage& usage() const { return GetBytecodeUsage(opcode()); }
+
   inline void GetOperand( std::uint8_t* , std::uint8_t* , std::uint8_t* , std::uint32_t* );
   inline void GetOperand( std::uint8_t* , std::uint8_t* , std::uint8_t* );
   inline void GetOperand( std::uint8_t* , std::uint8_t* );
@@ -40,6 +44,7 @@ class BytecodeIterator {
   inline void GetOperand( std::uint16_t* );
   inline void GetOperand( std::uint16_t* , std::uint8_t* );
   inline void GetOperand( std::uint8_t* , std::uint16_t* );
+  inline void GetOperandByIndex( int index , std::uint32_t*);
 
   // Get current code position pointer
   const std::uint32_t* code_buffer() const { return code_buffer_; }
@@ -188,6 +193,62 @@ inline void BytecodeIterator::GetOperand( std::uint8_t* a1 , std::uint16_t* a2 )
     );
   *a1 = a1_8_;
   *a2 = a2_16_;
+}
+
+inline void BytecodeIterator::GetOperandByIndex( int index , std::uint32_t* output ) {
+  lava_debug(NORMAL,lava_verify(index >= 1 && index <= 4););
+  switch(type_) {
+    case TYPE_B:
+      lava_debug(NORMAL,lava_verify(index == 1 || index == 2););
+      if(index == 1)
+        *output = static_cast<std::uint32_t>(a1_8_);
+      else
+        *output = static_cast<std::uint32_t>(a2_16_);
+      break;
+    case TYPE_C:
+      lava_debug(NORMAL,lava_verify(index == 1 || index == 2 ););
+      if(index == 1)
+        *output = static_cast<std::uint32_t>(a1_16_);
+      else
+        *output = static_cast<std::uint32_t>(a2_8_);
+      break;
+    case TYPE_D:
+      lava_debug(NORMAL,lava_verify(index == 1 || index == 2 || index == 3););
+      if(index == 1)
+        *output = static_cast<std::uint32_t>(a1_8_);
+      else if(index == 2)
+        *output = static_cast<std::uint32_t>(a2_8_);
+      else
+        *output = static_cast<std::uint32_t>(a3_8_);
+      break;
+    case TYPE_E:
+      lava_debug(NORMAL,lava_verify(index == 1 || index == 2););
+      if(index == 1)
+        *output = static_cast<std::uint32_t>(a1_8_);
+      else
+        *output = static_cast<std::uint32_t>(a2_8_);
+      break;
+    case TYPE_F:
+      lava_debug(NORMAL,lava_verify(index == 1););
+      *output = static_cast<std::uint32_t>(a1_8_);
+      break;
+    case TYPE_H:
+      if(index == 1)
+        *output = static_cast<std::uint32_t>(a1_8_);
+      else if(index == 2)
+        *output = static_cast<std::uint32_t>(a2_8_);
+      else if(index == 3)
+        *output = static_cast<std::uint32_t>(a3_8_);
+      else if(index == 4)
+        *output = static_cast<std::uint32_t>(a4_);
+      else
+        lava_die();
+
+      break;
+    default:
+      lava_die();
+      break;
+  }
 }
 
 } // namespace interpreter

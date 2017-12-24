@@ -60,7 +60,7 @@ class BytecodeAnalysis {
     const BasicBlockVariable* bb; // corresponding basic block
     const std::uint32_t* start ;  // start of the bytecode
     const std::uint32_t* end   ;  // end   of the bytecode
-    std::set<std::uint8_t> phi;  // variables that have been modified and need to insert PHI
+    std::set<std::uint8_t> phi;   // variables that have been modified and need to insert PHI
                                   // ahead of the loop
     LoopHeaderInfo(): prev(NULL), bb(NULL), start(NULL), end(NULL) , phi() {}
 
@@ -640,10 +640,11 @@ class GraphBuilder {
   }
 
  private: // Constant handling
-  ir::Expr* NewConstNumber( std::int32_t );
-  ir::Expr* NewNumber( std::uint8_t ref );
-  ir::Expr* NewString( std::uint8_t ref );
-  ir::Expr* NewSSO   ( std::uint8_t ref );
+  ir::Expr* NewConstNumber( std::int32_t , const std::uint32_t* pc );
+  ir::Expr* NewNumber( std::uint8_t ref  , const std::uint32_t* pc );
+  ir::Expr* NewString( std::uint8_t ref  , const std::uint32_t* pc );
+  ir::Expr* NewSSO   ( std::uint8_t ref  , const std::uint32_t* pc );
+  ir::Expr* NewBoolean( bool , const std::uint32_t* pc );
 
   // Helper function for constructing Bytecode
 
@@ -1013,9 +1014,6 @@ GraphBuilder::BuildLoop( BytecodeIterator* itr ) {
                                 itr->opcode() == BC_FESTART||
                                 itr->opcode() == BC_FEVRSTART););
 
-  if(itr->opcode() == BC_FEVRSTART)
-    return BuildForeverLoop(itr);
-
   std::uint16_t after_pc , exit_pc;
   ir::If*       loop_header = NULL;
   ir::Loop*     body = NULL;
@@ -1028,7 +1026,7 @@ GraphBuilder::BuildLoop( BytecodeIterator* itr ) {
     std::uint8_t a1;
     itr->GetArgument(&a1,&after_pc);
     loop_header = ir::If::New(node_factory_,StackGet(a1),region());
-  } else {
+  } else if(itr->opcode() == BC_FESTART) {
     std::uint8_t a1;
     itr->GetArgument(&a1,&after_pc);
     // create ir ItrNew which basically initialize the itr and also do
@@ -1036,7 +1034,16 @@ GraphBuilder::BuildLoop( BytecodeIterator* itr ) {
     ir::ItrNew* inew = ir::ItrNew::New(node_factory_,StackGet(a1),
                                                      GetBytecode(pc->itr()));
     loop_header = ir::If::New(node_factory_,inew,region());
+  } else {
+    lava_debug(NORMAL,lava_verify(itr->opcode() == BC_FEVRSTART););
+    /**
+     * for forever loop, we still build the structure of inverse loop, but just
+     * mark the condition to be true. later pass for eliminating branch will take
+     * care of this false inversed loop if
+     */
+    loop_header = ir::If::New(node_factory_,NewBoolean(true,itr->pc()),region());
   }
+
   itr->Next();
 
   set_region(loop_header);

@@ -18,27 +18,33 @@ class Zone {
   // for accessing not aligned memory
   static const std::size_t kAlignment = 8;
 
-  static const size_t kMaximum =
+  static const std::size_t kMaximum =
 #ifndef LAVA_ZONE_MAXIMUM_SIZE
     1024*1024*4; // 4MB
 #else
     LAVA_ZONE_MAXIMUM_SIZE;
 #endif // LAVA_ZONE_MAXIMUM_SIZE
 
-  static const size_t kMinimum =
+  static const std::size_t kMinimum =
 #ifndef LAVA_ZONE_MINIMUM_SIZE
     1024;        // 1KB
 #else
     LAVA_ZONE_MINIMUM_SIZE;
 #endif // LAVA_ZONE_MINIMUM_SIZE
 
-  inline Zone( size_t minimum = kMinimum, size_t maximum = kMaximum,
-                                          HeapAllocator* allocator = NULL );
+  inline Zone( std::size_t minimum = kMinimum, std::size_t maximum = kMaximum,
+                                               HeapAllocator* allocator = NULL );
 
-  void* Malloc( size_t size ) { return allocator_.Grab(Align(size,kAlignment)); }
+  void* Malloc( std::size_t size ) { return allocator_.Grab(Align(size,kAlignment)); }
 
   template< typename T >
   T* Malloc() { return static_cast<T*>(Malloc(sizeof(T))); }
+
+  template< typename T , typename ... ARGS >
+  T* New( ARGS ... args ) {
+    void* buffer = Malloc(sizeof(T));
+    return ConstrutFromBuffer<T>(buffer,args...);
+  }
 
  private:
   BumpAllocator allocator_;   // internal bump allocator
@@ -46,7 +52,7 @@ class Zone {
   LAVA_DISALLOW_COPY_AND_ASSIGN(Zone);
 };
 
-inline Zone::Zone( size_t minimum , size_t maximum ,
+inline Zone::Zone( std::size_t minimum , std::size_t maximum ,
                                     HeapAllocator* allocator ):
   allocator_(minimum,maximum,allocator)
 {}
@@ -57,11 +63,11 @@ inline Zone::Zone( size_t minimum , size_t maximum ,
 // only gives you memory and it *wont* call object's constructor.
 class ZoneObject {
  public:
-  static void* operator new( size_t size , Zone* zone ) {
+  static void* operator new( std::size_t size , Zone* zone ) {
     return zone->Malloc(size);
   }
-  static void* operator new( size_t );
-  static void* operator new[] ( size_t );
+  static void* operator new( std::size_t );
+  static void* operator new[] ( std::size_t );
   static void  operator delete( void* );
   static void  operator delete[](void*);
 };

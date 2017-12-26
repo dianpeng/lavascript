@@ -1,0 +1,15 @@
+CBase Graph Construction
+===============================
+
+IR Graph Construction is typically kind of complicated. Additionally JIT
+compiler uses bytecode stream to construct IR graph and this is not very
+simple at all.
+
+
+1. OSRBuffer
+
+   OSRBuffer {
+     uint32 method_index;   // points which function it is used
+   }
+
+

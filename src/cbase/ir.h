@@ -2,8 +2,10 @@
 #define CBASE_IR_H_
 #include "src/config.h"
 #include "src/util.h"
+#include "src/cbase/bytecode-analyze.h"
 #include "src/zone/zone.h"
 #include "src/zone/vector.h"
+#include "src/zone/list.h"
 #include "src/zone/string.h"
 
 #include <vector>
@@ -22,20 +24,49 @@ namespace cbase {
 namespace ir {
 using namespace ::lavascript;
 
+class Graph;
+class GraphBuilder;
+
 /**
- * OSR support. We support OSR and OSR code are generated during IR construction
- * phase. Each function in cbase will be compiled into 2 types of output.
- * 1) a function doesn't need OSR , this result in a function that only has a mian
- *    entry
- * 2) a function does have OSR , this result in a function that will be compiled
- *    into a function have 2 entry , (1) main (2) OSR entry. OSR entry does not
- *    accept any types of optimization except ra and code gen
+ * This is a separate information maintained for each IR node. It contains
+ * information needed for (1)GC (2)OSRExit. This information is always kept
+ * and carry on to code generation.
  *
+ * Some IR may have exactly same IRInfo object since one bytecode can be mapped
+ * to multiple IR node in some cases.
  */
 
-#define CBASE_IR_LIST(__)                       \
+class IRInfo {
+ public:
+  IRInfo( const Handle<Closure>& closure , const std::uint32_t* bc ,
+                                           const InterpreterRegisterSet& lcvar ,
+                                           std::uint32_t base ):
+    closure_(closure),
+    bc_     (bc),
+    loc_var_(lcvar),
+    base_   (base)
+  {}
+
+ public:
+  const Handle<Closure>& closure() const { return closure_l }
+  const std::uint32_t* bc() const { return bc_; }
+  const InterpreterRegisterSet& loc_var() const { return loc_var_; }
+  const std::uint32_t  base() const { return base_; }
+
+ private:
+  Handle<Closure> closure_;
+  const std::uint32_t* bc_;
+  InterpreterRegisterSet loc_var_;  // Up to this IR, which local variable's register
+                                    // has been used/modified. This is used by GC to
+                                    // decide GC root
+  const std::uint32_t base_;        // base offset for this IR, since we do have inline
+};
+
+#define CBASE_IR_EXPRESSION(__)                 \
   /* base for all none control flow */          \
   __(Expr,EXPR,"expr")                          \
+  /* argument node */                           \
+  __(ARG,Arg,"arg")                             \
   /* ariethmetic/comparison node */             \
   __(Binary,BINARY,"binary")                    \
   __(Unary,UNARY ,"unary" )                     \
@@ -71,10 +102,9 @@ using namespace ::lavascript;
   __(IRList,LIST,   "list"   )                  \
   __(IRObject,OBJECT, "object" )                \
   __(IRClosure,CLOSURE,"closure")               \
-  __(IRExtension,EXTENSION,"extension")         \
-  /* box */                                     \
-  __(Box,BOX,"box")                             \
-  /* control flow */                            \
+  __(IRExtension,EXTENSION,"extension")
+
+#define CBASE_IR_CONTROL_FLOW(__)               \
   __(ControlFlow,CONTROL_FLOW,"control_flow")   \
   __(Start,START,"start")                       \
   __(Loop,Loop,LOOP ,"loop" )                   \
@@ -83,10 +113,12 @@ using namespace ::lavascript;
   __(Jump,JUMP,"jump")                          \
   __(Region,REGION,"region")                    \
   __(Ret,RET  , "ret" )                         \
-  __(End,END  , "end" )                         \
-  /* misc */                                    \
-  __(Phi,PHI  , "phi" )                         \
-  /* osr  */                                    \
+  __(End,END  , "end" )
+
+#define CBASE_IR_MISC(__)                       \
+  __(Phi,PHI  , "phi" )
+
+#define CBASE_IR_OSR(__)                        \
   __(OSREntry,OSR_ENTRY,"osr_entry")            \
   __(OSRExit ,OSR_EXIT ,"osr_exit" )            \
   __(OSRLoadS,OSR_LOADS,"osr_loads")            \
@@ -94,8 +126,14 @@ using namespace ::lavascript;
   __(OSRLoadG,OSR_LOADG,"osr_loadg")            \
   __(OSRStoreS,OSR_STORES,"osr_stores")         \
   __(OSRStoreU,OSR_STOREU,"osr_storeu")         \
-  __(OSRStoreG,OSR_STOREG,"osr_storeg")         \
- /* end */
+  __(OSRStoreG,OSR_STOREG,"osr_storeg")
+
+
+#define CBASE_IR_LIST(__)                       \
+  CBASE_IR_EXPRESSION(__)                       \
+  CBASE_IR_CONTROL_FLOW(__)                     \
+  CBASE_IR_MISC(__)                             \
+  CBASE_IR_OSR (__)
 
 enum IRType {
 #define __(A,B,...) IRTYPE_##B,
@@ -107,65 +145,10 @@ enum IRType {
 
 const char* IRTypeGetName( IRType );
 
-struct BytecodeInfo {
-  std::int32_t saved_slot;  // Where this will be if it is interpreted
-  std::uint32_t call_frame; // Which call frame this Node resides
-  const std::uint32_t* pc;  // Pointer points to the BC for this ir node
-
-  BytecodeInfo():
-    saved_slot(-1),
-    call_frame(0) ,
-    pc(NULL)
-  {}
-
-  BytecodeInfo( std::int32_t idx , std::uint32_t cf , const std::uint32_t* p ):
-    saved_slot (idx),
-    call_frame (cf),
-    pc         (p)
-  {}
-
-  BytecodeInfo( const std::uint32_t* p ):
-    saved_slot (-1),
-    call_frame (0),
-    pc         (p)
-  {}
-};
-
 // Forward declaration of all the IR
 #define __(A,...) class A;
 CBASE_IR_LIST(__)
 #undef __ // __
-
-// IR Constant Pool. This object is used to dedup those constant creation.
-// We don't dedup the node since different node has its own unique positional
-// information. But we dedup the storage of certain primitive type number.
-// This is not for saving memory since storing a pointer wastes more than
-// storing a int32_t if no alignment is considered. This is mainly for GVN
-// hash implementation. Since once the primitive constant number is unique,
-// we could use its *address* to identify its equality which align to rest of
-// the node hash.
-class NodeFactory {
- public:
-  const std::int32_t* GetInt32( std::int32_t );
-  const std::int64_t* GetInt64( std::int64_t );
-  const double*       GetFloat64( double );
-  const bool*         GetTrue();
-  const bool*         GetFalse();
-
- public:
-  zone::Zone* zone() const { return zone_; }
- private:
-  zone::Zone* zone_;
-  const bool* true_;
-  const bool* false_;
-  std::vector<std::int32_t*> i32_pool_;
-  std::vector<std::int64_t*> i64_pool_;
-  std::vector<double*>       f64_pool_;
-  std::vector<zone::String*> str_pool_;
-
-  LAVA_DISALLOW_COPY_AND_ASSIGN(NodeFactory)
-};
-
 
 // Mother of all IR node , most of the important information should be stored via ID
 // as out of line storage
@@ -180,35 +163,40 @@ class Node : public zone::ZoneObject {
   // a unique id for this node , it can be used to indexed into secondary storage
   std::uint32_t id() const { return id_; }
 
-  // the zone used to allocate Node object
-  NodeFactory* node_factory() const { return node_factory_; }
-  zone::Zone* zone() const { return node_factory()->zone(); }
+  // get the belonged graph object
+  Graph* graph() const { return graph_; }
 
  public: // Cast
-#define __(A,...) A* As##A() { lava_verify(type_ == IRTYPE_##B); return static_cast<A*>(this); }
+
+#define __(A,...) A* As##A() {               \
+    lava_verify(type_ == IRTYPE_##B);        \
+    return static_cast<A*>(this);            \
+  }
+
   CBASE_IR_LIST(__)
+
 #undef __ // __
 
-#define __(A,...) const A* As##A() const { \
-  lava_verify(type_ == IRTYPE_##B); \
-  return static_cast<const A*>(this); \
-}
-  CBASE_IR_LIST(__)
-#undef __ // __
+#define __(A,...) const A* As##A() const {   \
+    lava_verify(type_ == IRTYPE_##B);        \
+    return static_cast<const A*>(this);      \
+  }
 
- public: // GVN supports
+  CBASE_IR_LIST(__)
+
+#undef __ // __
 
  protected:
-  Node( IRType type , NodeFactory* factory , std::uint32_t id ):
+  Node( IRType type , std::uint32_t id , Graph* graph ):
     type_    (type),
-    id_      (id),
-    node_factory_ (factory)
+    id_      (id)  ,
+    graph_   (graph)
  {}
 
  private:
-  IRType type_;
+  IRType        type_;
   std::uint32_t id_;
-  NodeFactory* node_factory_;
+  Graph*        graph_;
 
   LAVA_DISALLOW_COPY_AND_ASSIGN(Node)
 };
@@ -219,44 +207,92 @@ class Node : public zone::ZoneObject {
 //   This node is the mother all other expression node and its solo
 //   goal is to expose def-use and use-def chain into different types
 // ================================================================
+
 class Expr : public Node {
  public:
-  // return a list of node that *uses* this node
-  const zone::Vector<ir::Expr*>& use_chain() const { return use_chain_; }
-  zone::Vector<ir::Expr*>& use_chain() { return use_chain_; }
-  void AddUse( ir::Expr* );
+  /**
+   * Def-Use chain and Use-Def chain. We rename these field to
+   * make it more easy to understand since I personally don't
+   * think Def-Use and Use-Def chain to be a easy way to express
+   * what it does mean
+   *
+   * 1) operand list , represent what expression is used/depend on
+   *    by this expression
+   *
+   * 2) ref list     , represent list of expression that use *this*
+   *    expression
+   *
+   */
+  typedef zone::List<Expr*>        OperandList;
+  typedef OperandList::Iterator    OperandIterator;
 
-  // return a list of node that is *used* by this node
-  const zone::Vector<ir::Expr*>& def_chain() const { return def_chain_; }
-  zone::Vector<ir::Expr*>& def_chain() { return use_chain_; }
-  void AddDef( ir::Expr* );
+  struct Ref {
+    OperandIterator id;  // iterator used for fast deletion of this Ref it is
+                         // modified
+    Expr* node;
+    Ref( const OperandIterator& iter , Expr* n ): id(iter),node(n) {}
+    Ref(): id(), node(NULL) {}
+  };
 
-  bool side_effect() const { return side_effect_; }
+  typedef zone::List<Ref>          RefList;
+
+
+  // Operand list
+  //
+  // This list returns a list of operands used by this Expr/IR node. Most
+  // of time operand_list will return at most 3 operands except for call
+  // function
+  OperandList* operand_list() { return &operand_list_; }
+  const OperandList* operand_list() const { return &operand_list_; }
+  inline void AddOperand( Expr* );
+
+
+  // Reference list
+  //
+  // This list returns a list of Ref object which allow user to
+  //   1) get a list of expression that uses this expression, ie who uses me
+  //   2) get the corresponding iterator where *me* is inserted into the list
+  //      so we can fast modify/remove us from its list
+  const RefList* ref_list() const { return &ref_list_; }
+  RefList* ref_list() { return &ref_list_; }
+  inline void AddRef( Expr* who_uses_me , const OperandIterator& iter );
+
+ public: // effect bits to mark the effect of this expression
+
+  // during GVN, we won't enimilate expression that has side effect
+  // or have propogate_effect
+  bool side_effect () const { return side_effect_; }
   bool propogate_effect() const { return propogate_effect_; }
 
- public:
-  const BytecodeInfo& bytecode_info() const {
+ public: // GVN hash value and hash function 
+  virtual bool SupportGVN() const { return false; }
+
+  virtual std::uint64_t GVNHash()   = 0;
+  virtual bool Equal( const Expr* ) = 0;
+
+  IRInfo* bytecode_info() const {
     return bytecode_info_;
   }
-
  protected:
-  Expr( IRType type , zone::Zone* zone , std::uint32_t id , const BytecodeInfo& binfo ,
-                                                            bool side_effect,
-                                                            bool propogate_effect ):
-    Node(type,zone,id,binfo),
-    use_chain_(),
-    def_chain_(),
-    bytecode_info_(binfo),
-    side_effect_(side_effect),
+  Expr( Graph* graph , IRType type , std::uint32_t id , bool side_effect,
+                                                        bool propogate_effect ):
+    Node             (type,id,graph),
+    operand_list_    (),
+    ref_list_        (),
+    side_effect_     (side_effect),
     propogate_effect_(propogate_effect)
   {}
 
  private:
-  zone::Vector<ir::Expr*> use_chain_;
-  zone::Vector<ir::Expr*> def_chain_;
-  BytecodeInfo bytecode_info_;
+  OperandList operand_list_;
+  RefList     ref_list_;
   bool side_effect_;
   bool propogate_effect_;
+};
+
+class Arg : public Expr {
+ public:
+  static Arg* New( Graph* , std::uint32_t , IRInfo* );
 };
 
 // ================================================================
@@ -264,87 +300,70 @@ class Expr : public Node {
 // ================================================================
 class Int32 : public Expr {
  public:
-  static Int32* New( NodeFactory* , std::int32_t , const BytecodeInfo& );
-
- public:
-  const std::int32_t* value_label() const { return value_label_; }
-  std::int32_t value() const { return *value_label_;}
+  inline static Int32* New( Graph* , std::int32_t , IRInfo* );
+  std::int32_t value() const { return value_; }
 
  private:
-  const std::int32_t* value_label_;
-
+  std::int32_t value_;
   LAVA_DISALLOW_COPY_AND_ASSIGN(Int32)
 };
 
 class Int64: public Expr {
  public:
-  static Int64* New( NodeFactory* , std::int64_t , const BytecodeInfo& );
-
- public:
-  const std::int64_t* value_label() const { return value_label_; }
-  std::int64_t value() const { return *value_label_;}
+  inline static Int64* New( Graph* , std::int64_t , IRInfo* );
+  std::int64_t value() const { return value_; }
 
  private:
-  const std::int64_t* value_label_;
+  std::int64_t value_;
   LAVA_DISALLOW_COPY_AND_ASSIGN(Int64)
 };
 
 class Float64 : public Expr {
  public:
-  static Float64* New( NodeFactory* , double , const BytecodeInfo& );
- public:
-  const double* value_label() const { return value_label_; }
-  double value_label() const { return *value_label_; }
- private:
-  const double* value_label_;
+  inline static Float64* New( Graph* , double , IRInfo* );
+  double value() const { return value_; }
 
+ private:
+  double value_;
   LAVA_DISALLOW_COPY_AND_ASSIGN(Float64)
 };
 
 class Boolean : public Expr {
  public:
-  static Boolean* New( NodeFactory* , bool , const BytecodeInfo& );
- public:
-  const bool* value_label() const { return value_label_; }
-  bool value() const { return *value_label_; }
+  inline static Boolean* New( Graph* , bool , IRInfo* );
+  bool value() const { return value_; }
 
  private:
-  const bool* value_label_;
+  bool value_;
 
   LAVA_DISALLOW_COPY_AND_ASSIGN(Boolean)
 };
 
 class LongString : public Expr {
  public:
-  static LongString* New( NodeFactory* , String** , const BytecodeInfo& );
- public:
-  const zone::String* value_label() const { return value_label_; }
-  const zone::String& value() const { return *value_label_; }
+  inline static LongString* New( Graph* , String** , IRInfo* );
+  const zone::String* value() const { return value_; }
+
  private:
-  const zone::String* value_label_;
+  const zone::String* value_;
 
   LAVA_DSIALLOW_COPY_AND_ASSIGN(LongString)
 };
 
 class SSO : public Expr {
  public:
-  static SSO* New( NodeFactory* , SSO* , const BytecodeInfo& );
- public:
-  const zone::String* value_label() const { return value_label_; }
-  const zone::String& value() const { return *value_label_; }
+  inline static SSO* New( Graph* , SSO* , IRInfo* );
+  const zone::String* value() const { return value_; }
+
  private:
-  const zone::String* value_label_;
+  const zone::String* value_;
 
   LAVA_DISALLOW_COPY_AND_ASSIGN(SSO)
 };
 
 class Null : public Expr {
  public:
-  static Null* New( NodeFactory* , const BytecodeInfo& );
- public:
-  // We use NULL/0 to represent Null's value label and we cannot
-  // use this address anywhere else
-  const void* value_label() const { return (const void*)(0); }
+  inline static Null* New( Graph* , IRInfo* );
 
  private:
   LAVA_DSIALLOW_COPY_AND_ASSIGN(Null)
@@ -352,7 +371,7 @@ class Null : public Expr {
 
 class IRList : public Expr {
  public:
-  static IRList* New( NodeFactory* , const BytecodeInfo& );
+  inline static IRList* New( Graph* , IRInfo* );
 
  private:
   LAVA_DISALLOW_COPY_AND_ASSIGN(IRList)
@@ -360,7 +379,7 @@ class IRList : public Expr {
 
 class IRObject : public Expr {
  public:
-  static IRObject* New( NodeFactory* , const BytecodeInfo& );
+  inline static IRObject* New( Graph* , IRInfo* );
 
  private:
   LAVA_DISALLOW_COPY_AND_ASSIGN(IRObject)
@@ -368,23 +387,16 @@ class IRObject : public Expr {
 
 class IRClosure : public Expr {
  public:
-  static IRClosure* New( NodeFactory* , const BytecodeInfo& );
+  inline static IRClosure* New( Graph* , IRInfo* );
  private:
   LAVA_DISALLOW_COPY_AND_ASSIGN(IRClosure)
 };
 
 class IRExtension : public Expr {
  public:
-  static IRExtension* New( NodeFactory* , const BytecodeInfo& );
+  inline static IRExtension* New( Graph* , IRInfo* );
  private:
   LAVA_DISALLOW_COPY_AND_ASSIGN(IRExtension)
-};
-
-class Box : public Expr {
- public:
-  static Box* New( NodeFactory* , const BytecodeInfo& );
- private:
-  LAVA_DISALLOW_COPY_AND_ASSIGN(Box)
 };
 
 // ==============================================================
@@ -408,15 +420,15 @@ class Binary : public Expr {
   };
 
   // Create a binary node
-  static Binary* New( NodeFactory* zone , Node* lhs , Node* rhs , Operator op ,
-                                                           const BytecodeInfo& bc );
-
-  static Operator BytecodeToOperator( interpreter::Bytecode );
+  inline static Binary* New( Graph* , Node* , Node* , Operator , IRInfo* );
+  inline static Operator BytecodeToOperator( interpreter::Bytecode );
 
  public:
   Node*   lhs() const { return lhs_; }
   Node*   rhs() const { return rhs_; }
   Operator op() const { return op_;  }
+
+  inline const char* op_name() const;
 
  private:
   Node* lhs_;
@@ -433,15 +445,14 @@ class Unary : public Expr {
     NOT
   };
 
+  inline static Unary* New( Graph* , Node* , Operator , IRInfo* );
+
   static Operator BytecodeToOperator( interpreter::Bytecode bc ) {
     if(bc == interpreter::BC_NEGATE)
       return MINUS;
     else
       return NOT;
   }
-
-  static Unary* New( NodeFactory* zone , Node* operand , Operator op ,
-                                                  const BytecodeInfo& bc );
 
  public:
   Node* operand() const { return operand_; }
@@ -456,20 +467,17 @@ class Unary : public Expr {
 
 class And : public Expr {
  public:
-  static And* New( NodeFactory* zone , Expr* lhs , Expr* rhs ,
-                                                   const BytecodeInfo& bc );
+  inline static And* New( Graph* , Expr* , Expr* , IRInfo* );
 };
 
 class Or  : public Expr {
  public:
-  static Or* New ( NodeFacotry* zone , Expr* lhs , Expr* rhs ,
-                                                   const BytecodeInfo& bc );
+  inline static Or* New ( Graph* , Expr* , Expr* , IRInfo* );
 };
 
 class Ternary: public Expr {
  public:
-  static Ternary* New( NodeFacotry* zone , Expr* cond , Expr* lhs , Expr* rhs,
-                                                                    const BytecodeInfo& );
+  inline static Ternary* New( Graph* , Expr* , Expr* , Expr* , IRInfo* );
 };
 
 // ==============================================================
@@ -477,11 +485,20 @@ class Ternary: public Expr {
 // ==============================================================
 class ControlFlow : public Node {
  public: // backward edge and forward edge
-  const zone::Vector<ir::Node*>& backward_edge() const { return backward_edge_; }
-  zone::Vector<ir::Node*>& backedge_edge() { return backward_edge_; }
-  void AddBackwardEdge( ir::ControlFlow* edge ) { backward_edge_.Add(zone(),edge); }
+  const zone::Vector<Node*>& backward_edge() const {
+    return backward_edge_;
+  }
 
-  // Bounded expression/statement -------------------------------------------------------
+  zone::Vector<Node*>& backedge_edge() {
+    return backward_edge_;
+  }
+
+  void AddBackwardEdge( ControlFlow* edge ) {
+    backward_edge_.Add(zone(),edge);
+  }
+
+  // ------------------------------------------------------------------------------------
+  // Bounded expression/statement
   // Due to the natural way of sea-of-nodes, we may lose some statement though
   // they have side effect.
   // Example as this:
@@ -498,10 +515,16 @@ class ControlFlow : public Node {
   // flow list only when we find out this node is not added into any expression basically
   // its use chain is 0.
   // ------------------------------------------------------------------------------------
-  const zone::Vector<ir::Expr*> effect_expr() const { return effect_expr_; }
+  const zone::Vector<Expr*>& effect_expr() const {
+    return effect_expr_;
+  }
+
+  zone::Vector<Expr*>& effect_expr() {
+    return effect_expr_;
+  }
 
  private:
-  zone::Vector<ir::ControlFlow*> backward_edge_;
+  zone::Vector<ControlFlow*> backward_edge_;
   zone::Vector<ir:Expr* > effect_expr_;
 
   LAVA_DISALLOW_COPY_AND_ASSIGN(ControlFlow)
@@ -510,9 +533,9 @@ class ControlFlow : public Node {
 class LoopExit : public ControlFlow {
  public:
   // add a *jump/continue* node as its output
-  void AddContinueEdge( ir::Jump* );
+  void AddContinueEdge( Jump* );
  private:
-  zone::Vector<ir::Jump*> continue_;
+  zone::Vector<Jump*> continue_;
   LAVA_DISALLOW_COPY_AND_ASSIGN(LoopExit)
 };
 
@@ -544,7 +567,56 @@ class Jump : public ControlFlow {
   LAVA_DISALLOW_COPY_AND_ASSIGN(Jump)
 };
 
+class Phi : public Node {
+ public:
+  void set_lhs( Expr* lhs ) { lhs_ = lhs; }
+  void set_rhs( Expr* rhs ) { rhs_ = rhs; }
 
+  Expr* lhs () const { return lhs_; }
+  Expr* rhs () const { return rhs_; }
+
+ private:
+  Expr* lhs_;
+  Expr* rhs_;
+
+  LAVA_DISALLOW_COPY_AND_ASSIGN(Phi)
+};
+
+class Graph {
+ public:
+  Graph();
+ public: // getter and setter
+  void set_start( Start* start ) { start_ = start; }
+  void set_end  ( End*   end   ) { end_   = end;   }
+
+  Start* start() const { return start_; }
+  End*   end  () const { return end_;   }
+  zone::Zone* zone()   { return &zone_; }
+
+  const zone::Vector<IRInfo*>& ir_info() const { return ir_info_; }
+
+  // add ir info into the ir_info array held by the Graph object
+  void AddIRInfo( std::uint32_t index , IRInfo* info ) {
+    if((index+1) > ir_info_.size()) {
+      ir_info_.Resize(zone(),index+1);
+    }
+    ir_info_[index] = info;
+  }
+
+  std::uint32_t id() const { return id_; }
+  std::uint32_t AssignID() { return id_++; }
+
+ private:
+  zone::Zone                zone_;
+  zone::Vector<IRInfo*>     ir_info_;
+  Start*                    start_;
+  End*                      end_;
+  Handle<Closure>           closure_;
+  std::uint32_t             id_;
+
+  friend class GraphBuilder;
+  LAVA_DISALLOW_COPY_AND_ASSIGN(Graph)
+};
 
 } // namespace ir
 } // namespace cbase

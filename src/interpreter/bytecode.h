@@ -83,7 +83,7 @@ enum BytecodeType {
  */
 class BytecodeUsage {
  public:
-  static const std::size_t kMaxBytecodeArgumentSize = 4;
+  static const int kMaxBytecodeArgumentSize = 4;
 
   enum {
     INPUT ,    // input register

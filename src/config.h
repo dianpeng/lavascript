@@ -24,6 +24,7 @@ static const std::size_t kMaxPrototypeCount        = 65535;
 namespace interpreter {
 
 static const std::size_t kMaxCodeLength            = 65536;
+static const std::size_t kRegisterSize             = 256;
 static const std::size_t kMaxFunctionArgumentCount = 256;
 static const std::size_t kMaxLiteralSize           = 256;
 static const std::size_t kMaxUpValueSize           = 256;

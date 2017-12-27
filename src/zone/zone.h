@@ -40,6 +40,12 @@ class Zone {
   template< typename T >
   T* Malloc() { return static_cast<T*>(Malloc(sizeof(T))); }
 
+  template< typename T , typename ... ARGS >
+  T* New( ARGS ...args ) {
+    void* mem = Malloc(sizeof(T));
+    return ConstructFromBuffer<T>(mem,args...);
+  }
+
  private:
   BumpAllocator allocator_;   // internal bump allocator
 

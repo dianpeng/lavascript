@@ -156,7 +156,12 @@ class BytecodeUsage {
 };
 
 
-/** NOTES: Order matters **/
+/**
+ * NOTES: Order matters
+ * Format of the Bytecode definition
+ * (type,name,human readable name,ARG1,ARG2,ARG3,ARG4,whether support feedback)
+ *
+ */
 #define LAVASCRIPT_BYTECODE_LIST(__) \
   /* arithmetic bytecode , if cannot hold , then spill */ \
   __(D,ADDRV , addrv , OUTPUT , RREF , INPUT , UNUSED , true ) \

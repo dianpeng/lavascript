@@ -32,7 +32,9 @@ template< typename T > class Iterator {
  public:
   bool HasNext() const { return iter_ != end_; }
   bool Next() const;
+  bool Advance( std::size_t times ) const;
 
+  T& value() { return iter_->value; }
   const T& value() const { return iter_->value; }
   void set_value( const T& val ) { iter_->value = val; }
 
@@ -52,8 +54,15 @@ template< typename T > class Iterator {
 };
 
 template< typename T > bool Iterator<T>::Next() const {
+  lava_debug(NORMAL,lava_verify(HasNext()););
   iter_ = iter_->next;
   return HasNext();
+}
+
+template< typename T > bool Iterator<T>::Advance( std::size_t times ) const {
+  for( ; times > 0 ; --times )
+    if(!Next()) return false;
+  return true;
 }
 
 template< typename C > NodeBase<C>::NodeBase(): prev(NULL), next(NULL) {
@@ -124,6 +133,18 @@ template< typename T > class List : ZoneObject {
   void Clear() { size_ = 0; end_.Reset(); }
 
  public:
+  // resize the linked list to hold certain size/amount of nodes
+  void Resize( Zone* , std::size_t );
+
+  // index a certain position's node inside of linked list , linear
+  // complexity
+  const T& Index( std::size_t ) const;
+
+  // index a certain position's node inside of linked list , linear
+  // complexity
+  T& Index( std::size_t );
+
+ public:
   std::size_t size() const { return size_; }
   bool empty() const { return size() == 0; }
 
@@ -190,6 +211,33 @@ void List<T>::CopyFrom( Zone* zone , List<T>* dest , const List<T>& that ) {
       dest->PushBack(zone,itr.value());
     }
   }
+}
+
+template< typename T >
+void List<T>::Resize( Zone* zone , std::size_t size ) {
+  if( size_ > size ) {
+    for( std::size_t i = 0 ; i < (size_ - size); ++i )
+      PopBack();
+  } else if(size_ < size) {
+    for( std::size_t i = 0 ; i < (size - size_); ++i )
+      PushBack(zone,T());
+  }
+}
+
+template< typename T >
+T& List<T>::Index( std::size_t index ) {
+  lava_debug(NORMAL,lava_verify(index < size_););
+  Iterator itr(GetIterator());
+  itr.Advance(index);
+  return itr.value();
+}
+
+template< typename T >
+const T& List<T>::Index( std::size_t index ) const {
+  lava_debug(NORMAL,lava_verify(index < size_););
+  Iterator itr(GetIterator());
+  itr.Advance(index);
+  return itr.value();
 }
 
 } // namespace zone

@@ -236,11 +236,11 @@ class BytecodeUsage {
   __(B,NEWOBJ  ,newobj  ,OUTPUT,IMM8  , UNUSED , UNUSED,false) \
   __(D,ADDOBJ  ,addobj , OUTPUT,INPUT , INPUT  , UNUSED,false) \
   __(B,LOADCLS ,loadcls, OUTPUT,CLSREF, UNUSED , UNUSED,false) \
-  __(G,INITCLS ,initcls, OUTPUT,UNUSED, UNUSED , UNUSED,false) \
-  /* property/upvalue/global value */              \
-  __(D,PROPGET,propget,OUTPUT, SREF   , UNUSED , UNUSED,true ) \
+  __(G,INITCLS ,initcls, CLSREF,UNUSED, UNUSED , UNUSED,false) \
+  /* property/upvalue/global value */                          \
+  __(D,PROPGET,propget,OUTPUT, INPUT  , SREF   , UNUSED,true ) \
   __(D,PROPSET,propset,INPUT , SREF   , INPUT  , UNUSED,true ) \
-  __(D,PROPGETSSO,propgetsso,OUTPUT,SSOREF,UNUSED,UNUSED,true) \
+  __(D,PROPGETSSO,propgetsso,OUTPUT,INPUT,SSOREF,UNUSED,true ) \
   __(D,PROPSETSSO,propsetsso,INPUT ,SSOREF,INPUT ,UNUSED,true) \
   __(D,IDXGET ,idxget,OUTPUT,INPUT    , INPUT  , UNUSED ,true) \
   __(D,IDXSET ,idxset,INPUT , INPUT   , INPUT  , UNUSED, true) \

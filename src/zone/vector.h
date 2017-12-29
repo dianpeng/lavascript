@@ -104,6 +104,15 @@ template< typename T > void Vector<T>::Resize( Zone* zone , std::size_t length )
   if(length > capacity_) {
     Reserve(zone,length);
   }
+
+  // initialize the certain part to be T()
+  {
+    std::size_t diff = (size_ > length) ? (size_ - length) : 0;
+    for( std::size_t i = 0 ; i < diff ; ++i ) {
+      ConstructFromBuffer<T>(ptr_+size_+i);
+    }
+  }
+
   size_ = length;
 }
 

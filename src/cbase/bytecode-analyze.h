@@ -109,6 +109,7 @@ class BytecodeAnalyze {
   BasicBlockVariable* current_bb() { return basic_block_stack_.back(); }
 
  private:
+  // which prototype's bytecode needs to be analyzed
   Handle<Prototype> proto_;
 
   // local cache of max_local_var_size field inside of Prototype to avoid

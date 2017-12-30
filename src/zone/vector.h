@@ -9,6 +9,42 @@
 namespace lavascript {
 namespace zone {
 
+template< typename T > class Vector;
+
+namespace detail {
+
+// Iterator for vector class
+template< typename T , typename Traits >
+class IteratorBase {
+ public:
+  bool HasNext() const { return Traits::HasNext(vec_,cursor_); }
+  bool Move   ()       { return Traits::Move(vec_,&cursor_);   }
+  inline const T& value() const;
+  inline void set_value( const T& value );
+ private:
+  IteratorBase( Vector<T>* vec ): vec_(vec), cursor_(Traits::InitCursor(vec)) {}
+
+  Vector<T>* vec_;
+  mutable std::int64_t cursor_;
+  friend class Vector<T>;
+};
+
+template< typename T > struct VectorForwardTraits {
+ public:
+  inline static std::int64_t InitCursor( Vector<T>* vec );
+  inline static bool HasNext( Vector<T>* vec , std::int64_t cursor );
+  inline static bool Move   ( Vector<T>* vec , std::int64_t* cursor );
+};
+
+template< typename T > struct VectorBackwardTraits {
+ public:
+  inline static std::int64_t InitCursor( Vector<T>* vec );
+  inline static bool HasNext( Vector<T>* vec , std::int64_t cursor );
+  inline static bool Move   ( Vector<T>* vec , std::int64_t* cursor );
+};
+
+} // namespace detail
+
 template< typename T >
 class Vector : ZoneObject {
   static_assert( std::is_pod<T>::value || std::is_base_of<ZoneObject,T>::value );
@@ -23,7 +59,6 @@ class Vector : ZoneObject {
   { return ::new (zone->Malloc<Zone>()) Vector(zone,length); }
   static Vector* New( Zone* zone , const Vector& that )
   { return ::new (zone->Malloc<Zone>()) Vector(zone,that); }
-
  public:
   size_t size() const { return size_; }
   size_t capacity() const { return capacity_; }
@@ -49,6 +84,18 @@ class Vector : ZoneObject {
   T& operator [] ( int index ) { return Index(index); }
   const T& operator [] ( int index ) const { return Index(index); }
   void Swap( Vector* );
+
+ public:
+  typedef detail::IteratorBase<T,detail::VectorForwardTraits<T>> ForwardIterator;
+  typedef const ForwardIterator ConstForwardIterator;
+
+  typedef detail::IteratorBase<T,detail::VectorBackwardTraits<T>> BackwardIterator;
+  typedef const BackwardIterator ConstBackwardIterator;
+
+  ForwardIterator  GetForwardIterator()  { return ForwardIterator(this); }
+  BackwardIterator GetBackwardIterator() { return BackwardIterator(this); }
+  ConstForwardIterator  GetForwardIterator()  const { return ConstForwardIterator(this); }
+  ConstBackwardIterator GetBackwardIterator() const { return ConstBackwardIterator(this); }
 
  private:
   T* ptr_;                    // Pointer to the start of the memory
@@ -99,6 +146,52 @@ template< typename T > void Vector<T>::Swap( Vector* that ) {
   std::swap(size_,that->size_);
   std::swap(capacity_,that->capacity_);
 }
+
+namespace detail {
+
+template< typename T >
+inline std::int64_t VectorForwardTraits<T>::InitCursor( Vector<T>* vec ) {
+  (void)vec;
+  return 0;
+}
+
+template< typename T >
+inline bool VectorForwardTraits<T>::HasNext( Vector<T>* vec , std::int64_t cursor ) {
+  return cursor < vec->size();
+}
+
+template< typename T >
+inline bool VectorForwardTraits<T>::Move( Vector<T>* vec , std::int64_t* cursor ) {
+  *cursor = *cursor+1;
+  return HasNext(vec,*cursor);
+}
+
+template< typename T >
+inline std::int64_t VectorBackwardTraits<T>::InitCursor( Vector<T>* vec ) {
+  std::int64_t sz = static_cast<std::int64_t>(vec->size());
+  return (sz - 1);
+}
+
+template< typename T >
+inline bool VectorBackwardTraits<T>::HasNext( Vector<T>* vec , std::int64_t cursor ) {
+  return cursor >= 0;
+}
+
+template< typename T >
+inline bool VectorBackwardTraits<T>::Move( Vector<T>* vec , std::int64_t* cursor ) {
+  *cursor = *cursor - 1;
+  return HasNext(vec,*cursor);
+}
+
+template< typename T , typename Traits >
+inline const T& IteratorBase<T,Traits>::value() const { return vec_->Index(cursor_); }
+
+template< typename T , typename Traits >
+inline void IteratorBase<T,Traits>::set_value( const T& value ) {
+  vec_->Index(cursor_) = value;
+}
+
+} // namespace detail
 
 } // namespace zone
 } // namespace lavascript

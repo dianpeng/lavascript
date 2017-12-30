@@ -25,9 +25,9 @@ TEST(List,List) {
     ASSERT_EQ(2,l.Last() );
 
     {
-      List<int>::Iterator itr(l.GetIterator());
+      List<int>::ForwardIterator itr(l.GetForwardIterator());
       int i = 1;
-      for( ; itr.HasNext(); itr.Next() ) {
+      for( ; itr.HasNext(); itr.Move() ) {
         ASSERT_EQ(i,itr.value());
         ++i;
       }
@@ -49,7 +49,7 @@ TEST(List,List) {
     ASSERT_EQ(0,l.First());
     ASSERT_EQ(3,l.Last ());
 
-    List<int>::Iterator itr(l.GetIterator());
+    List<int>::ForwardIterator itr(l.GetForwardIterator());
     ASSERT_TRUE(itr.HasNext());
     itr = l.Remove(itr);
 
@@ -60,16 +60,16 @@ TEST(List,List) {
     ASSERT_EQ(3,l.Last());
 
     {
-      List<int>::Iterator itr(l.GetIterator());
+      List<int>::ForwardIterator itr(l.GetForwardIterator());
       int i = 1;
-      for( ; itr.HasNext(); itr.Next() ) {
+      for( ; itr.HasNext(); itr.Move() ) {
         ASSERT_EQ(i,itr.value());
         ++i;
       }
       ASSERT_EQ(4,i);
     }
 
-    ASSERT_TRUE(itr.Next()); // move to 2
+    ASSERT_TRUE(itr.Move()); // move to 2
     itr= l.Remove(itr);      // remove 2
     ASSERT_EQ(3,itr.value());
     ASSERT_EQ(1,l.First());
@@ -77,25 +77,25 @@ TEST(List,List) {
     ASSERT_EQ(2,l.size ());
 
     {
-      List<int>::Iterator itr(l.GetIterator());
+      List<int>::ForwardIterator itr(l.GetForwardIterator());
       ASSERT_TRUE(itr.HasNext());
       ASSERT_EQ(1,itr.value());
       itr = l.Insert(&zone,itr,0);
       ASSERT_EQ(0,itr.value());
-      ASSERT_EQ(itr,l.GetIterator());
+      ASSERT_EQ(itr,l.GetForwardIterator());
 
       // move iterator to the last element
-      itr = l.GetIterator();
-      ASSERT_TRUE(itr.Next());  // 0 --> 1
-      ASSERT_TRUE(itr.Next());  // 1 --> 3
+      itr = l.GetForwardIterator();
+      ASSERT_TRUE(itr.Move());  // 0 --> 1
+      ASSERT_TRUE(itr.Move());  // 1 --> 3
       itr = l.Insert(&zone,itr,2);
       ASSERT_EQ(2,itr.value());
     }
 
     {
-      List<int>::Iterator itr(l.GetIterator());
+      List<int>::ForwardIterator itr(l.GetForwardIterator());
       int i = 0;
-      for( ; itr.HasNext() ; itr.Next() ) {
+      for( ; itr.HasNext() ; itr.Move() ) {
         ASSERT_EQ(i,itr.value());
         ++i;
       }
@@ -108,7 +108,7 @@ TEST(List,List) {
   {
     List<int> l;
     ASSERT_TRUE(l.empty());
-    List<int>::Iterator itr(l.GetIterator());
+    List<int>::ForwardIterator itr(l.GetForwardIterator());
     l.Insert(&zone,itr,0);
     l.Insert(&zone,itr,1);
     l.Insert(&zone,itr,2);
@@ -116,7 +116,7 @@ TEST(List,List) {
 
     {
       int i = 0;
-      for(itr = l.GetIterator(); itr.HasNext() ; itr.Next()) {
+      for(itr = l.GetForwardIterator(); itr.HasNext() ; itr.Move()) {
         ASSERT_EQ(i,itr.value());
         ++i;
       }
@@ -125,7 +125,7 @@ TEST(List,List) {
     {
       ASSERT_EQ(4,l.size());
       int i = 0;
-      for( itr = l.GetIterator(); itr.HasNext() ; ++i ) {
+      for( itr = l.GetForwardIterator(); itr.HasNext() ; ++i ) {
         itr = l.Remove(itr);
       }
       ASSERT_EQ(0,l.size());
@@ -142,7 +142,7 @@ TEST(List,List) {
 
     {
       int i = 0 ;
-      for( List<int>::ConstIterator itr = l.GetIterator() ; itr.HasNext() ; itr.Next() ) {
+      for( List<int>::ConstForwardIterator itr = l.GetForwardIterator() ; itr.HasNext() ; itr.Move() ) {
         ASSERT_EQ(i,itr.value());
         ++i;
       }

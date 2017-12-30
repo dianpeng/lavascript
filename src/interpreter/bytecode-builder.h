@@ -192,7 +192,12 @@ class BytecodeBuilder {
   inline Label cont   ( std::uint8_t reg , const SourceCodeInfo& si );
   inline Label fstart ( std::uint8_t reg , const SourceCodeInfo& si , std::uint8_t a1 );
   inline Label festart( std::uint8_t reg , const SourceCodeInfo& si , std::uint8_t a1 );
-  inline Label fevrstart ( std::uint8_t reg , const SourceCodeInfo& si );
+
+  // NOTES:
+  // hack around the inline issue, this type of code needs to be generated to return
+  // a *label* however the above macro generate it with normal type X instruction code
+  // stub which prevents us from override it. So we add an underscore to work around it.
+  inline Label fevrstart_( std::uint8_t reg , const SourceCodeInfo& si );
 
  public:
   // This function will create a Closure object from the BytecodeBuilder
@@ -497,8 +502,8 @@ inline BytecodeBuilder::Label BytecodeBuilder::festart( std::uint8_t reg,
   return EmitAt<BC_FESTART,TYPE_B,true,false,false>(reg,sci,a1);
 }
 
-inline BytecodeBuilder::Label BytecodeBuilder::fevrstart ( std::uint8_t reg ,
-                                                           const SourceCodeInfo& si ) {
+inline BytecodeBuilder::Label BytecodeBuilder::fevrstart_( std::uint8_t reg ,
+                                                           const SourceCodeInfo& sci ) {
   return EmitAt<BC_FEVRSTART,TYPE_G,false,false,false>(reg,sci);
 }
 

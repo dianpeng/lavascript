@@ -1,10 +1,11 @@
 #ifndef BYTECODE_ANALYZE_H_
 #define BYTECODE_ANALYZE_H_
 #include "src/config.h"
-#include "src/object.h"
+#include "src/objects.h"
 #include "src/interpreter/bytecode.h"
 #include "src/interpreter/bytecode-iterator.h"
 
+#include <map>
 #include <bitset>
 
 namespace lavascript {
@@ -43,8 +44,8 @@ class BytecodeAnalyze {
 
     // Whether a register slot is alive at this BB , excludes any nested BB inside of this BB
     bool IsAlive( std::uint8_t ) const;
+    void Add( std::uint8_t reg ) { variable[reg] = true; }
   };
-
 
   // LoopHeaderInfo captures the loop's internal body information and its nested
   // information
@@ -65,11 +66,12 @@ class BytecodeAnalyze {
   // Unordered map may not give us too much benifits since we should not have
   // many basic block entry inside of normal function. the std::unordered_map
   // tends to waste lots of memory for its typical underlying implementation
-  typedef std::map<const std::uint32_t*,LoopHeaderInfo> LoopHeaderInfoMap;
+  typedef std::map<const std::uint32_t*,LoopHeaderInfo>     LoopHeaderInfoMap;
   typedef std::map<const std::uint32_t*,BasicBlockVariable> BasicBlockVariableMap;
 
  public:
-  BytecodeAnalyze( const Handle<Prototype>& proto );
+  BytecodeAnalyze( const Handle<Prototype>& );
+  BytecodeAnalyze( BytecodeAnalyze&& );
 
   // interfaces
   inline const BasicBlockVariable* LookUpBasicBlock( const std::uint32_t* pc );
@@ -82,14 +84,15 @@ class BytecodeAnalyze {
   // function due to the fact BuildIf will take care of it
   // Notes: other jump will *start* a new basic block , for BuildBytecode it
   // will return true for these types of bytecode.
-  bool BuildBytecode  ( interpreter::BytecodeIterator* );
-  void BuildBasicBlock( interpreter::BytecodeIterator* );
-  bool BuildIfBlock   ( Interpreter::BytecodeIterator* , const std::uint32_t* ,
-                                                         std::uint32_t** );
-  void BuildIf        ( interpreter::BytecodeIterator* );
-  void BuildLogic     ( interpreter::BytecodeIterator* );
-  void BuildTernary   ( interpreter::BytecodeIterator* );
-  void BuildLoop      ( interpreter::BytecodeIterator* );
+  bool BuildBytecode    ( interpreter::BytecodeIterator* );
+  void BuildBasicBlock  ( interpreter::BytecodeIterator* );
+  bool BuildIfBlock     ( interpreter::BytecodeIterator* , const std::uint32_t* ,
+                                                           const std::uint32_t** );
+  void BuildIf          ( interpreter::BytecodeIterator* );
+  void BuildLogic       ( interpreter::BytecodeIterator* );
+  void BuildTernary     ( interpreter::BytecodeIterator* );
+  void BuildLoop        ( interpreter::BytecodeIterator* );
+  void BuildForeverLoop ( interpreter::BytecodeIterator* );
 
  private:
   bool IsLocalVar   ( std::uint8_t reg ) const {
@@ -104,9 +107,10 @@ class BytecodeAnalyze {
   inline LoopHeaderInfo* NewLoopHeaderInfo( const BasicBlockVariable* bb ,
                                             const std::uint32_t* start );
 
-  LoopHeaderInfo* current_loop() { return loop_stack_.empty() ? NULL : loop_satck_.back(); }
+  LoopHeaderInfo* current_loop()  { return loop_stack_.empty() ? NULL : loop_stack_.back(); }
 
-  BasicBlockVariable* current_bb() { return basic_block_stack_.back(); }
+  BasicBlockVariable* current_bb(){ return basic_block_stack_.back(); }
+  const BasicBlockVariable* current_bb() const { return basic_block_stack_.back(); }
 
  private:
   // which prototype's bytecode needs to be analyzed
@@ -137,7 +141,8 @@ class BytecodeAnalyze {
   LAVA_DISALLOW_COPY_AND_ASSIGN(BytecodeAnalyze);
 };
 
-inline BasicBlockVariable* BytecodeAnalyze::NewBasicBlockVar( const std::uint32_t* start ) {
+inline BytecodeAnalyze::BasicBlockVariable*
+BytecodeAnalyze::NewBasicBlockVar( const std::uint32_t* start ) {
   std::pair<BasicBlockVariableMap::iterator,bool>
     ret = basic_block_variable_.insert(std::make_pair(start,BasicBlockVariable()));
   lava_debug(NORMAL,lava_verify(ret.second););
@@ -147,10 +152,11 @@ inline BasicBlockVariable* BytecodeAnalyze::NewBasicBlockVar( const std::uint32_
   return node;
 }
 
-inline LoopHeaderInfo* BytecodeAnalyze::NewLoopHeaderInfo( const BasicBlockVariable* bb ,
-                                                           const std::uint32_t* start ) {
+inline BytecodeAnalyze::LoopHeaderInfo*
+BytecodeAnalyze::NewLoopHeaderInfo( const BasicBlockVariable* bb ,
+                                    const std::uint32_t* start ) {
   std::pair<LoopHeaderInfoMap::iterator,bool>
-    ret = loop_header_info_.insert(std::make_pair(start,LoopHeaderInfoMap()));
+    ret = loop_header_info_.insert(std::make_pair(start,LoopHeaderInfo()));
   lava_debug(NORMAL,lava_verify(ret.second););
   LoopHeaderInfo* node = &(ret.first->second);
   node->prev = loop_stack_.empty() ? NULL : loop_stack_.back();

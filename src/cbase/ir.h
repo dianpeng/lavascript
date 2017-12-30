@@ -12,7 +12,7 @@
 
 #include <vector>
 
-namespace lavasript {
+namespace lavascript {
 namespace cbase {
 namespace ir {
 using namespace ::lavascript;
@@ -46,7 +46,7 @@ class IRInfo {
 /**
  * Used to record each IR's corresponding prototype information
  */
-struct PrototypeInfo {
+struct PrototypeInfo : zone::ZoneObject {
   std::uint32_t base;
   Handle<Closure> closure;
   PrototypeInfo( std::uint32_t b , const Handle<Closure>& cls ):
@@ -72,13 +72,10 @@ struct PrototypeInfo {
   /* closure */                                 \
   __(LoadCls,LOAD_CLS,"load_cls")               \
   /* argument node */                           \
-  __(ARG,Arg,"arg")                             \
+  __(Arg,ARG,"arg")                             \
   /* ariethmetic/comparison node */             \
   __(Binary,BINARY,"binary")                    \
   __(Unary,UNARY ,"unary" )                     \
-  /* logic node */                              \
-  __(And,AND,"and")                             \
-  __(Or ,OR , "or")                             \
   /* ternary node */                            \
   __(Ternary,TERNARY,"ternary")                 \
   /* upvalue */                                 \
@@ -99,18 +96,19 @@ struct PrototypeInfo {
   /* call     */                                \
   __(Call,CALL   ,"call"   )                    \
   /* phi */                                     \
-  __(PHI,Phi,"phi")
+  __(Phi,PHI,"phi")
 
 #define CBASE_IR_CONTROL_FLOW(__)               \
   __(ControlFlow,CONTROL_FLOW,"control_flow")   \
   __(Start,START,"start")                       \
   __(LoopHeader,LOOP_HEADER,"loop_header")      \
-  __(Loop,Loop,LOOP ,"loop" )                   \
+  __(Loop,LOOP ,"loop" )                        \
   __(LoopExit,LOOP_EXIT,"loop_exit")            \
   __(If,IF,"if")                                \
   __(IfTrue,IF_TRUE,"if_true")                  \
   __(IfFalse,IF_FALSE,"if_false")               \
   __(Jump,JUMP,"jump")                          \
+  __(Return,RETURN,"return")                    \
   __(Region,REGION,"region")                    \
   __(End,END  , "end" )
 
@@ -118,6 +116,7 @@ struct PrototypeInfo {
   __(InitCls,INIT_CLS,"init_cls")               \
   __(Projection,PROJECTION,"projection")        \
 
+/*
 #define CBASE_IR_OSR(__)                        \
   __(OSREntry,OSR_ENTRY,"osr_entry")            \
   __(OSRExit ,OSR_EXIT ,"osr_exit" )            \
@@ -127,13 +126,12 @@ struct PrototypeInfo {
   __(OSRStoreS,OSR_STORES,"osr_stores")         \
   __(OSRStoreU,OSR_STOREU,"osr_storeu")         \
   __(OSRStoreG,OSR_STOREG,"osr_storeg")
-
+*/
 
 #define CBASE_IR_LIST(__)                       \
   CBASE_IR_EXPRESSION(__)                       \
   CBASE_IR_CONTROL_FLOW(__)                     \
-  CBASE_IR_MISC(__)                             \
-  CBASE_IR_OSR (__)
+  CBASE_IR_MISC(__)
 
 enum IRType {
 #define __(A,B,...) IRTYPE_##B,
@@ -144,17 +142,42 @@ enum IRType {
 #undef __ // __
 };
 
-// Forward class declaration
-#define __(A,...) class A;
-CASE_IR_LIST(__)
-#undef __ // __
-
 const char* IRTypeGetName( IRType );
 
-// Forward declaration of all the IR
+// Forward class declaration
 #define __(A,...) class A;
 CBASE_IR_LIST(__)
 #undef __ // __
+
+// ----------------------------------------------------------------------------
+// Effect
+// Some operation has side effect which is visiable to rest of the
+// program. This types of dependency is not explicit represented by
+// use-def and def-use , so it must be taken care of specifically.
+//
+// For each expression inside of our IR they are not bounded to a certain
+// basic block due to the nature of sea of nodes , but for expression
+// that has a certain side effect we will bind it to a certain basic
+// block where we see the bytecode lies in.
+//
+// This relationship basically define the side effect of certain expression.
+// Due to the natural order of control flow node, so these operations that
+// has side effect will have automatic order.
+typedef zone::List<Expr*> EffectList;
+
+typedef EffectList::Iterator EffectNodeIterator;
+
+// This structure is held by *all* the expression. If the region field is not
+// NULL then it means this expression has side effect and it is bounded at
+// certain control flow region
+struct EffectEdge {
+  ControlFlow* region;
+  EffectNodeIterator iterator;
+  bool IsUsed() const { return region != NULL; }
+
+  EffectEdge( ControlFlow* r , const EffectNodeIterator& itr ): region(r), iterator(itr) {}
+  EffectEdge(): region(NULL), iterator() {}
+};
 
 // Mother of all IR node , most of the important information should be stored via ID
 // as out of line storage
@@ -177,11 +200,11 @@ class Node : public zone::ZoneObject {
 
  public: // type check and cast
 
-#define __(A,B,...) bool Is##A() const { return type() == B; }
+#define __(A,B,...) bool Is##A() const { return type() == IRTYPE_##B; }
   CBASE_IR_LIST(__)
 #undef __ // __
 
-#define __(A,B,..) inline A* As##A(); inline const A* As##A() const;
+#define __(A,B,...) inline A* As##A(); inline const A* As##A() const;
   CBASE_IR_LIST(__)
 #undef __ // __
 
@@ -196,6 +219,7 @@ class Node : public zone::ZoneObject {
   IRType        type_;
   std::uint32_t id_;
   Graph*        graph_;
+
   LAVA_DISALLOW_COPY_AND_ASSIGN(Node)
 };
 
@@ -213,12 +237,17 @@ class Expr : public Node {
   virtual std::uint64_t GVNHash()   { return 0; }
   virtual bool Equal( const Expr* ) { return false; }
 
+ public:
+  bool HasEffect() const { return effect_.IsUsed(); }
+  void set_effect( const EffectEdge& ee ) { effect_ = ee; }
+  const EffectEdge& effect() const { return effect_; }
+
  public: // patching function helps to mutate any def-use and use-def
 
   // Replace all expression that uses *this* expression node with all
   // the input node
   std::size_t Replace( Expr* );
- protected:
+ public:
   /**
    * Def-Use chain and Use-Def chain. We rename these field to
    * make it more easy to understand since I personally don't
@@ -255,7 +284,7 @@ class Expr : public Node {
 
   // This function will add the input node into this node's operand list and
   // it will take care of the input node's ref list as well
-  inline void AddOperand( Expr* node );
+  void AddOperand( Expr* node ) { operand_list()->PushBack(zone(),node); }
 
   // Reference list
   //
@@ -269,18 +298,19 @@ class Expr : public Node {
   // Add the referece into the reference list
   inline void AddRef( Expr* who_uses_me , const OperandIterator& iter );
 
- protected:
-  Expr( Graph* graph , IRType type , std::uint32_t id , IRInfo* info ):
+  Expr( IRType type , std::uint32_t id , Graph* graph , IRInfo* info ):
     Node             (type,id,graph),
     operand_list_    (),
     ref_list_        (),
-    ir_info_         (info)
+    ir_info_         (info),
+    effect_          ()
   {}
 
  private:
   OperandList operand_list_;
   RefList     ref_list_;
   IRInfo*     ir_info_;
+  EffectEdge  effect_;
 };
 
 
@@ -289,12 +319,12 @@ class Arg : public Expr {
   inline static Arg* New( Graph* , std::uint32_t , IRInfo* );
   std::uint32_t index() const { return index_; }
 
- private:
   Arg( Graph* graph , std::uint32_t id , std::uint32_t index , IRInfo* info ):
-    Expr  (ARG,id,graph,info),
+    Expr  (IRTYPE_ARG,id,graph,info),
     index_(index)
   {}
 
+ private:
   std::uint32_t index_;
   LAVA_DISALLOW_COPY_AND_ASSIGN(Arg)
 };
@@ -304,12 +334,12 @@ class Int32 : public Expr {
   inline static Int32* New( Graph* , std::int32_t , IRInfo* );
   std::int32_t value() const { return value_; }
 
- private:
   Int32( Graph* graph , std::uint32_t id , std::int32_t value , IRInfo* info ):
-    Expr  (INT32,id,graph,info),
+    Expr  (IRTYPE_INT32,id,graph,info),
     value_(value)
   {}
 
+ private:
   std::int32_t value_;
   LAVA_DISALLOW_COPY_AND_ASSIGN(Int32)
 };
@@ -319,12 +349,12 @@ class Int64: public Expr {
   inline static Int64* New( Graph* , std::int64_t , IRInfo* );
   std::int64_t value() const { return value_; }
 
- private:
   Int64( Graph* graph , std::uint32_t id , std::int64_t value , IRInfo* info ):
-    Expr  (INT64,id,graph,info),
+    Expr  (IRTYPE_INT64,id,graph,info),
     value_(value)
   {}
 
+ private:
   std::int64_t value_;
   LAVA_DISALLOW_COPY_AND_ASSIGN(Int64)
 };
@@ -334,12 +364,12 @@ class Float64 : public Expr {
   inline static Float64* New( Graph* , double , IRInfo* );
   double value() const { return value_; }
 
- private:
   Float64( Graph* graph , std::uint32_t id , double value , IRInfo* info ):
-    Expr  (FLOAT64,id,graph,info),
+    Expr  (IRTYPE_FLOAT64,id,graph,info),
     value_(value)
   {}
 
+ private:
   double value_;
   LAVA_DISALLOW_COPY_AND_ASSIGN(Float64)
 };
@@ -349,30 +379,30 @@ class Boolean : public Expr {
   inline static Boolean* New( Graph* , bool , IRInfo* );
   bool value() const { return value_; }
 
- private:
   Boolean( Graph* graph , std::uint32_t id , bool value , IRInfo* info ):
-    Expr  (BOOLEAN,id,graph,info),
+    Expr  (IRTYPE_BOOLEAN,id,graph,info),
     value_(value)
   {}
 
+ private:
   bool value_;
   LAVA_DISALLOW_COPY_AND_ASSIGN(Boolean)
 };
 
 class LString : public Expr {
  public:
-  inline static LString* New( Graph* , const LString& , IRInfo* );
+  inline static LString* New( Graph* , const LongString& , IRInfo* );
   const zone::String* value() const { return value_; }
 
- private:
   LString( Graph* graph , std::uint32_t id , const zone::String* value ,
                                              IRInfo* info ):
-    Expr  (LONG_STRING,id,graph,info),
+    Expr  (IRTYPE_LONG_STRING,id,graph,info),
     value_(value)
   {}
 
+ private:
   const zone::String* value_;
-  LAVA_DSIALLOW_COPY_AND_ASSIGN(LString)
+  LAVA_DISALLOW_COPY_AND_ASSIGN(LString)
 };
 
 class SString : public Expr {
@@ -380,27 +410,27 @@ class SString : public Expr {
   inline static SString* New( Graph* , const SSO& , IRInfo* );
   const zone::String* value() const { return value_; }
 
- private:
   SString( Graph* graph , std::uint32_t id , const zone::String* value ,
                                              IRInfo* info ):
-    Expr (SMALL_STRING,id,graph,info),
+    Expr (IRTYPE_SMALL_STRING,id,graph,info),
     value_(value)
   {}
 
+ private:
   const zone::String* value_;
-  LAVA_DISALLOW_COPY_AND_ASSIGN(SSO)
+  LAVA_DISALLOW_COPY_AND_ASSIGN(SString)
 };
 
 class Nil : public Expr {
  public:
   inline static Nil* New( Graph* , IRInfo* );
 
- private:
   Nil( Graph* graph , std::uint32_t id , IRInfo* info ):
-    Expr(NIL,id,graph,info)
+    Expr(IRTYPE_NIL,id,graph,info)
   {}
 
-  LAVA_DSIALLOW_COPY_AND_ASSIGN(Nil)
+ private:
+  LAVA_DISALLOW_COPY_AND_ASSIGN(Nil)
 };
 
 class IRList : public Expr {
@@ -414,14 +444,14 @@ class IRList : public Expr {
     array_.Add(zone(),node);
   }
 
- private:
   IRList( Graph* graph , std::uint32_t id , std::size_t size , IRInfo* info ):
-    Expr  (IRLIST,id,graph,info),
+    Expr  (IRTYPE_LIST,id,graph,info),
     array_()
   {
     array_.Reserve(zone(),size);
   }
 
+ private:
   zone::Vector<Expr*> array_;
   LAVA_DISALLOW_COPY_AND_ASSIGN(IRList)
 };
@@ -430,7 +460,7 @@ class IRObject : public Expr {
  public:
   inline static IRObject* New( Graph* , std::size_t size , IRInfo* );
 
-  struct Pair {
+  struct Pair : zone::ZoneObject {
     Expr* key;
     Expr* val;
     Pair( Expr* k , Expr* v ): key(k), val(v) {}
@@ -444,14 +474,14 @@ class IRObject : public Expr {
     array_.Add(zone(),Pair(key,val));
   }
 
- private:
   IRObject( Graph* graph , std::uint32_t id , std::size_t size , IRInfo* info ):
-    Expr  (IROBJECT,id,graph,info),
+    Expr  (IRTYPE_OBJECT,id,graph,info),
     array_()
   {
     array_.Reserve(zone(),size);
   }
 
+ private:
   zone::Vector<Pair> array_;
   LAVA_DISALLOW_COPY_AND_ASSIGN(IRObject)
 };
@@ -464,12 +494,12 @@ class LoadCls : public Expr {
   static inline LoadCls* New( Graph* , std::uint32_t ref , IRInfo* info );
   std::uint32_t ref() const { return ref_; }
 
- private:
   LoadCls( Graph* graph , std::uint32_t id , std::uint32_t ref , IRInfo* info ):
-    Expr (LOAD_CLS,id,graph,info),
+    Expr (IRTYPE_LOAD_CLS,id,graph,info),
     ref_ (ref)
   {}
 
+ private:
   std::uint32_t ref_;
   LAVA_DISALLOW_COPY_AND_ASSIGN(LoadCls);
 };
@@ -504,17 +534,16 @@ class Binary : public Expr {
   Operator op() const { return op_;  }
   inline const char* op_name() const;
 
- private:
-
   Binary( Graph* graph , std::uint32_t id , Expr* lhs , Expr* rhs , Operator op ,
                                                                     IRInfo* info ):
-    Expr  (BINARY,id,graph,info),
+    Expr  (IRTYPE_BINARY,id,graph,info),
     op_   (op)
   {
     operand_list()->PushBack(zone(),lhs);
     operand_list()->PushBack(zone(),rhs);
   }
 
+ private:
   Operator op_;
   LAVA_DISALLOW_COPY_AND_ASSIGN(Binary)
 };
@@ -523,10 +552,10 @@ class Unary : public Expr {
  public:
   enum Operator { MINUS, NOT };
 
-  inline static Unary* New( Graph* , Node* , Operator , IRInfo* );
+  inline static Unary* New( Graph* , Expr* , Operator , IRInfo* );
 
   static Operator BytecodeToOperator( interpreter::Bytecode bc ) {
-    if(bc == interpreter::interpreter::BC_NEGATE)
+    if(bc == interpreter::BC_NEGATE)
       return MINUS;
     else
       return NOT;
@@ -536,15 +565,15 @@ class Unary : public Expr {
   Node* operand() const { return operand_list()->First(); }
   Operator op  () const { return op_;      }
 
- private:
   Unary( Graph* graph , std::uint32_t id , Expr* opr , Operator op ,
                                                        IRInfo* info ):
-    Expr  (UNARY,id,graph,info),
+    Expr  (IRTYPE_UNARY,id,graph,info),
     op_   (op)
   {
     operand_list()->PushBack(zone(),opr);
   }
 
+ private:
   Operator   op_;
   LAVA_DISALLOW_COPY_AND_ASSIGN(Unary)
 };
@@ -553,17 +582,17 @@ class Ternary: public Expr {
  public:
   inline static Ternary* New( Graph* , Expr* , Expr* , Expr* , IRInfo* );
 
- private:
   Ternary( Graph* graph , std::uint32_t id , Expr* cond , Expr* lhs ,
                                                           Expr* rhs ,
                                                           IRInfo* info ):
-    Expr  (TERNARY,id,graph,info)
+    Expr  (IRTYPE_TERNARY,id,graph,info)
   {
     operand_list()->PushBack(zone(),cond);
     operand_list()->PushBack(zone(),lhs);
     operand_list()->PushBack(zone(),rhs);
   }
 
+ private:
   LAVA_DISALLOW_COPY_AND_ASSIGN(Ternary)
 };
 
@@ -575,13 +604,13 @@ class UGet : public Expr {
   inline static UGet* New( Graph* , std::uint8_t , IRInfo* );
   std::uint8_t index () const { return index_ ; }
 
- private:
   UGet( Graph* graph , std::uint32_t id , std::uint8_t imm ,
                                           IRInfo* info ):
-    Expr   (UGET,id,graph,info),
+    Expr   (IRTYPE_UGET,id,graph,info),
     index_ (imm)
   {}
 
+ private:
   std::uint8_t index_ ;
   LAVA_DISALLOW_COPY_AND_ASSIGN(UGet)
 };
@@ -592,167 +621,170 @@ class USet : public Expr {
   Expr* operand() const { return operand_list()->First(); }
   std::uint8_t index() const { return index_; }
 
- private:
   USet( Graph* graph , std::uint32_t id , std::uint8_t index , Expr* opr ,
                                                                IRInfo* info ):
-    Expr  (USET,id,graph,info),
+    Expr  (IRTYPE_USET,id,graph,info),
     index_(index)
   {
     operand_list()->PushBack(zone(),opr);
   }
 
+ private:
   std::uint8_t index_;
   LAVA_DISALLOW_COPY_AND_ASSIGN(USet)
 };
 
 // -------------------------------------------------------------------------
-// property set/get
+// property set/get (side effect)
 // -------------------------------------------------------------------------
 class PGet : public Expr {
  public:
-  inline static PGet* New( Graph* , Expr* , Expr* , IRInfo* );
+  inline static PGet* New( Graph* , Expr* , Expr* , IRInfo* , ControlFlow* );
   Expr* object() const { return operand_list()->First(); }
   Expr* key   () const { return operand_list()->Last (); }
 
- private:
   PGet( Graph* graph , std::uint32_t id , Expr* object , Expr* index ,
                                                          IRInfo* info ):
-    Expr  (PGET,id,graph,info)
+    Expr  (IRTYPE_PGET,id,graph,info)
   {
     operand_list()->PushBack(zone(),object);
     operand_list()->PushBack(zone(),index );
   }
 
+ private:
   LAVA_DISALLOW_COPY_AND_ASSIGN(PGet)
 };
 
 class PSet : public Expr {
  public:
-  inline static PSet* New( Graph* , Expr* , Expr* , Expr* , IRInfo* );
+  inline static PSet* New( Graph* , Expr* , Expr* , Expr* , IRInfo* ,
+                                                            ControlFlow* );
   Expr* object() const { return operand_list()->First(); }
   Expr* key   () const { return operand_list()->Index(1);}
   Expr* value () const { return operand_list()->Last (); }
 
- private:
-  PGet( Graph* graph , std::uint32_t id , Expr* object , Expr* index ,
+  PSet( Graph* graph , std::uint32_t id , Expr* object , Expr* index ,
                                                          Expr* value ,
                                                          IRInfo* info ):
-    Expr  (PGET,id,graph,info)
+    Expr  (IRTYPE_PGET,id,graph,info)
   {
     operand_list()->PushBack(zone(),object);
     operand_list()->PushBack(zone(),index );
     operand_list()->PushBack(zone(),value );
   }
 
-  LAVA_DISALLOW_COPY_AND_ASSIGN(PGet)
+ private:
+  LAVA_DISALLOW_COPY_AND_ASSIGN(PSet)
 };
 
 class IGet : public Expr {
  public:
-  inline static IGet* New( Graph* , Expr* , Expr* , IRInfo* );
+  inline static IGet* New( Graph* , Expr* , Expr* , IRInfo* , ControlFlow* );
   Expr* object() const { return operand_list()->First(); }
   Expr* index () const { return operand_list()->Last (); }
 
- private:
   IGet( Graph* graph , std::uint32_t id , Expr* object , Expr* index ,
                                                          IRInfo* info ):
-    Expr  (IGET,id,graph,info)
+    Expr  (IRTYPE_IGET,id,graph,info)
   {
     operand_list()->PushBack(zone(),object);
     operand_list()->PushBack(zone(),index );
   }
 
+ private:
   LAVA_DISALLOW_COPY_AND_ASSIGN(IGet)
 };
 
 class ISet : public Expr {
  public:
-  inline static ISet* New( Graph* , Expr* , Expr* , Expr* , IRInfo* );
+  inline static ISet* New( Graph* , Expr* , Expr* , Expr* , IRInfo* ,
+                                                            ControlFlow* );
 
   Expr* object() const { return operand_list()->First(); }
   Expr* index () const { return operand_list()->Index(1);}
   Expr* value () const { return operand_list()->Last (); }
 
- private:
   ISet( Graph* graph , std::uint32_t id , Expr* object , Expr* index ,
                                                          Expr* value ,
-                                                         IRInof* info ):
-    Expr(ISET,id,graph,info)
+                                                         IRInfo* info ):
+    Expr(IRTYPE_ISET,id,graph,info)
   {
     operand_list()->PushBack(zone(),object);
     operand_list()->PushBack(zone(),index );
     operand_list()->PushBack(zone(),value );
   }
 
+ private:
   LAVA_DISALLOW_COPY_AND_ASSIGN(ISet)
 };
 
 // -------------------------------------------------------------------------
-// global set/get
+// global set/get (side effect)
 // -------------------------------------------------------------------------
 class GGet : public Expr {
  public:
-  inline static PGet* New( Graph* , Expr* , IRInfo* );
+  inline static GGet* New( Graph* , Expr* , IRInfo* , ControlFlow* );
   Expr* name() const { return operand_list()->First(); }
 
- private:
   GGet( Graph* graph , std::uint32_t id , Expr* name , IRInfo* info ):
-    Expr  (GGET,id,graph,info)
+    Expr  (IRTYPE_GGET,id,graph,info)
   {
     operand_list()->PushBack(zone(),name);
   }
 
-  LAVA_DISALLOW_COPY_AND_ASSIGN(PGet)
+ private:
+  LAVA_DISALLOW_COPY_AND_ASSIGN(GGet)
 };
 
 class GSet : public Expr {
  public:
-  inline static PSet* New( Graph* , Expr* key , Expr* value , IRInfo* );
+  inline static GSet* New( Graph* , Expr* key , Expr* value , IRInfo* ,
+                                                              ControlFlow* );
   Expr* key () const { return operand_list()->First(); }
   Expr* value()const { return operand_list()->Last() ; }
 
- private:
   GSet( Graph* graph , std::uint32_t id , Expr* key , Expr* value ,
                                                       IRInfo* info ):
-    Expr  (GSET,id,graph,info)
+    Expr  (IRTYPE_GSET,id,graph,info)
   {
     operand_list()->PushBack(zone(),key);
     operand_list()->PushBack(zone(),value);
   }
 
-  LAVA_DISALLOW_COPY_AND_ASSIGN(PSet)
+ private:
+  LAVA_DISALLOW_COPY_AND_ASSIGN(GSet)
 };
 
 // -------------------------------------------------------------------------
-// Iterator node
+// Iterator node (side effect)
 // -------------------------------------------------------------------------
 class ItrNew : public Expr {
  public:
-  inline static ItrNew* New( Graph* , Expr* , IRInfo* );
+  inline static ItrNew* New( Graph* , Expr* , IRInfo* , ControlFlow* );
   Expr* operand() const { return operand_list()->First(); }
 
- private:
   ItrNew( Graph* graph , std::uint32_t id , Expr* operand , IRInfo* info ):
-    Expr  (ITR_NEW,id,graph,info)
+    Expr  (IRTYPE_ITR_NEW,id,graph,info)
   {
     operand_list()->PushBack(zone(),operand);
   }
 
+ private:
   LAVA_DISALLOW_COPY_AND_ASSIGN(ItrNew)
 };
 
 class ItrNext : public Expr {
  public:
-  inline static ItrNext* New( Graph* , Expr* , IRInfo* );
+  inline static ItrNext* New( Graph* , Expr* , IRInfo* , ControlFlow* );
   Expr* operand() const { return operand_list()->First(); }
 
- private:
-  ItrNew( Graph* graph , std::uint32_t id , Expr* operand , IRInfo* info ):
-    Expr  (ITR_NEXT,id,graph,info)
+  ItrNext( Graph* graph , std::uint32_t id , Expr* operand , IRInfo* info ):
+    Expr  (IRTYPE_ITR_NEXT,id,graph,info)
   {
     operand_list()->PushBack(zone(),operand);
   }
 
+ private:
   LAVA_DISALLOW_COPY_AND_ASSIGN(ItrNext)
 };
 
@@ -763,16 +795,16 @@ class ItrDeref : public Expr {
     PROJECTION_VAL
   };
 
-  inline static ItrDeref* New( Graph* , Expr* , IRInfo* );
+  inline static ItrDeref* New( Graph* , Expr* , IRInfo* , ControlFlow* );
   Expr* operand() const { return operand_list()->First(); }
 
- private:
   ItrDeref( Graph* graph , std::uint32_t id , Expr* operand , IRInfo* info ):
-    Expr   (ITER_DEREF,id,graph,info)
+    Expr   (IRTYPE_ITR_DEREF,id,graph,info)
   {
     operand_list()->PushBack(zone(),operand);
   }
 
+ private:
   LAVA_DISALLOW_COPY_AND_ASSIGN(ItrDeref)
 };
 
@@ -793,13 +825,12 @@ class Phi : public Expr {
   // to a certain input node of Phi node
   ControlFlow* region() const { return region_; }
 
- private:
-
   Phi( Graph* graph , std::uint32_t id , ControlFlow* region , IRInfo* info ):
-    Expr           (PHI,id,graph,info),
+    Expr           (IRTYPE_PHI,id,graph,info),
     region_        (region)
   {}
 
+ private:
   ControlFlow* region_;
   LAVA_DISALLOW_COPY_AND_ASSIGN(Phi)
 };
@@ -807,23 +838,57 @@ class Phi : public Expr {
 class Projection : public Expr {
  public:
   inline static Projection* New( Graph* , Expr* , std::uint32_t index , IRInfo* );
-  Expr* operand() const { return operand_; }
 
   // a specific value to indicate which part of the input operand
   // needs to be projected
   std::uint32_t index() const { return index_; }
 
- private:
   Projection( Graph* graph , std::uint32_t id , Expr* operand , std::uint32_t index ,
                                                                 IRInfo* info ):
-    Expr  (PROJECTION,id,graph,info),
+    Expr  (IRTYPE_PROJECTION,id,graph,info),
     index_(index)
   {
     operand_list()->PushBack(zone(),operand);
   }
 
+ private:
   std::uint32_t index_;
   LAVA_DISALLOW_COPY_AND_ASSIGN(Projection)
+};
+
+class InitCls : public Expr {
+ public:
+  inline static InitCls* New( Graph* , Expr* , IRInfo* );
+
+  InitCls( Graph* graph , std::uint32_t id , Expr* key , IRInfo* info ):
+    Expr (IRTYPE_INIT_CLS,id,graph,info)
+  {
+    operand_list()->PushBack(zone(),key);
+  }
+
+ private:
+  LAVA_DISALLOW_COPY_AND_ASSIGN(InitCls)
+};
+
+class Call : public Expr {
+ public:
+  inline static Call* New( Graph* graph , Expr* , std::uint8_t , std::uint8_t ,
+                                                                 IRInfo* );
+
+  Call( Graph* graph , std::uint32_t id , Expr* obj , std::uint8_t base ,
+                                                      std::uint8_t narg ,
+                                                      IRInfo* info ):
+    Expr  (IRTYPE_CALL,id,graph,info),
+    base_ (base),
+    narg_ (narg)
+  {
+    operand_list()->PushBack(zone(),obj);
+  }
+
+ private:
+  std::uint8_t base_;
+  std::uint8_t narg_;
+  LAVA_DISALLOW_COPY_AND_ASSIGN(Call)
 };
 
 // -------------------------------------------------------------------------
@@ -836,7 +901,7 @@ class Projection : public Expr {
 // -------------------------------------------------------------------------
 class ControlFlow : public Node {
  public:
-  const zone::Vector<Node*>* backward_edge() const {
+  const zone::Vector<ControlFlow*>* backward_edge() const {
     return &backward_edge_;
   }
 
@@ -853,24 +918,23 @@ class ControlFlow : public Node {
   // All these types of expressions are stored inside of the effect_expr list
   // to be used later on for code generation
   // --------------------------------------------------------------------------
-  const zone::Vector<Expr*>* effect_expr() const {
+  const EffectList* effect_expr() const {
     return &effect_expr_;
   }
 
   void AddEffectExpr( Expr* node ) {
-    effect_expr_.Add(zone(),node);
+    auto itr = effect_expr_.PushBack(zone(),node);
+    node->set_effect(EffectEdge(this,itr));
   }
 
- protected:
-  zone::Vector<Node*>* backedge_edge() {
+  zone::Vector<ControlFlow*>* backedge_edge() {
     return &backward_edge_;
   }
 
-  zone::Vector<Expr*>* effect_expr() {
+  EffectList* effect_expr() {
     return &effect_expr_;
   }
 
- private:
   ControlFlow( IRType type , std::uint32_t id , Graph* graph , ControlFlow* parent = NULL ):
     Node(type,id,graph),
     backward_edge_   (),
@@ -879,8 +943,9 @@ class ControlFlow : public Node {
     if(parent) backward_edge_.Add(zone(),parent);
   }
 
+ private:
   zone::Vector<ControlFlow*> backward_edge_;
-  zone::Vector<ir:Expr*>     effect_expr_;
+  EffectList                 effect_expr_;
   LAVA_DISALLOW_COPY_AND_ASSIGN(ControlFlow)
 };
 
@@ -890,12 +955,12 @@ class Region: public ControlFlow {
   inline static Region* New( Graph* );
   inline static Region* New( Graph* , ControlFlow* parent );
 
- private:
   Region( Graph* graph , std::uint32_t id ):
-    ControlFlow(REGION,id,graph)
+    ControlFlow(IRTYPE_REGION,id,graph)
   {}
 
-  LAVA_DISALLOW_COPY_AND_ASSIGN(Merge)
+ private:
+  LAVA_DISALLOW_COPY_AND_ASSIGN(Region)
 };
 
 // --------------------------------------------------------------------------
@@ -908,12 +973,12 @@ class LoopHeader : public ControlFlow {
   inline static LoopHeader* New( Graph* , Expr* , ControlFlow* );
   Expr* condition() const { return condition_; }
 
- private:
-  LoopHeader( Graph* graph , Expr* cond , ControlFlow* region ):
-    ControlFlow(LOOP_HEADER,graph->AssignID(),graph,region),
+  LoopHeader( Graph* graph , std::uint32_t id , Expr* cond , ControlFlow* region ):
+    ControlFlow(IRTYPE_LOOP_HEADER,id,graph,region),
     condition_ (cond)
   {}
 
+ private:
   Expr* condition_;
   LAVA_DISALLOW_COPY_AND_ASSIGN(LoopHeader);
 };
@@ -922,11 +987,11 @@ class Loop : public ControlFlow {
  public:
   inline static Loop* New( Graph* );
 
- private:
-  Loop( Graph* graph , ControlFlow* region ):
-    ControlFlow(LOOP,graph->AssignID(),graph,region)
+  Loop( Graph* graph , std::uint32_t id ):
+    ControlFlow(IRTYPE_LOOP,id,graph)
   {}
 
+ private:
   LAVA_DISALLOW_COPY_AND_ASSIGN(Loop)
 };
 
@@ -935,12 +1000,12 @@ class LoopExit : public ControlFlow {
   inline static LoopExit* New( Graph* , Expr* );
   Expr* condition() const { return condition_; }
 
- private:
-  LoopExit( Graph* graph , std::uint32_t id , Expr* cond , ControlFlow* region ):
-    ControlFlow(LOOP_EXIT,id,graph,region),
+  LoopExit( Graph* graph , std::uint32_t id , Expr* cond ):
+    ControlFlow(IRTYPE_LOOP_EXIT,id,graph),
     condition_ (cond)
   {}
 
+ private:
   Expr* condition_;
   LAVA_DISALLOW_COPY_AND_ASSIGN(LoopExit)
 };
@@ -955,12 +1020,12 @@ class If : public ControlFlow {
   inline static If* New( Graph* , Expr* , ControlFlow* );
   Expr* condition() const { return condition_; }
 
- private:
-  If( Grpah* graph , std::uint32_t id , Expr* cond , ControlFlow* region ):
-    ControlFlow(IF,id,graph,region),
+  If( Graph* graph , std::uint32_t id , Expr* cond , ControlFlow* region ):
+    ControlFlow(IRTYPE_IF,id,graph,region),
     condition_ (cond)
   {}
 
+ private:
   Expr* condition_;
   LAVA_DISALLOW_COPY_AND_ASSIGN(If)
 };
@@ -969,11 +1034,12 @@ class IfTrue : public ControlFlow {
  public:
   inline static IfTrue* New( Graph* , ControlFlow* );
   inline static IfTrue* New( Graph* );
- private:
+
   IfTrue( Graph* graph , std::uint32_t id , ControlFlow* region ):
-    ControlFlow(IF_TRUE,id,graph,region)
+    ControlFlow(IRTYPE_IF_TRUE,id,graph,region)
   {}
 
+ private:
   LAVA_DISALLOW_COPY_AND_ASSIGN(IfTrue)
 };
 
@@ -981,56 +1047,94 @@ class IfFalse: public ControlFlow {
  public:
   inline static IfFalse * New( Graph* , ControlFlow* );
   inline static IfFalse * New( Graph* );
- private:
+
   IfFalse( Graph* graph , std::uint32_t id , ControlFlow* region ):
-    ControlFlow(IF_FALSE,id,graph,region)
+    ControlFlow(IRTYPE_IF_FALSE,id,graph,region)
   {}
 
+ private:
   LAVA_DISALLOW_COPY_AND_ASSIGN(IfFalse)
 };
 
 class Jump : public ControlFlow {
  public:
-  inline static Jump* New( Graph* , ControlFlow* );
-
+  inline static Jump* New( Graph* , const std::uint32_t* , ControlFlow* );
   // which target this jump jumps to
   ControlFlow* target() const { return target_; }
+  inline bool TrySetTarget( const std::uint32_t* , ControlFlow* );
 
-  bool TrySetTarget( const std::uint32_t* bytecode_pc , ControlFlow* target ) {
-    if(bytecode_pc_ == bytecode_pc) {
-      target_ = target;
-      return true;
-    }
-    return false;
-  }
-
- private:
   Jump( Graph* graph , std::uint32_t id , ControlFlow* region ,
                                           const std::uint32_t* bytecode_bc ):
-    ControlFlow(JUMP,id,graph,region),
+    ControlFlow(IRTYPE_JUMP,id,graph,region),
     target_(NULL),
     bytecode_pc_(bytecode_bc)
   {}
 
+ private:
   ControlFlow* target_; // where this Jump node jumps to
   const std::uint32_t* bytecode_pc_;
   LAVA_DISALLOW_COPY_AND_ASSIGN(Jump)
 };
 
+class Return : public ControlFlow {
+ public:
+  inline static Return* New( Graph* , Expr* , ControlFlow* );
+  Expr* value() const { return value_; }
+
+  Return( Graph* graph , std::uint32_t id , Expr* value , ControlFlow* region ):
+    ControlFlow(IRTYPE_RETURN,id,graph,region),
+    value_     (value)
+  {}
+
+ private:
+  Expr* value_;
+  LAVA_DISALLOW_COPY_AND_ASSIGN(Return)
+};
+
 // Special node of the graph
 class Start : public ControlFlow {
+ public:
+  inline static Start* New( Graph* );
+
+  Start( Graph* graph , std::uint32_t id ):
+    ControlFlow(IRTYPE_START,id,graph)
+  {}
+
  private:
   LAVA_DISALLOW_COPY_AND_ASSIGN(Start)
 };
 
-class End   : public ControlFlow {
+class End : public ControlFlow {
+ public:
+  inline static End* New( Graph* );
+
+  Expr* return_value() const {
+    return return_value_;
+  }
+  void set_return_value( Expr* return_value ) {
+    return_value_ = return_value;
+  }
+
+  End( Graph* graph , std::uint32_t id ):
+    ControlFlow  (IRTYPE_END,id,graph),
+    return_value_(NULL)
+  {}
+
  private:
+  Expr* return_value_;
   LAVA_DISALLOW_COPY_AND_ASSIGN(End)
 };
 
 class Graph {
  public:
-  Graph();
+  Graph():
+    zone_          (),
+    start_         (NULL),
+    end_           (NULL),
+    prototype_info_(),
+    id_            ()
+  {}
+
  public: // getter and setter
   void set_start( Start* start ) { start_ = start; }
   void set_end  ( End*   end   ) { end_   = end;   }
@@ -1042,7 +1146,10 @@ class Graph {
   std::uint32_t id() const { return id_; }
   std::uint32_t AssignID() { return id_++; }
 
-  std::uint32_t AddPrototypeInfo( const Handle<Closure>& cls , std::uint32_t base ) {
+ public:
+
+  std::uint32_t AddPrototypeInfo( const Handle<Closure>& cls ,
+      std::uint32_t base ) {
     prototype_info_.Add(zone(),PrototypeInfo(base,cls));
     return static_cast<std::uint32_t>(prototype_info_.size()-1);
   }
@@ -1082,8 +1189,16 @@ CBASE_IR_LIST(__)
 
 #undef __ // __
 
+inline zone::Zone* Node::zone() const {
+  return graph_->zone();
+}
+
 inline Arg* Arg::New( Graph* graph , std::uint32_t index , IRInfo* info ) {
   return graph->zone()->New<Arg>(graph,graph->AssignID(),index,info);
+}
+
+inline Int32* Int32::New( Graph* graph , std::int32_t value , IRInfo* info ) {
+  return graph->zone()->New<Int32>(graph,graph->AssignID(),value,info);
 }
 
 inline Int64* Int64::New( Graph* graph , std::int64_t value , IRInfo* info ) {
@@ -1095,17 +1210,17 @@ inline Float64* Float64::New( Graph* graph , double value , IRInfo* info ) {
 }
 
 inline Boolean* Boolean::New( Graph* graph , bool value , IRInfo* info ) {
-  return graph->zone()->New<Boolean>(graph,value,info);
+  return graph->zone()->New<Boolean>(graph,graph->AssignID(),value,info);
 }
 
 inline LString* LString::New( Graph* graph , const LongString& str , IRInfo* info ) {
   return graph->zone()->New<LString>(graph,graph->AssignID(),
-      zone::String::New(graph->zone(),str.data(),str.size),info);
+      zone::String::New(graph->zone(),static_cast<const char*>(str.data()),str.size),info);
 }
 
 inline SString* SString::New( Graph* graph , const SSO& str , IRInfo* info ) {
   return graph->zone()->New<SString>(graph,graph->AssignID(),
-      zone::String::New(graph->zone(),str.data(),str.size()),info);
+      zone::String::New(graph->zone(),static_cast<const char*>(str.data()),str.size()),info);
 }
 
 inline Nil* Nil::New( Graph* graph , IRInfo* info ) {
@@ -1152,6 +1267,7 @@ inline Binary::Operator Binary::BytecodeToOperator( interpreter::Bytecode op ) {
       lava_unreachF("unknown bytecode %s",interpreter::GetBytecodeName(op));
       break;
   }
+  return ADD;
 }
 
 inline const char* Binary::GetOperatorName( Operator op ) {
@@ -1187,46 +1303,159 @@ inline UGet* UGet::New( Graph* graph , std::uint8_t index , IRInfo* info ) {
   return graph->zone()->New<UGet>(graph,graph->AssignID(),index,info);
 }
 
-inline USet* USet::New( Graph* graph , Expr* opr , IRInfo* info ) {
-  return graph->zone()->New<USet>(graph,graph->AssignID(),opr,info);
+inline USet* USet::New( Graph* graph , std::uint8_t index , Expr* opr , IRInfo* info ) {
+  return graph->zone()->New<USet>(graph,graph->AssignID(),index,opr,info);
 }
 
-inline PGet* PGet::New( Graph* graph , Expr* obj , Expr* key , IRInfo* info ) {
-  return graph->zone()->New<PGet>(graph,graph->AssignID(),obj,key,info);
+inline PGet* PGet::New( Graph* graph , Expr* obj , Expr* key , IRInfo* info ,
+                                                               ControlFlow* region ) {
+  auto ret = graph->zone()->New<PGet>(graph,graph->AssignID(),obj,key,info);
+  region->AddEffectExpr(ret);
+  return ret;
 }
 
-inline PSet* PSet::New( Graph* graph , Expr* obk , Expr* key , Expr* value ,
-                                                               IRInfo* info ) {
-  return graph->zone()->New<PSet>(graph,graph->AssignID(),obj,key,value,info);
+inline PSet* PSet::New( Graph* graph , Expr* obj , Expr* key , Expr* value ,
+                                                               IRInfo* info,
+                                                               ControlFlow* region ) {
+  auto ret = graph->zone()->New<PSet>(graph,graph->AssignID(),obj,key,value,info);
+  region->AddEffectExpr(ret);
+  return ret;
 }
 
-inline GGet* GGet::New( Graph* graph , Expr* key , IRInfo* info ) {
-  return graph->zone()->New<GGet>(graph,graph->AssignID(),key,info);
+inline IGet* IGet::New( Graph* graph , Expr* obj, Expr* key , IRInfo* info ,
+                                                              ControlFlow* region ) {
+  auto ret = graph->zone()->New<IGet>(graph,graph->AssignID(),obj,key,info);
+  region->AddEffectExpr(ret);
+  return ret;
 }
 
-inline GSet* GSet::New( Graph* graph , Expr* key, Expr* value , IRInfo* info ) {
-  return graph->zone()->New<GSet>(graph,graph->AssignID(),key,value,info);
+inline ISet* ISet::New( Graph* graph , Expr* obj , Expr* key , Expr* val ,
+                                                               IRInfo* info ,
+                                                               ControlFlow* region ) {
+  auto ret = graph->zone()->New<ISet>(graph,graph->AssignID(),obj,key,val,info);
+  region->AddEffectExpr(ret);
+  return ret;
 }
 
-inline ItrNew* ItrNew::New( Graph* graph , Expr* operand , IRInfo* info ) {
-  return graph->zone()->New<ItrNew>(graph,graph->AssignID(),operand,info);
+inline GGet* GGet::New( Graph* graph , Expr* key , IRInfo* info , ControlFlow* region ) {
+  auto ret = graph->zone()->New<GGet>(graph,graph->AssignID(),key,info);
+  region->AddEffectExpr(ret);
+  return ret;
 }
 
-inline ItrNext* ItrNext::New( Graph* graph , Expr* operand , IRInfo* info ) {
-  return graph->zone()->New<ItrNext>(graph,graph->AssignID(),operand,info);
+inline GSet* GSet::New( Graph* graph , Expr* key, Expr* value , IRInfo* info ,
+                                                                ControlFlow* region ) {
+  auto ret = graph->zone()->New<GSet>(graph,graph->AssignID(),key,value,info);
+  region->AddEffectExpr(ret);
+  return ret;
 }
 
-inline ItrDeref* ItrDeref::New( Graph* graph , Expr* operand , IRInfo* info ) {
-  return graph->zone()->New<ItrDeref>(graph,graph->AssignID(),operand,info);
+inline ItrNew* ItrNew::New( Graph* graph , Expr* operand , IRInfo* info ,
+                                                           ControlFlow* region ) {
+  auto ret = graph->zone()->New<ItrNew>(graph,graph->AssignID(),operand,info);
+  region->AddEffectExpr(ret);
+  return ret;
 }
 
-inline Phi* Phi::New( Graph* graph , Expr* lhs , Expr* rhs , IRInfo* info ) {
-  return graph->zone()->New<Phi>(graph,graph->AssignID(),lhs,rhs,info);
+inline ItrNext* ItrNext::New( Graph* graph , Expr* operand , IRInfo* info ,
+                                                             ControlFlow* region ) {
+  auto ret = graph->zone()->New<ItrNext>(graph,graph->AssignID(),operand,info);
+  region->AddEffectExpr(ret);
+  return ret;
+}
+
+inline ItrDeref* ItrDeref::New( Graph* graph , Expr* operand , IRInfo* info ,
+                                                               ControlFlow* region ) {
+  auto ret = graph->zone()->New<ItrDeref>(graph,graph->AssignID(),operand,info);
+  region->AddEffectExpr(ret);
+  return ret;
+}
+
+inline Phi* Phi::New( Graph* graph , Expr* lhs , Expr* rhs , ControlFlow* region ,
+                                                             IRInfo* info ) {
+  auto ret = graph->zone()->New<Phi>(graph,graph->AssignID(),region,info);
+  ret->AddOperand(lhs);
+  ret->AddOperand(rhs);
+  return ret;
+}
+
+inline Phi* Phi::New( Graph* graph , ControlFlow* region , IRInfo* info ) {
+  return graph->zone()->New<Phi>(graph,graph->AssignID(),region,info);
+}
+
+inline LoadCls* LoadCls::New( Graph* graph , std::uint32_t ref , IRInfo* info ) {
+  return graph->zone()->New<LoadCls>(graph,graph->AssignID(),ref,info);
 }
 
 inline Projection* Projection::New( Graph* graph , Expr* operand , std::uint32_t index ,
                                                                    IRInfo* info ) {
   return graph->zone()->New<Projection>(graph,graph->AssignID(),operand,index,info);
+}
+
+inline Region* Region::New( Graph* graph ) {
+  return graph->zone()->New<Region>(graph,graph->AssignID());
+}
+
+inline Region* Region::New( Graph* graph , ControlFlow* parent ) {
+  auto ret = New(graph);
+  ret->AddBackwardEdge(parent);
+  return ret;
+}
+
+inline LoopHeader* LoopHeader::New( Graph* graph , Expr* condition , ControlFlow* parent ) {
+  return graph->zone()->New<LoopHeader>(graph,graph->AssignID(),condition,parent);
+}
+
+inline Loop* Loop::New( Graph* graph ) { return graph->zone()->New<Loop>(graph,graph->AssignID()); }
+
+inline LoopExit* LoopExit::New( Graph* graph , Expr* condition ) {
+  return graph->zone()->New<LoopExit>(graph,graph->AssignID(),condition);
+}
+
+inline If* If::New( Graph* graph , Expr* condition , ControlFlow* parent ) {
+  return graph->zone()->New<If>(graph,graph->AssignID(),condition,parent);
+}
+
+inline IfTrue* IfTrue::New( Graph* graph , ControlFlow* parent ) {
+  return graph->zone()->New<IfTrue>(graph,graph->AssignID(),parent);
+}
+
+inline IfTrue* IfTrue::New( Graph* graph ) {
+  return IfTrue::New(graph,NULL);
+}
+
+inline IfFalse* IfFalse::New( Graph* graph , ControlFlow* parent ) {
+  return graph->zone()->New<IfFalse>(graph,graph->AssignID(),parent);
+}
+
+inline IfFalse* IfFalse::New( Graph* graph ) {
+  return IfFalse::New(graph,NULL);
+}
+
+inline Jump* Jump::New( Graph* graph , const std::uint32_t* pc , ControlFlow* parent ) {
+  return graph->zone()->New<Jump>(graph,graph->AssignID(),parent,pc);
+}
+
+inline bool Jump::TrySetTarget( const std::uint32_t* bytecode_pc , ControlFlow* target ) {
+  if(bytecode_pc_ == bytecode_pc) {
+    target_ = target;
+    return true;
+  }
+  // The target should not be set since this jump doesn't and shouldn't jump
+  // to the input region
+  return false;
+}
+
+inline Return* Return::New( Graph* graph , Expr* value , ControlFlow* parent ) {
+  return graph->zone()->New<Return>(graph,graph->AssignID(),value,parent);
+}
+
+inline Start* Start::New( Graph* graph ) {
+  return graph->zone()->New<Start>(graph,graph->AssignID());
+}
+
+inline End* End::New( Graph* graph ) {
+  return graph->zone()->New<End>(graph,graph->AssignID());
 }
 
 } // namespace ir

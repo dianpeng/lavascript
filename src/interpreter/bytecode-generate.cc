@@ -1613,7 +1613,7 @@ bool Generator::Visit( const ast::For& node ) {
                                                                       induct_reg.index() );
   } else {
     lava_debug(NORMAL,if(!node._1st) lava_verify(!node._3rd););
-    forward = func_scope()->bb()->fevrstart( func_scope()->ra()->base(), node.sci() );
+    forward = func_scope()->bb()->fevrstart_( func_scope()->ra()->base(), node.sci() );
   }
 
   /* ------------------------------------------

@@ -54,6 +54,10 @@ class BytecodeLocation {
     ptr_(address,type)
   {}
 
+  BytecodeLocation():
+    ptr_(NULL,0)
+  {}
+
  public:
   const std::uint32_t* address() const { return ptr_.ptr(); }
   bool IsOneByte() const { return ptr_.state() == ONE_BYTE; }
@@ -90,8 +94,6 @@ class BytecodeIterator {
   inline Bytecode opcode() const;
   inline const char* opcode_name() const;
   inline BytecodeType type() const;
-  inline const std::uint32_t* pc() const { return code_buffer_ + cursor_; }
-
   BytecodeLocation bytecode_location() const {
     return BytecodeLocation( pc(),offset() == 1 ? BytecodeLocation::ONE_BYTE :
                                                   BytecodeLocation::TWO_BYTE );

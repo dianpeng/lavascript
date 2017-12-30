@@ -13,7 +13,7 @@ class BytecodeAnalyze::LoopScope {
     // the input PC is a FESTART/FSTART bytecode which is not part
     // of the basic block
     ba->basic_block_stack_.push_back(ba->NewBasicBlockVar(bb_start));
-    ba->loop_stack_.push_back(ba->NewLoopHeaderInfo(current_bb(),loop_start));
+    ba->loop_stack_.push_back(ba->NewLoopHeaderInfo(ba->current_bb(),loop_start));
   }
 
   ~LoopScope() {
@@ -40,7 +40,7 @@ class BytecodeAnalyze::BasicBlockScope {
 };
 
 bool BytecodeAnalyze::BasicBlockVariable::IsAlive( std::uint8_t reg ) const {
-  BasicBlockVariable* scope = this;
+  const BasicBlockVariable* scope = this;
   do {
     if(scope->variable[reg]) return true;
     scope = scope->prev;
@@ -78,7 +78,7 @@ void BytecodeAnalyze::BuildBasicBlock( BytecodeIterator* itr ) {
 
 bool BytecodeAnalyze::BuildIfBlock( BytecodeIterator* itr ,
                                     const std::uint32_t* pc ,
-                                    std::uint32_t** end ) {
+                                    const std::uint32_t** end ) {
   bool skip_bytecode = false;
 
   for( ; itr->HasNext() ; itr->Next() ) {
@@ -93,13 +93,12 @@ bool BytecodeAnalyze::BuildIfBlock( BytecodeIterator* itr ,
       if(end) *end = itr->pc();
     }
   }
-  lava_unreachF("should never reach here since we meet a EOF of "
-                "bytecode stream");
+  lava_unreachF("%s","should never reach here since we meet a EOF of bytecode stream");
   return false;
 }
 
 void BytecodeAnalyze::BuildIf( BytecodeIterator* itr ) {
-  lava_debug(NORMAL,lava_verify(itr->bytecode() == BC_JMPF););
+  lava_debug(NORMAL,lava_verify(itr->opcode() == BC_JMPF););
   std::uint8_t a1; std::uint16_t a2;
   itr->GetOperand(&a1,&a2);
   const std::uint32_t* false_pc = itr->OffsetAt(a2);
@@ -110,7 +109,7 @@ void BytecodeAnalyze::BuildIf( BytecodeIterator* itr ) {
   itr->Next();
   {
     BasicBlockScope scope(this,itr->pc()); // true branch basic block
-    has_else_branch = BuildIfBlock(itr,false_pc,&scope.end);
+    has_else_branch = BuildIfBlock(itr,false_pc,&(current_bb()->end));
 
     if(has_else_branch) {
       lava_debug(NORMAL,lava_verify(itr->opcode() == BC_JMP););
@@ -180,7 +179,7 @@ void BytecodeAnalyze::BuildLoop( BytecodeIterator* itr ) {
         if(!BuildBytecode(itr)) break;
     }
 
-    scope.end = itr->pc();
+    current_bb()->end = itr->pc();
 
     lava_debug(NORMAL,
           if(itr->opcode() == BC_FEND1 || itr->opcode() == BC_FEND2 ||
@@ -212,7 +211,7 @@ void BytecodeAnalyze::BuildForeverLoop( BytecodeIterator* itr ) {
       }
     }
 
-    scope.end = itr->pc();
+    current_bb()->end = itr->pc();
 
     lava_debug(NORMAL,
         if(itr->opcode() == BC_FEVREND) {
@@ -229,7 +228,7 @@ bool BytecodeAnalyze::BuildBytecode( BytecodeIterator* itr ) {
   for( int i = 0 ; i < BytecodeUsage::kMaxBytecodeArgumentSize ; ++i ) {
     if(bu.GetArgument(i) == BytecodeUsage::OUTPUT) {
       std::uint32_t reg;
-      itr->GetArgumentByIndex(i,&reg);
+      itr->GetOperandByIndex(i,&reg);
       if(IsLocalVar(reg)) Kill(reg);
     }
   }
@@ -242,7 +241,7 @@ bool BytecodeAnalyze::BuildBytecode( BytecodeIterator* itr ) {
     case BC_OR:        BuildLogic(itr);   break;
     case BC_FSTART:    BuildLoop(itr);    break;
     case BC_FESTART:   BuildLoop(itr);    break;
-    case BC_FEVRSTART: BuildLoop(itr);    break;
+    case BC_FEVRSTART: BuildForeverLoop(itr); break;
 
     // bytecode that gonna terminate current basic block
     case BC_CONT:
@@ -254,6 +253,27 @@ bool BytecodeAnalyze::BuildBytecode( BytecodeIterator* itr ) {
   }
   return true;
 }
+
+BytecodeAnalyze::BytecodeAnalyze( const Handle<Prototype>& proto ):
+  proto_               (proto),
+  max_local_var_size_  (proto->max_local_var_size()),
+  loop_header_info_    (),
+  basic_block_variable_(),
+  loop_stack_          (),
+  basic_block_stack_   ()
+{
+  BytecodeIterator itr(proto->GetBytecodeIterator());
+  BuildBasicBlock(&itr);
+}
+
+BytecodeAnalyze::BytecodeAnalyze( BytecodeAnalyze&& that ):
+  proto_               (that.proto_),
+  max_local_var_size_  (that.proto_->max_local_var_size()),
+  loop_header_info_    (std::move(that.loop_header_info_)),
+  basic_block_variable_(std::move(that.basic_block_variable_)),
+  loop_stack_          (std::move(that.loop_stack_)),
+  basic_block_stack_   (std::move(that.basic_block_stack_))
+{}
 
 } // namespace cbase
 } // namespace lavascript

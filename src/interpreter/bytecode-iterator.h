@@ -88,7 +88,7 @@ class BytecodeIterator {
 
  public:
   bool HasNext() const { return cursor_ < size_; }
-  inline bool Next();
+  inline bool Move();
 
   // Get the opcode from current cursor
   inline Bytecode opcode() const;
@@ -166,7 +166,7 @@ inline BytecodeIterator::BytecodeIterator( const std::uint32_t* code_buffer ,
   }
 }
 
-inline bool BytecodeIterator::Next() {
+inline bool BytecodeIterator::Move() {
   lava_debug(NORMAL,
       lava_verify( HasNext() );
       );

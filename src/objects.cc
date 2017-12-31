@@ -301,7 +301,7 @@ void Prototype::Dump( DumpWriter* writer , const std::string& source ) const {
     std::uint16_t a1_16 , a2_16;
     std::uint32_t a4;
 
-    for( ; bi.HasNext() ; bi.Next() ) {
+    for( ; bi.HasNext() ; bi.Move() ) {
       const SourceCodeInfo& sci = GetSci(count);
       switch(bi.type()) {
         case interpreter::TYPE_B:

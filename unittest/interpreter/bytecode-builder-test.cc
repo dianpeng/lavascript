@@ -141,7 +141,7 @@ TEST(BytecodeBuilder,Coverage) {
     itr.GetOperand(&a1,&a2);                \
     ASSERT_EQ(1,a1);                        \
     ASSERT_EQ(65535,a2);                    \
-    itr.Next();                             \
+    itr.Move();                             \
   } while(false)
 
 #define BCTEST_C() \
@@ -150,7 +150,7 @@ TEST(BytecodeBuilder,Coverage) {
     itr.GetOperand(&a1,&a2);                \
     ASSERT_EQ(65535,a1);                    \
     ASSERT_EQ(1,a2);                        \
-    itr.Next();                             \
+    itr.Move();                             \
   } while(false)
 
 #define BCTEST_D() \
@@ -160,7 +160,7 @@ TEST(BytecodeBuilder,Coverage) {
     ASSERT_EQ(1,a1);                        \
     ASSERT_EQ(2,a2);                        \
     ASSERT_EQ(3,a3);                        \
-    itr.Next();                             \
+    itr.Move();                             \
   } while(false)
 
 #define BCTEST_E() \
@@ -169,7 +169,7 @@ TEST(BytecodeBuilder,Coverage) {
     itr.GetOperand(&a1,&a2);                \
     ASSERT_EQ(1,a1);                        \
     ASSERT_EQ(2,a2);                        \
-    itr.Next();                             \
+    itr.Move();                             \
   } while(false)
 
 #define BCTEST_F() \
@@ -177,7 +177,7 @@ TEST(BytecodeBuilder,Coverage) {
     std::uint8_t a1;                        \
     itr.GetOperand(&a1);                    \
     ASSERT_EQ(1,a1);                        \
-    itr.Next();                             \
+    itr.Move();                             \
   } while(false)
 
 #define BCTEST_G() \
@@ -185,12 +185,12 @@ TEST(BytecodeBuilder,Coverage) {
     std::uint16_t a1;                       \
     itr.GetOperand(&a1);                    \
     ASSERT_EQ(65535,a1);                    \
-    itr.Next();                             \
+    itr.Move();                             \
   } while(false)
 
 #define BCTEST_H() do {} while(false)
 
-#define BCTEST_X() do { itr.Next(); } while(false)
+#define BCTEST_X() do { itr.Move(); } while(false)
 
   BytecodeIterator itr(bb.GetIterator());
   std::size_t count = 0;
@@ -276,16 +276,16 @@ TEST(BytecodeBuilder,Patch) {
   } while(false)
 
 
-  TEST2(BC_JMPT); ASSERT_TRUE(itr.Next());
-  TEST2(BC_JMPF); ASSERT_TRUE(itr.Next());
-  TEST3(BC_AND) ; ASSERT_TRUE(itr.Next());
-  TEST3(BC_OR)  ; ASSERT_TRUE(itr.Next());
-  TEST1(BC_JMP) ; ASSERT_TRUE(itr.Next());
-  TEST1(BC_BRK) ; ASSERT_TRUE(itr.Next());
-  TEST1(BC_CONT); ASSERT_TRUE(itr.Next());
-  TEST2(BC_FSTART); ASSERT_TRUE(itr.Next());
-  TEST2(BC_FESTART);ASSERT_TRUE(itr.Next());
-  TEST3(BC_TERN); ASSERT_FALSE(itr.Next());
+  TEST2(BC_JMPT); ASSERT_TRUE(itr.Move());
+  TEST2(BC_JMPF); ASSERT_TRUE(itr.Move());
+  TEST3(BC_AND) ; ASSERT_TRUE(itr.Move());
+  TEST3(BC_OR)  ; ASSERT_TRUE(itr.Move());
+  TEST1(BC_JMP) ; ASSERT_TRUE(itr.Move());
+  TEST1(BC_BRK) ; ASSERT_TRUE(itr.Move());
+  TEST1(BC_CONT); ASSERT_TRUE(itr.Move());
+  TEST2(BC_FSTART); ASSERT_TRUE(itr.Move());
+  TEST2(BC_FESTART);ASSERT_TRUE(itr.Move());
+  TEST3(BC_TERN); ASSERT_FALSE(itr.Move());
 
 #undef TEST1  // TEST1
 #undef TEST2  // TEST2

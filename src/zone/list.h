@@ -24,19 +24,18 @@ template< typename T > struct Node : public NodeBase<Node<T>> {
   Node( const T& v ): Parent(NULL,NULL), value(v) {}
 };
 
-template< typename T > class Iterator {
+template< typename T , typename Traits > class Iterator {
  public:
   Iterator( Node<T>* iter , Node<T>* end ): iter_(iter), end_(end) {}
   Iterator(): iter_(NULL) , end_(NULL) {}
 
  public:
   bool HasNext() const { return iter_ != end_; }
-  bool Next() const;
   bool Advance( std::size_t times ) const;
+  bool Move() const    { return Traits::Move(&iter_,end_); }
 
-  T& value() { return iter_->value; }
-  const T& value() const { return iter_->value; }
-  void set_value( const T& val ) { iter_->value = val; }
+  const T& value() const { lava_debug(NORMAL,lava_verify(HasNext());); return iter_->value; }
+  void set_value( const T& val ) { lava_debug(NORMAL,lava_verify(HasNext());); iter_->value = val;  }
 
   bool operator == ( const Iterator& that ) const {
     return iter_ == that.iter_ && end_ == that.end_;
@@ -49,19 +48,13 @@ template< typename T > class Iterator {
  private:
   mutable Node<T>* iter_;
   Node<T>* end_ ;
-
   friend class List<T>;
 };
 
-template< typename T > bool Iterator<T>::Next() const {
-  lava_debug(NORMAL,lava_verify(HasNext()););
-  iter_ = iter_->next;
-  return HasNext();
-}
-
-template< typename T > bool Iterator<T>::Advance( std::size_t times ) const {
+template< typename T , typename Traits >
+bool Iterator<T,Traits>::Advance( std::size_t times ) const {
   for( ; times > 0 ; --times )
-    if(!Next()) return false;
+    if(!Move()) return false;
   return true;
 }
 
@@ -74,6 +67,14 @@ template< typename C > void NodeBase<C>::Reset() {
   prev = static_cast<C*>(this);
   next = static_cast<C*>(this);
 }
+
+template< typename T > struct ListForwardTraits {
+  inline static bool Move( Node<T>** , Node<T>* );
+};
+
+template< typename T > struct ListBackwardTraits {
+  inline static bool Move( Node<T>** , Node<T>* );
+};
 
 } // namespace detail
 
@@ -93,22 +94,22 @@ template< typename T > class List : ZoneObject {
   }
 
  public:
-  typedef detail::Iterator<T> Iterator;
-  typedef const detail::Iterator<T> ConstIterator;
+  typedef detail::Iterator<T,detail::ListForwardTraits<T>> ForwardIterator;
+  typedef const ForwardIterator ConstForwardIterator;
+  typedef detail::Iterator<T,detail::ListBackwardTraits<T>> BackwardIterator;
+  typedef const BackwardIterator ConstBackwardIterator;
 
-  Iterator GetIterator() {
-    return Iterator(end_.next, end());
-  }
+  ForwardIterator  GetForwardIterator()  { return ForwardIterator(end_.next,end()); }
+  BackwardIterator GetBackwardIterator() { return BackwardIterator(end_.prev,end()); }
 
-  ConstIterator GetIterator() const {
-    return ConstIterator(end_.next,end());
-  }
+  ConstForwardIterator  GetForwardIterator()  const { return ConstForwardIterator(end_.next,end()); }
+  ConstBackwardIterator GetBackwardIterator() const { return ConstBackwardIterator(end_.prev,end());}
 
  public:
-  Iterator PushBack( Zone* , const T& );
-  Iterator PopBack ();
-  Iterator Insert  ( Zone* , ConstIterator& , const T& );
-  Iterator Remove  ( ConstIterator& );
+  ForwardIterator PushBack( Zone* , const T& );
+  ForwardIterator PopBack ();
+  ForwardIterator Insert  ( Zone* , ConstForwardIterator& , const T& );
+  ForwardIterator Remove  ( ConstForwardIterator& );
 
   const T& First   () const {
     lava_debug(NORMAL,lava_verify(!empty()););
@@ -161,18 +162,18 @@ template< typename T > class List : ZoneObject {
 };
 
 template< typename T >
-typename List<T>::Iterator List<T>::PushBack( Zone* zone , const T& value ) {
-  return Insert(zone,ConstIterator(end(),end()),value);
+typename List<T>::ForwardIterator List<T>::PushBack( Zone* zone , const T& value ) {
+  return Insert(zone,ConstForwardIterator(end(),end()),value);
 }
 
 template< typename T >
-typename List<T>::Iterator List<T>::PopBack() {
-  return Remove(ConstIterator(end_.prev,end()));
+typename List<T>::ForwardIterator List<T>::PopBack() {
+  return Remove(ConstForwardIterator(end_.prev,end()));
 }
 
 template< typename T >
-typename List<T>::Iterator List<T>::Insert( Zone* zone , ConstIterator& iter ,
-                                                         const T& value ) {
+typename List<T>::ForwardIterator List<T>::Insert( Zone* zone , ConstForwardIterator& iter ,
+                                                                const T& value ) {
   lava_debug(NORMAL,lava_verify(iter.end_ == end()););
   NodeType* node = zone->New<NodeType>(value);
 
@@ -183,11 +184,11 @@ typename List<T>::Iterator List<T>::Insert( Zone* zone , ConstIterator& iter ,
   node->next = pos;
   pos->prev  = node;
   ++size_;
-  return Iterator(node,end());
+  return ForwardIterator(node,end());
 }
 
 template< typename T >
-typename List<T>::Iterator List<T>::Remove( ConstIterator& iter ) {
+typename List<T>::ForwardIterator List<T>::Remove( ConstForwardIterator& iter ) {
   lava_debug(NORMAL,lava_verify(iter.end_ == end()););
   lava_debug(NORMAL,lava_verify(!empty()););
 
@@ -198,16 +199,15 @@ typename List<T>::Iterator List<T>::Remove( ConstIterator& iter ) {
 
   // Notes: We use pos node which is deleted here. This is Okay since
   //        zone allocator doesn't really deaclloate memory
-  return Iterator(pos->next,end());
+  return ForwardIterator(pos->next,end());
 }
 
 template< typename T >
 void List<T>::CopyFrom( Zone* zone , List<T>* dest , const List<T>& that ) {
   if(dest != &that) {
     dest->Clear();
-
-    ConstIterator itr(that.GetIterator());
-    for( ; itr.HasNext(); itr.Next() ) {
+    ConstForwardIterator itr(that.GetIterator());
+    for( ; itr.HasNext(); itr.Move() ) {
       dest->PushBack(zone,itr.value());
     }
   }
@@ -227,7 +227,7 @@ void List<T>::Resize( Zone* zone , std::size_t size ) {
 template< typename T >
 T& List<T>::Index( std::size_t index ) {
   lava_debug(NORMAL,lava_verify(index < size_););
-  Iterator itr(GetIterator());
+  ForwardIterator itr(GetForwardIterator());
   itr.Advance(index);
   return itr.value();
 }
@@ -235,10 +235,30 @@ T& List<T>::Index( std::size_t index ) {
 template< typename T >
 const T& List<T>::Index( std::size_t index ) const {
   lava_debug(NORMAL,lava_verify(index < size_););
-  Iterator itr(GetIterator());
+  ForwardIterator itr(GetForwardIterator());
   itr.Advance(index);
   return itr.value();
 }
+
+namespace detail {
+
+template< typename T >
+inline bool ListForwardTraits<T>::Move( Node<T>** iter , Node<T>* end ) {
+  Node<T>* temp = *iter;
+  temp = temp->next;
+  *iter = temp;
+  return temp != end;
+}
+
+template< typename T >
+inline bool ListBackwardTraits<T>::Move( Node<T>** iter , Node<T>* end ) {
+  Node<T>* temp = *iter;
+  temp = temp->prev;
+  *iter = temp;
+  return temp != end;
+}
+
+} // namespaced detail
 
 } // namespace zone
 } // namespace lavascript

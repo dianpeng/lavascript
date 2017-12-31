@@ -9,6 +9,8 @@
 #include <bitset>
 
 namespace lavascript {
+class DumpWriter;
+
 namespace cbase      {
 
 typedef std::bitset<::lavascript::interpreter::kRegisterSize> InterpreterRegisterSet;
@@ -42,7 +44,6 @@ class BytecodeAnalyze {
                                      // jump/return happened
     BasicBlockVariable(): prev(NULL), variable(), start(NULL), end(NULL) {}
 
-    // Whether a register slot is alive at this BB , excludes any nested BB inside of this BB
     bool IsAlive( std::uint8_t ) const;
     void Add( std::uint8_t reg ) { variable[reg] = true; }
   };
@@ -76,6 +77,11 @@ class BytecodeAnalyze {
   // interfaces
   inline const BasicBlockVariable* LookUpBasicBlock( const std::uint32_t* pc );
   inline const LoopHeaderInfo*     LookUpLoopHeader( const std::uint32_t* pc );
+
+ public:
+  // dump the analyzed the result into the DumpWriter output stream
+  void Dump( DumpWriter* ) const;
+
  private:
   // build the liveness for a single bytecode. If the bytecode is used to
   // terminate the basic block then this function returns false otherwise

@@ -144,8 +144,8 @@ class BytecodeUsage {
 
  public:
   int GetArgument( int index ) const {
-    lava_debug(NORMAL,lava_verify(index >= 1 && index <= 4););
-    return arg_[index-1];
+    lava_debug(NORMAL,lava_verify(index >= 0 && index < 4););
+    return arg_[index];
   }
 
  private:

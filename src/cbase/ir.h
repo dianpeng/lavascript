@@ -165,7 +165,7 @@ CBASE_IR_LIST(__)
 // has side effect will have automatic order.
 typedef zone::List<Expr*> EffectList;
 
-typedef EffectList::Iterator EffectNodeIterator;
+typedef EffectList::ForwardIterator EffectNodeIterator;
 
 // This structure is held by *all* the expression. If the region field is not
 // NULL then it means this expression has side effect and it is bounded at
@@ -262,7 +262,7 @@ class Expr : public Node {
    *
    */
   typedef zone::List<Expr*>        OperandList;
-  typedef OperandList::Iterator    OperandIterator;
+  typedef OperandList::ForwardIterator    OperandIterator;
 
   struct Ref {
     OperandIterator id;  // iterator used for fast deletion of this Ref it is

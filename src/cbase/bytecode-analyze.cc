@@ -1,4 +1,5 @@
 #include "bytecode-analyze.h"
+#include "src/trace.h"
 
 namespace lavascript {
 namespace cbase      {
@@ -116,6 +117,7 @@ void BytecodeAnalyze::BuildIf( BytecodeIterator* itr ) {
       std::uint16_t pc;
       itr->GetOperand(&pc);
       final_cursor = itr->OffsetAt(pc);
+      itr->Next(); // skip the last JUMP
     }
   }
 
@@ -254,6 +256,43 @@ bool BytecodeAnalyze::BuildBytecode( BytecodeIterator* itr ) {
   return true;
 }
 
+void BytecodeAnalyze::Dump( DumpWriter* writer ) const {
+  const std::uint32_t* start = proto_->code_buffer();
+
+  writer->WriteL("***************************************");
+  writer->WriteL("        Bytecode Analysis              ");
+  writer->WriteL("***************************************");
+  writer->WriteL("Bytecode Start:%p",proto_->code_buffer());
+
+  {
+    DumpWriter::Section header(writer,"Basic Block Information");
+    for( auto & e : basic_block_variable_ ) {
+      DumpWriter::Section item(writer,"Start:%p,End:%p|Offset:%d",e.second.start,
+                                                                  e.second.end,
+                                                                 (e.second.start-start));
+      for( std::size_t i = 0 ; i < max_local_var_size_ ; ++i ) {
+        if(e.second.variable[i]) {
+          writer->WriteL("Register Alive: %zu",i);
+        }
+      }
+    }
+  }
+
+  {
+    DumpWriter::Section(writer,"Loop Information");
+    for( auto &e : loop_header_info_ ) {
+      DumpWriter::Section item(writer,"Start:%p,End:%p|Offset:%d",e.second.start,
+                                                                  e.second.end,
+                                                                 (e.second.start-start));
+      for( std::size_t i = 0 ; i < interpreter::kRegisterSize ; ++i ) {
+        if(e.second.phi[i]) {
+          writer->WriteL("Phi: %zu",i);
+        }
+      }
+    }
+  }
+}
+
 BytecodeAnalyze::BytecodeAnalyze( const Handle<Prototype>& proto ):
   proto_               (proto),
   max_local_var_size_  (proto->max_local_var_size()),
@@ -264,6 +303,9 @@ BytecodeAnalyze::BytecodeAnalyze( const Handle<Prototype>& proto ):
 {
   BytecodeIterator itr(proto->GetBytecodeIterator());
   BuildBasicBlock(&itr);
+
+  lava_debug(NORMAL,lava_verify(loop_stack_.empty()););
+  lava_debug(NORMAL,lava_verify(basic_block_stack_.empty()););
 }
 
 BytecodeAnalyze::BytecodeAnalyze( BytecodeAnalyze&& that ):

@@ -20,9 +20,6 @@ typedef std::vector<Expr*> ValueStack;
 //
 // The builder can build 1) normal function call 2) OSR style function IR
 class GraphBuilder {
- public:
-  // Stack to simulate all the register status while building the IR graph
-
  private:
   // Data structure record the pending jump that happened inside of the loop
   // body. It is typically break and continue keyword , since they cause a

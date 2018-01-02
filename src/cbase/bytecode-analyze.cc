@@ -1,4 +1,5 @@
 #include "bytecode-analyze.h"
+#include "helper.h"
 #include "src/trace.h"
 
 namespace lavascript {
@@ -50,21 +51,27 @@ bool BytecodeAnalyze::BasicBlockVariable::IsAlive( std::uint8_t reg ) const {
 }
 
 void BytecodeAnalyze::Kill( std::uint8_t reg ) {
-  // update information of the basic block
-  current_bb()->Add(reg);
-
-  /** Update the variable use case if we are in loop body. */
-  if(current_loop()) {
-    lava_debug(NORMAL,lava_verify(current_loop()->enclosed_bb()););
-
-    // since we have a loop so we try to check whether we need to
-    // insert this reg into loop modified variable
-    if(current_loop()->enclosed_bb()->IsAlive(reg)) {
-      // this means this variable is not bounded inside of this loop
-      // block but in its enclosed lexical scope chain and now it is
-      // modified, so we need to insert a PHI to capture it at the
-      // head of the loop
-      current_loop()->phi[reg] = true;
+  if(current_bb()->variable[reg] || !current_bb()->IsAlive(reg)) {
+    /**
+     * When we reach here it means this register is not alive at
+     * this bb's parent scope or it is alive at this scope, so
+     * we need to record this variable as alive in the current
+     * scope
+     */
+    current_bb()->Add(reg);
+  } else {
+    /** Update the variable use case if we are in loop body. */
+    if(current_loop()) {
+      lava_debug(NORMAL,lava_verify(current_loop()->enclosed_bb()););
+      // since we have a loop so we try to check whether we need to
+      // insert this reg into loop modified variable
+      if(current_loop()->enclosed_bb()->IsAlive(reg)) {
+        // this means this variable is not bounded inside of this loop
+        // block but in its enclosed lexical scope chain and now it is
+        // modified, so we need to insert a PHI to capture it at the
+        // head of the loop
+        current_loop()->phi[reg] = true;
+      }
     }
   }
 }
@@ -72,7 +79,7 @@ void BytecodeAnalyze::Kill( std::uint8_t reg ) {
 // build the liveness against basic block
 void BytecodeAnalyze::BuildBasicBlock( BytecodeIterator* itr ) {
   BasicBlockScope scope(this,itr->pc());
-  for( ; itr->HasNext() && BuildBytecode(itr) ; itr->Next() )
+  while( itr->HasNext() && BuildBytecode(itr) )
     ;
   current_bb()->end = itr->pc();
 }
@@ -82,7 +89,7 @@ bool BytecodeAnalyze::BuildIfBlock( BytecodeIterator* itr ,
                                     const std::uint32_t** end ) {
   bool skip_bytecode = false;
 
-  for( ; itr->HasNext() ; itr->Next() ) {
+  while( itr->HasNext() ) {
     if(itr->pc() == pc) {
       if(end) *end = itr->pc();
       return false;
@@ -98,6 +105,18 @@ bool BytecodeAnalyze::BuildIfBlock( BytecodeIterator* itr ,
   return false;
 }
 
+bool BytecodeAnalyze::CheckElifBranch( BytecodeIterator* itr , const std::uint32_t* end ) {
+  helper::BackupBytecodeIterator backup(itr);
+
+  for( ; itr->HasNext() ; itr->Move() ) {
+    if(itr->opcode() == BC_JMPF) return true;
+    if(itr->pc() == end)         return false;
+  }
+
+  lava_unreachF("%s","cannot reach here since there must be a jmpf or end of stream");
+  return false;
+}
+
 void BytecodeAnalyze::BuildIf( BytecodeIterator* itr ) {
   lava_debug(NORMAL,lava_verify(itr->opcode() == BC_JMPF););
   std::uint8_t a1; std::uint16_t a2;
@@ -107,7 +126,7 @@ void BytecodeAnalyze::BuildIf( BytecodeIterator* itr ) {
   bool has_else_branch = false;
 
   // true branch
-  itr->Next();
+  itr->Move();
   {
     BasicBlockScope scope(this,itr->pc()); // true branch basic block
     has_else_branch = BuildIfBlock(itr,false_pc,&(current_bb()->end));
@@ -117,7 +136,7 @@ void BytecodeAnalyze::BuildIf( BytecodeIterator* itr ) {
       std::uint16_t pc;
       itr->GetOperand(&pc);
       final_cursor = itr->OffsetAt(pc);
-      itr->Next(); // skip the last JUMP
+      itr->Move(); // skip the last JUMP
     }
   }
 
@@ -125,10 +144,18 @@ void BytecodeAnalyze::BuildIf( BytecodeIterator* itr ) {
   lava_debug(NORMAL,lava_verify(itr->pc() == false_pc););
 
   if(has_else_branch) {
-    BasicBlockScope scope(this,itr->pc()); // false branch basic block
-    BuildIfBlock(itr,final_cursor,NULL);
+    if(!CheckElifBranch(itr,final_cursor)) {
+      // We do not have else if branch so we need to evaluate
+      // this block as a separate else block which needs to
+      // setup a basic block
+      BasicBlockScope scope(this,itr->pc());
+
+      // this is a else branch so must not have any other branch
+      lava_verify(!BuildIfBlock(itr,final_cursor,&(current_bb()->end)));
+
+      lava_debug(NORMAL,lava_verify(itr->pc() == final_cursor););
+    }
   }
-  lava_debug(NORMAL,lava_verify(itr->pc() == final_cursor););
 }
 
 void BytecodeAnalyze::BuildLogic( BytecodeIterator* itr ) {
@@ -160,7 +187,6 @@ void BytecodeAnalyze::BuildTernary( BytecodeIterator* itr ) {
 void BytecodeAnalyze::BuildLoop( BytecodeIterator* itr ) {
   lava_debug(NORMAL,lava_verify(itr->opcode() == BC_FSTART ||
                                 itr->opcode() == BC_FESTART););
-  const std::uint32_t* loop_start_pc = itr->pc();
   std::uint16_t offset;
 
   {
@@ -169,11 +195,12 @@ void BytecodeAnalyze::BuildLoop( BytecodeIterator* itr ) {
     if(IsLocalVar(a1)) Kill(a1); // loop induction variable
   }
 
-  itr->Next();
-  { // enter into loop body
-    LoopScope scope(this,itr->pc(),loop_start_pc);
+  itr->Move();
 
-    for( ; itr->HasNext(); itr->Next()) {
+  { // enter into loop body
+    LoopScope scope(this,itr->pc(),itr->pc());
+
+    while(itr->HasNext()) {
       if(itr->opcode() == BC_FEND1 || itr->opcode() == BC_FEND2 ||
                                       itr->opcode() == BC_FEEND)
         break;
@@ -181,12 +208,13 @@ void BytecodeAnalyze::BuildLoop( BytecodeIterator* itr ) {
         if(!BuildBytecode(itr)) break;
     }
 
-    current_bb()->end = itr->pc();
+    current_bb()->end   = itr->pc();
+    current_loop()->end = itr->pc();
 
     lava_debug(NORMAL,
           if(itr->opcode() == BC_FEND1 || itr->opcode() == BC_FEND2 ||
                                           itr->opcode() == BC_FEEND) {
-            itr->Next();
+            itr->Move();
             lava_verify(itr->pc() == itr->OffsetAt(offset));
           }
         );
@@ -197,15 +225,14 @@ void BytecodeAnalyze::BuildLoop( BytecodeIterator* itr ) {
 void BytecodeAnalyze::BuildForeverLoop( BytecodeIterator* itr ) {
   lava_debug(NORMAL,lava_verify(itr->opcode() == BC_FEVRSTART););
   std::uint16_t offset;
-  const std::uint32_t* loop_start_pc = itr->pc();
 
   itr->GetOperand(&offset);
-  itr->Next();
+  itr->Move();
 
   { // enter into loop body
-    LoopScope scope(this,itr->pc(),loop_start_pc);
+    LoopScope scope(this,itr->pc(),itr->pc());
 
-    for( ; itr->HasNext() ; itr->Next()) {
+    while(itr->HasNext()) {
       if(itr->opcode() == BC_FEVREND)
         break;
       else {
@@ -213,11 +240,12 @@ void BytecodeAnalyze::BuildForeverLoop( BytecodeIterator* itr ) {
       }
     }
 
-    current_bb()->end = itr->pc();
+    current_bb()->end   = itr->pc();
+    current_loop()->end = itr->pc();
 
     lava_debug(NORMAL,
         if(itr->opcode() == BC_FEVREND) {
-          itr->Next();
+          itr->Move();
           lava_verify(itr->pc() == itr->OffsetAt(offset));
         }
       );
@@ -226,6 +254,7 @@ void BytecodeAnalyze::BuildForeverLoop( BytecodeIterator* itr ) {
 }
 
 bool BytecodeAnalyze::BuildBytecode( BytecodeIterator* itr ) {
+  bool ret = true;
   const BytecodeUsage& bu = itr->usage();
   for( int i = 0 ; i < BytecodeUsage::kMaxBytecodeArgumentSize ; ++i ) {
     if(bu.GetArgument(i) == BytecodeUsage::OUTPUT) {
@@ -237,23 +266,25 @@ bool BytecodeAnalyze::BuildBytecode( BytecodeIterator* itr ) {
 
   // do a dispatch based on the bytecode type
   switch(itr->opcode()) {
-    case BC_JMPF:      BuildIf(itr);      break;
-    case BC_TERN:      BuildTernary(itr); break;
-    case BC_AND:       BuildLogic(itr);   break;
-    case BC_OR:        BuildLogic(itr);   break;
-    case BC_FSTART:    BuildLoop(itr);    break;
-    case BC_FESTART:   BuildLoop(itr);    break;
+    case BC_JMPF:      BuildIf(itr);          break;
+    case BC_TERN:      BuildTernary(itr);     break;
+    case BC_AND:       BuildLogic(itr);       break;
+    case BC_OR:        BuildLogic(itr);       break;
+    case BC_FSTART:    BuildLoop(itr);        break;
+    case BC_FESTART:   BuildLoop(itr);        break;
     case BC_FEVRSTART: BuildForeverLoop(itr); break;
 
     // bytecode that gonna terminate current basic block
-    case BC_CONT:
-    case BC_BRK:
-    case BC_RET:
-    case BC_RETNULL:
-      return false;
-    default: break;
+    case BC_CONT: case BC_BRK: case BC_RET: case BC_RETNULL:
+      itr->Move();
+      ret = false;
+      break;
+    default:
+      itr->Move();
+      break;
   }
-  return true;
+
+  return ret;
 }
 
 void BytecodeAnalyze::Dump( DumpWriter* writer ) const {

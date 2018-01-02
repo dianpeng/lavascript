@@ -227,7 +227,7 @@ GraphBuilder::StopReason GraphBuilder::BuildLogic( BytecodeIterator* itr ) {
   lava_debug(NORMAL,StackReset(reg););
 
   { // evaluate the rhs
-    itr->Next();
+    itr->Move();
     StopReason reason = BuildBasicBlock(itr,end_pc);
     lava_verify(reason == STOP_END);
   }
@@ -252,7 +252,7 @@ GraphBuilder::StopReason GraphBuilder::BuildTernary( BytecodeIterator* itr ) {
   itr->GetOperand(&cond,&result,&dummy,&offset);
 
   { // evaluate the fall through branch
-    for( itr->Next() ; itr->HasNext() ; itr->Next() ) {
+    for( itr->Move() ; itr->HasNext() ; ) {
       if(itr->opcode() == BC_JMP) break; // end of the first ternary fall through branch
 
       if(BuildBytecode(itr) == STOP_BAILOUT)
@@ -268,9 +268,9 @@ GraphBuilder::StopReason GraphBuilder::BuildTernary( BytecodeIterator* itr ) {
 
   { // evaluate the jump branch
     lava_debug(NORMAL,StackReset(result););
-    lava_debug(NORMAL,itr->Next();lava_verify(itr->pc() == itr->OffsetAt(offset)););
+    lava_debug(NORMAL,itr->Move();lava_verify(itr->pc() == itr->OffsetAt(offset)););
 
-    for( itr->Next() ; itr->HasNext() ; itr->Next() ) {
+    for( itr->Move() ; itr->HasNext() ; ) {
       if(itr->pc() == end_pc) break;
 
       if(BuildBytecode(itr) == STOP_BAILOUT)
@@ -287,7 +287,7 @@ GraphBuilder::StopReason GraphBuilder::BuildTernary( BytecodeIterator* itr ) {
 
 GraphBuilder::StopReason GraphBuilder::GotoIfEnd( BytecodeIterator* itr,
                                                   const std::uint32_t* pc ) {
-  for( ; itr->HasNext() ; itr->Next() ) {
+  for( ; itr->HasNext() ; itr->Move() ) {
     if(itr->pc() == pc)          return STOP_END;
     if(itr->opcode() == BC_JMP) return STOP_JUMP;
   }
@@ -297,7 +297,7 @@ GraphBuilder::StopReason GraphBuilder::GotoIfEnd( BytecodeIterator* itr,
 
 GraphBuilder::StopReason GraphBuilder::BuildIfBlock( BytecodeIterator* itr ,
                                                      const std::uint32_t* pc ) {
-  for( ; itr->HasNext(); itr->Next() ) {
+  while( itr->HasNext() ) {
     // check whether we reache end of PC where we suppose to stop
     if(pc == itr->pc()) return STOP_END;
 
@@ -311,7 +311,6 @@ GraphBuilder::StopReason GraphBuilder::BuildIfBlock( BytecodeIterator* itr ,
       case BC_BRK:
         if(BuildBytecode(itr) == STOP_BAILOUT)
           return STOP_BAILOUT;
-        itr->Next();
         return GotoIfEnd(itr,pc);
 
       default:
@@ -329,7 +328,7 @@ GraphBuilder::BuildIf( BytecodeIterator* itr ) {
   lava_debug(NORMAL,lava_verify(itr->opcode() == BC_JMPF););
 
   // skip the BC_JMPF
-  lava_verify(itr->Next());
+  lava_verify(itr->Move());
 
   std::uint8_t cond;    // condition's register
   std::uint16_t offset; // jump target when condition evaluated to be false
@@ -352,7 +351,7 @@ GraphBuilder::BuildIf( BytecodeIterator* itr ) {
   // 1. Build code inside of the *true* branch and it will also help us to
   //    identify whether we have dangling elif/else branch
   {
-    itr->Next();              // skip the BC_JMPF
+    itr->Move();              // skip the BC_JMPF
     BackupStack(&true_stack,this); // back up the old stack and use new stack
     set_region(true_region);  // switch to true region
 
@@ -456,7 +455,7 @@ GraphBuilder::BuildIf( BytecodeIterator* itr ) {
 
 GraphBuilder::StopReason
 GraphBuilder::BuildLoopBlock( BytecodeIterator* itr ) {
-  for( ; itr->HasNext(); itr->Next() ) {
+  while(itr->HasNext()) {
     switch(itr->opcode()) {
       case BC_FEEND: case BC_FEND1: case BC_FEND2: case BC_FEVREND:
         return STOP_SUCCESS;
@@ -468,7 +467,6 @@ GraphBuilder::BuildLoopBlock( BytecodeIterator* itr ) {
       default:
         if(BuildBytecode(itr) == STOP_BAILOUT)
           return STOP_BAILOUT;
-
         break;
     }
   }
@@ -551,12 +549,12 @@ GraphBuilder::BuildLoop( BytecodeIterator* itr ) {
 
   set_region(loop_header);
 
+  // skip the loop start bytecode
+  itr->Move();
+
   // 2. enter into the loop's body
   {
     LoopScope lscope(this,itr->pc());
-
-    // skip the loop start bytecode
-    itr->Next();
 
     // create new loop body node
     body = Loop::New(graph_);
@@ -644,7 +642,7 @@ GraphBuilder::BuildLoop( BytecodeIterator* itr ) {
     after->AddBackwardEdge(if_false);
 
     // skip the last end instruction
-    itr->Next();
+    itr->Move();
 
     // patch all the Phi node
     PatchLoopPhi();
@@ -1001,13 +999,13 @@ GraphBuilder::StopReason GraphBuilder::BuildBytecode( BytecodeIterator* itr ) {
       break;
   }
 
-  itr->Next(); // consume this bytecode
+  itr->Move(); // consume this bytecode
   return STOP_SUCCESS;
 }
 
 GraphBuilder::StopReason
 GraphBuilder::BuildBasicBlock( BytecodeIterator* itr , const std::uint32_t* end_pc ) {
-  for( ; itr->HasNext() ; itr->Next() ) {
+  while(itr->HasNext()) {
     if(itr->pc() == end_pc) return STOP_END;
 
     // build this instruction

@@ -94,6 +94,11 @@ class BytecodeAnalyze {
   void BuildBasicBlock  ( interpreter::BytecodeIterator* );
   bool BuildIfBlock     ( interpreter::BytecodeIterator* , const std::uint32_t* ,
                                                            const std::uint32_t** );
+  // Check whether the current block is a else if block or just a else block
+  // this is needed to tell the difference between else and elif which we use
+  // them to *build* correct basic block entry instruction
+  bool CheckElifBranch  ( interpreter::BytecodeIterator* , const std::uint32_t* );
+
   void BuildIf          ( interpreter::BytecodeIterator* );
   void BuildLogic       ( interpreter::BytecodeIterator* );
   void BuildTernary     ( interpreter::BytecodeIterator* );

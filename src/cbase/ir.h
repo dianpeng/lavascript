@@ -11,6 +11,7 @@
 
 #include "worker-list.h"
 
+#include <map>
 #include <vector>
 #include <deque>
 #include <stack>
@@ -258,8 +259,8 @@ class Expr : public Node {
  public: // GVN hash value and hash function 
 
   // If GVNHash returns 0 means this expression doesn't support GVN
-  virtual std::uint64_t GVNHash()   { return 0; }
-  virtual bool Equal( const Expr* ) { return false; }
+  virtual std::uint64_t GVNHash()   const { return 0; }
+  virtual bool Equal( const Expr* ) const { return false; }
 
  public:
   bool HasEffect() const { return effect_.IsUsed(); }
@@ -340,6 +341,53 @@ class Expr : public Node {
   EffectEdge  effect_;
 };
 
+/**
+ * ============================================================
+ * GVN hash function helper implementation
+ *
+ * Helper function to implement the GVN hash table function
+ * ============================================================
+ */
+
+template< typename T >
+std::uint64_t GVNHash0( T* ptr ) {
+  std::uint64_t type = reinterpret_cast<std::uint64_t>(ptr);
+  return type;
+}
+
+template< typename T , typename V >
+std::uint64_t GVNHash1( T* ptr , const V& value ) {
+  std::uint64_t uval = static_cast<std::uint64_t>(value);
+  std::uint64_t type = reinterpret_cast<std::uint64_t>(ptr);
+  return (uval << 7) ^ (type);
+}
+
+template< typename T , typename V1 , typename V2 >
+std::uint64_t GVNHash2( T* ptr , const V1& v1 , const V2& v2 ) {
+  std::uint64_t uv2 = static_cast<std::uint64_t>(v2);
+  return GVNHash1(ptr,v1) ^ (uv2);
+}
+
+template< typename T , typename V1, typename V2 , typename V3 >
+std::uint64_t GVNHash3( T* ptr , const V1& v1 , const V2& v2 ,
+                                                const V3& v3 ) {
+  std::uint64_t uv3 = static_cast<std::uint64_t>(v3);
+  return GVNHash2(ptr,v1,v2) ^ (uv3);
+}
+
+class GVNHashN {
+ public:
+  template< typename T >
+  GVNHashN( T* seed ): value_(reinterpret_cast<std::uint64_t>(seed)<<7) {}
+
+  template< typename T >
+  void Add( const T& value ) { value_ ^= static_cast<std::uint64_t>(value); }
+
+  std::uint64_t value() const { return value_; }
+ private:
+  std::uint64_t value_;
+  LAVA_DISALLOW_COPY_AND_ASSIGN(GVNHashN)
+};
 
 class Arg : public Expr {
  public:
@@ -366,6 +414,14 @@ class Int32 : public Expr {
     value_(value)
   {}
 
+ public:
+  virtual std::uint64_t GVNHash() const {
+    return GVNHash1(type_name(),value_);
+  }
+
+  virtual bool Equal( const Expr* that ) const {
+    return that->IsInt32() && (that->AsInt32()->value() == value_);
+  }
  private:
   std::int32_t value_;
   LAVA_DISALLOW_COPY_AND_ASSIGN(Int32)
@@ -380,6 +436,15 @@ class Int64: public Expr {
     Expr  (IRTYPE_INT64,id,graph,info),
     value_(value)
   {}
+
+ public:
+  virtual std::uint64_t GVNHash() const {
+    return GVNHash1(type_name(),value_);
+  }
+
+  virtual bool Equal( const Expr* that ) const {
+    return that->IsInt64() && (that->AsInt64()->value() == value_);
+  }
 
  private:
   std::int64_t value_;
@@ -396,6 +461,15 @@ class Float64 : public Expr {
     value_(value)
   {}
 
+ public:
+  virtual std::uint64_t GVNHash() const {
+    return GVNHash1(type_name(),value_);
+  }
+
+  virtual bool Equal( const Expr* that ) const {
+    return that->IsFloat64() && (that->AsFloat64()->value() == value_);
+  }
+
  private:
   double value_;
   LAVA_DISALLOW_COPY_AND_ASSIGN(Float64)
@@ -410,6 +484,14 @@ class Boolean : public Expr {
     Expr  (IRTYPE_BOOLEAN,id,graph,info),
     value_(value)
   {}
+
+  virtual std::uint64_t GVNHash() const {
+    return GVNHash1(type_name(),value_ ? 1 : 0);
+  }
+
+  virtual bool Equal( const Expr* that ) const {
+    return that->IsBoolean() && (that->AsBoolean()->value() == value_);
+  }
 
  private:
   bool value_;
@@ -427,6 +509,14 @@ class LString : public Expr {
     value_(value)
   {}
 
+  virtual std::uint64_t GVNHash() const {
+    return GVNHash1(type_name(),reinterpret_cast<std::uint64_t>(value_));
+  }
+
+  virtual bool Equal( const Expr* that ) const {
+    return that->IsLString() && (*(that->AsLString()->value()) == *value_);
+  }
+
  private:
   const zone::String* value_;
   LAVA_DISALLOW_COPY_AND_ASSIGN(LString)
@@ -443,6 +533,14 @@ class SString : public Expr {
     value_(value)
   {}
 
+  virtual std::uint64_t GVNHash() const {
+    return GVNHash1(type_name(),reinterpret_cast<std::uint64_t>(value_));
+  }
+
+  virtual bool Equal( const Expr* that ) const {
+    return that->IsSString() && (*(that->AsSString()->value()) == *value_);
+  }
+
  private:
   const zone::String* value_;
   LAVA_DISALLOW_COPY_AND_ASSIGN(SString)
@@ -455,6 +553,14 @@ class Nil : public Expr {
   Nil( Graph* graph , std::uint32_t id , IRInfo* info ):
     Expr(IRTYPE_NIL,id,graph,info)
   {}
+
+  virtual std::uint64_t GVNHash() const {
+    return GVNHash0(type_name());
+  }
+
+  virtual bool Equal( const Expr* that ) const {
+    return that->IsNil();
+  }
 
  private:
   LAVA_DISALLOW_COPY_AND_ASSIGN(Nil)
@@ -477,6 +583,9 @@ class IRList : public Expr {
   {
     array_.Reserve(zone(),size);
   }
+
+  virtual std::uint64_t GVNHash() const;
+  virtual bool Equal( const Expr* ) const;
 
  private:
   zone::Vector<Expr*> array_;
@@ -508,6 +617,9 @@ class IRObject : public Expr {
     array_.Reserve(zone(),size);
   }
 
+  virtual std::uint64_t GVNHash() const;
+  virtual bool Equal( const Expr* ) const;
+
  private:
   zone::Vector<Pair> array_;
   LAVA_DISALLOW_COPY_AND_ASSIGN(IRObject)
@@ -525,6 +637,14 @@ class LoadCls : public Expr {
     Expr (IRTYPE_LOAD_CLS,id,graph,info),
     ref_ (ref)
   {}
+
+  virtual std::uint64_t GVNHash() const {
+    return GVNHash1(type_name(),ref_);
+  }
+
+  virtual bool Equal( const Expr* that ) const {
+    return that->IsLoadCls() && (that->AsLoadCls()->ref() == ref_);
+  }
 
  private:
   std::uint32_t ref_;
@@ -547,7 +667,15 @@ class Binary : public Expr {
     EQ ,
     NE ,
     AND,
-    OR
+    OR ,
+    // used for internal strength reduction and other stuff
+    LSHIFT,
+    RSHIFT,
+    LROTATE,
+    RROTATE,
+    BIT_AND,
+    BIT_OR,
+    BIT_XOR
   };
   inline static Operator BytecodeToOperator( interpreter::Bytecode );
   inline static const char* GetOperatorName( Operator );
@@ -568,6 +696,22 @@ class Binary : public Expr {
   {
     AddOperand(lhs);
     AddOperand(rhs);
+  }
+
+  virtual std::uint64_t GVNHash() const {
+    auto l = lhs()->GVNHash();
+    if(!l) return 0;
+    auto r = rhs()->GVNHash();
+    if(!r) return 0;
+    return GVNHash2(op_name(),l,r);
+  }
+
+  virtual bool Equal( const Expr* that ) const {
+    if(that->IsBinary()) {
+      auto bin = that->AsBinary();
+      return lhs()->Equal(bin->lhs()) && rhs()->Equal(bin->rhs());
+    }
+    return false;
   }
 
  private:
@@ -597,6 +741,16 @@ class Unary : public Expr {
     AddOperand(opr);
   }
 
+  virtual std::uint64_t GVNHash() const {
+    auto opr = operand()->GVNHash();
+    if(!opr) return 0;
+    return GVNHash1(op_name(),opr);
+  }
+
+  virtual bool Equal( const Expr* that ) const {
+    return that->IsUnary() && (operand()->Equal(that->AsUnary()->operand()));
+  }
+
  private:
   Operator   op_;
   LAVA_DISALLOW_COPY_AND_ASSIGN(Unary)
@@ -620,6 +774,26 @@ class Ternary: public Expr {
   Expr* lhs () const { return operand_list()->Index(1); }
   Expr* rhs () const { return operand_list()->Last(); }
 
+  virtual std::uint64_t GVNHash() const {
+    auto c = condition()->GVNHash();
+    if(!c) return 0;
+    auto l = lhs()->GVNHash();
+    if(!l) return 0;
+    auto r = rhs()->GVNHash();
+    if(!r) return 0;
+    return GVNHash3(type_name(),c,l,r);
+  }
+
+  virtual bool Equal( const Expr* that ) const {
+    if(that->IsTernary()) {
+      auto u = that->AsTernary();
+      return condition()->Equal(u->condition()) &&
+             lhs()->Equal(u->lhs())             &&
+             rhs()->Equal(u->rhs());
+    }
+    return false;
+  }
+
  private:
   LAVA_DISALLOW_COPY_AND_ASSIGN(Ternary)
 };
@@ -638,6 +812,14 @@ class UGet : public Expr {
     index_ (imm)
   {}
 
+  virtual std::uint64_t GVNHash() const {
+    return GVNHash1(type_name(),index());
+  }
+
+  virtual bool Equal( const Expr* that ) const {
+    return that->IsUGet() && (that->AsUGet()->index() == index_);
+  }
+
  private:
   std::uint8_t index_ ;
   LAVA_DISALLOW_COPY_AND_ASSIGN(UGet)
@@ -655,6 +837,14 @@ class USet : public Expr {
     index_(index)
   {
     AddOperand(opr);
+  }
+
+  virtual std::uint64_t GVNHash() const {
+    return GVNHash1(type_name(),index());
+  }
+
+  virtual bool Equal( const Expr* that ) const {
+    return that->IsUSet() && (that->AsUSet()->index() == index_);
   }
 
  private:
@@ -679,6 +869,22 @@ class PGet : public Expr {
     AddOperand(index );
   }
 
+  virtual std::uint64_t GVNHash() const {
+    auto o = object()->GVNHash();
+    if(!o) return 0;
+    auto k = object()->GVNHash();
+    if(!k) return 0;
+    return GVNHash2(type_name(),o,k);
+  }
+
+  virtual bool Equal( const Expr* that ) const {
+    if(that->IsPGet()) {
+      auto pget = that->AsPGet();
+      return object()->Equal(pget->object()) && key()->Equal(pget->key());
+    }
+    return false;
+  }
+
  private:
   LAVA_DISALLOW_COPY_AND_ASSIGN(PGet)
 };
@@ -701,6 +907,25 @@ class PSet : public Expr {
     AddOperand(value );
   }
 
+  virtual std::uint64_t GVNHash() const {
+    auto o = object()->GVNHash();
+    if(!o) return 0;
+    auto k = key()->GVNHash();
+    if(!k) return 0;
+    auto v = value()->GVNHash();
+    if(!v) return 0;
+    return GVNHash3(type_name(),o,k,v);
+  }
+
+  virtual bool Equal( const Expr* that ) const {
+    if(that->IsPSet()) {
+      auto pset = that->AsPSet();
+      return object()->Equal(pset->object()) && key()->Equal(pset->key()) &&
+                                                value()->Equal(pset->value()) ;
+    }
+    return false;
+  }
+
  private:
   LAVA_DISALLOW_COPY_AND_ASSIGN(PSet)
 };
@@ -718,6 +943,23 @@ class IGet : public Expr {
     AddOperand(object);
     AddOperand(index );
   }
+
+  virtual std::uint64_t GVNHash() const {
+    auto o = object()->GVNHash();
+    if(!o) return 0;
+    auto i = index()->GVNHash();
+    if(!i) return 0;
+    return GVNHash2(type_name(),o,i);
+  }
+
+  virtual bool Equal( const Expr* that ) const {
+    if(that->IsIGet()) {
+      auto iget = that->AsIGet();
+      return object()->Equal(iget->object()) && index()->Equal(iget->index());
+    }
+    return false;
+  }
+
 
  private:
   LAVA_DISALLOW_COPY_AND_ASSIGN(IGet)
@@ -742,6 +984,25 @@ class ISet : public Expr {
     AddOperand(value );
   }
 
+  virtual std::uint64_t GVNHash() const {
+    auto o = object()->GVNHash();
+    if(!o) return 0;
+    auto i = index()->GVNHash();
+    if(!i) return 0;
+    auto v = value()->GVNHash();
+    if(!v) return 0;
+    return GVNHash3(type_name(),o,i,v);
+  }
+
+  virtual bool Equal( const Expr* that ) const {
+    if(that->IsISet()) {
+      auto iset = that->AsISet();
+      return object()->Equal(iset->object()) && index()->Equal(iset->index()) &&
+                                                value()->Equal(iset->value());
+    }
+    return false;
+  }
+
  private:
   LAVA_DISALLOW_COPY_AND_ASSIGN(ISet)
 };
@@ -758,6 +1019,16 @@ class GGet : public Expr {
     Expr  (IRTYPE_GGET,id,graph,info)
   {
     AddOperand(name);
+  }
+
+  virtual std::uint64_t GVNHash() const {
+    auto k = key()->GVNHash();
+    if(!k) return 0;
+    return GVNHash1(type_name(),k);
+  }
+
+  virtual bool Equal( const Expr* that ) const {
+    return that->IsGGet() && (key()->Equal(that->AsGGet()->key()));
   }
 
  private:
@@ -779,6 +1050,22 @@ class GSet : public Expr {
     AddOperand(value);
   }
 
+  virtual std::uint64_t GVNHash() const {
+    auto k = key()->GVNHash();
+    if(!k) return 0;
+    auto v = value()->GVNHash();
+    if(!v) return 0;
+    return GVNHash2(type_name(),k,v);
+  }
+
+  virtual bool Equal( const Expr* that ) const {
+    if(that->IsGSet()) {
+      auto gset = that->AsGSet();
+      return key()->Equal(gset->key()) && value()->Equal(gset->value());
+    }
+    return false;
+  }
+
  private:
   LAVA_DISALLOW_COPY_AND_ASSIGN(GSet)
 };
@@ -797,6 +1084,16 @@ class ItrNew : public Expr {
     AddOperand(operand);
   }
 
+  virtual std::uint64_t GVNHash() const {
+    auto opr = operand()->GVNHash();
+    if(!opr) return 0;
+    return GVNHash1(type_name(),opr);
+  }
+
+  virtual bool Equal( const Expr* that ) const {
+    return that->IsItrNew() && (operand()->Equal(that->AsItrNew()->operand()));
+  }
+
  private:
   LAVA_DISALLOW_COPY_AND_ASSIGN(ItrNew)
 };
@@ -812,6 +1109,16 @@ class ItrNext : public Expr {
     AddOperand(operand);
   }
 
+  virtual std::uint64_t GVNHash() const {
+    auto opr = operand()->GVNHash();
+    if(!opr) return 0;
+    return GVNHash1(type_name(),opr);
+  }
+
+  virtual bool Equal( const Expr* that ) const {
+    return that->IsItrNew() && (operand()->Equal(that->AsItrNew()->operand()));
+  }
+
  private:
   LAVA_DISALLOW_COPY_AND_ASSIGN(ItrNext)
 };
@@ -825,6 +1132,16 @@ class ItrTest : public Expr {
     Expr  (IRTYPE_ITR_TEST,id,graph,info)
   {
     AddOperand(operand);
+  }
+
+  virtual std::uint64_t GVNHash() const {
+    auto opr = operand()->GVNHash();
+    if(!opr) return 0;
+    return GVNHash1(type_name(),opr);
+  }
+
+  virtual bool Equal( const Expr* that ) const {
+    return that->IsItrNew() && (operand()->Equal(that->AsItrNew()->operand()));
   }
 
  private:
@@ -846,6 +1163,16 @@ class ItrDeref : public Expr {
     Expr   (IRTYPE_ITR_DEREF,id,graph,info)
   {
     AddOperand(operand);
+  }
+
+  virtual std::uint64_t GVNHash() const {
+    auto opr = operand()->GVNHash();
+    if(!opr) return 0;
+    return GVNHash1(type_name(),opr);
+  }
+
+  virtual bool Equal( const Expr* that ) const {
+    return that->IsItrNew() && (operand()->Equal(that->AsItrNew()->operand()));
   }
 
  private:
@@ -873,6 +1200,9 @@ class Phi : public Expr {
     Expr           (IRTYPE_PHI,id,graph,info),
     region_        (region)
   {}
+
+  virtual std::uint64_t GVNHash() const;
+  virtual bool Equal( const Expr* ) const;
 
  private:
   ControlFlow* region_;
@@ -923,6 +1253,14 @@ class Projection : public Expr {
     AddOperand(operand);
   }
 
+  virtual std::uint64_t GVNHash() const {
+    return GVNHash1(type_name(),index());
+  }
+
+  virtual bool Equal( const Expr* that ) const {
+    return that->IsProjection() && (that->AsProjection()->index() == index());
+  }
+
  private:
   std::uint32_t index_;
   LAVA_DISALLOW_COPY_AND_ASSIGN(Projection)
@@ -940,6 +1278,16 @@ class InitCls : public Expr {
 
   Expr* key() const { return operand_list()->First(); }
 
+  virtual std::uint64_t GVNHash() const {
+    auto k = key()->GVNHash();
+    if(!k) return 0;
+    return GVNHash1(type_name(),k);
+  }
+
+  virtual bool Equal( const Expr* that ) const {
+    return that->IsInitCls() && (key()->Equal(that->AsInitCls()->key()));
+  }
+
  private:
   LAVA_DISALLOW_COPY_AND_ASSIGN(InitCls)
 };
@@ -956,6 +1304,14 @@ class OSRLoad : public Expr {
     Expr  ( IRTYPE_OSR_LOAD , id , graph , NULL ),
     index_(index)
   {}
+
+  virtual std::uint64_t GVNHash() const {
+    return GVNHash1(type_name(),index());
+  }
+
+  virtual bool Equal( const Expr* that ) const {
+    return that->IsOSRLoad() && (that->AsOSRLoad()->index() == index());
+  }
 
  private:
   std::uint32_t index_;
@@ -1282,7 +1638,10 @@ class Graph {
   std::uint32_t AssignID() { return id_++; }
 
   // check whether the graph is OSR construction graph
-  bool IsOSR() const { lava_debug(NORMAL,lava_verify(start_);); return start_->IsOSRStart(); }
+  bool IsOSR() const {
+    lava_debug(NORMAL,lava_verify(start_););
+    return start_->IsOSRStart();
+  }
  public:
   std::uint32_t AddPrototypeInfo( const Handle<Closure>& cls ,
       std::uint32_t base ) {
@@ -1293,6 +1652,8 @@ class Graph {
   const PrototypeInfo& GetProrotypeInfo( std::uint32_t index ) const {
     return prototype_info_[index];
   }
+ public: // string dedup
+  zone::String* NewString( const char* data , std::size_t size );
 
  private:
   zone::Zone                  zone_;
@@ -1541,6 +1902,13 @@ inline const char* Binary::GetOperatorName( Operator op ) {
     case NE  : return "ne" ;
     case AND : return "and";
     case OR  : return "or";
+    case LSHIFT: return "lshift";
+    case RSHIFT: return "rshift";
+    case LROTATE: return "lrotate";
+    case RROTATE: return "rrotate";
+    case BIT_AND: return "bit_and";
+    case BIT_OR : return "bit_or" ;
+    case BIT_XOR: return "bit_xor";
     default: lava_die(); return NULL;
   }
 }

@@ -13,6 +13,91 @@ const char* IRTypeGetName( IRType type ) {
 #undef __ // __
 }
 
+std::uint64_t IRList::GVNHash() const {
+  auto len = array_.size();
+  GVNHashN hasher(type_name());
+  for( std::size_t i = 0 ; i < len ; ++i ) {
+    auto v = array_.Index(i)->GVNHash();
+    if(!v) return 0;
+    hasher.Add(v);
+  }
+  return hasher.value();
+}
+
+bool IRList::Equal( const Expr* that ) const {
+  if(that->IsIRList()) {
+    auto irlist = that->AsIRList();
+    if(irlist->array_.size() == array_.size()) {
+      auto len = array_.size();
+      for( std::size_t i = 0 ; i < len ; ++i ) {
+        auto v = array_.Index(i);
+        if(!v->Equal(irlist->array_.Index(i)))
+          return false;
+      }
+      return true;
+    }
+  }
+  return false;
+}
+
+std::uint64_t IRObject::GVNHash() const {
+  auto len = array_.size();
+  GVNHashN hasher(type_name());
+  for( std::size_t i = 0 ; i < len ; ++i ) {
+    auto e = array_.Index(i);
+    auto k = e.key->GVNHash();
+    if(!k) return 0;
+    auto v = e.val->GVNHash();
+    if(!v) return 0;
+    hasher.Add(k);
+    hasher.Add(v);
+  }
+  return hasher.value();
+}
+
+bool IRObject::Equal( const Expr* that ) const {
+  if(that->IsIRObject()) {
+    auto irobj = that->AsIRObject();
+    if(irobj->array_.size() == array_.size()) {
+      auto len = array_.size();
+      for( std::size_t i = 0 ; i < len ; ++i ) {
+        auto lhs = array_.Index(i);
+        auto rhs = irobj->array_.Index(i);
+        if(!lhs.key->Equal(rhs.key) || !rhs.val->Equal(rhs.val))
+          return false;
+      }
+      return true;
+    }
+  }
+  return false;
+}
+
+std::uint64_t Phi::GVNHash() const {
+  auto opr_list = operand_list();
+  auto len = opr_list->size();
+  GVNHashN hasher(type_name());
+  for( std::size_t i = 0 ; i < len ; ++i ) {
+    auto val = opr_list->Index(i)->GVNHash();
+    hasher.Add(val);
+  }
+  return hasher.value();
+}
+
+bool Phi::Equal( const Expr* that ) const {
+  if(that->IsPhi()) {
+    auto phi = that->AsPhi();
+    if(operand_list()->size() == phi->operand_list()->size()) {
+      auto len = operand_list()->size();
+      for( std::size_t i = 0 ; i < len ; ++i ) {
+        if(!operand_list()->Index(i)->Equal(phi->operand_list()->Index(i)))
+          return false;
+      }
+      return true;
+    }
+  }
+  return false;
+}
+
 void Expr::Replace( Expr* another ) {
   // 1. check all the operand_list and patch each operands reference
   //    list to be new one

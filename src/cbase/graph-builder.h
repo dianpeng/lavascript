@@ -164,8 +164,17 @@ class GraphBuilder {
     return func_info().base+index;
   }
 
-  void StackSet( std::uint32_t index , Expr* value ) {
+  void StackSet( std::uint32_t index , Expr* value , ControlFlow* r = NULL ) {
+    r = r ? r : region();
     stack_->at(StackIndex(index)) = value;
+
+    /**
+     * When we do OSR compilation, any expression that mutate current register slot
+     * will have side effect due to the deoptimization happened.
+     */
+    if(func_info().IsOSR() && !value->HasEffect()) {
+      r->AddEffectExpr(value);
+    }
   }
 
   void StackReset( std::uint32_t index ) {
@@ -242,10 +251,9 @@ class GraphBuilder {
                               const std::uint32_t* end_pc = NULL );
 
   // Build branch IR graph
-  void InsertIfPhi( ValueStack* dest , const ValueStack& false_stack ,
-                                       const ValueStack& true_stack ,
-                                       ControlFlow* ,
-                                       const interpreter::BytecodeLocation& pc );
+  void InsertIfPhi( const ValueStack& false_stack , const ValueStack& true_stack ,
+                                                    ControlFlow* ,
+                                                    const interpreter::BytecodeLocation& );
 
   StopReason GotoIfEnd( interpreter::BytecodeIterator* , const std::uint32_t* );
   StopReason BuildIf( interpreter::BytecodeIterator* itr );

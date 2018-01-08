@@ -66,6 +66,12 @@ class GraphBuilder::FuncScope {
     gb->graph_->AddPrototypeInfo(cls,base);
     gb->func_info_.push_back(FuncInfo(cls,region,base));
     gb->stack_->resize(base+interpreter::kRegisterSize);
+
+    // initialize argument for this function call
+    auto arg_size = cls->prototype()->argument_size();
+    for( std::size_t i = 0 ; i < arg_size ; ++i ) {
+      gb->stack_->at(i) = Arg::New(gb->graph_,static_cast<std::uint32_t>(i));
+    }
   }
 
   ~FuncScope() { gb_->func_info_.pop_back(); }
@@ -186,10 +192,10 @@ IRInfo* GraphBuilder::NewIRInfo( const BytecodeLocation& pc ) {
   return ret;
 }
 
-void GraphBuilder::InsertIfPhi( ValueStack* dest , const ValueStack& false_stack ,
-                                                   const ValueStack& true_stack  ,
-                                                   ControlFlow* region ,
-                                                   const BytecodeLocation& pc ) {
+void GraphBuilder::InsertIfPhi( const ValueStack& false_stack ,
+                                const ValueStack& true_stack  ,
+                                ControlFlow* region ,
+                                const BytecodeLocation& pc ) {
 
   lava_debug(NORMAL,lava_verify(false_stack.size() == true_stack.size()););
 
@@ -203,9 +209,13 @@ void GraphBuilder::InsertIfPhi( ValueStack* dest , const ValueStack& false_stack
      */
     if(lhs && rhs) {
       if(lhs != rhs)
-        (*dest)[i] = Phi::New(graph_,lhs, rhs, region , NewIRInfo(pc));
+        stack_->at(i) = Phi::New(graph_,lhs, rhs, region , NewIRInfo(pc));
       else
-        (*dest)[i] = lhs;
+        stack_->at(i) = lhs;
+
+      if(func_info().IsOSR() && !stack_->at(i)->HasEffect()) {
+        region->AddEffectExpr(stack_->at(i));
+      }
     }
   }
 }
@@ -215,6 +225,7 @@ void GraphBuilder::InsertUnconditionalJumpPhi( const ValueStack& stk , ControlFl
   for( std::size_t i = 0 ; i < stack_->size(); ++i ) {
     Expr* lhs = stack_->at(i);
     if(i == stk.size()) break;
+
     Expr* rhs = stk[i];
 
     if(lhs && rhs) {
@@ -237,6 +248,11 @@ void GraphBuilder::InsertUnconditionalJumpPhi( const ValueStack& stk , ControlFl
       } else {
         stack_->at(i) = Phi::New(graph_,lhs,rhs,region,NewIRInfo(pc));
         lava_debug(NORMAL,lava_verify(region->backward_edge()->size() == 2););
+      }
+
+      if(func_info().IsOSR()) {
+        auto node = stack_->at(i);
+        if(!node->HasEffect()) region->AddEffectExpr(node);
       }
     }
   }
@@ -437,7 +453,7 @@ GraphBuilder::BuildIf( BytecodeIterator* itr ) {
   set_region(merge);
 
   // 3. handle PHI node
-  InsertIfPhi(stack_ , *stack_ , true_stack , merge , itr->bytecode_location());
+  InsertIfPhi(*stack_ , true_stack , merge , itr->bytecode_location());
   return STOP_SUCCESS;
 }
 
@@ -1149,13 +1165,13 @@ void GraphBuilder::SetupOSRLoopCondition( BytecodeIterator* itr ) {
 
     // the addition node will use the PHI node as its left hand side
     Binary* addition = Binary::New(graph_,StackGet(a1),StackGet(a3),
-        Binary::ADD,
-        NewIRInfo(itr->bytecode_location()));
-
+                                                       Binary::ADD,
+                                                       NewIRInfo(itr->bytecode_location()));
     StackSet(a1,addition);
 
-    Binary* comparison = Binary::New(
-        graph_,addition,StackGet(a2),Binary::LT, NewIRInfo(itr->bytecode_location()));
+    Binary* comparison = Binary::New(graph_,addition,StackGet(a2),
+                                                     Binary::LT,
+                                                     NewIRInfo(itr->bytecode_location()));
 
     StackSet(interpreter::kAccRegisterIndex,comparison);
   } else if(itr->opcode() == BC_FEEND) {

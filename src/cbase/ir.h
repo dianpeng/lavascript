@@ -343,11 +343,11 @@ class Expr : public Node {
 
 class Arg : public Expr {
  public:
-  inline static Arg* New( Graph* , std::uint32_t , IRInfo* );
+  inline static Arg* New( Graph* , std::uint32_t );
   std::uint32_t index() const { return index_; }
 
-  Arg( Graph* graph , std::uint32_t id , std::uint32_t index , IRInfo* info ):
-    Expr  (IRTYPE_ARG,id,graph,info),
+  Arg( Graph* graph , std::uint32_t id , std::uint32_t index ):
+    Expr  (IRTYPE_ARG,id,graph,NULL),
     index_(index)
   {}
 
@@ -1448,8 +1448,8 @@ inline zone::Zone* Node::zone() const {
   return graph_->zone();
 }
 
-inline Arg* Arg::New( Graph* graph , std::uint32_t index , IRInfo* info ) {
-  return graph->zone()->New<Arg>(graph,graph->AssignID(),index,info);
+inline Arg* Arg::New( Graph* graph , std::uint32_t index ) {
+  return graph->zone()->New<Arg>(graph,graph->AssignID(),index);
 }
 
 inline Int32* Int32::New( Graph* graph , std::int32_t value , IRInfo* info ) {

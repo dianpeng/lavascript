@@ -15,10 +15,10 @@ namespace lavascript {
 static const std::size_t kSSOMaxSize               = 32; // inclusive
 static const std::size_t kDefaultListSize          = 4;
 static const std::size_t kDefaultObjectSize        = 8;
-static const std::size_t kMaxListEntryCount        = 256;
-static const std::size_t kMaxObjectEntryCount      = 256;
 static const std::size_t kMaxPrototypeSize         = 65536;
 static const std::size_t kMaxPrototypeCount        = 65535;
+static const std::size_t kMaxListEntryCount        = 256;
+static const std::size_t kMaxObjectEntryCount      = 256;
 
 // Interpreter related confugration options
 namespace interpreter {

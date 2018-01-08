@@ -59,6 +59,9 @@ class GraphBuilder {
       {}
     };
     std::vector<PhiVar> phi_list;
+   public:
+    bool HasParentLoop() const { return loop_header_info->prev != NULL; }
+    bool HasJump() const { return !pending_break.empty() || !pending_continue.empty(); }
 
    public:
     void AddBreak( Jump* node , const std::uint32_t* target , const ValueStack& stk ) {
@@ -92,12 +95,16 @@ class GraphBuilder {
     std::uint32_t base;
     std::uint8_t  max_local_var_size;
     std::vector<LoopInfo> loop_info;
-    std::vector<Return* > return_list;
+    std::vector<ControlFlow*> return_list;
     BytecodeAnalyze bc_analyze;
+    const std::uint32_t* osr_start;
 
    public:
     inline FuncInfo( const Handle<Closure>& , ControlFlow* , std::uint32_t );
+    inline FuncInfo( const Handle<Closure>& , ControlFlow* , const std::uint32_t* );
     inline FuncInfo( FuncInfo&& );
+
+    bool IsOSR() const { return osr_start != NULL; }
 
     bool IsLocalVar( std::uint8_t slot ) const {
       return slot < max_local_var_size;
@@ -128,16 +135,29 @@ class GraphBuilder {
   };
 
  public:
-  GraphBuilder( zone::Zone* zone , const Handle<Script>& script ):
-    zone_        (zone),
+  // Build routine's return status code
+  enum StopReason {
+    STOP_BAILOUT = -1,   // the target is too complicated to be jitted
+    STOP_JUMP,
+    STOP_EOF ,
+    STOP_END ,
+    STOP_SUCCESS
+  };
+
+ public:
+  GraphBuilder( const Handle<Script>& script ):
+    zone_        (NULL),
     script_      (script),
     graph_       (NULL),
-    stack_       () ,
+    stack_       (),
     func_info_   ()
   {}
 
   // Build a normal function's IR graph
   bool Build( const Handle<Closure>& , Graph* );
+
+  // Build a function's graph assume OSR
+  bool BuildOSR( const Handle<Closure>& , const std::uint32_t* , Graph* );
 
  private: // Stack accessing
   std::uint32_t StackIndex( std::uint32_t index ) const {
@@ -157,6 +177,7 @@ class GraphBuilder {
   }
  private: // Current FuncInfo
   FuncInfo& func_info() { return func_info_.back(); }
+
   const FuncInfo& func_info() const { return func_info_.back(); }
 
   bool IsTopFunction() const { return func_info_.size() == 1; }
@@ -200,20 +221,25 @@ class GraphBuilder {
   Expr* NewBoolean    ( bool );
 
  private:
-  // Build routine's return status code
-  enum StopReason {
-    STOP_BAILOUT = -1,   // the target is too complicated to be jitted
-    STOP_JUMP,
-    STOP_EOF ,
-    STOP_END ,
-    STOP_SUCCESS
-  };
+
+  StopReason BuildOSRStart( const Handle<Closure>& , const std::uint32_t* , Graph* );
+
+  void BuildOSRLocalVariable();
+
+  void SetupOSRLoopCondition( interpreter::BytecodeIterator* );
+  StopReason BuildOSRLoop( interpreter::BytecodeIterator* );
+  StopReason PeelOSRLoop ( interpreter::BytecodeIterator* );
+
+  // Build a block as OSR loop body
+  StopReason GotoOSRBlockEnd( interpreter::BytecodeIterator* ,
+                              const std::uint32_t* );
 
   // Just build *one* BC isntruction , this will not build certain type of BCs
   // since it is expected other routine to consume those BCs
   StopReason BuildBytecode( interpreter::BytecodeIterator* itr );
 
-  StopReason BuildBasicBlock( interpreter::BytecodeIterator* itr , const std::uint32_t* end_pc = NULL );
+  StopReason BuildBasicBlock( interpreter::BytecodeIterator* itr ,
+                              const std::uint32_t* end_pc = NULL );
 
   // Build branch IR graph
   void InsertIfPhi( ValueStack* dest , const ValueStack& false_stack ,
@@ -239,7 +265,10 @@ class GraphBuilder {
   // modified inside of the loop and these variables are not local variable inside of
   // the loop. So we just insert PHI before hand and at last we patch the PHI to correct
   // its *second input operand* since the modification comes later in the loop.
+  StopReason GotoLoopEnd     ( interpreter::BytecodeIterator* itr );
+  Expr* BuildLoopEndCondition( interpreter::BytecodeIterator* itr , ControlFlow* );
   StopReason BuildLoop       ( interpreter::BytecodeIterator* itr );
+  StopReason BuildLoopBody   ( interpreter::BytecodeIterator* itr , ControlFlow* );
   StopReason BuildForeverLoop( interpreter::BytecodeIterator* itr );
   void GenerateLoopPhi       ( const interpreter::BytecodeLocation& );
   void PatchLoopPhi          ();
@@ -265,6 +294,7 @@ class GraphBuilder {
   std::vector<FuncInfo> func_info_;
 
  private:
+  class OSRScope ;
   class FuncScope;
   class LoopScope;
   class BackupStack;
@@ -272,6 +302,7 @@ class GraphBuilder {
   friend class FuncScope;
   friend class LoopScope;
   friend class BackupStack;
+  friend class OSRScope;
 };
 
 inline GraphBuilder::FuncInfo::FuncInfo( const Handle<Closure>& cls , ControlFlow* start_region ,
@@ -283,7 +314,21 @@ inline GraphBuilder::FuncInfo::FuncInfo( const Handle<Closure>& cls , ControlFlo
   max_local_var_size(cls->prototype()->max_local_var_size()),
   loop_info         (),
   return_list       (),
-  bc_analyze        (cls->prototype())
+  bc_analyze        (cls->prototype()),
+  osr_start         (NULL)
+{}
+
+inline GraphBuilder::FuncInfo::FuncInfo( const Handle<Closure>& cls , ControlFlow* start_region ,
+                                                                      const std::uint32_t* ostart ):
+  closure           (cls),
+  prototype         (cls->prototype()),
+  region            (start_region),
+  base              (0),
+  max_local_var_size(cls->prototype()->max_local_var_size()),
+  loop_info         (),
+  return_list       (),
+  bc_analyze        (cls->prototype()),
+  osr_start         (ostart)
 {}
 
 inline GraphBuilder::FuncInfo::FuncInfo( FuncInfo&& that ):
@@ -294,7 +339,8 @@ inline GraphBuilder::FuncInfo::FuncInfo( FuncInfo&& that ):
   max_local_var_size (that.max_local_var_size),
   loop_info          (std::move(that.loop_info)),
   return_list        (std::move(that.return_list)),
-  bc_analyze         (std::move(that.bc_analyze))
+  bc_analyze         (std::move(that.bc_analyze)),
+  osr_start          (that.osr_start)
 {}
 
 inline void GraphBuilder::FuncInfo::EnterLoop( const std::uint32_t* pc ) {

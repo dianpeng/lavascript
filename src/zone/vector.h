@@ -21,27 +21,32 @@ class IteratorBase {
   bool HasNext() const { return Traits::HasNext(vec_,cursor_); }
   bool Move   ()       { return Traits::Move(vec_,&cursor_);   }
   inline const T& value() const;
+  inline T& value();
   inline void set_value( const T& value );
  private:
-  IteratorBase( Vector<T>* vec ): vec_(vec), cursor_(Traits::InitCursor(vec)) {}
+  IteratorBase( typename Traits::VectorType* vec ):
+    vec_(vec), cursor_(Traits::InitCursor(vec))
+  {}
 
-  Vector<T>* vec_;
+  typename Traits::VectorType* vec_;
   mutable std::int64_t cursor_;
   friend class Vector<T>;
 };
 
 template< typename T > struct VectorForwardTraits {
  public:
-  inline static std::int64_t InitCursor( Vector<T>* vec );
-  inline static bool HasNext( Vector<T>* vec , std::int64_t cursor );
-  inline static bool Move   ( Vector<T>* vec , std::int64_t* cursor );
+  typedef Vector<T> VectorType;
+  inline static std::int64_t InitCursor( VectorType* vec );
+  inline static bool HasNext( VectorType* vec , std::int64_t cursor );
+  inline static bool Move   ( VectorType* vec , std::int64_t* cursor );
 };
 
 template< typename T > struct VectorBackwardTraits {
  public:
-  inline static std::int64_t InitCursor( Vector<T>* vec );
-  inline static bool HasNext( Vector<T>* vec , std::int64_t cursor );
-  inline static bool Move   ( Vector<T>* vec , std::int64_t* cursor );
+  typedef const Vector<T> VectorType;
+  inline static std::int64_t InitCursor( VectorType* vec );
+  inline static bool HasNext( VectorType* vec , std::int64_t cursor );
+  inline static bool Move   ( VectorType* vec , std::int64_t* cursor );
 };
 
 } // namespace detail
@@ -173,41 +178,56 @@ template< typename T > void Vector<T>::Swap( Vector* that ) {
 namespace detail {
 
 template< typename T >
-inline std::int64_t VectorForwardTraits<T>::InitCursor( Vector<T>* vec ) {
+inline std::int64_t VectorForwardTraits<T>::InitCursor( VectorType* vec ) {
   (void)vec;
   return 0;
 }
 
 template< typename T >
-inline bool VectorForwardTraits<T>::HasNext( Vector<T>* vec , std::int64_t cursor ) {
+inline bool VectorForwardTraits<T>::HasNext( VectorType* vec , std::int64_t cursor ) {
   return cursor < vec->size();
 }
 
 template< typename T >
-inline bool VectorForwardTraits<T>::Move( Vector<T>* vec , std::int64_t* cursor ) {
+inline bool VectorForwardTraits<T>::Move( VectorType* vec , std::int64_t* cursor ) {
   *cursor = *cursor+1;
   return HasNext(vec,*cursor);
 }
 
 template< typename T >
-inline std::int64_t VectorBackwardTraits<T>::InitCursor( Vector<T>* vec ) {
+inline std::int64_t VectorBackwardTraits<T>::InitCursor( VectorType* vec ) {
   std::int64_t sz = static_cast<std::int64_t>(vec->size());
   return (sz - 1);
 }
 
 template< typename T >
-inline bool VectorBackwardTraits<T>::HasNext( Vector<T>* vec , std::int64_t cursor ) {
+inline bool VectorBackwardTraits<T>::HasNext( VectorType* vec , std::int64_t cursor ) {
   return cursor >= 0;
 }
 
 template< typename T >
-inline bool VectorBackwardTraits<T>::Move( Vector<T>* vec , std::int64_t* cursor ) {
+inline bool VectorBackwardTraits<T>::Move( VectorType* vec , std::int64_t* cursor ) {
   *cursor = *cursor - 1;
   return HasNext(vec,*cursor);
 }
 
 template< typename T , typename Traits >
-inline const T& IteratorBase<T,Traits>::value() const { return vec_->Index(cursor_); }
+inline const T& IteratorBase<T,Traits>::value() const {
+  return vec_->Index(cursor_);
+}
+
+template< typename T , typename Traits >
+inline T& IteratorBase<T,Traits>::value() {
+  // Super ugly, but we need to get the none const type out and const
+  // cast the vec_ back to none const pointer to be able to call the
+  // correct Index, this is really a hack for const iterator , since
+  // we just typedef const iterator. And a const iterator should never
+  // be able to invoke this API since it doesn't have a const modifier
+  typedef typename std::remove_const<typename Traits::VectorType>::type
+    NoneConstVectorType;
+
+  return const_cast<NoneConstVectorType*>(vec_)->Index(cursor_);
+}
 
 template< typename T , typename Traits >
 inline void IteratorBase<T,Traits>::set_value( const T& value ) {

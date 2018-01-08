@@ -59,5 +59,12 @@ void BytecodeIterator::GetOperandByIndex( int index , std::uint32_t* output ) {
   }
 }
 
+bool BytecodeIterator::SkipTo( const std::function<bool(BytecodeIterator*)>& predicate ) {
+  for( ; HasNext() ; Move() ) {
+    if(!predicate(this)) return true;
+  }
+  return false;
+}
+
 } // namespace interpreter
 } // namespace lavascript

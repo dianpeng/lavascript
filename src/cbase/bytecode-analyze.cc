@@ -7,6 +7,23 @@ namespace cbase      {
 
 using namespace lavascript::interpreter;
 
+bool BytecodeAnalyze::LocalVariableIterator::Move( std::uint8_t start ) {
+  while(scope_) {
+    for( ; start <= max_ ; ++start ) {
+      if(scope_->variable[start]) {
+        cursor_ = start;
+        return true;
+      }
+    }
+
+    scope_ = scope_->prev; // go to its parental scope
+    start  = 0;            // reset the cursor of start
+  }
+
+  lava_debug(NORMAL,lava_verify(!scope_););
+  return false;
+}
+
 class BytecodeAnalyze::LoopScope {
  public:
   LoopScope( BytecodeAnalyze* ba , const std::uint32_t* bb_start ,
@@ -166,10 +183,11 @@ void BytecodeAnalyze::BuildLogic( BytecodeIterator* itr ) {
    * this is expression level control flow and doesn't really have any needed
    * information
    */
-  std::uint8_t a1; std::uint16_t a2;
-  itr->GetOperand(&a1,&a2);
-  if(IsLocalVar(a1)) Kill(a1);
-  itr->BranchTo(a2);
+  std::uint8_t a1, a2, a3;
+  std::uint32_t pc;
+  itr->GetOperand(&a1,&a2,&a3,&pc);
+  if(IsLocalVar(a1)) Kill(a2);
+  itr->BranchTo(pc);
 }
 
 void BytecodeAnalyze::BuildTernary( BytecodeIterator* itr ) {
@@ -188,12 +206,11 @@ void BytecodeAnalyze::BuildLoop( BytecodeIterator* itr ) {
   lava_debug(NORMAL,lava_verify(itr->opcode() == BC_FSTART ||
                                 itr->opcode() == BC_FESTART););
   std::uint16_t offset;
+  std::uint8_t induct ;
 
-  {
-    std::uint8_t a1;
-    itr->GetOperand(&a1,&offset);
-    if(IsLocalVar(a1)) Kill(a1); // loop induction variable
-  }
+  itr->GetOperand(&induct,&offset);
+  lava_debug(NORMAL,lava_verify(IsLocalVar(induct)););
+  Kill(induct);
 
   itr->Move();
 
@@ -218,15 +235,21 @@ void BytecodeAnalyze::BuildLoop( BytecodeIterator* itr ) {
             lava_verify(itr->pc() == itr->OffsetAt(offset));
           }
         );
+    /**
+     * If bytecode is *not* FEND1 then we need to mark induction
+     * variable as part of the phi list since it must be mutated
+     * due to the bytecode here
+     */
+    if(itr->opcode() != BC_FEND1) {
+      Kill(induct);
+    }
     itr->BranchTo(offset);
   }
 }
 
 void BytecodeAnalyze::BuildForeverLoop( BytecodeIterator* itr ) {
   lava_debug(NORMAL,lava_verify(itr->opcode() == BC_FEVRSTART););
-  std::uint16_t offset;
 
-  itr->GetOperand(&offset);
   itr->Move();
 
   { // enter into loop body
@@ -239,18 +262,12 @@ void BytecodeAnalyze::BuildForeverLoop( BytecodeIterator* itr ) {
         if(!BuildBytecode(itr)) break;
       }
     }
+    lava_debug(NORMAL,lava_verify(itr->opcode() == BC_FEVREND););
 
     current_bb()->end   = itr->pc();
     current_loop()->end = itr->pc();
-
-    lava_debug(NORMAL,
-        if(itr->opcode() == BC_FEVREND) {
-          itr->Move();
-          lava_verify(itr->pc() == itr->OffsetAt(offset));
-        }
-      );
   }
-  itr->BranchTo(offset);
+  itr->Move(); // skip the *last* FEVREND
 }
 
 bool BytecodeAnalyze::BuildBytecode( BytecodeIterator* itr ) {

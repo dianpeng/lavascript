@@ -869,7 +869,7 @@ bool Generator::Visit( const ast::List& node , const SourceCodeInfo& sci,
      * allows us to use two set of instructions to perform this job. This is
      * not ideal but this allow better flexibility
      */
-    EEMIT(newlist,sci,output.index(),static_cast<std::uint16_t>(entry_size));
+    EEMIT(newlist,sci,output.index(),static_cast<std::uint8_t>(entry_size));
 
     std::size_t idle_reg = func_scope()->ra()->size();
     if(idle_reg < entry_size) {
@@ -952,7 +952,7 @@ bool Generator::Visit( const ast::Object& node , const SourceCodeInfo& sci,
     result->SetRegister(output);
 
   } else {
-    EEMIT(newobj,sci,output.index(),static_cast<std::uint16_t>(entry_size));
+    EEMIT(newobj,sci,output.index(),static_cast<std::uint8_t>(entry_size));
 
     for( std::size_t i = 0 ; i < entry_size ; ++i ) {
       const ast::Object::Entry& e = node.entry->Index(i);

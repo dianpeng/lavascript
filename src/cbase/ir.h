@@ -2,15 +2,18 @@
 #define CBASE_IR_H_
 #include "src/config.h"
 #include "src/util.h"
-#include "src/cbase/bytecode-analyze.h"
+#include "src/stl-helper.h"
 #include "src/zone/zone.h"
 #include "src/zone/vector.h"
 #include "src/zone/list.h"
 #include "src/zone/string.h"
+#include "src/cbase/bytecode-analyze.h"
 
-#include "ool-array.h"
+#include "worker-list.h"
 
 #include <vector>
+#include <deque>
+#include <stack>
 
 namespace lavascript {
 namespace cbase {
@@ -56,8 +59,6 @@ struct PrototypeInfo : zone::ZoneObject {
 };
 
 #define CBASE_IR_EXPRESSION(__)                 \
-  /* base for all none control flow */          \
-  __(Expr,EXPR,"expr")                          \
   /* const    */                                \
   __(Int32,INT32  ,"int32"  )                   \
   __(Int64,INT64  ,"int64"  )                   \
@@ -92,14 +93,19 @@ struct PrototypeInfo : zone::ZoneObject {
   /* iterator */                                \
   __(ItrNew ,ITR_NEW ,"itr_new" )               \
   __(ItrNext,ITR_NEXT,"itr_next")               \
+  __(ItrTest,ITR_TEST,"itr_test")               \
   __(ItrDeref,ITR_DEREF,"itr_deref")            \
   /* call     */                                \
   __(Call,CALL   ,"call"   )                    \
   /* phi */                                     \
-  __(Phi,PHI,"phi")
+  __(Phi,PHI,"phi")                             \
+  /* statement */                               \
+  __(InitCls,INIT_CLS,"init_cls")               \
+  __(Projection,PROJECTION,"projection")        \
+  /* osr */                                     \
+  __(OSRLoad,OSR_LOAD,"osr_load")
 
 #define CBASE_IR_CONTROL_FLOW(__)               \
-  __(ControlFlow,CONTROL_FLOW,"control_flow")   \
   __(Start,START,"start")                       \
   __(LoopHeader,LOOP_HEADER,"loop_header")      \
   __(Loop,LOOP ,"loop" )                        \
@@ -110,44 +116,54 @@ struct PrototypeInfo : zone::ZoneObject {
   __(Jump,JUMP,"jump")                          \
   __(Return,RETURN,"return")                    \
   __(Region,REGION,"region")                    \
-  __(End,END  , "end" )
-
-#define CBASE_IR_MISC(__)                       \
-  __(InitCls,INIT_CLS,"init_cls")               \
-  __(Projection,PROJECTION,"projection")        \
-
-/*
-#define CBASE_IR_OSR(__)                        \
-  __(OSREntry,OSR_ENTRY,"osr_entry")            \
-  __(OSRExit ,OSR_EXIT ,"osr_exit" )            \
-  __(OSRLoadS,OSR_LOADS,"osr_loads")            \
-  __(OSRLoadU,OSR_LOADU,"osr_loadu")            \
-  __(OSRLoadG,OSR_LOADG,"osr_loadg")            \
-  __(OSRStoreS,OSR_STORES,"osr_stores")         \
-  __(OSRStoreU,OSR_STOREU,"osr_storeu")         \
-  __(OSRStoreG,OSR_STOREG,"osr_storeg")
-*/
+  __(End,END  , "end" )                         \
+  __(Trap,TRAP, "trap")                         \
+  /* osr */                                     \
+  __(OSRStart,OSR_START,"osr_start")            \
+  __(OSREnd  ,OSR_END  ,"osr_end"  )
 
 #define CBASE_IR_LIST(__)                       \
   CBASE_IR_EXPRESSION(__)                       \
-  CBASE_IR_CONTROL_FLOW(__)                     \
-  CBASE_IR_MISC(__)
+  CBASE_IR_CONTROL_FLOW(__)
 
 enum IRType {
 #define __(A,B,...) IRTYPE_##B,
 
-  CBASE_IR_LIST(__)
-  SIZE_OF_IRTYPE
+  /** expression related IRType **/
+  CBASE_IR_EXPRESSION_START,
+  CBASE_IR_EXPRESSION(__)
+  CBASE_IR_EXPRESSION_END,
+
+  /** control flow related IRType **/
+  CBASE_IR_CONTROL_FLOW_START,
+  CBASE_IR_CONTROL_FLOW(__)
+  CBASE_IR_CONTROL_FLOW_END
 
 #undef __ // __
 };
 
+// TODO:: modify this if new section of IR is added , eg OSR
+#define SIZE_OF_IR (CBASE_IR_STMT_END-6)
+
 const char* IRTypeGetName( IRType );
+
+inline bool IRTypeIsExpr( IRType type ) {
+  return (type >= CBASE_IR_EXPRESSION_START && type <= CBASE_IR_EXPRESSION_END);
+}
+
+inline bool IRTypeIsControlFlow( IRType type ) {
+  return (type >= CBASE_IR_CONTROL_FLOW_START && type <= CBASE_IR_CONTROL_FLOW_END);
+}
 
 // Forward class declaration
 #define __(A,...) class A;
 CBASE_IR_LIST(__)
 #undef __ // __
+
+// Base class for each node type
+class Expr;
+class ControlFlow;
+class Stmt;
 
 // ----------------------------------------------------------------------------
 // Effect
@@ -208,6 +224,14 @@ class Node : public zone::ZoneObject {
   CBASE_IR_LIST(__)
 #undef __ // __
 
+  bool IsControlFlow() const { return IRTypeIsControlFlow(type()); }
+  inline ControlFlow* AsControlFlow();
+  inline const ControlFlow* AsControlFlow() const;
+
+  bool IsExpr() const { return IRTypeIsExpr(type()); }
+  inline Expr* AsExpr();
+  inline const Expr* AsExpr() const;
+
  protected:
   Node( IRType type , std::uint32_t id , Graph* graph ):
     type_    (type),
@@ -244,9 +268,10 @@ class Expr : public Node {
 
  public: // patching function helps to mutate any def-use and use-def
 
-  // Replace all expression that uses *this* expression node with all
-  // the input node
-  std::size_t Replace( Expr* );
+  // Replace *this* node with the input expression node. This replace
+  // will only change all the node that *reference* this node but not
+  // touch all the operands' reference list
+  virtual void Replace( Expr* );
  public:
   /**
    * Def-Use chain and Use-Def chain. We rename these field to
@@ -261,8 +286,8 @@ class Expr : public Node {
    *    expression
    *
    */
-  typedef zone::List<Expr*>        OperandList;
-  typedef OperandList::ForwardIterator    OperandIterator;
+  typedef zone::List<Expr*> OperandList;
+  typedef OperandList::ForwardIterator OperandIterator;
 
   struct Ref {
     OperandIterator id;  // iterator used for fast deletion of this Ref it is
@@ -284,7 +309,7 @@ class Expr : public Node {
 
   // This function will add the input node into this node's operand list and
   // it will take care of the input node's ref list as well
-  void AddOperand( Expr* node ) { operand_list()->PushBack(zone(),node); }
+  inline void AddOperand( Expr* node );
 
   // Reference list
   //
@@ -296,7 +321,9 @@ class Expr : public Node {
   RefList* ref_list() { return &ref_list_; }
 
   // Add the referece into the reference list
-  inline void AddRef( Expr* who_uses_me , const OperandIterator& iter );
+  void AddRef( Expr* who_uses_me , const OperandIterator& iter ) {
+    ref_list()->PushBack(zone(),Ref(iter,who_uses_me));
+  }
 
   Expr( IRType type , std::uint32_t id , Graph* graph , IRInfo* info ):
     Node             (type,id,graph),
@@ -529,18 +556,18 @@ class Binary : public Expr {
   inline static Binary* New( Graph* , Expr* , Expr* , Operator , IRInfo* );
 
  public:
-  Node*   lhs() const { return operand_list()->First(); }
-  Node*   rhs() const { return operand_list()->Last (); }
+  Expr*   lhs() const { return operand_list()->First(); }
+  Expr*   rhs() const { return operand_list()->Last (); }
   Operator op() const { return op_;  }
-  inline const char* op_name() const;
+  const char* op_name() const { return GetOperatorName(op()); }
 
   Binary( Graph* graph , std::uint32_t id , Expr* lhs , Expr* rhs , Operator op ,
                                                                     IRInfo* info ):
     Expr  (IRTYPE_BINARY,id,graph,info),
     op_   (op)
   {
-    operand_list()->PushBack(zone(),lhs);
-    operand_list()->PushBack(zone(),rhs);
+    AddOperand(lhs);
+    AddOperand(rhs);
   }
 
  private:
@@ -554,23 +581,20 @@ class Unary : public Expr {
 
   inline static Unary* New( Graph* , Expr* , Operator , IRInfo* );
 
-  static Operator BytecodeToOperator( interpreter::Bytecode bc ) {
-    if(bc == interpreter::BC_NEGATE)
-      return MINUS;
-    else
-      return NOT;
-  }
+  inline static Operator BytecodeToOperator( interpreter::Bytecode bc );
+  inline static const char* GetOperatorName( Operator op );
 
  public:
-  Node* operand() const { return operand_list()->First(); }
+  Expr* operand() const { return operand_list()->First(); }
   Operator op  () const { return op_;      }
+  const char* op_name() const { return GetOperatorName(op()); }
 
   Unary( Graph* graph , std::uint32_t id , Expr* opr , Operator op ,
                                                        IRInfo* info ):
     Expr  (IRTYPE_UNARY,id,graph,info),
     op_   (op)
   {
-    operand_list()->PushBack(zone(),opr);
+    AddOperand(opr);
   }
 
  private:
@@ -587,10 +611,14 @@ class Ternary: public Expr {
                                                           IRInfo* info ):
     Expr  (IRTYPE_TERNARY,id,graph,info)
   {
-    operand_list()->PushBack(zone(),cond);
-    operand_list()->PushBack(zone(),lhs);
-    operand_list()->PushBack(zone(),rhs);
+    AddOperand(cond);
+    AddOperand(lhs);
+    AddOperand(rhs);
   }
+
+  Expr* condition() const { return operand_list()->First(); }
+  Expr* lhs () const { return operand_list()->Index(1); }
+  Expr* rhs () const { return operand_list()->Last(); }
 
  private:
   LAVA_DISALLOW_COPY_AND_ASSIGN(Ternary)
@@ -626,7 +654,7 @@ class USet : public Expr {
     Expr  (IRTYPE_USET,id,graph,info),
     index_(index)
   {
-    operand_list()->PushBack(zone(),opr);
+    AddOperand(opr);
   }
 
  private:
@@ -647,8 +675,8 @@ class PGet : public Expr {
                                                          IRInfo* info ):
     Expr  (IRTYPE_PGET,id,graph,info)
   {
-    operand_list()->PushBack(zone(),object);
-    operand_list()->PushBack(zone(),index );
+    AddOperand(object);
+    AddOperand(index );
   }
 
  private:
@@ -668,9 +696,9 @@ class PSet : public Expr {
                                                          IRInfo* info ):
     Expr  (IRTYPE_PGET,id,graph,info)
   {
-    operand_list()->PushBack(zone(),object);
-    operand_list()->PushBack(zone(),index );
-    operand_list()->PushBack(zone(),value );
+    AddOperand(object);
+    AddOperand(index );
+    AddOperand(value );
   }
 
  private:
@@ -687,8 +715,8 @@ class IGet : public Expr {
                                                          IRInfo* info ):
     Expr  (IRTYPE_IGET,id,graph,info)
   {
-    operand_list()->PushBack(zone(),object);
-    operand_list()->PushBack(zone(),index );
+    AddOperand(object);
+    AddOperand(index );
   }
 
  private:
@@ -709,9 +737,9 @@ class ISet : public Expr {
                                                          IRInfo* info ):
     Expr(IRTYPE_ISET,id,graph,info)
   {
-    operand_list()->PushBack(zone(),object);
-    operand_list()->PushBack(zone(),index );
-    operand_list()->PushBack(zone(),value );
+    AddOperand(object);
+    AddOperand(index );
+    AddOperand(value );
   }
 
  private:
@@ -724,12 +752,12 @@ class ISet : public Expr {
 class GGet : public Expr {
  public:
   inline static GGet* New( Graph* , Expr* , IRInfo* , ControlFlow* );
-  Expr* name() const { return operand_list()->First(); }
+  Expr* key() const { return operand_list()->First(); }
 
   GGet( Graph* graph , std::uint32_t id , Expr* name , IRInfo* info ):
     Expr  (IRTYPE_GGET,id,graph,info)
   {
-    operand_list()->PushBack(zone(),name);
+    AddOperand(name);
   }
 
  private:
@@ -747,8 +775,8 @@ class GSet : public Expr {
                                                       IRInfo* info ):
     Expr  (IRTYPE_GSET,id,graph,info)
   {
-    operand_list()->PushBack(zone(),key);
-    operand_list()->PushBack(zone(),value);
+    AddOperand(key);
+    AddOperand(value);
   }
 
  private:
@@ -766,7 +794,7 @@ class ItrNew : public Expr {
   ItrNew( Graph* graph , std::uint32_t id , Expr* operand , IRInfo* info ):
     Expr  (IRTYPE_ITR_NEW,id,graph,info)
   {
-    operand_list()->PushBack(zone(),operand);
+    AddOperand(operand);
   }
 
  private:
@@ -781,11 +809,26 @@ class ItrNext : public Expr {
   ItrNext( Graph* graph , std::uint32_t id , Expr* operand , IRInfo* info ):
     Expr  (IRTYPE_ITR_NEXT,id,graph,info)
   {
-    operand_list()->PushBack(zone(),operand);
+    AddOperand(operand);
   }
 
  private:
   LAVA_DISALLOW_COPY_AND_ASSIGN(ItrNext)
+};
+
+class ItrTest : public Expr {
+ public:
+  inline static ItrTest* New( Graph* , Expr* , IRInfo* , ControlFlow* );
+  Expr* operand() const { return operand_list()->First(); }
+
+  ItrTest( Graph* graph , std::uint32_t id , Expr* operand , IRInfo* info ):
+    Expr  (IRTYPE_ITR_TEST,id,graph,info)
+  {
+    AddOperand(operand);
+  }
+
+ private:
+  LAVA_DISALLOW_COPY_AND_ASSIGN(ItrTest)
 };
 
 class ItrDeref : public Expr {
@@ -796,12 +839,13 @@ class ItrDeref : public Expr {
   };
 
   inline static ItrDeref* New( Graph* , Expr* , IRInfo* , ControlFlow* );
+
   Expr* operand() const { return operand_list()->First(); }
 
   ItrDeref( Graph* graph , std::uint32_t id , Expr* operand , IRInfo* info ):
     Expr   (IRTYPE_ITR_DEREF,id,graph,info)
   {
-    operand_list()->PushBack(zone(),operand);
+    AddOperand(operand);
   }
 
  private:
@@ -835,6 +879,34 @@ class Phi : public Expr {
   LAVA_DISALLOW_COPY_AND_ASSIGN(Phi)
 };
 
+class Call : public Expr {
+ public:
+  inline static Call* New( Graph* graph , Expr* , std::uint8_t , std::uint8_t ,
+                                                                 IRInfo* );
+
+  Call( Graph* graph , std::uint32_t id , Expr* obj , std::uint8_t base ,
+                                                      std::uint8_t narg ,
+                                                      IRInfo* info ):
+    Expr  (IRTYPE_CALL,id,graph,info),
+    base_ (base),
+    narg_ (narg)
+  {
+    AddOperand(obj);
+  }
+
+ private:
+  std::uint8_t base_;
+  std::uint8_t narg_;
+  LAVA_DISALLOW_COPY_AND_ASSIGN(Call)
+};
+
+// -------------------------------------------------------------------------
+// Statement
+// 
+//  This statement node is used to represent any statement that has side
+//  effect
+//
+// -------------------------------------------------------------------------
 class Projection : public Expr {
  public:
   inline static Projection* New( Graph* , Expr* , std::uint32_t index , IRInfo* );
@@ -848,7 +920,7 @@ class Projection : public Expr {
     Expr  (IRTYPE_PROJECTION,id,graph,info),
     index_(index)
   {
-    operand_list()->PushBack(zone(),operand);
+    AddOperand(operand);
   }
 
  private:
@@ -863,32 +935,31 @@ class InitCls : public Expr {
   InitCls( Graph* graph , std::uint32_t id , Expr* key , IRInfo* info ):
     Expr (IRTYPE_INIT_CLS,id,graph,info)
   {
-    operand_list()->PushBack(zone(),key);
+    AddOperand(key);
   }
+
+  Expr* key() const { return operand_list()->First(); }
 
  private:
   LAVA_DISALLOW_COPY_AND_ASSIGN(InitCls)
 };
 
-class Call : public Expr {
+// OSR related
+class OSRLoad : public Expr {
  public:
-  inline static Call* New( Graph* graph , Expr* , std::uint8_t , std::uint8_t ,
-                                                                 IRInfo* );
+  inline static OSRLoad* New( Graph* , std::uint32_t );
 
-  Call( Graph* graph , std::uint32_t id , Expr* obj , std::uint8_t base ,
-                                                      std::uint8_t narg ,
-                                                      IRInfo* info ):
-    Expr  (IRTYPE_CALL,id,graph,info),
-    base_ (base),
-    narg_ (narg)
-  {
-    operand_list()->PushBack(zone(),obj);
-  }
+  // Offset in sizeof(Value)/8 bytes to load this value from osr input buffer
+  std::uint32_t index() const { return index_; }
+
+  OSRLoad( Graph* graph , std::uint32_t id , std::uint32_t index ):
+    Expr  ( IRTYPE_OSR_LOAD , id , graph , NULL ),
+    index_(index)
+  {}
 
  private:
-  std::uint8_t base_;
-  std::uint8_t narg_;
-  LAVA_DISALLOW_COPY_AND_ASSIGN(Call)
+  std::uint32_t index_;
+  LAVA_DISALLOW_COPY_AND_ASSIGN(OSRLoad)
 };
 
 // -------------------------------------------------------------------------
@@ -902,6 +973,10 @@ class Call : public Expr {
 class ControlFlow : public Node {
  public:
   const zone::Vector<ControlFlow*>* backward_edge() const {
+    return &backward_edge_;
+  }
+
+  zone::Vector<ControlFlow*>* backedge_edge() {
     return &backward_edge_;
   }
 
@@ -922,17 +997,13 @@ class ControlFlow : public Node {
     return &effect_expr_;
   }
 
+  EffectList* effect_expr() {
+    return &effect_expr_;
+  }
+
   void AddEffectExpr( Expr* node ) {
     auto itr = effect_expr_.PushBack(zone(),node);
     node->set_effect(EffectEdge(this,itr));
-  }
-
-  zone::Vector<ControlFlow*>* backedge_edge() {
-    return &backward_edge_;
-  }
-
-  EffectList* effect_expr() {
-    return &effect_expr_;
   }
 
   ControlFlow( IRType type , std::uint32_t id , Graph* graph , ControlFlow* parent = NULL ):
@@ -970,12 +1041,17 @@ class Region: public ControlFlow {
 // --------------------------------------------------------------------------
 class LoopHeader : public ControlFlow {
  public:
-  inline static LoopHeader* New( Graph* , Expr* , ControlFlow* );
+  inline static LoopHeader* New( Graph* , ControlFlow* );
+
   Expr* condition() const { return condition_; }
 
-  LoopHeader( Graph* graph , std::uint32_t id , Expr* cond , ControlFlow* region ):
+  void set_condition( Expr* condition ) {
+    condition_ = condition;
+  }
+
+  LoopHeader( Graph* graph , std::uint32_t id , ControlFlow* region ):
     ControlFlow(IRTYPE_LOOP_HEADER,id,graph,region),
-    condition_ (cond)
+    condition_ (NULL)
   {}
 
  private:
@@ -1125,6 +1201,64 @@ class End : public ControlFlow {
   LAVA_DISALLOW_COPY_AND_ASSIGN(End)
 };
 
+class Trap : public ControlFlow {
+  enum {
+    FRAME_STATE_UNINIT = -1
+  };
+
+ public:
+  inline static Trap* New( Graph* , ControlFlow* region );
+
+  void set_frame_state_index( std::uint32_t idx ) {
+    frame_state_index_ = static_cast<std::int32_t>(idx);
+  }
+
+  std::uint32_t frame_state_index() const {
+    lava_debug(NORMAL,lava_verify(HasFrameState()););
+    return static_cast<std::uint32_t>(frame_state_index_);
+  }
+  bool HasFrameState() const { return frame_state_index_ >= 0; }
+  void ClearFrameState()     { frame_state_index_ = FRAME_STATE_UNINIT; }
+
+  Trap( Graph* graph , std::uint32_t id , ControlFlow* region ):
+    ControlFlow(IRTYPE_TRAP,id,graph,region),
+    frame_state_index_(FRAME_STATE_UNINIT)
+  {}
+ private:
+
+  std::int32_t frame_state_index_;
+  LAVA_DISALLOW_COPY_AND_ASSIGN(Trap)
+};
+
+class OSRStart : public ControlFlow {
+ public:
+  inline static OSRStart* New( Graph* );
+
+  OSRStart( Graph* graph  , std::uint32_t id ):
+    ControlFlow(IRTYPE_OSR_START,id,graph)
+  {}
+
+ private:
+  LAVA_DISALLOW_COPY_AND_ASSIGN(OSRStart)
+};
+
+class OSREnd : public ControlFlow {
+ public:
+  inline static OSREnd* New( Graph* );
+
+  OSREnd( Graph* graph , std::uint32_t id ):
+    ControlFlow(IRTYPE_OSR_END,id,graph)
+  {}
+
+ private:
+  LAVA_DISALLOW_COPY_AND_ASSIGN(OSREnd)
+};
+
+// ========================================================
+//
+// Graph
+//
+// ========================================================
 class Graph {
  public:
   Graph():
@@ -1135,19 +1269,21 @@ class Graph {
     id_            ()
   {}
 
- public: // getter and setter
-  void set_start( Start* start ) { start_ = start; }
-  void set_end  ( End*   end   ) { end_   = end;   }
+  // initialize the *graph* object with start and end
+  void Initialize( Start* start , End* end );
+  void Initialize( OSRStart* start , OSREnd* end );
 
-  Start* start() const { return start_; }
-  End*   end  () const { return end_;   }
+ public: // getter and setter
+  ControlFlow* start() const { return start_; }
+  ControlFlow* end  () const { return end_;   }
   zone::Zone* zone()   { return &zone_; }
 
-  std::uint32_t id() const { return id_; }
+  std::uint32_t MaxID() const { return id_; }
   std::uint32_t AssignID() { return id_++; }
 
+  // check whether the graph is OSR construction graph
+  bool IsOSR() const { lava_debug(NORMAL,lava_verify(start_);); return start_->IsOSRStart(); }
  public:
-
   std::uint32_t AddPrototypeInfo( const Handle<Closure>& cls ,
       std::uint32_t base ) {
     prototype_info_.Add(zone(),PrototypeInfo(base,cls));
@@ -1160,13 +1296,107 @@ class Graph {
 
  private:
   zone::Zone                  zone_;
-  Start*                      start_;
-  End*                        end_;
+  ControlFlow*                start_;
+  ControlFlow*                end_;
   zone::Vector<PrototypeInfo> prototype_info_;
   std::uint32_t               id_;
 
   friend class GraphBuilder;
   LAVA_DISALLOW_COPY_AND_ASSIGN(Graph)
+};
+
+// A graph dfs iterator that iterate all control flow graph node in DFS order
+// the expression node simply ignored and left the user to use whatever method
+// they like to iterate/visit them
+class GraphDFSIterator {
+ public:
+  GraphDFSIterator( const Graph& graph ):
+    visited_(graph.MaxID()),
+    stack_  (graph),
+    graph_  (&graph),
+    next_   (NULL)
+  {
+    stack_.Push(graph.end());
+    Move();
+  }
+
+  // whether there's another control flow graph node needs to visit
+  bool HasNext() const { return next_ != NULL; }
+
+  // move the control flow graph node to next one
+  bool Move();
+
+  // get the current control flow graph node in DFS order
+  ControlFlow* value() const { lava_debug(NORMAL,lava_verify(HasNext());); return next_; }
+
+ private:
+  DynamicBitSet visited_;
+  WorkerList stack_;
+  const Graph* graph_;
+  ControlFlow* next_;
+};
+
+class GraphBFSIterator {
+ public:
+  GraphBFSIterator( const Graph& graph ):
+    visited_(graph.MaxID()),
+    stack_  (graph),
+    graph_  (&graph),
+    next_   (NULL)
+  {
+    stack_.Push(graph.end());
+    Move();
+  }
+
+  bool HasNext() const { return next_ != NULL; }
+
+  bool Move();
+
+  ControlFlow* value() const { lava_debug(NORMAL,lava_verify(HasNext());); return next_; }
+
+ private:
+  DynamicBitSet visited_;
+  WorkerList stack_;
+  const Graph* graph_;
+  ControlFlow* next_;
+};
+
+class GraphEdgeIterator {
+ public:
+  struct Edge {
+    ControlFlow* from;
+    ControlFlow* to;
+    Edge( ControlFlow* f , ControlFlow* t ): from(f) , to(t) {}
+    Edge(): from(NULL), to(NULL) {}
+
+    void Clear() { from = NULL; to = NULL; }
+    bool empty() const { return from == NULL; }
+  };
+ public:
+  GraphEdgeIterator( const Graph& graph ):
+    visited_(graph.MaxID()),
+    stack_  (),
+    results_(),
+    graph_  (&graph),
+    next_   ()
+  {
+    visited_[graph.end()->id()] = true;
+    stack_.push_back(graph.end());
+    Move();
+  }
+
+  bool HasNext() const { return !next_.empty(); }
+
+  bool Move();
+
+  const Edge& value() const { lava_debug(NORMAL,lava_verify(HasNext());); return next_; }
+
+ private:
+  DynamicBitSet visited_;
+  std::vector<ControlFlow*> stack_;
+  std::deque<Edge> results_;
+  const Graph* graph_;
+  Edge next_;
 };
 
 // =========================================================================
@@ -1188,6 +1418,31 @@ class Graph {
 CBASE_IR_LIST(__)
 
 #undef __ // __
+
+inline void Expr::AddOperand( Expr* node ) {
+  auto itr = operand_list()->PushBack(zone(),node);
+  node->AddRef(this,itr);
+}
+
+inline ControlFlow* Node::AsControlFlow() {
+  lava_debug(NORMAL,lava_verify(IsControlFlow()););
+  return static_cast<ControlFlow*>(this);
+}
+
+inline const ControlFlow* Node::AsControlFlow() const {
+  lava_debug(NORMAL,lava_verify(IsControlFlow()););
+  return static_cast<const ControlFlow*>(this);
+}
+
+inline Expr* Node::AsExpr() {
+  lava_debug(NORMAL,lava_verify(IsExpr()););
+  return static_cast<Expr*>(this);
+}
+
+inline const Expr* Node::AsExpr() const {
+  lava_debug(NORMAL,lava_verify(IsExpr()););
+  return static_cast<const Expr*>(this);
+}
 
 inline zone::Zone* Node::zone() const {
   return graph_->zone();
@@ -1286,8 +1541,22 @@ inline const char* Binary::GetOperatorName( Operator op ) {
     case NE  : return "ne" ;
     case AND : return "and";
     case OR  : return "or";
-    default: lava_die();
+    default: lava_die(); return NULL;
   }
+}
+
+inline Unary::Operator Unary::BytecodeToOperator( interpreter::Bytecode bc ) {
+  if(bc == interpreter::BC_NEGATE)
+    return MINUS;
+  else
+    return NOT;
+}
+
+inline const char* Unary::GetOperatorName( Operator op ) {
+  if(op == MINUS)
+    return "minus";
+  else
+    return "not";
 }
 
 inline Unary* Unary::New( Graph* graph , Expr* opr , Operator op , IRInfo* info ) {
@@ -1364,6 +1633,13 @@ inline ItrNext* ItrNext::New( Graph* graph , Expr* operand , IRInfo* info ,
   return ret;
 }
 
+inline ItrTest* ItrTest::New( Graph* graph , Expr* operand , IRInfo* info ,
+                                                             ControlFlow* region ) {
+  auto ret = graph->zone()->New<ItrTest>(graph,graph->AssignID(),operand,info);
+  region->AddEffectExpr(ret);
+  return ret;
+}
+
 inline ItrDeref* ItrDeref::New( Graph* graph , Expr* operand , IRInfo* info ,
                                                                ControlFlow* region ) {
   auto ret = graph->zone()->New<ItrDeref>(graph,graph->AssignID(),operand,info);
@@ -1392,6 +1668,10 @@ inline Projection* Projection::New( Graph* graph , Expr* operand , std::uint32_t
   return graph->zone()->New<Projection>(graph,graph->AssignID(),operand,index,info);
 }
 
+inline OSRLoad* OSRLoad::New( Graph* graph , std::uint32_t index ) {
+  return graph->zone()->New<OSRLoad>(graph,graph->AssignID(),index);
+}
+
 inline Region* Region::New( Graph* graph ) {
   return graph->zone()->New<Region>(graph,graph->AssignID());
 }
@@ -1402,8 +1682,8 @@ inline Region* Region::New( Graph* graph , ControlFlow* parent ) {
   return ret;
 }
 
-inline LoopHeader* LoopHeader::New( Graph* graph , Expr* condition , ControlFlow* parent ) {
-  return graph->zone()->New<LoopHeader>(graph,graph->AssignID(),condition,parent);
+inline LoopHeader* LoopHeader::New( Graph* graph , ControlFlow* parent ) {
+  return graph->zone()->New<LoopHeader>(graph,graph->AssignID(),parent);
 }
 
 inline Loop* Loop::New( Graph* graph ) { return graph->zone()->New<Loop>(graph,graph->AssignID()); }
@@ -1456,6 +1736,18 @@ inline Start* Start::New( Graph* graph ) {
 
 inline End* End::New( Graph* graph ) {
   return graph->zone()->New<End>(graph,graph->AssignID());
+}
+
+inline Trap* Trap::New( Graph* graph , ControlFlow* region ) {
+  return graph->zone()->New<Trap>(graph,graph->AssignID(),region);
+}
+
+inline OSRStart* OSRStart::New( Graph* graph ) {
+  return graph->zone()->New<OSRStart>(graph,graph->AssignID());
+}
+
+inline OSREnd* OSREnd::New( Graph* graph ) {
+  return graph->zone()->New<OSREnd>(graph,graph->AssignID());
 }
 
 } // namespace ir

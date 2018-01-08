@@ -6,6 +6,8 @@
 #include "src/util.h"
 #include "src/tagged-ptr.h"
 
+#include <functional>
+
 /** ---------------------------------------------------------------------
  *
  * Bytecode iterator. Used to decode bytecode inside of a bytecode stream.
@@ -132,6 +134,12 @@ class BytecodeIterator {
   const std::uint32_t* OffsetAt( std::uint32_t offset ) {
     return code_buffer_ + offset;
   }
+
+ public:
+  // Skip to bytecode if the input predicate returns true, otherwise stop at that
+  // point. If no further bytecode can be consumed and predicate haven't failed
+  // once this funtion will return false ; otherwise return true
+  bool SkipTo( const std::function<bool(BytecodeIterator*)>& );
 
  private:
   void Decode() {

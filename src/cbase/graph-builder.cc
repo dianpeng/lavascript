@@ -13,15 +13,57 @@ namespace ir    {
 using namespace ::lavascript::interpreter;
 
 /* -------------------------------------------------------------
+ *
  * RAII objects to handle different type of scopes when iterate
  * different bytecode along the way
+ *
  * -----------------------------------------------------------*/
+class GraphBuilder::OSRScope {
+ public:
+  OSRScope( GraphBuilder* gb , const Handle<Closure>& cls ,
+                               ControlFlow* region ,
+                               const std::uint32_t* osr_start ): gb_(gb) {
+    FuncInfo temp(cls,region,osr_start); // initialize a FuncInfo as OSR entry
+
+    // get the loop header information and recursively register all its needed
+    // loop info object inside of the FuncInfo object
+    auto loop_header = temp.bc_analyze.LookUpLoopHeader(osr_start);
+    lava_debug(NORMAL,lava_verify(loop_header););
+
+    /**
+     * We need to iterate the loop one by one from the top most loop
+     * inside of the nested loop cluster so we need to use a queue to
+     * help us
+     */
+    {
+      std::vector<const BytecodeAnalyze::LoopHeaderInfo*> queue;
+      auto cur_header = loop_header->prev; // skip the OSR loop
+      while(cur_header) {
+        queue.push_back(cur_header);
+        cur_header = cur_header->prev;
+      }
+
+      for( auto ritr = queue.rbegin() ; ritr != queue.rend(); ++ritr ) {
+        temp.loop_info.push_back(LoopInfo(*ritr));
+      }
+    }
+
+    gb->graph_->AddPrototypeInfo(cls,0);
+    gb->func_info_.push_back(FuncInfo(std::move(temp)));
+    gb->stack_->resize(interpreter::kRegisterSize);
+  }
+
+  ~OSRScope() { gb_->func_info_.pop_back(); }
+ private:
+  GraphBuilder* gb_;
+};
 
 class GraphBuilder::FuncScope {
  public:
   FuncScope( GraphBuilder* gb , const Handle<Closure>& cls ,
                                 ControlFlow* region ,
                                 std::uint32_t base ): gb_(gb) {
+    gb->graph_->AddPrototypeInfo(cls,base);
     gb->func_info_.push_back(FuncInfo(cls,region,base));
     gb->stack_->resize(base+interpreter::kRegisterSize);
   }
@@ -49,7 +91,7 @@ class GraphBuilder::BackupStack {
     old_stack_(gb->stack_),
     gb_(gb)
   {
-    *new_stack = *gb->stack_; // do a deep copy
+    if(gb->stack_) *new_stack = *gb->stack_; // do a deep copy
     gb->stack_ = new_stack;
   }
 
@@ -215,16 +257,18 @@ void GraphBuilder::PatchUnconditionalJump( UnconditionalJumpList* jumps ,
 GraphBuilder::StopReason GraphBuilder::BuildLogic( BytecodeIterator* itr ) {
   lava_debug(NORMAL,lava_verify(itr->opcode() == BC_AND || itr->opcode() == BC_OR););
   bool op_and = itr->opcode() == BC_AND ? true : false;
-  std::uint8_t reg; std::uint16_t offset;
-  itr->GetOperand(&reg,&offset);
+  std::uint8_t lhs,rhs,dummy;
+  std::uint32_t pc;
+
+  itr->GetOperand(&lhs,&rhs,&dummy,&pc);
 
   // where we should end for the other part of the logical cominator
-  const std::uint32_t* end_pc = itr->OffsetAt(offset);
+  const std::uint32_t* end_pc = itr->OffsetAt(pc);
 
-  // save the fallthrough value for PHI node later on
-  Expr* lhs = StackGet(reg);
+  Expr* lhs_expr = StackGet(lhs);
+  lava_debug(NORMAL,lava_verify(lhs_expr););
 
-  lava_debug(NORMAL,StackReset(reg););
+  StackSet(rhs,lhs_expr);
 
   { // evaluate the rhs
     itr->Move();
@@ -232,12 +276,12 @@ GraphBuilder::StopReason GraphBuilder::BuildLogic( BytecodeIterator* itr ) {
     lava_verify(reason == STOP_END);
   }
 
-  lava_debug(NORMAL,lava_verify(StackGet(reg)););
+  lava_debug(NORMAL,lava_verify(StackGet(rhs)););
 
   if(op_and)
-    StackSet(reg,Binary::New(graph_,lhs,StackGet(reg),Binary::AND,NewIRInfo(itr->bytecode_location())));
+    StackSet(rhs,Binary::New(graph_,lhs_expr,StackGet(rhs),Binary::AND,NewIRInfo(itr->bytecode_location())));
   else
-    StackSet(reg,Binary::New(graph_,lhs,StackGet(reg),Binary::OR,NewIRInfo(itr->bytecode_location())));
+    StackSet(rhs,Binary::New(graph_,lhs_expr,StackGet(rhs),Binary::OR,NewIRInfo(itr->bytecode_location())));
 
   return STOP_SUCCESS;
 }
@@ -270,7 +314,7 @@ GraphBuilder::StopReason GraphBuilder::BuildTernary( BytecodeIterator* itr ) {
     lava_debug(NORMAL,StackReset(result););
     lava_debug(NORMAL,itr->Move();lava_verify(itr->pc() == itr->OffsetAt(offset)););
 
-    for( itr->Move() ; itr->HasNext() ; ) {
+    while(itr->HasNext()) {
       if(itr->pc() == end_pc) break;
 
       if(BuildBytecode(itr) == STOP_BAILOUT)
@@ -287,12 +331,21 @@ GraphBuilder::StopReason GraphBuilder::BuildTernary( BytecodeIterator* itr ) {
 
 GraphBuilder::StopReason GraphBuilder::GotoIfEnd( BytecodeIterator* itr,
                                                   const std::uint32_t* pc ) {
-  for( ; itr->HasNext() ; itr->Move() ) {
-    if(itr->pc() == pc)          return STOP_END;
-    if(itr->opcode() == BC_JMP) return STOP_JUMP;
-  }
-  lava_unreachF("cannot reach here since it is end of the stream %p:%p",itr->pc(),pc);
-  return STOP_EOF;
+  StopReason ret;
+
+  lava_verify(itr->SkipTo(
+    [pc,&ret]( BytecodeIterator* itr ) {
+      if(itr->pc() == pc) {
+        ret = STOP_END;
+        return false;
+      } else if(itr->opcode() == BC_JMP) {
+        ret = STOP_JUMP;
+        return false;
+      }
+      return true;
+  }));
+
+  return ret;
 }
 
 GraphBuilder::StopReason GraphBuilder::BuildIfBlock( BytecodeIterator* itr ,
@@ -302,21 +355,15 @@ GraphBuilder::StopReason GraphBuilder::BuildIfBlock( BytecodeIterator* itr ,
     if(pc == itr->pc()) return STOP_END;
 
     // check whether we have a unconditional jump or not
-    if(itr->opcode() == BC_JMP) return STOP_JUMP;
-    switch(itr->opcode()) {
-      case BC_JMP:
-        return STOP_JUMP;
-
-      case BC_CONT:
-      case BC_BRK:
-        if(BuildBytecode(itr) == STOP_BAILOUT)
-          return STOP_BAILOUT;
-        return GotoIfEnd(itr,pc);
-
-      default:
-        if(BuildBytecode(itr) == STOP_BAILOUT)
-          return STOP_BAILOUT;
-        break;
+    if(itr->opcode() == BC_JMP) {
+      return STOP_JUMP;
+    } else if(IsBlockJumpBytecode(itr->opcode())) {
+      if(BuildBytecode(itr) == STOP_BAILOUT)
+        return STOP_BAILOUT;
+      return GotoIfEnd(itr,pc);
+    } else {
+      if(BuildBytecode(itr) == STOP_BAILOUT)
+        return STOP_BAILOUT;
     }
   }
   lava_unreachF("cannot reach here since it is end of the stream %p:%p",itr->pc(),pc);
@@ -327,12 +374,8 @@ GraphBuilder::StopReason
 GraphBuilder::BuildIf( BytecodeIterator* itr ) {
   lava_debug(NORMAL,lava_verify(itr->opcode() == BC_JMPF););
 
-  // skip the BC_JMPF
-  lava_verify(itr->Move());
-
   std::uint8_t cond;    // condition's register
   std::uint16_t offset; // jump target when condition evaluated to be false
-
   itr->GetOperand(&cond,&offset);
 
   // create the leading If node
@@ -352,7 +395,7 @@ GraphBuilder::BuildIf( BytecodeIterator* itr ) {
   //    identify whether we have dangling elif/else branch
   {
     itr->Move();              // skip the BC_JMPF
-    BackupStack(&true_stack,this); // back up the old stack and use new stack
+    BackupStack backup(&true_stack,this); // back up the old stack and use new stack
     set_region(true_region);  // switch to true region
 
     {
@@ -398,76 +441,32 @@ GraphBuilder::BuildIf( BytecodeIterator* itr ) {
   return STOP_SUCCESS;
 }
 
-/* --------------------------------------------------------------------------------------
- *
- * Loop IR building
- *
- * The Loop IR is little complicated to build , and here we have to consider OSR.
- *
- * 1) normal loop
- *   the normal loop is built based on the normal way, one thing to note is loop will
- *   be inversed during construction. The phi node in loop will be generated ahead of
- *   the loop based on the information provided by the BytecodeAnalyze since it will
- *   tell us which variable that is not bounded in loop is modified during the loop.
- *   Due to the fact the PHI node requires a operand that is not available when loop
- *   header is generated, we will need to patch each PHI node afterwards when the loop
- *   body is done. We will record pending PHI node. For break/continue they will be
- *   recorded according during the loop construction and its jump target will be correct
- *   patched once loop_exit is generated.
- *
- *
- * 2) OSR loop
- *   If this is a OSR compliation, then we will have to generate OSR related code. The
- *   OSR code generation will be *start* at OSR. Due to the fact we will be able to tell
- *   which variable are alive at the header of the LOOP, we will generate OSR IR to load
- *   all the needed value from OSR provider's buffer according to OSR ABI. Afterwards the
- *   loop generation will be like some sort of loop peeling.
- *
- *   We start at the loop where OSR jumps into and generate IR for it , if any inner loop
- *   nested it will also be generated normally. Then we start to peel some instructions
- *   from the outer loop that enclose the OSR loop , example as following:
- *
- *   for(...) { // loop A
- *     for(...) {  // loop B
- *       for(...) { // OSR entry , loop C
- *         for( ... ) { // loop D
- *         }
- *         // blabla
- *       }
- *       // blabla
- *     }
- *     // blabla
- *   }
- *
- *
- *   So we will first generate loop body for "loop C" since it is OSR entry , including
- *   loop D will be generated. Then we will generate IR for the peeling part which is
- *   whatever that is left after the loop C finish its body. And then go back to the
- *   header of loop B to generate whatever block that is before the loop C. Same style
- *   goes to the loop A. Basically for all enclosed loop we gonna do a simple peeling;
- *   for whatever that is enclosed/nested, normal way.
- *
- *   After these nested loop cluster been generated, our code generation will be done
- *   here. In our case is when we exit loop A there will be a deoptimization happened
- *   and we will fallback to the interpreter.
- *
- * ---------------------------------------------------------------------------------------*/
+GraphBuilder::StopReason
+GraphBuilder::GotoLoopEnd( BytecodeIterator* itr ) {
+  lava_verify(itr->SkipTo(
+        []( BytecodeIterator* itr ) {
+          return !(itr->opcode() == BC_FEEND ||
+                   itr->opcode() == BC_FEND1 ||
+                   itr->opcode() == BC_FEND2 ||
+                   itr->opcode() == BC_FEVREND);
+        }
+  ));
+
+  return STOP_SUCCESS;
+}
 
 GraphBuilder::StopReason
 GraphBuilder::BuildLoopBlock( BytecodeIterator* itr ) {
   while(itr->HasNext()) {
-    switch(itr->opcode()) {
-      case BC_FEEND: case BC_FEND1: case BC_FEND2: case BC_FEVREND:
-        return STOP_SUCCESS;
-      case BC_CONT: case BC_BRK:
-        if(BuildBytecode(itr) == STOP_BAILOUT)
-          return STOP_BAILOUT;
-
-        return STOP_SUCCESS;
-      default:
-        if(BuildBytecode(itr) == STOP_BAILOUT)
-          return STOP_BAILOUT;
-        break;
+    if(IsLoopEndBytecode(itr->opcode())) {
+      return STOP_SUCCESS;
+    } else if(IsBlockJumpBytecode(itr->opcode())) {
+      if(BuildBytecode(itr) == STOP_BAILOUT)
+        return STOP_BAILOUT;
+      return GotoLoopEnd(itr);
+    } else {
+      if(BuildBytecode(itr) == STOP_BAILOUT)
+        return STOP_BAILOUT;
     }
   }
 
@@ -498,22 +497,55 @@ void GraphBuilder::PatchLoopPhi() {
     Phi*  phi  = e.phi;
     Expr* node = StackGet(e.reg);
 
-    // BytecodeAnalyze should only tell us variable that is being modified in the loop
     lava_debug(NORMAL,lava_verify(phi != node););
     phi->AddOperand(node);
   }
   func_info().current_loop().phi_list.clear();
 }
 
+Expr* GraphBuilder::BuildLoopEndCondition( BytecodeIterator* itr , ControlFlow* body ) {
+  // now we should stop at the FEND1/FEND2/FEEND instruction
+  if(itr->opcode() == BC_FEND1) {
+    std::uint8_t a1,a2,a3; std::uint32_t a4;
+    itr->GetOperand(&a1,&a2,&a3,&a4);
+
+    Binary* comparison = Binary::New(
+        graph_,StackGet(a1), StackGet(a2), Binary::LT, NewIRInfo(itr->bytecode_location()));
+
+    return comparison;
+  } else if(itr->opcode() == BC_FEND2) {
+    std::uint8_t a1,a2,a3; std::uint32_t a4;
+    itr->GetOperand(&a1,&a2,&a3,&a4);
+
+    Expr* induct = StackGet(a1);
+    lava_debug(NORMAL,lava_verify(induct->IsPhi()););
+
+    // the addition node will use the PHI node as its left hand side
+    Binary* addition = Binary::New(graph_,induct,StackGet(a3),
+                                                 Binary::ADD,
+                                                 NewIRInfo(itr->bytecode_location()));
+    // store the PHI node back to the slot
+    StackSet(a1,addition);
+
+    // construct comparison node
+    Binary* comparison = Binary::New(graph_,addition,StackGet(a2), Binary::LT,
+        NewIRInfo(itr->bytecode_location()));
+
+    return comparison;
+  } else if(itr->opcode() == BC_FEEND) {
+    std::uint8_t a1;
+    std::uint16_t pc;
+    itr->GetOperand(&a1,&pc);
+
+    ItrNext* comparison = ItrNext::New(graph_,StackGet(a1),NewIRInfo(itr->bytecode_location()),region());
+    return comparison;
+  } else {
+    return NewBoolean(true,itr->bytecode_location());
+  }
+}
+
 GraphBuilder::StopReason
-GraphBuilder::BuildLoop( BytecodeIterator* itr ) {
-  lava_debug(NORMAL,lava_verify(itr->opcode() == BC_FSTART ||
-                                itr->opcode() == BC_FESTART||
-                                itr->opcode() == BC_FEVRSTART););
-
-  const std::uint32_t* after_pc;
-
-  LoopHeader* loop_header = NULL;
+GraphBuilder::BuildLoopBody( BytecodeIterator* itr , ControlFlow* loop_header ) {
   Loop*       body        = NULL;
   LoopExit*   exit        = NULL;
   IfTrue*     if_true     = IfTrue::New(graph_);
@@ -523,36 +555,6 @@ GraphBuilder::BuildLoop( BytecodeIterator* itr ) {
   BytecodeLocation cont_pc;
   BytecodeLocation brk_pc ;
 
-  // 1. construct the loop's first branch. all loop here are automatically
-  //    inversed
-  if(itr->opcode() == BC_FSTART) {
-    std::uint8_t a1; std::uint16_t a2;
-    itr->GetOperand(&a1,&a2); after_pc = itr->OffsetAt(a2);
-    loop_header  = LoopHeader::New(graph_,StackGet(a1),region());
-  } else if(itr->opcode() == BC_FESTART) {
-    std::uint8_t a1; std::uint16_t a2;
-    itr->GetOperand(&a1,&a2); after_pc = itr->OffsetAt(a2);
-    // create ir ItrNew which basically initialize the itr and also do
-    // a test against the iterator to see whether it is workable
-    IRInfo* info = NewIRInfo(itr->bytecode_location());
-    ItrNew* inew = ItrNew::New(graph_,StackGet(a1),info,region());
-    loop_header  = LoopHeader::New(graph_,inew,region());
-  } else {
-    lava_debug(NORMAL,lava_verify(itr->opcode() == BC_FEVRSTART););
-    /**
-     * for forever loop, we still build the structure of inverse loop, but just
-     * mark the condition to be true. later pass for eliminating branch will take
-     * care of this false inversed loop if
-     */
-    loop_header = LoopHeader::New(graph_,NewBoolean(true,itr->bytecode_location()),region());
-  }
-
-  set_region(loop_header);
-
-  // skip the loop start bytecode
-  itr->Move();
-
-  // 2. enter into the loop's body
   {
     LoopScope lscope(this,itr->pc());
 
@@ -574,61 +576,9 @@ GraphBuilder::BuildLoop( BytecodeIterator* itr ) {
     cont_pc = itr->bytecode_location(); // continue should jump at current BC which is loop exit node
 
     // now we should stop at the FEND1/FEND2/FEEND instruction
-    if(itr->opcode() == BC_FEND1) {
-      std::uint8_t a1,a2,a3; std::uint32_t a4;
-      itr->GetOperand(&a1,&a2,&a3,&a4);
-
-      Binary* comparison = Binary::New(
-          graph_,StackGet(a1), StackGet(a2), Binary::LT, NewIRInfo(itr->bytecode_location()));
-
-      // exit points back to the body of the loop
-      lava_debug(NORMAL,lava_verify(exit == NULL););
-
-      // create the loop exit node
-      exit = LoopExit::New(graph_,comparison);
-
-    } else if(itr->opcode() == BC_FEND2) {
-      std::uint8_t a1,a2,a3; std::uint32_t a4;
-      itr->GetOperand(&a1,&a2,&a3,&a4);
-
-      // |a1| + |a3| < |a2| , here we should take care of the PHI node insertion
-      Phi* loop_induction = Phi::New(graph_,body,NewIRInfo(itr->bytecode_location()));
-
-      // left handside of the PHI are original a1
-      loop_induction->AddOperand(StackGet(a1));
-
-      // the addition node will use the PHI node as its left hand side
-      Binary* addition = Binary::New(graph_,loop_induction,StackGet(a3),
-                                                           Binary::ADD,
-                                                           NewIRInfo(itr->bytecode_location()));
-      // finish the PHI node construction
-      loop_induction->AddOperand(addition);
-
-      // store the PHI node back to the slot
-      StackSet(a1,loop_induction);
-
-      // construct comparison node
-      Binary* comparison = Binary::New(graph_,addition,StackGet(a2), Binary::LT,
-                                                                     NewIRInfo(itr->bytecode_location()));
-
-      // exit points back to the body of the loop
-      lava_debug(NORMAL,lava_verify(exit == NULL););
-
-      // create the loop exit node
-      exit = LoopExit::New(graph_,comparison);
-    } else {
-      std::uint8_t a1;
-      std::uint16_t pc;
-      itr->GetOperand(&a1,&pc);
-
-      ItrNext* comparison = ItrNext::New(graph_,StackGet(a1),NewIRInfo(itr->bytecode_location()),region());
-
-      // exit points back to the body of the loop
-      lava_debug(NORMAL,lava_verify(exit == NULL););
-
-      // create the loop exit node
-      exit = LoopExit::New(graph_,comparison);
-    }
+    auto exit_cond = BuildLoopEndCondition(itr,body);
+    lava_debug(NORMAL,lava_verify(!exit););
+    exit = LoopExit::New(graph_,exit_cond);
 
     // connect each control flow node together
     exit->AddBackwardEdge(region());  // NOTES: do not link back to body directly since current
@@ -636,8 +586,14 @@ GraphBuilder::BuildLoop( BytecodeIterator* itr ) {
 
     body->AddBackwardEdge(loop_header);
     body->AddBackwardEdge(if_true);
-    if_true->AddBackwardEdge (exit);
-    if_false->AddBackwardEdge(loop_header);
+    if_true->AddBackwardEdge(exit);
+
+    // Only link the if_false edge back to loop header when it is actually a
+    // loop header type. During OSR compilation , since we don't have a real
+    // loop header , so we don't need to link it back
+    if(loop_header->IsLoopHeader())
+      if_false->AddBackwardEdge(loop_header);
+
     if_false->AddBackwardEdge(exit);
     after->AddBackwardEdge(if_false);
 
@@ -646,19 +602,67 @@ GraphBuilder::BuildLoop( BytecodeIterator* itr ) {
 
     // patch all the Phi node
     PatchLoopPhi();
+
+    // break should jump here which is *after* the merge region
+    brk_pc = itr->bytecode_location();
+
+    // patch all the pending continue and break node
+    PatchUnconditionalJump( &func_info().current_loop().pending_continue , exit , cont_pc );
+    PatchUnconditionalJump( &func_info().current_loop().pending_break    , after, brk_pc  );
+
+    lava_debug(NORMAL,
+        lava_verify(func_info().current_loop().pending_continue.empty());
+        lava_verify(func_info().current_loop().pending_break.empty());
+        lava_verify(func_info().current_loop().phi_list.empty());
+    );
   }
 
-  lava_debug(NORMAL,lava_verify(itr->pc() == after_pc););
   set_region(after);
-
-  // break should jump here which is *after* the merge region
-  brk_pc = itr->bytecode_location();
-
-  // patch all the pending continue and break node
-  PatchUnconditionalJump( &func_info().current_loop().pending_continue , exit , cont_pc );
-  PatchUnconditionalJump( &func_info().current_loop().pending_break    , after, brk_pc  );
-
   return STOP_SUCCESS;
+}
+
+GraphBuilder::StopReason
+GraphBuilder::BuildLoop( BytecodeIterator* itr ) {
+  lava_debug(NORMAL,lava_verify(IsLoopStartBytecode(itr->opcode())););
+
+  LoopHeader* loop_header = LoopHeader::New(graph_,region());
+
+
+  // set the current region to be loop header
+  set_region(loop_header);
+
+  // construct the loop's first branch. all loop here are automatically
+  // inversed
+  if(itr->opcode() == BC_FSTART) {
+    std::uint8_t a1; std::uint16_t a2;
+    itr->GetOperand(&a1,&a2);
+    loop_header->set_condition(StackGet(interpreter::kAccRegisterIndex));
+  } else if(itr->opcode() == BC_FESTART) {
+    std::uint8_t a1; std::uint16_t a2;
+    itr->GetOperand(&a1,&a2);
+
+    // create ir ItrNew which basically initialize the itr and also do
+    // a test against the iterator to see whether it is workable
+    IRInfo* info = NewIRInfo(itr->bytecode_location());
+
+    ItrNew* inew = ItrNew::New(graph_,StackGet(a1),info,region());
+    StackSet(a1,inew);
+    ItrTest* itest = ItrTest::New(graph_,inew,info,region());
+    loop_header->set_condition(itest);
+  } else {
+    lava_debug(NORMAL,lava_verify(itr->opcode() == BC_FEVRSTART););
+    /**
+     * for forever loop, we still build the structure of inverse loop, but just
+     * mark the condition to be true. later pass for eliminating branch will take
+     * care of this false inversed loop if
+     */
+    loop_header->set_condition(NewBoolean(true,itr->bytecode_location()));
+  }
+
+  // skip the loop start bytecode
+  itr->Move();
+
+  return BuildLoopBody(itr,loop_header);
 }
 
 GraphBuilder::StopReason GraphBuilder::BuildBytecode( BytecodeIterator* itr ) {
@@ -725,6 +729,12 @@ GraphBuilder::StopReason GraphBuilder::BuildBytecode( BytecodeIterator* itr ) {
         StackSet(dest,node);
       }
       break;
+    case BC_AND: case BC_OR:
+      return BuildLogic(itr);
+
+    case BC_TERN:
+      return BuildTernary(itr);
+
     /* unary operation */
     case BC_NEGATE: case BC_NOT:
       {
@@ -944,8 +954,13 @@ GraphBuilder::StopReason GraphBuilder::BuildBytecode( BytecodeIterator* itr ) {
       }
       break;
 
+    /* branch */
+    case BC_JMPF:
+      return BuildIf(itr);
+
     /* loop */
     case BC_FSTART:
+    case BC_FESTART:
     case BC_FEVRSTART:
       return BuildLoop(itr);
 
@@ -956,14 +971,14 @@ GraphBuilder::StopReason GraphBuilder::BuildBytecode( BytecodeIterator* itr ) {
         std::uint8_t a1,a2,a3;
         itr->GetOperand(&a1,&a2,&a3);
 
-        ItrDeref*  iref = ItrDeref::New(graph_,StackGet(a1),NewIRInfo(itr->bytecode_location()),region());
+        ItrDeref*  iref = ItrDeref::New(graph_,StackGet(a3),NewIRInfo(itr->bytecode_location()),region());
         Projection* key = Projection::New(graph_,iref,ItrDeref::PROJECTION_KEY,
             NewIRInfo(itr->bytecode_location()));
         Projection* val = Projection::New(graph_,iref,ItrDeref::PROJECTION_VAL,
             NewIRInfo(itr->bytecode_location()));
 
-        StackSet(a2,key);
-        StackSet(a3,val);
+        StackSet(a1,key);
+        StackSet(a2,val);
       }
       break;
 
@@ -988,7 +1003,9 @@ GraphBuilder::StopReason GraphBuilder::BuildBytecode( BytecodeIterator* itr ) {
     /* return/return null */
     case BC_RET: case BC_RETNULL:
       {
-        Return* ret= Return::New(graph_,StackGet(interpreter::kAccRegisterIndex),region());
+        Expr* retval = itr->opcode() == BC_RET ? StackGet(interpreter::kAccRegisterIndex) :
+                                                 Nil::New(graph_,NewIRInfo(itr->bytecode_location()));
+        Return* ret= Return::New(graph_,retval,region());
         set_region(ret);
         func_info().return_list.push_back(ret);
       }
@@ -1008,13 +1025,15 @@ GraphBuilder::BuildBasicBlock( BytecodeIterator* itr , const std::uint32_t* end_
   while(itr->HasNext()) {
     if(itr->pc() == end_pc) return STOP_END;
 
+    // save the opcode from the bytecode iterator
+    auto opcode = itr->opcode();
+
     // build this instruction
-    BuildBytecode(itr);
+    if(BuildBytecode(itr) == STOP_BAILOUT) return STOP_BAILOUT;
 
     // check if last opcode is break or continue which is unconditional
     // jump. so we can just abort the construction of this basic block
-    if(itr->opcode() == BC_BRK || itr->opcode() == BC_CONT)
-      return STOP_JUMP;
+    if(IsBlockJumpBytecode(opcode)) return STOP_JUMP;
   }
 
   return STOP_SUCCESS;
@@ -1022,6 +1041,7 @@ GraphBuilder::BuildBasicBlock( BytecodeIterator* itr , const std::uint32_t* end_
 
 bool GraphBuilder::Build( const Handle<Closure>& entry , Graph* graph ) {
   graph_ = graph;
+  zone_  = graph->zone();
 
   // 1. create the start and end region
   Start* start = Start::New(graph_);
@@ -1029,20 +1049,22 @@ bool GraphBuilder::Build( const Handle<Closure>& entry , Graph* graph ) {
 
   // create the first region
   Region* region = Region::New(graph_,start);
-  set_region(region);
-
 
   // 2. start the basic block building
   {
     // set up the evaluation stack all evaluation stack are triansient so I
     // just put it on to the stack
     ValueStack stack;
-    BackupStack(&stack,this);
+    BackupStack backup(&stack,this);
 
     FuncScope scope(this,entry,region,0);
     Handle<Prototype> proto(entry->prototype());
     BytecodeIterator itr(proto->GetBytecodeIterator());
 
+    // set the current region
+    set_region(region);
+
+    // start to execute the build basic block
     if(BuildBasicBlock(&itr) == STOP_BAILOUT)
       return false;
 
@@ -1052,19 +1074,255 @@ bool GraphBuilder::Build( const Handle<Closure>& entry , Graph* graph ) {
     //
     // patch all return nodes to merge back to the end
     end = End::New(graph_);
-    Phi* return_value = Phi::New(graph_,end,NULL);
-    end->set_return_value(return_value);
 
-    for( auto &e : func_info().return_list ) {
-      return_value->AddOperand(e->value());
-      end->AddBackwardEdge(e);
+    if(func_info().return_list.size() > 1) {
+      Phi* return_value = Phi::New(graph_,end,NULL);
+      end->set_return_value(return_value);
+
+      for( auto &e : func_info().return_list ) {
+        return_value->AddOperand(e->AsReturn()->value());
+        end->AddBackwardEdge(e);
+      }
+    } else {
+      // just one return value, then just return that value instead of a PHI
+      end->set_return_value(func_info().return_list[0]->AsReturn()->value());
+      end->AddBackwardEdge (func_info().return_list[0]);
     }
   }
 
-  graph->set_start(start);
-  graph->set_end  (end);
+  graph->Initialize(start,end);
   return true;
 }
+
+void GraphBuilder::BuildOSRLocalVariable() {
+  auto loop_header = func_info().bc_analyze.LookUpLoopHeader(func_info().osr_start);
+  lava_debug(NORMAL,lava_verify(loop_header););
+  for( BytecodeAnalyze::LocalVariableIterator itr(loop_header->bb,func_info().bc_analyze);
+       itr.HasNext() ; itr.Move() ) {
+    lava_debug(NORMAL,lava_verify(!stack_->at(itr.value())););
+    stack_->at(itr.value()) = OSRLoad::New(graph_,itr.value());
+  }
+}
+
+GraphBuilder::StopReason
+GraphBuilder::GotoOSRBlockEnd( BytecodeIterator* itr , const std::uint32_t* end_pc ) {
+  StopReason ret;
+
+  lava_verify(itr->SkipTo(
+        [end_pc,&ret]( BytecodeIterator* itr ) {
+          if(itr->pc() == end_pc) {
+            ret = STOP_END;
+            return false;
+          } else if(itr->opcode() == BC_FEND1 || itr->opcode() == BC_FEND2 ||
+                    itr->opcode() == BC_FEEND || itr->opcode() == BC_FEVREND) {
+            ret = STOP_SUCCESS;
+            return false;
+          } else {
+            return true;
+          }
+        }
+  ));
+
+  return ret;
+}
+
+GraphBuilder::StopReason
+GraphBuilder::BuildOSRLoop( BytecodeIterator* itr ) {
+  lava_debug(NORMAL, lava_verify(func_info().IsOSR());
+                     lava_verify(func_info().osr_start == itr->pc()););
+  return BuildLoopBody(itr,region());
+}
+
+void GraphBuilder::SetupOSRLoopCondition( BytecodeIterator* itr ) {
+  // now we should stop at the FEND1/FEND2/FEEND instruction
+  if(itr->opcode() == BC_FEND1) {
+    std::uint8_t a1,a2,a3; std::uint32_t a4;
+    itr->GetOperand(&a1,&a2,&a3,&a4);
+
+    Binary* comparison = Binary::New(
+        graph_,StackGet(a1), StackGet(a2), Binary::LT, NewIRInfo(itr->bytecode_location()));
+
+    StackSet(interpreter::kAccRegisterIndex,comparison);
+  } else if(itr->opcode() == BC_FEND2) {
+    std::uint8_t a1,a2,a3; std::uint32_t a4;
+    itr->GetOperand(&a1,&a2,&a3,&a4);
+
+    // the addition node will use the PHI node as its left hand side
+    Binary* addition = Binary::New(graph_,StackGet(a1),StackGet(a3),
+        Binary::ADD,
+        NewIRInfo(itr->bytecode_location()));
+
+    StackSet(a1,addition);
+
+    Binary* comparison = Binary::New(
+        graph_,addition,StackGet(a2),Binary::LT, NewIRInfo(itr->bytecode_location()));
+
+    StackSet(interpreter::kAccRegisterIndex,comparison);
+  } else if(itr->opcode() == BC_FEEND) {
+    std::uint8_t a1;
+    std::uint16_t pc;
+    itr->GetOperand(&a1,&pc);
+    ItrNext* comparison = ItrNext::New(graph_,StackGet(a1),NewIRInfo(itr->bytecode_location()),region());
+
+    StackSet(a1,comparison);
+  } else {
+    lava_debug(NORMAL,lava_verify(itr->opcode() == BC_FEVREND););
+  }
+}
+
+GraphBuilder::StopReason
+GraphBuilder::PeelOSRLoop( BytecodeIterator* itr ) {
+  bool is_osr = true;
+
+  UnconditionalJumpList temp_break;
+  // check whether we have any parental loop , if so we peel everyone
+  // until we hit the end
+  do {
+
+    if(is_osr) {
+      // build the OSR loop
+      if(BuildOSRLoop(itr) == STOP_BAILOUT) return STOP_BAILOUT;
+
+      is_osr = false;
+    } else {
+
+      // rebuild the loop
+      {
+        StopReason reason = BuildLoop(itr);
+        if(reason == STOP_BAILOUT) return STOP_BAILOUT;
+      }
+
+      // now we can link the peeled break part to here
+      PatchUnconditionalJump(&temp_break,region(),itr->bytecode_location());
+    }
+
+    if(func_info().HasLoop()) {
+      // now start to peel the parental loop's rest instructions/bytecodes
+      // the input iterator should sits right after the loop end bytecode
+      // of the nested loop
+      while(itr->HasNext()) {
+        if(IsLoopEndBytecode(itr->opcode())) {
+          break;
+        }
+        auto opcode = itr->opcode();
+        if(BuildBytecode(itr) == STOP_BAILOUT) return STOP_BAILOUT;
+
+        if(IsBlockJumpBytecode(opcode)) {
+          // skip util we hit a loop end bytecode
+          lava_verify( itr->SkipTo(
+              []( BytecodeIterator* itr ) {
+                return !IsLoopEndBytecode(itr->opcode());
+              }
+          ));
+          break;
+        }
+      }
+
+      // now we should end up with the loop end bytecode and this bytecode will
+      // be ignored entirely since we will rewind the iterator back to the very
+      // first instruction of the parental loop
+      lava_debug(NORMAL,lava_verify(IsLoopEndBytecode(itr->opcode())););
+
+      // setup osr-loop's initial condition
+      SetupOSRLoopCondition(itr);
+
+      // skip the last loop end bytecode
+      itr->Move();
+
+      // patch continue region inside of the peel part
+      if(!func_info().current_loop().pending_continue.empty()) {
+        // create a new region lazily
+        Region* r = Region::New(graph_,region());
+
+        PatchUnconditionalJump(&(func_info().current_loop().pending_continue),
+                               r,
+                               itr->bytecode_location());
+        set_region(r);
+      }
+
+      // save peeled part's all break
+      temp_break.swap(func_info().current_loop().pending_break);
+
+      // now we rewind the iterator to the start of this loop and regenerate everything
+      // again as natural fallthrough
+      //
+      // The start instruction for current loop doesn't include BC_FSTART/FEVRSTART/FESTART
+      // so we need to backward by 1
+      itr->BranchTo( func_info().current_loop_header()->start - 1 );
+
+      // leave the current loop
+      func_info().LeaveLoop();
+    } else {
+      break;
+    }
+  } while(true);
+
+  return STOP_SUCCESS;
+}
+
+GraphBuilder::StopReason
+GraphBuilder::BuildOSRStart( const Handle<Closure>& closure ,  const std::uint32_t* pc ,
+                                                               Graph* graph ) {
+  graph_ = graph;
+  zone_  = graph->zone();
+
+  // 1. create OSRStart node which is the entry of OSR compilation
+  OSRStart* start = OSRStart::New(graph);
+
+  // next region node connect back to the OSRStart
+  Region* header = Region::New(graph,start);
+
+  // 2. create OSREnd node which is the *end* of the OSR compilation
+  OSREnd* end = OSREnd::New(graph);
+
+  {
+    // set up the value stack/expression stack
+    ValueStack stack;
+    BackupStack backup_stack(&stack,this);
+
+    // set up the OSR scope
+    OSRScope scope(this,closure,header,pc);
+
+    // set up OSR local variable
+    BuildOSRLocalVariable();
+
+    // craft a bytecode iterator *starts* at the OSR instruction entry
+    // which should be a loop start instruction like FESTART,FSTART,FEVRSTART
+    const std::uint32_t* code_buffer   = closure->prototype()->code_buffer();
+    const std::size_t code_buffer_size = closure->prototype()->code_buffer_size();
+    lava_debug(NORMAL,lava_verify(pc >= code_buffer););
+
+    BytecodeIterator itr(code_buffer,code_buffer_size);
+
+    itr.BranchTo(pc);
+    lava_debug(NORMAL,lava_verify(itr.HasNext()););
+
+    // peel all nested loop until hit the outermost one
+    if(PeelOSRLoop(&itr) == STOP_BAILOUT) return STOP_BAILOUT;
+
+    // create trap for current region since once we abort from the loop we should
+    // fallback to interpreter
+    {
+      Trap* trap = Trap::New(graph_,region());
+      end->AddBackwardEdge(trap);
+    }
+
+    // create trap for each return block
+    for( auto & e : func_info().return_list ) {
+      Trap* trap = Trap::New(graph_,e);
+      end->AddBackwardEdge(trap);
+    }
+  } 
+
+  graph->Initialize(start,end);
+  return STOP_SUCCESS;
+}
+
+bool GraphBuilder::BuildOSR( const Handle<Closure>& closure , const std::uint32_t* osr_start ,
+                                                              Graph* graph ) {
+  return BuildOSRStart(closure,osr_start,graph) == STOP_SUCCESS;
+}
+                                                               
 
 } // namespace ir
 } // namespace cbase

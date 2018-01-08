@@ -229,11 +229,11 @@ class BytecodeUsage {
   __(F,LOADLIST0, loadlist0,OUTPUT,UNUSED,UNUSED,UNUSED,false) \
   __(E,LOADLIST1, loadlist1,OUTPUT,INPUT,UNUSED, UNUSED,false) \
   __(D,LOADLIST2, loadlist2,OUTPUT,INPUT,INPUT , UNUSED,false) \
-  __(B,NEWLIST, newlist,OUTPUT,IMM8   , UNUSED , UNUSED,false) \
+  __(E,NEWLIST, newlist,OUTPUT,IMM8   , UNUSED , UNUSED,false) \
   __(D,ADDLIST, addlist,OUTPUT,BASE   , IMM8   , UNUSED,false) \
   __(F,LOADOBJ0,loadobj0,OUTPUT,UNUSED, UNUSED , UNUSED,false) \
   __(D,LOADOBJ1,loadobj1,OUTPUT,INPUT , INPUT  , UNUSED,false) \
-  __(B,NEWOBJ  ,newobj  ,OUTPUT,IMM8  , UNUSED , UNUSED,false) \
+  __(E,NEWOBJ  ,newobj  ,OUTPUT,IMM8  , UNUSED , UNUSED,false) \
   __(D,ADDOBJ  ,addobj , OUTPUT,INPUT , INPUT  , UNUSED,false) \
   __(B,LOADCLS ,loadcls, OUTPUT,CLSREF, UNUSED , UNUSED,false) \
   __(G,INITCLS ,initcls, CLSREF,UNUSED, UNUSED , UNUSED,false) \
@@ -262,13 +262,13 @@ class BytecodeUsage {
   __(H,FEND1,fend1  ,  INPUT , INPUT  , UNUSED , PC    ,true ) \
   __(H,FEND2,fend2  ,  INPUT , INPUT  , INPUT  , PC    ,true ) \
   __(X,FEVRSTART,fevrstart,UNUSED,UNUSED,UNUSED,UNUSED ,false) \
-  /* fevrend also has feedback , thouth it is empty, we need it */ \
+  /* fevrend also has feedback , thouth it is empty, we need it */    \
   /* simply because we can use the fevrend to stop a profile trace */ \
   /* and kicks in the actual compilation job */  \
   __(G,FEVREND,fevrend,PC    , UNUSED , UNUSED , UNUSED,false) \
   __(B,FESTART,festart,INPUT , PC     , UNUSED , UNUSED,true ) \
   __(B,FEEND  ,feend  ,INPUT , PC     , UNUSED , UNUSED,true ) \
-  __(D,IDREF  ,idref  ,INPUT , OUTPUT , OUTPUT , UNUSED,false) \
+  __(D,IDREF  ,idref  ,OUTPUT, OUTPUT , INPUT  , UNUSED,false) \
   __(G,BRK   ,brk     ,PC    , UNUSED , UNUSED , UNUSED,false) \
   __(G,CONT  ,cont    ,PC    , UNUSED , UNUSED , UNUSED,false) \
   /* always the last one */\
@@ -309,6 +309,19 @@ const char* GetBytecodeTypeName( BytecodeType );
 inline const char* GetBytecodeTypeName( Bytecode bc ) {
   BytecodeType t = GetBytecodeType(bc);
   return GetBytecodeTypeName(t);
+}
+
+// Helper function to tell bytecode type, these functions are for pratical reason
+inline bool IsLoopStartBytecode( Bytecode bc ) {
+  return bc == BC_FSTART || bc == BC_FESTART || bc == BC_FEVRSTART;
+}
+
+inline bool IsLoopEndBytecode( Bytecode bc ) {
+  return bc == BC_FEND1 || bc == BC_FEND2 || bc == BC_FEVREND || bc == BC_FEEND;
+}
+
+inline bool IsBlockJumpBytecode( Bytecode bc ) {
+  return bc == BC_CONT || bc == BC_BRK || bc == BC_RET || bc == BC_RETNULL;
 }
 
 } // namespace interpreter

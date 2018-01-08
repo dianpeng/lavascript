@@ -35,6 +35,8 @@ template< typename T , typename Traits > class Iterator {
   bool Move() const    { return Traits::Move(&iter_,end_); }
 
   const T& value() const { lava_debug(NORMAL,lava_verify(HasNext());); return iter_->value; }
+  T& value() { lava_debug(NORMAL,lava_verify(HasNext());); return iter_->value; }
+
   void set_value( const T& val ) { lava_debug(NORMAL,lava_verify(HasNext());); iter_->value = val;  }
 
   bool operator == ( const Iterator& that ) const {
@@ -141,10 +143,6 @@ template< typename T > class List : ZoneObject {
   // complexity
   const T& Index( std::size_t ) const;
 
-  // index a certain position's node inside of linked list , linear
-  // complexity
-  T& Index( std::size_t );
-
  public:
   std::size_t size() const { return size_; }
   bool empty() const { return size() == 0; }
@@ -222,14 +220,6 @@ void List<T>::Resize( Zone* zone , std::size_t size ) {
     for( std::size_t i = 0 ; i < (size - size_); ++i )
       PushBack(zone,T());
   }
-}
-
-template< typename T >
-T& List<T>::Index( std::size_t index ) {
-  lava_debug(NORMAL,lava_verify(index < size_););
-  ForwardIterator itr(GetForwardIterator());
-  itr.Advance(index);
-  return itr.value();
 }
 
 template< typename T >

@@ -36,6 +36,8 @@ typedef std::bitset<::lavascript::interpreter::kRegisterSize> InterpreterRegiste
 
 class BytecodeAnalyze {
  public:
+  // BasicBlockVariable object captures all the local variable definition in different
+  // local lexical scope and also its parental scope is naturally chained inside of it
   struct BasicBlockVariable {
     const BasicBlockVariable* prev;  // parent scope
     InterpreterRegisterSet variable;
@@ -62,6 +64,32 @@ class BytecodeAnalyze {
     const BasicBlockVariable* enclosed_bb() const {
       return bb->prev;
     }
+  };
+
+  // Iterator class to let user iterate through all local variable defined starting
+  // from the input basic block
+  class LocalVariableIterator {
+   public:
+    LocalVariableIterator(const BasicBlockVariable* v , const BytecodeAnalyze& ba):
+      scope_ (v),
+      cursor_(0),
+      max_   (ba.max_local_var_size_)
+    {
+      Move(0);
+    }
+
+    bool HasNext() const { return scope_ != NULL; }
+
+    bool Move() { return Move(++cursor_); }
+
+    std::uint8_t value() const { return cursor_; }
+
+   private:
+    bool Move( std::uint8_t start );
+
+    const BasicBlockVariable* scope_;
+    std::uint8_t cursor_;
+    std::uint8_t max_;
   };
 
   // Unordered map may not give us too much benifits since we should not have
@@ -148,6 +176,7 @@ class BytecodeAnalyze {
   class BasicBlockScope;
   friend class LoopScope;
   friend class BasicBlockScope;
+  friend class LocalVariableIterator;
 
   LAVA_DISALLOW_COPY_AND_ASSIGN(BytecodeAnalyze);
 };

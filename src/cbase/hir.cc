@@ -357,11 +357,17 @@ void DotGraphVisualizer::RenderExpr( const std::string& name , Expr* node ) {
         Indent(1) << name << " -> " << rhs_name  << "[label=\"rhs\"]\n";
       }
       break;
-    case IRTYPE_UGET:
-      Indent(1) << name << "[label=\"index(" << node->AsUGet()->index() << ")\"]\n";
+    case IRTYPE_UVAL:
+      Indent(1) << name << "[label=\"uval(" << node->AsUVal()->index() << ")\"]\n";
       break;
     case IRTYPE_USET:
-      Indent(1) << name << "[label=\"index(" << node->AsUSet()->index() << ")\"]\n";
+      {
+        auto uset = node->AsUSet();
+        auto opr_name = GetNodeName(uset->value());
+        RenderExpr(opr_name,uset->value());
+        Indent(1) << name << "[label=\"uset\"]\n";
+        Indent(1) << name << opr_name << '\n';
+      }
       break;
     case IRTYPE_PGET:
       {

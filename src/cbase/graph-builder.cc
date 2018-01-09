@@ -67,10 +67,24 @@ class GraphBuilder::FuncScope {
     gb->func_info_.push_back(FuncInfo(cls,region,base));
     gb->stack_->resize(base+interpreter::kRegisterSize);
 
-    // initialize argument for this function call
-    auto arg_size = cls->prototype()->argument_size();
-    for( std::size_t i = 0 ; i < arg_size ; ++i ) {
-      gb->stack_->at(i) = Arg::New(gb->graph_,static_cast<std::uint32_t>(i));
+    if(gb->func_info_.size() == 1) {
+      /**
+       * Initialize function argument for entry function. When we hit
+       * inline frame, we dont need to populate its argument since they
+       * will be taken care of by the graph builder
+       */
+      auto arg_size = cls->prototype()->argument_size();
+      for( std::size_t i = 0 ; i < arg_size ; ++i ) {
+        gb->stack_->at(i) = Arg::New(gb->graph_,static_cast<std::uint32_t>(i));
+      }
+    }
+
+    // populate upvalue array for this function
+    {
+      FuncInfo &ctx = gb->func_info_.back();
+      for( std::size_t i = 0 ; i < ctx.upvalue.size(); ++i ) {
+        ctx.upvalue[i] = UVal::New(gb->graph_,static_cast<std::uint8_t>(i));
+      }
     }
   }
 
@@ -944,17 +958,20 @@ GraphBuilder::StopReason GraphBuilder::BuildBytecode( BytecodeIterator* itr ) {
       {
         std::uint8_t a1,a2;
         itr->GetOperand(&a1,&a2);
-        StackSet(a1,UGet::New(graph_,a2,method_index(),NewIRInfo(itr->bytecode_location())));
+        auto uval = func_info().upvalue[a2];
+        lava_debug(NORMAL,lava_verify(uval););
+        StackSet(a1,uval);
       }
       break;
     case BC_UVSET:
       {
         std::uint8_t a1,a2;
         itr->GetOperand(&a1,&a2);
-        USet::New(graph_,a1,method_index(),StackGet(a2),NewIRInfo(itr->bytecode_location()));
+        auto uset = 
+          USet::New(graph_,method_index(),StackGet(a2),NewIRInfo(itr->bytecode_location()),region());
+        func_info().upvalue[a1] = uset;
       }
       break;
-
     case BC_GGET: case BC_GGETSSO:
       {
         std::uint8_t a1,a2;
@@ -964,7 +981,6 @@ GraphBuilder::StopReason GraphBuilder::BuildBytecode( BytecodeIterator* itr ) {
         StackSet(a1,GGet::New(graph_,key,NewIRInfo(itr->bytecode_location()),region()));
       }
       break;
-
     case BC_GSET: case BC_GSETSSO:
       {
         std::uint8_t a1,a2;

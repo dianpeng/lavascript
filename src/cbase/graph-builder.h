@@ -91,6 +91,7 @@ class GraphBuilder {
     /** member field **/
     Handle<Closure> closure;
     Handle<Prototype> prototype; // cached for faster access
+    std::vector<Expr*> upvalue;
     ControlFlow* region;
     std::uint32_t base;
     std::uint8_t  max_local_var_size;
@@ -321,6 +322,7 @@ inline GraphBuilder::FuncInfo::FuncInfo( const Handle<Closure>& cls , ControlFlo
                                                                       std::uint32_t b ):
   closure           (cls),
   prototype         (cls->prototype()),
+  upvalue           (cls->prototype()->upvalue_size()),
   region            (start_region),
   base              (b),
   max_local_var_size(cls->prototype()->max_local_var_size()),
@@ -334,6 +336,7 @@ inline GraphBuilder::FuncInfo::FuncInfo( const Handle<Closure>& cls , ControlFlo
                                                                       const std::uint32_t* ostart ):
   closure           (cls),
   prototype         (cls->prototype()),
+  upvalue           (cls->prototype()->upvalue_size()),
   region            (start_region),
   base              (0),
   max_local_var_size(cls->prototype()->max_local_var_size()),
@@ -346,6 +349,7 @@ inline GraphBuilder::FuncInfo::FuncInfo( const Handle<Closure>& cls , ControlFlo
 inline GraphBuilder::FuncInfo::FuncInfo( FuncInfo&& that ):
   closure            (that.closure),
   prototype          (that.prototype),
+  upvalue            (std::move(that.upvalue)),
   region             (that.region),
   base               (that.base),
   max_local_var_size (that.max_local_var_size),

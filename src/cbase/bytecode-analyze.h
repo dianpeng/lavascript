@@ -42,7 +42,7 @@ class BytecodeAnalyze {
     const BasicBlockVariable* prev;  // parent scope
     InterpreterRegisterSet variable;
     const std::uint32_t* start;
-    const std::uint32_t* end  ;      // this is end of the BB it stops when a 
+    const std::uint32_t* end  ;      // this is end of the BB it stops when a
                                      // jump/return happened
     BasicBlockVariable(): prev(NULL), variable(), start(NULL), end(NULL) {}
 

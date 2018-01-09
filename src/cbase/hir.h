@@ -1,5 +1,5 @@
-#ifndef CBASE_IR_H_
-#define CBASE_IR_H_
+#ifndef CBASE_HIR_H_
+#define CBASE_HIR_H_
 #include "src/config.h"
 #include "src/util.h"
 #include "src/stl-helper.h"
@@ -9,8 +9,6 @@
 #include "src/zone/string.h"
 #include "src/cbase/bytecode-analyze.h"
 
-#include "worker-list.h"
-
 #include <map>
 #include <vector>
 #include <deque>
@@ -18,7 +16,7 @@
 
 namespace lavascript {
 namespace cbase {
-namespace ir {
+namespace hir {
 using namespace ::lavascript;
 
 class Graph;
@@ -61,67 +59,67 @@ struct PrototypeInfo : zone::ZoneObject {
 
 #define CBASE_IR_EXPRESSION(__)                 \
   /* const    */                                \
-  __(Int32,INT32  ,"int32"  )                   \
-  __(Int64,INT64  ,"int64"  )                   \
-  __(Float64,FLOAT64,"float64")                 \
-  __(LString,LONG_STRING,"lstring"   )          \
-  __(SString,SMALL_STRING,"small_string")       \
-  __(Boolean,BOOLEAN,"boolean")                 \
-  __(Nil,NIL,"null"   )                         \
+  __(Int32,INT32  ,"int32"  , true)             \
+  __(Int64,INT64  ,"int64"  , true)             \
+  __(Float64,FLOAT64,"float64",true)            \
+  __(LString,LONG_STRING,"lstring",true)        \
+  __(SString,SMALL_STRING,"small_string",true)  \
+  __(Boolean,BOOLEAN,"boolean",true)            \
+  __(Nil,NIL,"null",true)                       \
   /* compound */                                \
-  __(IRList,LIST,   "list"   )                  \
-  __(IRObject,OBJECT, "object" )                \
+  __(IRList,LIST,   "list",false)               \
+  __(IRObject,OBJECT, "object",false)           \
   /* closure */                                 \
-  __(LoadCls,LOAD_CLS,"load_cls")               \
+  __(LoadCls,LOAD_CLS,"load_cls",true)          \
   /* argument node */                           \
-  __(Arg,ARG,"arg")                             \
+  __(Arg,ARG,"arg",true)                        \
   /* ariethmetic/comparison node */             \
-  __(Binary,BINARY,"binary")                    \
-  __(Unary,UNARY ,"unary" )                     \
+  __(Binary,BINARY,"binary",false)              \
+  __(Unary,UNARY ,"unary",false)                \
   /* ternary node */                            \
-  __(Ternary,TERNARY,"ternary")                 \
+  __(Ternary,TERNARY,"ternary",false)           \
   /* upvalue */                                 \
-  __(UGet,UGET  ,"uget"  )                      \
-  __(USet,USET  ,"uset"  )                      \
+  __(UGet,UGET  ,"uget",true)                   \
+  __(USet,USET  ,"uset",true)                   \
   /* property/idx */                            \
-  __(PGet,PGET  ,"pget"  )                      \
-  __(PSet,PSET  ,"pset"  )                      \
-  __(IGet,IGET  ,"iget"  )                      \
-  __(ISet,ISET  ,"iset"  )                      \
+  __(PGet,PGET  ,"pget",false)                  \
+  __(PSet,PSET  ,"pset",false)                  \
+  __(IGet,IGET  ,"iget",false)                  \
+  __(ISet,ISET  ,"iset",false)                  \
   /* gget */                                    \
-  __(GGet,GGET  , "gget" )                      \
-  __(GSet,GSET  , "gset" )                      \
+  __(GGet,GGET  , "gget",false)                 \
+  __(GSet,GSET  , "gset",false)                 \
   /* iterator */                                \
-  __(ItrNew ,ITR_NEW ,"itr_new" )               \
-  __(ItrNext,ITR_NEXT,"itr_next")               \
-  __(ItrTest,ITR_TEST,"itr_test")               \
-  __(ItrDeref,ITR_DEREF,"itr_deref")            \
+  __(ItrNew ,ITR_NEW ,"itr_new",false)          \
+  __(ItrNext,ITR_NEXT,"itr_next",false)         \
+  __(ItrTest,ITR_TEST,"itr_test",false)         \
+  __(ItrDeref,ITR_DEREF,"itr_deref",false)      \
   /* call     */                                \
-  __(Call,CALL   ,"call"   )                    \
+  __(Call,CALL   ,"call",false)                 \
   /* phi */                                     \
-  __(Phi,PHI,"phi")                             \
+  __(Phi,PHI,"phi",false)                       \
   /* statement */                               \
-  __(InitCls,INIT_CLS,"init_cls")               \
-  __(Projection,PROJECTION,"projection")        \
+  __(InitCls,INIT_CLS,"init_cls",false)         \
+  __(Projection,PROJECTION,"projection",false)  \
   /* osr */                                     \
-  __(OSRLoad,OSR_LOAD,"osr_load")
+  __(OSRLoad,OSR_LOAD,"osr_load",true)
 
 #define CBASE_IR_CONTROL_FLOW(__)               \
-  __(Start,START,"start")                       \
-  __(LoopHeader,LOOP_HEADER,"loop_header")      \
-  __(Loop,LOOP ,"loop" )                        \
-  __(LoopExit,LOOP_EXIT,"loop_exit")            \
-  __(If,IF,"if")                                \
-  __(IfTrue,IF_TRUE,"if_true")                  \
-  __(IfFalse,IF_FALSE,"if_false")               \
-  __(Jump,JUMP,"jump")                          \
-  __(Return,RETURN,"return")                    \
-  __(Region,REGION,"region")                    \
-  __(End,END  , "end" )                         \
-  __(Trap,TRAP, "trap")                         \
+  __(Start,START,"start",false)                 \
+  __(LoopHeader,LOOP_HEADER,"loop_header",false)\
+  __(Loop,LOOP ,"loop",false)                   \
+  __(LoopExit,LOOP_EXIT,"loop_exit",false)      \
+  __(If,IF,"if",false)                          \
+  __(IfTrue,IF_TRUE,"if_true",false)            \
+  __(IfFalse,IF_FALSE,"if_false",false)         \
+  __(Jump,JUMP,"jump",false)                    \
+  __(Return,RETURN,"return",false)              \
+  __(Region,REGION,"region",false)              \
+  __(End,END  , "end" ,false)                   \
+  __(Trap,TRAP, "trap",false)                   \
   /* osr */                                     \
-  __(OSRStart,OSR_START,"osr_start")            \
-  __(OSREnd  ,OSR_END  ,"osr_end"  )
+  __(OSRStart,OSR_START,"osr_start",false)      \
+  __(OSREnd  ,OSR_END  ,"osr_end"  ,false)
 
 #define CBASE_IR_LIST(__)                       \
   CBASE_IR_EXPRESSION(__)                       \
@@ -256,7 +254,7 @@ class Node : public zone::ZoneObject {
 // ================================================================
 
 class Expr : public Node {
- public: // GVN hash value and hash function 
+ public: // GVN hash value and hash function
 
   // If GVNHash returns 0 means this expression doesn't support GVN
   virtual std::uint64_t GVNHash()   const { return 0; }
@@ -325,6 +323,19 @@ class Expr : public Node {
   void AddRef( Expr* who_uses_me , const OperandIterator& iter ) {
     ref_list()->PushBack(zone(),Ref(iter,who_uses_me));
   }
+
+ public:
+  // Check if this Expression is a Leaf node or not
+  bool IsLeaf() const {
+#define __(A,B,C,D) case IRTYPE_##B: return D;
+    switch(type()) {
+      CBASE_IR_EXPRESSION(__)
+      default: lava_die(); return false;
+    }
+#undef __ // __
+  }
+
+  bool IsNoneLeaf() const { return !IsLeaf(); }
 
   Expr( IRType type , std::uint32_t id , Graph* graph , IRInfo* info ):
     Node             (type,id,graph),
@@ -803,51 +814,43 @@ class Ternary: public Expr {
 // -------------------------------------------------------------------------
 class UGet : public Expr {
  public:
-  inline static UGet* New( Graph* , std::uint8_t , IRInfo* );
+  inline static UGet* New( Graph* , std::uint8_t , std::uint32_t , IRInfo* );
+  std::uint32_t method() const { return method_; }
   std::uint8_t index () const { return index_ ; }
 
-  UGet( Graph* graph , std::uint32_t id , std::uint8_t imm ,
-                                          IRInfo* info ):
+  UGet( Graph* graph , std::uint32_t id , std::uint8_t imm , std::uint32_t method,
+                                                             IRInfo* info ):
     Expr   (IRTYPE_UGET,id,graph,info),
+    method_(method),
     index_ (imm)
   {}
 
-  virtual std::uint64_t GVNHash() const {
-    return GVNHash1(type_name(),index());
-  }
-
-  virtual bool Equal( const Expr* that ) const {
-    return that->IsUGet() && (that->AsUGet()->index() == index_);
-  }
-
  private:
+  std::uint32_t method_;
   std::uint8_t index_ ;
   LAVA_DISALLOW_COPY_AND_ASSIGN(UGet)
 };
 
 class USet : public Expr {
  public:
-  inline static USet* New( Graph* , std::uint8_t , Expr* opr , IRInfo* );
+  inline static USet* New( Graph* , std::uint8_t , std::uint32_t , Expr* opr ,
+                                                                   IRInfo* );
   Expr* operand() const { return operand_list()->First(); }
+  std::uint32_t method() const { return method_; }
   std::uint8_t index() const { return index_; }
 
-  USet( Graph* graph , std::uint32_t id , std::uint8_t index , Expr* opr ,
+  USet( Graph* graph , std::uint32_t id , std::uint8_t index , std::uint32_t method ,
+                                                               Expr* opr ,
                                                                IRInfo* info ):
-    Expr  (IRTYPE_USET,id,graph,info),
-    index_(index)
+    Expr   (IRTYPE_USET,id,graph,info),
+    method_(method),
+    index_ (index)
   {
     AddOperand(opr);
   }
 
-  virtual std::uint64_t GVNHash() const {
-    return GVNHash1(type_name(),index());
-  }
-
-  virtual bool Equal( const Expr* that ) const {
-    return that->IsUSet() && (that->AsUSet()->index() == index_);
-  }
-
  private:
+  std::uint32_t method_;
   std::uint8_t index_;
   LAVA_DISALLOW_COPY_AND_ASSIGN(USet)
 };
@@ -900,7 +903,7 @@ class PSet : public Expr {
   PSet( Graph* graph , std::uint32_t id , Expr* object , Expr* index ,
                                                          Expr* value ,
                                                          IRInfo* info ):
-    Expr  (IRTYPE_PGET,id,graph,info)
+    Expr  (IRTYPE_PSET,id,graph,info)
   {
     AddOperand(object);
     AddOperand(index );
@@ -1232,7 +1235,7 @@ class Call : public Expr {
 
 // -------------------------------------------------------------------------
 // Statement
-// 
+//
 //  This statement node is used to represent any statement that has side
 //  effect
 //
@@ -1240,6 +1243,8 @@ class Call : public Expr {
 class Projection : public Expr {
  public:
   inline static Projection* New( Graph* , Expr* , std::uint32_t index , IRInfo* );
+
+  Expr* operand() const { return operand_list()->First(); }
 
   // a specific value to indicate which part of the input operand
   // needs to be projected
@@ -1320,7 +1325,7 @@ class OSRLoad : public Expr {
 
 // -------------------------------------------------------------------------
 // Control Flow
-// 
+//
 //  The control flow node needs to support one additional important
 //  feature , mutation/modification/deletion of existed control flow
 //  graph.
@@ -1655,6 +1660,12 @@ class Graph {
  public: // string dedup
   zone::String* NewString( const char* data , std::size_t size );
 
+ public: // static helper function
+
+  // Print the graph into dot graph representation which can be visualized by
+  // using graphviz or other similar tools
+  static std::string PrintToDotFormat( const Graph& );
+
  private:
   zone::Zone                  zone_;
   ControlFlow*                start_;
@@ -1666,6 +1677,25 @@ class Graph {
   LAVA_DISALLOW_COPY_AND_ASSIGN(Graph)
 };
 
+
+// --------------------------------------------------------------------------
+// A simple worker list for traversal of all IR and it prevents adding a node
+// for multiple times
+class WorkerList {
+ public:
+  explicit WorkerList( const Graph& );
+  bool Push( Node* node );
+  void Pop();
+  Node* Top() const {
+    return array_.back();
+  }
+  bool empty() const { return array_.empty(); }
+ private:
+  DynamicBitSet existed_;
+  std::vector<Node*> array_ ;
+};
+
+// --------------------------------------------------------------------------
 // A graph dfs iterator that iterate all control flow graph node in DFS order
 // the expression node simply ignored and left the user to use whatever method
 // they like to iterate/visit them
@@ -1936,12 +1966,13 @@ inline Ternary* Ternary::New( Graph* graph , Expr* cond , Expr* lhs , Expr* rhs 
   return graph->zone()->New<Ternary>(graph,graph->AssignID(),cond,lhs,rhs,info);
 }
 
-inline UGet* UGet::New( Graph* graph , std::uint8_t index , IRInfo* info ) {
-  return graph->zone()->New<UGet>(graph,graph->AssignID(),index,info);
+inline UGet* UGet::New( Graph* graph , std::uint8_t index , std::uint32_t method , IRInfo* info ) {
+  return graph->zone()->New<UGet>(graph,graph->AssignID(),index,method,info);
 }
 
-inline USet* USet::New( Graph* graph , std::uint8_t index , Expr* opr , IRInfo* info ) {
-  return graph->zone()->New<USet>(graph,graph->AssignID(),index,opr,info);
+inline USet* USet::New( Graph* graph , std::uint8_t index , std::uint32_t method , Expr* opr ,
+                                                                                   IRInfo* info ) {
+  return graph->zone()->New<USet>(graph,graph->AssignID(),index,method,opr,info);
 }
 
 inline PGet* PGet::New( Graph* graph , Expr* obj , Expr* key , IRInfo* info ,
@@ -2118,8 +2149,8 @@ inline OSREnd* OSREnd::New( Graph* graph ) {
   return graph->zone()->New<OSREnd>(graph,graph->AssignID());
 }
 
-} // namespace ir
+} // namespace hir
 } // namespace cbase
 } // namespace lavascript
 
-#endif // CBASE_IR_H_
+#endif // CBASE_HIR_H_

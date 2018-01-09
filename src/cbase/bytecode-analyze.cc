@@ -1,5 +1,6 @@
 #include "bytecode-analyze.h"
 #include "helper.h"
+
 #include "src/trace.h"
 
 namespace lavascript {

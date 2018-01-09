@@ -1,6 +1,6 @@
 #ifndef CBASE_GRAPH_BUILDER_H_
 #define CBASE_GRAPH_BUILDER_H_
-#include "ir.h"
+#include "hir.h"
 #include "src/objects.h"
 #include "src/zone/zone.h"
 
@@ -9,7 +9,7 @@
 
 namespace lavascript {
 namespace cbase {
-namespace ir    {
+namespace hir    {
 
 typedef std::vector<Expr*> ValueStack;
 
@@ -185,6 +185,10 @@ class GraphBuilder {
     return stack_->at(StackIndex(index));
   }
  private: // Current FuncInfo
+  std::uint32_t method_index() const {
+    return static_cast<std::uint32_t>(func_info_.size());
+  }
+
   FuncInfo& func_info() { return func_info_.back(); }
 
   const FuncInfo& func_info() const { return func_info_.back(); }
@@ -359,7 +363,7 @@ inline void GraphBuilder::FuncInfo::EnterLoop( const std::uint32_t* pc ) {
   }
 }
 
-} // namespace ir
+} // namespace hir
 } // namespace cbase
 } // namespace lavascript
 

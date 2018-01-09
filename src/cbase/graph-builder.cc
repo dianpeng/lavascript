@@ -9,7 +9,7 @@
 
 namespace lavascript {
 namespace cbase {
-namespace ir    {
+namespace hir    {
 using namespace ::lavascript::interpreter;
 
 /* -------------------------------------------------------------
@@ -187,7 +187,7 @@ IRInfo* GraphBuilder::NewIRInfo( const BytecodeLocation& pc ) {
   IRInfo* ret;
   {
     void* mem = graph_->zone()->Malloc(sizeof(IRInfo));
-    ret = ConstructFromBuffer<IRInfo> (mem,static_cast<std::uint32_t>(func_info_.size()),pc);
+    ret = ConstructFromBuffer<IRInfo> (mem,method_index(),pc);
   }
   return ret;
 }
@@ -582,7 +582,7 @@ GraphBuilder::BuildLoopBody( BytecodeIterator* itr , ControlFlow* loop_header ) 
 
     // generate PHI node at the head of the *block*
     GenerateLoopPhi(itr->bytecode_location());
- 
+
     // iterate all BC inside of the loop body
     StopReason reason = BuildLoopBlock(itr);
     if(reason == STOP_BAILOUT) return STOP_BAILOUT;
@@ -913,7 +913,10 @@ GraphBuilder::StopReason GraphBuilder::BuildBytecode( BytecodeIterator* itr ) {
         itr->GetOperand(&a1,&a2,&a3);
         Expr* key = (itr->opcode() == BC_PROPSET ? NewString(a2):
                                                    NewSSO   (a2));
-        PSet::New(graph_,StackGet(a1),key,StackGet(a3),NewIRInfo(itr->bytecode_location()),region());
+        auto pset =
+          PSet::New(graph_,StackGet(a1),key,StackGet(a3),NewIRInfo(itr->bytecode_location()),region());
+
+        StackSet(a1,pset);
       }
       break;
     case BC_IDXGET: case BC_IDXGETI:
@@ -931,7 +934,9 @@ GraphBuilder::StopReason GraphBuilder::BuildBytecode( BytecodeIterator* itr ) {
         itr->GetOperand(&a1,&a2,&a3);
         Expr* key = (itr->opcode() == BC_IDXGET ? StackGet(a2) :
                                                   NewConstNumber(a2));
-        ISet::New(graph_,StackGet(a1),key,StackGet(a3), NewIRInfo(itr->bytecode_location()),region());
+        auto iset = ISet::New(graph_,StackGet(a1),key,StackGet(a3), NewIRInfo(itr->bytecode_location()),
+                                                                    region());
+        StackSet(a1,iset);
       }
       break;
 
@@ -939,14 +944,14 @@ GraphBuilder::StopReason GraphBuilder::BuildBytecode( BytecodeIterator* itr ) {
       {
         std::uint8_t a1,a2;
         itr->GetOperand(&a1,&a2);
-        StackSet(a1,UGet::New(graph_,a2,NewIRInfo(itr->bytecode_location())));
+        StackSet(a1,UGet::New(graph_,a2,method_index(),NewIRInfo(itr->bytecode_location())));
       }
       break;
     case BC_UVSET:
       {
         std::uint8_t a1,a2;
         itr->GetOperand(&a1,&a2);
-        USet::New(graph_,a1,StackGet(a2),NewIRInfo(itr->bytecode_location()));
+        USet::New(graph_,a1,method_index(),StackGet(a2),NewIRInfo(itr->bytecode_location()));
       }
       break;
 
@@ -1328,7 +1333,7 @@ GraphBuilder::BuildOSRStart( const Handle<Closure>& closure ,  const std::uint32
       Trap* trap = Trap::New(graph_,e);
       end->AddBackwardEdge(trap);
     }
-  } 
+  }
 
   graph->Initialize(start,end);
   return STOP_SUCCESS;
@@ -1338,8 +1343,8 @@ bool GraphBuilder::BuildOSR( const Handle<Closure>& closure , const std::uint32_
                                                               Graph* graph ) {
   return BuildOSRStart(closure,osr_start,graph) == STOP_SUCCESS;
 }
-                                                               
 
-} // namespace ir
+
+} // namespace hir
 } // namespace cbase
 } // namespace lavascript

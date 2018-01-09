@@ -6,7 +6,6 @@
 #include <src/parser/ast/ast.h>
 #include <src/trace.h>
 
-#include <src/cbase/dot-graph-visualizer.h>
 #include <src/cbase/graph-builder.h>
 #include <src/cbase/bytecode-analyze.h>
 
@@ -20,7 +19,7 @@
 
 namespace lavascript {
 namespace cbase {
-namespace ir {
+namespace hir {
 
 using namespace ::lavascript::interpreter;
 using namespace ::lavascript::parser;
@@ -67,8 +66,7 @@ bool CheckGraph( const char* source ) {
     return false;
   }
 
-  DotGraphVisualizer dgv;
-  std::cerr << dgv.Visualize(graph) << std::endl;
+  std::cerr << Graph::PrintToDotFormat(graph) << std::endl;
   return true;
 }
 
@@ -94,8 +92,7 @@ bool CheckGraphOSR( const char* source , std::size_t offset ) {
     return false;
   }
 
-  DotGraphVisualizer dgv;
-  std::cerr << dgv.Visualize(graph) << std::endl;
+  std::cerr << Graph::PrintToDotFormat(graph) << std::endl;
   return true;
 }
 
@@ -105,20 +102,18 @@ bool CheckGraphOSR( const char* source , std::size_t offset ) {
 #define CASE_OSR(IDX,...) ASSERT_TRUE(CheckGraphOSR(#__VA_ARGS__,(IDX)))
 
 TEST(BytecodeAnalyze,Basic) {
-  CASE_OSR(13,
-      var sum = 0;
-      for( var j = 0 ; xx.uu ; vv ) {
-        for( var i = 0 ; fo.xx ; ba ) {
-          sum = sum + 1;
-        }
-        sum = sum * cc + i + j;
-        if(sum == 100) return sum + 200;
-      }
-      return sum;
+  CASE(
+      var x = [1,2,3,4,5];
+      x[1] = 2;
+      x[2] = 3;
+      var y = {"a":1,"b":2,"c":3};
+      y.a = 20;
+      y.b = 30;
+      return x + y;
   );
 }
 
-} // namespace ir
+} // namespace hir
 } // namespace cbase
 } // namespace lavascript
 

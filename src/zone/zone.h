@@ -46,6 +46,13 @@ class Zone {
     return ConstructFromBuffer<T>(mem,args...);
   }
 
+ public:
+  std::size_t size() const { return allocator_.size(); }
+  std::size_t maximum_size() const { return allocator_.maximum_size(); }
+  std::size_t segment_size() const { return allocator_.segment_size(); }
+  std::size_t current_capacity() const { return allocator_.current_capacity(); }
+  std::size_t total_bytes() const { return allocator_.total_bytes(); }
+
  private:
   BumpAllocator allocator_;   // internal bump allocator
 

@@ -45,6 +45,14 @@ bool Compile( Context* context ,const char* source ,
   return true;
 }
 
+void PrintHeap( const Graph& graph ) {
+  std::cerr<<"size:"            <<graph.zone()->size()<<std::endl;
+  std::cerr<<"maximum-size:"    <<graph.zone()->maximum_size()<<std::endl;
+  std::cerr<<"segment-size:"    <<graph.zone()->segment_size()<<std::endl;
+  std::cerr<<"current-capacity:"<<graph.zone()->current_capacity()<<std::endl;
+  std::cerr<<"total-bytes:"     <<graph.zone()->total_bytes()<<std::endl;
+}
+
 bool CheckGraph( const char* source ) {
   Context ctx;
   std::string error;
@@ -67,6 +75,7 @@ bool CheckGraph( const char* source ) {
   }
 
   std::cerr << Graph::PrintToDotFormat(graph) << std::endl;
+  PrintHeap(graph);
   return true;
 }
 
@@ -93,6 +102,7 @@ bool CheckGraphOSR( const char* source , std::size_t offset ) {
   }
 
   std::cerr << Graph::PrintToDotFormat(graph) << std::endl;
+  PrintHeap(graph);
   return true;
 }
 

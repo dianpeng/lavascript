@@ -1715,6 +1715,7 @@ class Graph {
   ControlFlow* start() const { return start_; }
   ControlFlow* end  () const { return end_;   }
   zone::Zone* zone()   { return &zone_; }
+  const zone::Zone* zone() const { return &zone_; }
 
   std::uint32_t MaxID() const { return id_; }
   std::uint32_t AssignID() { return id_++; }

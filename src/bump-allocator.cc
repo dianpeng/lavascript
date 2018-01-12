@@ -38,7 +38,7 @@ void* BumpAllocator::Grab( std::size_t size ) {
   void* ret = pool_;
   pool_ = reinterpret_cast<void*>(static_cast<char*>(pool_) + size);
   used_ += size;
-  ++size_;
+  size_ += size;
   return ret;
 }
 

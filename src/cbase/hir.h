@@ -104,7 +104,11 @@ struct PrototypeInfo : zone::ZoneObject {
   /* osr */                                     \
   __(OSRLoad,OSR_LOAD,"osr_load",true)          \
   /* effect */                                  \
-  __(Effect,EFFECT,"effect",false)
+  __(Effect,EFFECT,"effect",false)              \
+  /* checkpoints */                             \
+  __(Checkpoint,CHECKPOINT,"checkpoint",false)  \
+  __(StackSlot,STACK_SLOT, "stackslot" ,false)  \
+  __(UValSlot ,UVAL_SLOT , "uvalslot"  ,false)
 
 #define CBASE_IR_CONTROL_FLOW(__)               \
   __(Start,START,"start",false)                 \
@@ -165,6 +169,7 @@ CBASE_IR_LIST(__)
 class Expr;
 class ControlFlow;
 class Stmt;
+class BailoutEntry;
 
 // ----------------------------------------------------------------------------
 // Effect
@@ -248,11 +253,33 @@ class Node : public zone::ZoneObject {
   LAVA_DISALLOW_COPY_AND_ASSIGN(Node)
 };
 
+// Mother of IR node that can be bailout or needs to hold a check point.
+// Basically IR supports speculative execution or needs to bailout to GC
+// routine needs a Checkpoint expression attached to it to generate frame
+// state while bailout.
+//
+// One thing to note, we can omit this frame state if we only need a allocation
+// since we could disable GC temporarily
+class BailoutEntry {
+ public:
+  void set_checkpoint( Checkpoint* node ) { checkpoint_ = node; }
+  Checkpoint* checkpoint() const { return checkpoint_; }
+  bool HasCheckpoint() const { return checkpoint_ != NULL; }
+  void ClearCheckpoint()  { checkpoint_ = NULL; }
+
+  BailoutEntry() : checkpoint_(NULL) {}
+ private:
+  Checkpoint* checkpoint_;
+
+  LAVA_DISALLOW_COPY_AND_ASSIGN(BailoutEntry)
+};
+
 // ================================================================
 // Expr
 //
 //   This node is the mother all other expression node and its solo
 //   goal is to expose def-use and use-def chain into different types
+//
 // ================================================================
 
 class Expr : public Node {
@@ -665,7 +692,7 @@ class LoadCls : public Expr {
   LAVA_DISALLOW_COPY_AND_ASSIGN(LoadCls);
 };
 
-class Binary : public Expr {
+class Binary : public Expr , public BailoutEntry {
  public:
   enum Operator {
     ADD,
@@ -733,7 +760,7 @@ class Binary : public Expr {
   LAVA_DISALLOW_COPY_AND_ASSIGN(Binary)
 };
 
-class Unary : public Expr {
+class Unary : public Expr , public BailoutEntry {
  public:
   enum Operator { MINUS, NOT };
 
@@ -770,7 +797,7 @@ class Unary : public Expr {
   LAVA_DISALLOW_COPY_AND_ASSIGN(Unary)
 };
 
-class Ternary: public Expr {
+class Ternary: public Expr , public BailoutEntry {
  public:
   inline static Ternary* New( Graph* , Expr* , Expr* , Expr* , IRInfo* );
 
@@ -856,7 +883,7 @@ class USet : public Expr {
 // -------------------------------------------------------------------------
 // property set/get (side effect)
 // -------------------------------------------------------------------------
-class PGet : public Expr {
+class PGet : public Expr , public BailoutEntry {
  public:
   inline static PGet* New( Graph* , Expr* , Expr* , IRInfo* , ControlFlow* );
   Expr* object() const { return operand_list()->First(); }
@@ -890,7 +917,7 @@ class PGet : public Expr {
   LAVA_DISALLOW_COPY_AND_ASSIGN(PGet)
 };
 
-class PSet : public Expr {
+class PSet : public Expr , public BailoutEntry {
  public:
   inline static PSet* New( Graph* , Expr* , Expr* , Expr* , IRInfo* ,
                                                             ControlFlow* );
@@ -931,7 +958,7 @@ class PSet : public Expr {
   LAVA_DISALLOW_COPY_AND_ASSIGN(PSet)
 };
 
-class IGet : public Expr {
+class IGet : public Expr , public BailoutEntry {
  public:
   inline static IGet* New( Graph* , Expr* , Expr* , IRInfo* , ControlFlow* );
   Expr* object() const { return operand_list()->First(); }
@@ -966,7 +993,7 @@ class IGet : public Expr {
   LAVA_DISALLOW_COPY_AND_ASSIGN(IGet)
 };
 
-class ISet : public Expr {
+class ISet : public Expr , public BailoutEntry {
  public:
   inline static ISet* New( Graph* , Expr* , Expr* , Expr* , IRInfo* ,
                                                             ControlFlow* );
@@ -1011,7 +1038,7 @@ class ISet : public Expr {
 // -------------------------------------------------------------------------
 // global set/get (side effect)
 // -------------------------------------------------------------------------
-class GGet : public Expr {
+class GGet : public Expr , public BailoutEntry {
  public:
   inline static GGet* New( Graph* , Expr* , IRInfo* , ControlFlow* );
   Expr* key() const { return operand_list()->First(); }
@@ -1036,7 +1063,7 @@ class GGet : public Expr {
   LAVA_DISALLOW_COPY_AND_ASSIGN(GGet)
 };
 
-class GSet : public Expr {
+class GSet : public Expr , public BailoutEntry {
  public:
   inline static GSet* New( Graph* , Expr* key , Expr* value , IRInfo* ,
                                                               ControlFlow* );
@@ -1074,7 +1101,7 @@ class GSet : public Expr {
 // -------------------------------------------------------------------------
 // Iterator node (side effect)
 // -------------------------------------------------------------------------
-class ItrNew : public Expr {
+class ItrNew : public Expr , public BailoutEntry {
  public:
   inline static ItrNew* New( Graph* , Expr* , IRInfo* , ControlFlow* );
   Expr* operand() const { return operand_list()->First(); }
@@ -1099,7 +1126,7 @@ class ItrNew : public Expr {
   LAVA_DISALLOW_COPY_AND_ASSIGN(ItrNew)
 };
 
-class ItrNext : public Expr {
+class ItrNext : public Expr , public BailoutEntry {
  public:
   inline static ItrNext* New( Graph* , Expr* , IRInfo* , ControlFlow* );
   Expr* operand() const { return operand_list()->First(); }
@@ -1124,7 +1151,7 @@ class ItrNext : public Expr {
   LAVA_DISALLOW_COPY_AND_ASSIGN(ItrNext)
 };
 
-class ItrTest : public Expr {
+class ItrTest : public Expr , public BailoutEntry {
  public:
   inline static ItrTest* New( Graph* , Expr* , IRInfo* , ControlFlow* );
   Expr* operand() const { return operand_list()->First(); }
@@ -1149,7 +1176,7 @@ class ItrTest : public Expr {
   LAVA_DISALLOW_COPY_AND_ASSIGN(ItrTest)
 };
 
-class ItrDeref : public Expr {
+class ItrDeref : public Expr , public BailoutEntry {
  public:
   enum {
     PROJECTION_KEY = 0,
@@ -1210,7 +1237,7 @@ class Phi : public Expr {
   LAVA_DISALLOW_COPY_AND_ASSIGN(Phi)
 };
 
-class Call : public Expr {
+class Call : public Expr , public BailoutEntry {
  public:
   inline static Call* New( Graph* graph , Expr* , std::uint8_t , std::uint8_t ,
                                                                  IRInfo* );
@@ -1269,7 +1296,7 @@ class Projection : public Expr {
   LAVA_DISALLOW_COPY_AND_ASSIGN(Projection)
 };
 
-class InitCls : public Expr {
+class InitCls : public Expr , public BailoutEntry {
  public:
   inline static InitCls* New( Graph* , Expr* , IRInfo* );
 
@@ -1346,6 +1373,86 @@ class Effect : public Expr {
 
  private:
   LAVA_DISALLOW_COPY_AND_ASSIGN(Effect)
+};
+
+// Checkpoint node
+//
+// A checkpoint node will capture the VM/Interpreter state. When an irnode
+// needs a bailout for speculative execution , it needs Checkpoint node.
+//
+// The checkpoint node will impact CFG generation/scheduling , anynode that
+// is referenced by checkpoint must be scheduled before the node that actually
+// reference this checkpoint node.
+//
+// For VM/Interpreter state , there're only 3 types of states
+//
+// 1) a register stack state , represented by StackSlot node
+// 2) a upvalue state , represented by UValSlot node
+// 3) a global value state , currently we don't have any optimization against
+//    global values, so they are not needed to be captured in the checkpoint
+//    they are more like volatile in C/C++ , always read from its memory and
+//    write through back to where it is
+//
+class Checkpoint : public Expr {
+ public:
+  inline static Checkpoint* New( Graph* );
+
+  // add a StackSlot into the checkpoint
+  inline void AddStackSlot( Expr* , std::uint32_t );
+
+  // add a upvalue slot
+  inline void AddUValSlot ( Expr* , std::uint32_t );
+
+  Checkpoint( Graph* graph , std::uint32_t id ):
+    Expr(IRTYPE_CHECKPOINT,id,graph,NULL)
+  {}
+ private:
+  LAVA_DISALLOW_COPY_AND_ASSIGN(Checkpoint)
+};
+
+// StackSlot node
+//
+// Represent a value must be flushed back a certain stack slot when will
+// bailout from the interpreter
+//
+// It is only used inside of the checkpoint nodes
+class StackSlot : public Expr {
+ public:
+  inline static StackSlot* New( Graph* , Expr* , std::uint32_t );
+  std::uint32_t index() const { return index_; }
+  Expr* expr() const { return operand_list()->First(); }
+
+  StackSlot( Graph* graph , std::uint32_t id , Expr* expr , std::uint32_t index ):
+    Expr(IRTYPE_STACK_SLOT,id,graph,NULL),
+    index_(index)
+  {
+    AddOperand(expr);
+  }
+
+ private:
+  std::uint32_t index_;
+  LAVA_DISALLOW_COPY_AND_ASSIGN(StackSlot)
+};
+
+// UValSlot node
+//
+// Represent a value must be flushed back to the upvalue array of the
+// calling closure
+class UValSlot : public Expr {
+ public:
+  inline static UValSlot* New( Graph* , Expr* , std::uint32_t );
+  std::uint32_t index() const { return index_; }
+  Expr* expr() const { return operand_list()->First(); }
+
+  UValSlot( Graph* graph , std::uint32_t id , Expr* expr , std::uint32_t index ):
+    Expr(IRTYPE_UVAL_SLOT,id,graph,NULL),
+    index_(index)
+  {
+    AddOperand(expr);
+  }
+ private:
+  std::uint32_t index_;
+  LAVA_DISALLOW_COPY_AND_ASSIGN(UValSlot)
 };
 
 // -------------------------------------------------------------------------
@@ -2102,6 +2209,26 @@ inline OSRLoad* OSRLoad::New( Graph* graph , std::uint32_t index ) {
 inline Effect* Effect::New( Graph* graph , Expr* receiver , Expr* applier ,
                                                             IRInfo* info ) {
   return graph->zone()->New<Effect>(graph,graph->AssignID(),receiver,applier,info);
+}
+
+inline Checkpoint* Checkpoint::New( Graph* graph ) {
+  return graph->zone()->New<Checkpoint>(graph,graph->AssignID());
+}
+
+inline void Checkpoint::AddStackSlot( Expr* val , std::uint32_t index ) {
+  AddOperand(StackSlot::New(graph(),val,index));
+}
+
+inline void Checkpoint::AddUValSlot ( Expr* val , std::uint32_t index ) {
+  AddOperand(UValSlot::New(graph(),val,index));
+}
+
+inline StackSlot* StackSlot::New( Graph* graph , Expr* expr , std::uint32_t index ) {
+  return graph->zone()->New<StackSlot>(graph,graph->AssignID(),expr,index);
+}
+
+inline UValSlot* UValSlot::New( Graph* graph , Expr* expr , std::uint32_t index ) {
+  return graph->zone()->New<UValSlot>(graph,graph->AssignID(),expr,index);
 }
 
 inline Region* Region::New( Graph* graph ) {

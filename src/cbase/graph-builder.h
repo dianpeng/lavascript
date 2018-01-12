@@ -11,6 +11,7 @@ namespace lavascript {
 namespace cbase {
 namespace hir    {
 
+// Used to simulate 1) register stack and 2) upvalue stack held by the closure
 typedef std::vector<Expr*> ValueStack;
 
 // -------------------------------------------------------------------------------------
@@ -165,17 +166,8 @@ class GraphBuilder {
     return func_info().base+index;
   }
 
-  void StackSet( std::uint32_t index , Expr* value , ControlFlow* r = NULL ) {
-    r = r ? r : region();
+  void StackSet( std::uint32_t index , Expr* value ) {
     stack_->at(StackIndex(index)) = value;
-
-    /**
-     * When we do OSR compilation, any expression that mutate current register slot
-     * will have side effect due to the deoptimization happened.
-     */
-    if(func_info().IsOSR() && !value->HasEffect()) {
-      r->AddEffectExpr(value);
-    }
   }
 
   void StackReset( std::uint32_t index ) {
@@ -235,7 +227,6 @@ class GraphBuilder {
   Expr* NewBoolean    ( bool );
 
  private:
-
   StopReason BuildOSRStart( const Handle<Closure>& , const std::uint32_t* , Graph* );
 
   void BuildOSRLocalVariable();
@@ -257,8 +248,14 @@ class GraphBuilder {
 
   // Build branch IR graph
   void InsertIfPhi( const ValueStack& false_stack , const ValueStack& true_stack ,
+                                                    const ValueStack& false_uval  ,
+                                                    const ValueStack& true_uval  ,
                                                     ControlFlow* ,
                                                     const interpreter::BytecodeLocation& );
+
+  void GeneratePhi( ValueStack* dest , const ValueStack& lhs , const ValueStack& rhs ,
+                                                               ControlFlow* region ,
+                                                               const interpreter::BytecodeLocation& );
 
   StopReason GotoIfEnd( interpreter::BytecodeIterator* , const std::uint32_t* );
   StopReason BuildIf( interpreter::BytecodeIterator* itr );
@@ -302,19 +299,24 @@ class GraphBuilder {
   zone::Zone*           zone_;
   Handle<Script>        script_;
   Graph*                graph_;
+
   // Working set data , used when doing inline and other stuff
   ValueStack*           stack_;
+  ValueStack*           upvalue_;
+
   std::vector<FuncInfo> func_info_;
 
  private:
   class OSRScope ;
   class FuncScope;
   class LoopScope;
-  class BackupStack;
+
+  struct VMState;
+  class BackupState;
 
   friend class FuncScope;
   friend class LoopScope;
-  friend class BackupStack;
+  friend class BackupState;
   friend class OSRScope;
 };
 

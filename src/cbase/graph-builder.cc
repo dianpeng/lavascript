@@ -22,7 +22,10 @@ class GraphBuilder::OSRScope {
  public:
   OSRScope( GraphBuilder* gb , const Handle<Closure>& cls ,
                                ControlFlow* region ,
-                               const std::uint32_t* osr_start ): gb_(gb) {
+                               const std::uint32_t* osr_start ):
+    gb_(gb) ,
+    old_upvalue_(gb->upvalue_) {
+
     FuncInfo temp(cls,region,osr_start); // initialize a FuncInfo as OSR entry
 
     // get the loop header information and recursively register all its needed
@@ -46,23 +49,40 @@ class GraphBuilder::OSRScope {
       for( auto ritr = queue.rbegin() ; ritr != queue.rend(); ++ritr ) {
         temp.loop_info.push_back(LoopInfo(*ritr));
       }
+
     }
 
     gb->graph_->AddPrototypeInfo(cls,0);
     gb->func_info_.push_back(FuncInfo(std::move(temp)));
     gb->stack_->resize(interpreter::kRegisterSize);
+
+    // populate upvalue array for this function
+    {
+      FuncInfo &ctx = gb->func_info_.back();
+      for( std::size_t i = 0 ; i < ctx.upvalue.size(); ++i ) {
+        ctx.upvalue[i] = UVal::New(gb->graph_,static_cast<std::uint8_t>(i));
+      }
+      gb->upvalue_ = &(ctx.upvalue);
+    }
   }
 
-  ~OSRScope() { gb_->func_info_.pop_back(); }
+  ~OSRScope() {
+    gb_->func_info_.pop_back();
+    gb_->upvalue_ = old_upvalue_;
+  }
  private:
   GraphBuilder* gb_;
+  ValueStack* old_upvalue_;
 };
 
 class GraphBuilder::FuncScope {
  public:
   FuncScope( GraphBuilder* gb , const Handle<Closure>& cls ,
                                 ControlFlow* region ,
-                                std::uint32_t base ): gb_(gb) {
+                                std::uint32_t base ):
+    gb_(gb),
+    old_upvalue_(gb->upvalue_) {
+
     gb->graph_->AddPrototypeInfo(cls,base);
     gb->func_info_.push_back(FuncInfo(cls,region,base));
     gb->stack_->resize(base+interpreter::kRegisterSize);
@@ -85,12 +105,18 @@ class GraphBuilder::FuncScope {
       for( std::size_t i = 0 ; i < ctx.upvalue.size(); ++i ) {
         ctx.upvalue[i] = UVal::New(gb->graph_,static_cast<std::uint8_t>(i));
       }
+      gb->upvalue_ = &(ctx.upvalue);
     }
   }
 
-  ~FuncScope() { gb_->func_info_.pop_back(); }
+  ~FuncScope() {
+    gb_->func_info_.pop_back();
+    gb_->upvalue_ = old_upvalue_;
+  }
+
  private:
   GraphBuilder* gb_;
+  ValueStack* old_upvalue_;
 };
 
 class GraphBuilder::LoopScope {
@@ -105,21 +131,48 @@ class GraphBuilder::LoopScope {
   LAVA_DISALLOW_COPY_AND_ASSIGN(LoopScope)
 };
 
-class GraphBuilder::BackupStack {
+struct GraphBuilder::VMState {
+  ValueStack stack;
+  ValueStack upvalue;
+};
+
+class GraphBuilder::BackupState {
  public:
-  BackupStack( ValueStack* new_stack , GraphBuilder* gb ):
+  BackupState( VMState* state , GraphBuilder* gb ):
     old_stack_(gb->stack_),
-    gb_(gb)
+    old_upvalue_(gb->upvalue_),
+    gb_(gb),
+    has_upvalue_(true)
   {
-    if(gb->stack_) *new_stack = *gb->stack_; // do a deep copy
-    gb->stack_ = new_stack;
+    if(gb->stack_) state->stack = *gb->stack_;
+    if(gb->upvalue_) state->upvalue = *gb->upvalue_;
+
+    gb->stack_ = &(state->stack);
+    gb->upvalue_ = &(state->upvalue);
   }
 
-  ~BackupStack() { gb_->stack_ = old_stack_; }
+  BackupState( ValueStack* stack , GraphBuilder* gb ):
+    old_stack_(gb->stack_),
+    old_upvalue_(NULL),
+    gb_(gb),
+    has_upvalue_(false)
+  {
+    if(gb->stack_) *stack = *gb->stack_;
+    gb->stack_ = stack;
+  }
+
+  ~BackupState() {
+    gb_->stack_ = old_stack_;
+    if(has_upvalue_) gb_->upvalue_ = old_upvalue_;
+  }
+
  private:
   ValueStack* old_stack_;
+  ValueStack* old_upvalue_;
   GraphBuilder* gb_;
-  LAVA_DISALLOW_COPY_AND_ASSIGN(BackupStack);
+  bool has_upvalue_;
+
+  LAVA_DISALLOW_COPY_AND_ASSIGN(BackupState);
 };
 
 Expr* GraphBuilder::NewConstNumber( std::int32_t ivalue , const BytecodeLocation& pc ) {
@@ -206,32 +259,37 @@ IRInfo* GraphBuilder::NewIRInfo( const BytecodeLocation& pc ) {
   return ret;
 }
 
-void GraphBuilder::InsertIfPhi( const ValueStack& false_stack ,
-                                const ValueStack& true_stack  ,
-                                ControlFlow* region ,
-                                const BytecodeLocation& pc ) {
+void GraphBuilder::GeneratePhi( ValueStack* dest , const ValueStack& lhs ,
+                                                   const ValueStack& rhs ,
+                                                   ControlFlow* region ,
+                                                   const interpreter::BytecodeLocation& pc ) {
+  lava_debug(NORMAL,lava_verify(lhs.size() == rhs.size()););
 
-  lava_debug(NORMAL,lava_verify(false_stack.size() == true_stack.size()););
-
-  for( std::size_t i = 0 ; i < false_stack.size() ; ++i ) {
-    Expr* lhs = false_stack[i];
-    Expr* rhs = true_stack [i];
+  for( std::size_t i = 0 ; i < lhs.size() ; ++i ) {
+    Expr* l = lhs[i];
+    Expr* r = rhs[i];
     /**
      * if one of lhs and rhs is NULL, it basically means some lexical scope bounded
      * variable is mutated and obviously not variable that needs a PHI, so we just
      * need to skip these type of variable entirely
      */
-    if(lhs && rhs) {
-      if(lhs != rhs)
-        stack_->at(i) = Phi::New(graph_,lhs, rhs, region , NewIRInfo(pc));
+    if(l && r) {
+      if(l != r)
+        dest->at(i) = Phi::New(graph_,l,r,region,NewIRInfo(pc));
       else
-        stack_->at(i) = lhs;
-
-      if(func_info().IsOSR() && !stack_->at(i)->HasEffect()) {
-        region->AddEffectExpr(stack_->at(i));
-      }
+        dest->at(i) = l;
     }
   }
+}
+
+void GraphBuilder::InsertIfPhi( const ValueStack& false_stack ,
+                                const ValueStack& true_stack  ,
+                                const ValueStack& false_uval  ,
+                                const ValueStack& true_uval   ,
+                                ControlFlow* region ,
+                                const BytecodeLocation& pc ) {
+  GeneratePhi(stack_,false_stack,true_stack,region,pc);
+  GeneratePhi(upvalue_,false_uval,true_uval,region,pc);
 }
 
 void GraphBuilder::InsertUnconditionalJumpPhi( const ValueStack& stk , ControlFlow* region ,
@@ -262,11 +320,6 @@ void GraphBuilder::InsertUnconditionalJumpPhi( const ValueStack& stk , ControlFl
       } else {
         stack_->at(i) = Phi::New(graph_,lhs,rhs,region,NewIRInfo(pc));
         lava_debug(NORMAL,lava_verify(region->backward_edge()->size() == 2););
-      }
-
-      if(func_info().IsOSR()) {
-        auto node = stack_->at(i);
-        if(!node->HasEffect()) region->AddEffectExpr(node);
       }
     }
   }
@@ -416,7 +469,7 @@ GraphBuilder::BuildIf( BytecodeIterator* itr ) {
   ControlFlow* rhs      = NULL;
   Region*  merge        = Region::New(graph_);
 
-  ValueStack true_stack;
+  VMState true_stack;
 
   std::uint16_t final_cursor;
   bool have_false_branch;
@@ -425,7 +478,7 @@ GraphBuilder::BuildIf( BytecodeIterator* itr ) {
   //    identify whether we have dangling elif/else branch
   {
     itr->Move();              // skip the BC_JMPF
-    BackupStack backup(&true_stack,this); // back up the old stack and use new stack
+    BackupState backup(&true_stack,this); // back up the old stack and use new stack
     set_region(true_region);  // switch to true region
 
     {
@@ -467,7 +520,9 @@ GraphBuilder::BuildIf( BytecodeIterator* itr ) {
   set_region(merge);
 
   // 3. handle PHI node
-  InsertIfPhi(*stack_ , true_stack , merge , itr->bytecode_location());
+  InsertIfPhi(*stack_ , true_stack.stack , *upvalue_ , true_stack.upvalue ,
+                                                       merge ,
+                                                       itr->bytecode_location());
   return STOP_SUCCESS;
 }
 
@@ -967,7 +1022,7 @@ GraphBuilder::StopReason GraphBuilder::BuildBytecode( BytecodeIterator* itr ) {
       {
         std::uint8_t a1,a2;
         itr->GetOperand(&a1,&a2);
-        auto uset = 
+        auto uset =
           USet::New(graph_,method_index(),StackGet(a2),NewIRInfo(itr->bytecode_location()),region());
         func_info().upvalue[a1] = uset;
       }
@@ -1091,8 +1146,8 @@ bool GraphBuilder::Build( const Handle<Closure>& entry , Graph* graph ) {
   {
     // set up the evaluation stack all evaluation stack are triansient so I
     // just put it on to the stack
-    ValueStack stack;
-    BackupStack backup(&stack,this);
+    VMState stack;
+    BackupState backup(&stack,this);
 
     FuncScope scope(this,entry,region,0);
     Handle<Prototype> proto(entry->prototype());
@@ -1315,7 +1370,7 @@ GraphBuilder::BuildOSRStart( const Handle<Closure>& closure ,  const std::uint32
   {
     // set up the value stack/expression stack
     ValueStack stack;
-    BackupStack backup_stack(&stack,this);
+    BackupState backup_stack(&stack,this);
 
     // set up the OSR scope
     OSRScope scope(this,closure,header,pc);

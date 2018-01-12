@@ -3,6 +3,8 @@
 #include "src/interpreter/bytecode.h"
 #include "src/interpreter/bytecode-iterator.h"
 
+#include "src/cbase/optimization/expression-simplification.h"
+
 #include <vector>
 #include <set>
 #include <map>
@@ -176,34 +178,15 @@ class GraphBuilder::BackupState {
 };
 
 Expr* GraphBuilder::NewConstNumber( std::int32_t ivalue , const BytecodeLocation& pc ) {
-  return Int32::New(graph_,ivalue,NewIRInfo(pc));
+  return Float64::New(graph_,static_cast<double>(ivalue),NewIRInfo(pc));
 }
 
 Expr* GraphBuilder::NewConstNumber( std::int32_t ivalue ) {
-  return Int32::New(graph_,ivalue,NULL);
+  return Float64::New(graph_,static_cast<double>(ivalue),NULL);
 }
 
 Expr* GraphBuilder::NewNumber( std::uint8_t ref , IRInfo* info ) {
   double real = func_info().prototype->GetReal(ref);
-  // now try to narrow the real accordingly to int32 int64 or just float64
-  double i32_min = static_cast<double>(std::numeric_limits<std::int32_t>::min());
-  double i32_max = static_cast<double>(std::numeric_limits<std::int32_t>::max());
-
-  if(i32_min < real && i32_max > real) {
-    std::int32_t i32;
-    if(NarrowReal(real,&i32)) {
-      return Int32::New(graph_,i32,info);
-    }
-  }
-
-  // try int64 narrow
-  {
-    std::int64_t i64;
-    if(NarrowReal(real,&i64)) {
-      return Int64::New(graph_,i64,info);
-    }
-  }
-
   return Float64::New(graph_,real,info);
 }
 
@@ -250,6 +233,46 @@ Expr* GraphBuilder::NewBoolean( bool value ) {
   return Boolean::New(graph_,value,NULL);
 }
 
+Expr* GraphBuilder::NewUnary  ( Expr* node , Unary::Operator op ,
+                                             const BytecodeLocation& pc ) {
+  // try constant folding
+  auto new_node = ExprSimplify(graph_,op,node,[this,pc]() {
+      return NewIRInfo(pc);
+  });
+  if(new_node) return new_node;
+
+  auto checkpoint = BuildCheckpoint(pc);
+  auto unary = Unary::New(graph_,node,op,NewIRInfo(pc));
+  unary->set_checkpoint(checkpoint);
+  return unary;
+}
+
+Expr* GraphBuilder::NewBinary  ( Expr* lhs , Expr* rhs , Binary::Operator op ,
+                                                         const BytecodeLocation& pc ) {
+  auto new_node = ExprSimplify(graph_,op,lhs,rhs,[this,pc]() {
+      return NewIRInfo(pc);
+  });
+  if(new_node) return new_node;
+
+  auto checkpoint = BuildCheckpoint(pc);
+  auto binary = Binary::New(graph_,lhs,rhs,op,NewIRInfo(pc));
+  binary->set_checkpoint(checkpoint);
+  return binary;
+}
+
+Expr* GraphBuilder::NewTernary ( Expr* cond , Expr* lhs , Expr* rhs,
+                                                          const BytecodeLocation& pc ) {
+  auto new_node = ExprSimplify(graph_,cond,lhs,rhs,[this,pc]() {
+      return NewIRInfo(pc);
+  });
+  if(new_node) return new_node;
+
+  auto checkpoint = BuildCheckpoint(pc);
+  auto ternary = Ternary::New(graph_,cond,lhs,rhs,NewIRInfo(pc));
+  ternary->set_checkpoint(checkpoint);
+  return ternary;
+}
+
 IRInfo* GraphBuilder::NewIRInfo( const BytecodeLocation& pc ) {
   IRInfo* ret;
   {
@@ -257,6 +280,35 @@ IRInfo* GraphBuilder::NewIRInfo( const BytecodeLocation& pc ) {
     ret = ConstructFromBuffer<IRInfo> (mem,method_index(),pc);
   }
   return ret;
+}
+
+Checkpoint* GraphBuilder::BuildCheckpoint( const BytecodeLocation& pc ) {
+  auto cp = Checkpoint::New(graph_);
+
+  // 1. generate stack register expression states
+  {
+    // get the register offset to decide offset for all the temporary register
+    const std::uint32_t* pc_start = func_info().prototype->code_buffer();
+    std::uint32_t diff = pc.address() - pc_start;
+    std::uint8_t offset = func_info().prototype->GetRegOffset(diff);
+    const std::uint32_t stack_end = func_info().base + offset;
+
+    for( std::uint32_t i = 0 ; i < stack_end ; ++i ) {
+      auto node = stack_->at(i);
+      if(node) cp->AddStackSlot(node,i);
+    }
+  }
+
+  // 2. generate upvalue states
+  {
+    std::uint8_t index = 0;
+
+    for( auto & e : *upvalue_ ) {
+      cp->AddUValSlot(e,index);
+      ++index;
+    }
+  }
+  return cp;
 }
 
 void GraphBuilder::GeneratePhi( ValueStack* dest , const ValueStack& lhs ,
@@ -362,9 +414,9 @@ GraphBuilder::StopReason GraphBuilder::BuildLogic( BytecodeIterator* itr ) {
   lava_debug(NORMAL,lava_verify(StackGet(rhs)););
 
   if(op_and)
-    StackSet(rhs,Binary::New(graph_,lhs_expr,StackGet(rhs),Binary::AND,NewIRInfo(itr->bytecode_location())));
+    StackSet(rhs,NewBinary(lhs_expr,StackGet(rhs),Binary::AND,itr->bytecode_location()));
   else
-    StackSet(rhs,Binary::New(graph_,lhs_expr,StackGet(rhs),Binary::OR,NewIRInfo(itr->bytecode_location())));
+    StackSet(rhs,NewBinary(lhs_expr,StackGet(rhs),Binary::OR,itr->bytecode_location()));
 
   return STOP_SUCCESS;
 }
@@ -408,7 +460,7 @@ GraphBuilder::StopReason GraphBuilder::BuildTernary( BytecodeIterator* itr ) {
     lava_debug(NORMAL,lava_verify(rhs););
   }
 
-  StackSet(result, Ternary::New(graph_,StackGet(cond),lhs,rhs,NewIRInfo(itr->bytecode_location())));
+  StackSet(result, NewTernary(StackGet(cond),lhs,rhs,itr->bytecode_location()));
   return STOP_SUCCESS;
 }
 
@@ -593,11 +645,7 @@ Expr* GraphBuilder::BuildLoopEndCondition( BytecodeIterator* itr , ControlFlow* 
   if(itr->opcode() == BC_FEND1) {
     std::uint8_t a1,a2,a3; std::uint32_t a4;
     itr->GetOperand(&a1,&a2,&a3,&a4);
-
-    Binary* comparison = Binary::New(
-        graph_,StackGet(a1), StackGet(a2), Binary::LT, NewIRInfo(itr->bytecode_location()));
-
-    return comparison;
+    return NewBinary(StackGet(a1),StackGet(a2),Binary::LT,itr->bytecode_location());
   } else if(itr->opcode() == BC_FEND2) {
     std::uint8_t a1,a2,a3; std::uint32_t a4;
     itr->GetOperand(&a1,&a2,&a3,&a4);
@@ -606,17 +654,13 @@ Expr* GraphBuilder::BuildLoopEndCondition( BytecodeIterator* itr , ControlFlow* 
     lava_debug(NORMAL,lava_verify(induct->IsPhi()););
 
     // the addition node will use the PHI node as its left hand side
-    Binary* addition = Binary::New(graph_,induct,StackGet(a3),
-                                                 Binary::ADD,
-                                                 NewIRInfo(itr->bytecode_location()));
+    auto addition = NewBinary(induct,StackGet(a3),Binary::ADD,
+                                                  itr->bytecode_location());
     // store the PHI node back to the slot
     StackSet(a1,addition);
 
     // construct comparison node
-    Binary* comparison = Binary::New(graph_,addition,StackGet(a2), Binary::LT,
-        NewIRInfo(itr->bytecode_location()));
-
-    return comparison;
+    return NewBinary(addition,StackGet(a2),Binary::LT,itr->bytecode_location());
   } else if(itr->opcode() == BC_FEEND) {
     std::uint8_t a1;
     std::uint16_t pc;
@@ -758,10 +802,10 @@ GraphBuilder::StopReason GraphBuilder::BuildBytecode( BytecodeIterator* itr ) {
       {
         std::uint8_t dest , a1, a2;
         itr->GetOperand(&dest,&a1,&a2);
-        Binary* node = Binary::New(graph_,NewNumber(a1),
-                                          StackGet(a2),
-                                          Binary::BytecodeToOperator(itr->opcode()),
-                                          NewIRInfo(itr->bytecode_location()));
+        auto node = NewBinary(NewNumber(a1),
+                              StackGet(a1),
+                              Binary::BytecodeToOperator(itr->opcode()),
+                              itr->bytecode_location());
         StackSet(dest,node);
       }
       break;
@@ -770,10 +814,10 @@ GraphBuilder::StopReason GraphBuilder::BuildBytecode( BytecodeIterator* itr ) {
       {
         std::uint8_t dest , a1, a2;
         itr->GetOperand(&dest,&a1,&a2);
-        Binary* node = Binary::New(graph_,StackGet(a1),
-                                          NewNumber(a2),
-                                          Binary::BytecodeToOperator(itr->opcode()),
-                                          NewIRInfo(itr->bytecode_location()));
+        auto node = NewBinary(StackGet(a1),
+                              NewNumber(a2),
+                              Binary::BytecodeToOperator(itr->opcode()),
+                              itr->bytecode_location());
         StackSet(dest,node);
       }
       break;
@@ -782,11 +826,10 @@ GraphBuilder::StopReason GraphBuilder::BuildBytecode( BytecodeIterator* itr ) {
       {
         std::uint8_t dest, a1, a2;
         itr->GetOperand(&dest,&a1,&a2);
-
-        Binary* node = Binary::New(graph_,StackGet(a1),
-                                          StackGet(a2),
-                                          Binary::BytecodeToOperator(itr->opcode()),
-                                          NewIRInfo(itr->bytecode_location()));
+        auto node = NewBinary(StackGet(a1),
+                              StackGet(a2),
+                              Binary::BytecodeToOperator(itr->opcode()),
+                              itr->bytecode_location());
         StackSet(dest,node);
       }
       break;
@@ -795,10 +838,9 @@ GraphBuilder::StopReason GraphBuilder::BuildBytecode( BytecodeIterator* itr ) {
         std::uint8_t dest, a1, a2;
         itr->GetOperand(&dest,&a1,&a2);
 
-        Binary* node = Binary::New(graph_,NewString(a1),
-                                          StackGet(a2),
-                                          Binary::BytecodeToOperator(itr->opcode()),
-                                          NewIRInfo(itr->bytecode_location()));
+        auto node = NewBinary(NewString(a1), StackGet(a2),
+                                             Binary::BytecodeToOperator(itr->opcode()),
+                                             itr->bytecode_location());
         StackSet(dest,node);
       }
       break;
@@ -806,11 +848,9 @@ GraphBuilder::StopReason GraphBuilder::BuildBytecode( BytecodeIterator* itr ) {
       {
         std::uint8_t dest, a1, a2;
         itr->GetOperand(&dest,&a1,&a2);
-
-        Binary* node = Binary::New(graph_,StackGet(a1),
-                                          NewString(a2),
-                                          Binary::BytecodeToOperator(itr->opcode()),
-                                          NewIRInfo(itr->bytecode_location()));
+        auto node = NewBinary(StackGet(a1),NewString(a2),
+                                           Binary::BytecodeToOperator(itr->opcode()),
+                                           itr->bytecode_location());
         StackSet(dest,node);
       }
       break;
@@ -825,10 +865,8 @@ GraphBuilder::StopReason GraphBuilder::BuildBytecode( BytecodeIterator* itr ) {
       {
         std::uint8_t dest, src;
         itr->GetOperand(&dest,&src);
-        Unary* node = Unary::New( graph_,StackGet(src),
-                                         Unary::BytecodeToOperator(itr->opcode()),
-                                         NewIRInfo(itr->bytecode_location()));
-
+        auto node = NewUnary(StackGet(src), Unary::BytecodeToOperator(itr->opcode()) ,
+                                            itr->bytecode_location());
         StackSet(dest,node);
       }
       break;
@@ -1231,8 +1269,10 @@ void GraphBuilder::SetupOSRLoopCondition( BytecodeIterator* itr ) {
     std::uint8_t a1,a2,a3; std::uint32_t a4;
     itr->GetOperand(&a1,&a2,&a3,&a4);
 
-    Binary* comparison = Binary::New(
-        graph_,StackGet(a1), StackGet(a2), Binary::LT, NewIRInfo(itr->bytecode_location()));
+    auto comparison = NewBinary(StackGet(a1),
+                                StackGet(a2),
+                                Binary::LT ,
+                                itr->bytecode_location());
 
     StackSet(interpreter::kAccRegisterIndex,comparison);
   } else if(itr->opcode() == BC_FEND2) {
@@ -1240,14 +1280,12 @@ void GraphBuilder::SetupOSRLoopCondition( BytecodeIterator* itr ) {
     itr->GetOperand(&a1,&a2,&a3,&a4);
 
     // the addition node will use the PHI node as its left hand side
-    Binary* addition = Binary::New(graph_,StackGet(a1),StackGet(a3),
-                                                       Binary::ADD,
-                                                       NewIRInfo(itr->bytecode_location()));
+    auto addition = NewBinary(StackGet(a1),StackGet(a3),Binary::ADD,
+                                                        itr->bytecode_location());
     StackSet(a1,addition);
 
-    Binary* comparison = Binary::New(graph_,addition,StackGet(a2),
-                                                     Binary::LT,
-                                                     NewIRInfo(itr->bytecode_location()));
+    auto comparison = NewBinary(addition,StackGet(a2),Binary::LT,
+                                                      itr->bytecode_location());
 
     StackSet(interpreter::kAccRegisterIndex,comparison);
   } else if(itr->opcode() == BC_FEEND) {

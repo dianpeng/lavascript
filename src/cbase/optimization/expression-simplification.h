@@ -1,6 +1,10 @@
 #ifndef CBASE_OPTIMIZATION_EXPRESSION_SIMPLIFICATION_H_
 #define CBASE_OPTIMIZATION_EXPRESSION_SIMPLIFICATION_H_
 
+#include "src/cbase/hir.h"
+
+#include <functional>
+
 /**
  * expression simplification is a helper for GVN and it is called by GVN
  * directly. The normal way of performing it is as following :
@@ -15,9 +19,6 @@ namespace lavascript {
 namespace cbase {
 namespace hir {
 
-class Graph;
-class Expr;
-
 class ExpressionSimplifier {
  public:
   enum Flag {
@@ -27,6 +28,19 @@ class ExpressionSimplifier {
 
   bool Perform( Graph* , Expr* , Flag );
 };
+
+
+/**
+ * Helper function to simplify some expression node. These functions
+ * are used inside of GraphBuilder to do constant folding and this
+ * could avoid checkpoint generation which will use lots of memory
+ *
+ * If function returns NULL , it means it cannot do any constant folding;
+ * otherwise it will return the new node
+ */
+Expr* ExprSimplify( Graph* , Unary::Operator , Expr* , const std::function<IRInfo* ()>& );
+Expr* ExprSimplify( Graph* , Binary::Operator, Expr* , Expr* , const std::function<IRInfo* ()>& );
+Expr* ExprSimplify( Graph* , Expr* , Expr* , Expr* , const std::function<IRInfo* ()>& );
 
 } // namespace hir
 } // namespace cbase

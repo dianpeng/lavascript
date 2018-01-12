@@ -129,10 +129,10 @@ namespace {
 
 class DotGraphVisualizer {
  public:
-  DotGraphVisualizer(): graph_(NULL), existed_(NULL), output_(NULL) {}
+  DotGraphVisualizer(): graph_(NULL), existed_(NULL), output_(NULL) , opt_() {}
 
   // Visiualize the graph into DOT representation and return the string
-  std::string Visualize( const Graph& );
+  std::string Visualize( const Graph& , const Graph::DotFormatOption& opt );
  private:
   void RenderControlFlow( const std::string& , ControlFlow* );
   void RenderExpr       ( const std::string& , Expr* );
@@ -145,9 +145,10 @@ class DotGraphVisualizer {
   const Graph* graph_;
   DynamicBitSet* existed_;
   std::stringstream* output_;
+  Graph::DotFormatOption opt_;
 };
 
-std::string DotGraphVisualizer::Visualize( const Graph& graph ) {
+std::string DotGraphVisualizer::Visualize( const Graph& graph , const Graph::DotFormatOption& opt ) {
   // 1. prepare all the status variables
   std::stringstream output;
   DynamicBitSet bitset(graph.MaxID());
@@ -155,6 +156,7 @@ std::string DotGraphVisualizer::Visualize( const Graph& graph ) {
   graph_   = &graph;
   output_  = &output;
   existed_ = &bitset;
+  opt_ = opt;
 
   // 2. edge iterator
   output << "digraph IR {\n";
@@ -180,7 +182,7 @@ std::string DotGraphVisualizer::GetNodeName( Node* node ) {
 
 void DotGraphVisualizer::RenderCheckpoint ( const std::string& operation,
                                             Checkpoint* checkpoint ) {
-  if(!checkpoint) return;
+  if(!checkpoint || !opt_.checkpoint ) return;
 
   auto cp_name = GetNodeName(checkpoint);
   Indent(1) << cp_name << "[shape=diamond style=bold color=pink label=\"" << cp_name <<"\"]\n";
@@ -311,14 +313,8 @@ void DotGraphVisualizer::RenderExpr( const std::string& name , Expr* node ) {
   (*existed_)[node->id()] = true;
 
   switch(node->type()) {
-    case IRTYPE_INT32:
-      Indent(1) << name << "[label=\"i32(" << node->AsInt32()->value() << ")\"]\n";
-      break;
-    case IRTYPE_INT64:
-      Indent(1) << name << "[label=\"i64(" << node->AsInt64()->value() << ")\"]\n";
-      break;
     case IRTYPE_FLOAT64:
-      Indent(1) << name << "[label=\"float(" << node->AsFloat64()->value() << ")\"]\n";
+      Indent(1) << name << "[label=\"f64(" << node->AsFloat64()->value() << ")\"]\n";
       break;
     case IRTYPE_LONG_STRING:
       Indent(1) << name << "[label=\"str(" << node->AsLString()->value()->data() << ")\"]\n";
@@ -600,8 +596,8 @@ void DotGraphVisualizer::RenderExpr( const std::string& name , Expr* node ) {
 
 } // namespace
 
-std::string Graph::PrintToDotFormat( const Graph& graph ) {
-  return DotGraphVisualizer().Visualize(graph);
+std::string Graph::PrintToDotFormat( const Graph& graph , const Graph::DotFormatOption& opt ) {
+  return DotGraphVisualizer().Visualize(graph,opt);
 }
 
 WorkerList::WorkerList( const Graph& graph ):

@@ -227,6 +227,19 @@ class GraphBuilder {
   Expr* NewBoolean    ( bool );
 
  private:
+
+  // create unary/binary/tenrary node accordingly. it will do constant folding if
+  // needed , this is to avoid generate too many checkpoint node . later on the
+  // type inference phase will kick in and mark each node with type and some of the
+  // checkpoint node will be enimilated since type is known
+  Expr* NewUnary      ( Expr* , Unary::Operator , const interpreter::BytecodeLocation& );
+  Expr* NewBinary     ( Expr* , Expr* , Binary::Operator , const interpreter::BytecodeLocation& );
+  Expr* NewTernary    ( Expr* , Expr* , Expr* , const interpreter::BytecodeLocation& );
+
+ private: // Checkpoint generation
+  Checkpoint* BuildCheckpoint( const interpreter::BytecodeLocation& );
+
+ private:
   StopReason BuildOSRStart( const Handle<Closure>& , const std::uint32_t* , Graph* );
 
   void BuildOSRLocalVariable();

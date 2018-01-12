@@ -450,7 +450,7 @@ bool ExpressionOptimizer::Optimize( ast::Unary* node , Expression* expr ) {
           return false;
         } else {
           expr->ekind = EBOOLEAN;
-          expr->bool_value = true;
+          expr->bool_value = false;
         }
         break;
     }
@@ -495,18 +495,16 @@ bool ExpressionOptimizer::Optimize( ast::Binary* node , Expression* expr ) {
           case Token::TK_ADD: expr->real_value = ld + rd; break;
           case Token::TK_SUB: expr->real_value = ld - rd; break;
           case Token::TK_MUL: expr->real_value = ld * rd; break;
-          case Token::TK_DIV:
-            if(!rd) {
-              Error(*node,"Divide by 0");
-              return false;
-            }
-            expr->real_value = ld / rd;
-            break;
+          case Token::TK_DIV: expr->real_value = ld / rd; break;
           case Token::TK_MOD:
             {
               // Should match whatever we did in our assembly interpreter
               std::int64_t lhs = static_cast<std::int64_t>(ld);
               std::int64_t rhs = static_cast<std::int64_t>(rd);
+              if(rhs == 0) {
+                Error(*node,"Binary operator \"%\" mod by 0");
+                return false;
+              }
               expr->real_value = static_cast<double>(lhs % rhs);
             }
             break;

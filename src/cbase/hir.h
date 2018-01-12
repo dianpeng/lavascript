@@ -59,8 +59,6 @@ struct PrototypeInfo : zone::ZoneObject {
 
 #define CBASE_IR_EXPRESSION(__)                 \
   /* const    */                                \
-  __(Int32,INT32  ,"int32"  , true)             \
-  __(Int64,INT64  ,"int64"  , true)             \
   __(Float64,FLOAT64,"float64",true)            \
   __(LString,LONG_STRING,"lstring",true)        \
   __(SString,SMALL_STRING,"small_string",true)  \
@@ -229,6 +227,8 @@ class Node : public zone::ZoneObject {
 #define __(A,B,...) inline A* As##A(); inline const A* As##A() const;
   CBASE_IR_LIST(__)
 #undef __ // __
+
+  bool IsString() const { return IsSString() || IsLString(); }
 
   bool IsControlFlow() const { return IRTypeIsControlFlow(type()); }
   inline ControlFlow* AsControlFlow();
@@ -443,53 +443,6 @@ class Arg : public Expr {
  private:
   std::uint32_t index_;
   LAVA_DISALLOW_COPY_AND_ASSIGN(Arg)
-};
-
-class Int32 : public Expr {
- public:
-  inline static Int32* New( Graph* , std::int32_t , IRInfo* );
-  std::int32_t value() const { return value_; }
-
-  Int32( Graph* graph , std::uint32_t id , std::int32_t value , IRInfo* info ):
-    Expr  (IRTYPE_INT32,id,graph,info),
-    value_(value)
-  {}
-
- public:
-  virtual std::uint64_t GVNHash() const {
-    return GVNHash1(type_name(),value_);
-  }
-
-  virtual bool Equal( const Expr* that ) const {
-    return that->IsInt32() && (that->AsInt32()->value() == value_);
-  }
- private:
-  std::int32_t value_;
-  LAVA_DISALLOW_COPY_AND_ASSIGN(Int32)
-};
-
-class Int64: public Expr {
- public:
-  inline static Int64* New( Graph* , std::int64_t , IRInfo* );
-  std::int64_t value() const { return value_; }
-
-  Int64( Graph* graph , std::uint32_t id , std::int64_t value , IRInfo* info ):
-    Expr  (IRTYPE_INT64,id,graph,info),
-    value_(value)
-  {}
-
- public:
-  virtual std::uint64_t GVNHash() const {
-    return GVNHash1(type_name(),value_);
-  }
-
-  virtual bool Equal( const Expr* that ) const {
-    return that->IsInt64() && (that->AsInt64()->value() == value_);
-  }
-
- private:
-  std::int64_t value_;
-  LAVA_DISALLOW_COPY_AND_ASSIGN(Int64)
 };
 
 class Float64 : public Expr {
@@ -708,15 +661,7 @@ class Binary : public Expr , public BailoutEntry {
     EQ ,
     NE ,
     AND,
-    OR ,
-    // used for internal strength reduction and other stuff
-    LSHIFT,
-    RSHIFT,
-    LROTATE,
-    RROTATE,
-    BIT_AND,
-    BIT_OR,
-    BIT_XOR
+    OR
   };
   inline static Operator BytecodeToOperator( interpreter::Bytecode );
   inline static const char* GetOperatorName( Operator );
@@ -1794,9 +1739,15 @@ class Graph {
 
  public: // static helper function
 
+  struct DotFormatOption {
+    bool checkpoint;
+    DotFormatOption() : checkpoint(false) {}
+  };
+
   // Print the graph into dot graph representation which can be visualized by
   // using graphviz or other similar tools
-  static std::string PrintToDotFormat( const Graph& );
+  static std::string PrintToDotFormat( const Graph& ,
+                                       const DotFormatOption& opt = DotFormatOption() );
 
  private:
   zone::Zone                  zone_;
@@ -1975,14 +1926,6 @@ inline Arg* Arg::New( Graph* graph , std::uint32_t index ) {
   return graph->zone()->New<Arg>(graph,graph->AssignID(),index);
 }
 
-inline Int32* Int32::New( Graph* graph , std::int32_t value , IRInfo* info ) {
-  return graph->zone()->New<Int32>(graph,graph->AssignID(),value,info);
-}
-
-inline Int64* Int64::New( Graph* graph , std::int64_t value , IRInfo* info ) {
-  return graph->zone()->New<Int64>(graph,graph->AssignID(),value,info);
-}
-
 inline Float64* Float64::New( Graph* graph , double value , IRInfo* info ) {
   return graph->zone()->New<Float64>(graph,graph->AssignID(),value,info);
 }
@@ -2064,13 +2007,6 @@ inline const char* Binary::GetOperatorName( Operator op ) {
     case NE  :    return "ne" ;
     case AND :    return "and";
     case OR  :    return "or";
-    case LSHIFT:  return "lshift";
-    case RSHIFT:  return "rshift";
-    case LROTATE: return "lrotate";
-    case RROTATE: return "rrotate";
-    case BIT_AND: return "bit_and";
-    case BIT_OR : return "bit_or" ;
-    case BIT_XOR: return "bit_xor";
     default:
       lava_die(); return NULL;
   }

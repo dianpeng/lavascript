@@ -112,15 +112,9 @@ bool CheckGraphOSR( const char* source , std::size_t offset ) {
 #define CASE_OSR(IDX,...) ASSERT_TRUE(CheckGraphOSR(#__VA_ARGS__,(IDX)))
 
 TEST(BytecodeAnalyze,Basic) {
-  CASE_OSR(11,
-      var sum = 0;
-      for( var i = 1; 100; 1 ) {
-        for( var j = 1 ; 100; 1 ) {
-          sum = sum + i + j;
-        }
-        sum = sum * 2;
-      }
-      return sum;
+  CASE(
+      var arr = {"a": 1 , "b": 2, "c": 3};
+      return arr;
   );
 }
 

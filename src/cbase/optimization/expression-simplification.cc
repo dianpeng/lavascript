@@ -95,9 +95,6 @@ Expr* ConstantFold( Graph* graph , Expr* cond , Expr* lhs , Expr* rhs ,
 
 } // namespace
 
-
-
-
 Expr* ExprSimplify( Graph* graph , Unary::Operator op , Expr* expr ,
                                                         const std::function<IRInfo*()>& irinfo ) {
   return ConstantFold(graph,op,expr,irinfo);
@@ -113,7 +110,7 @@ Expr* ExprSimplify( Graph* graph , Expr* cond , Expr* lhs , Expr* rhs ,
                                                             const std::function<IRInfo*()>& irinfo) {
   return ConstantFold(graph,cond,lhs,rhs,irinfo);
 }
- 
+
 } // namespace hir
 } // namespace cbase
 } // namespace lavascript

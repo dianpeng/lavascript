@@ -1,5 +1,6 @@
 #include "bytecode-generate.h"
 #include "bytecode-builder.h"
+#include "intrinsic-call.h"
 
 #include "src/parser/ast/ast.h"
 
@@ -273,10 +274,10 @@ LexicalScope* LexicalScope::GetNearestLoopScope() {
 }
 
 int FunctionScope::GetUpValue( const zone::String& name ,
-                               std::uint16_t* index ) {
+                               std::uint8_t* index ) {
   lava_debug(NORMAL,
       lava_verify(!GetLocalVar(name).Has());
-      );
+  );
 
   if(FindUpValue(name,index)) {
     return UV_SUCCESS;
@@ -290,7 +291,7 @@ int FunctionScope::GetUpValue( const zone::String& name ,
         // find the name/symbol as upvalue in the |scope|
         for( std::vector<FunctionScope*>::reverse_iterator itr =
             scopes.rbegin() ; itr != scopes.rend() ; ++itr ) {
-          std::uint16_t idx;
+          std::uint8_t idx;
           scope = *itr;
 
           if(!scope->bb()->AddUpValue(UV_DETACH,*index,&idx))
@@ -311,7 +312,7 @@ int FunctionScope::GetUpValue( const zone::String& name ,
         }
         std::vector<FunctionScope*>::reverse_iterator itr = ++scopes.rbegin();
         for( ; itr != scopes.rend() ; ++itr ) {
-          std::uint16_t idx;
+          std::uint8_t idx;
           scope = *itr;
 
           if(!scope->bb()->AddUpValue(UV_DETACH,*index,&idx))
@@ -581,7 +582,7 @@ bool Generator::Visit( const ast::Literal& lit , ExprResult* result ) {
 bool Generator::Visit( const ast::Variable& var , ExprResult* result ) {
   // 1. Try to establish it as local variable
   Optional<Register> reg;
-  std::uint16_t upindex = 0;
+  std::uint8_t upindex = 0;
 
   if((reg=lexical_scope_->GetLocalVar(*var.name))) {
     result->SetRegister( reg.Get() );
@@ -775,7 +776,133 @@ bool Generator::VisitPrefixComponent( const ast::Prefix::Component& c,
 }
 
 template< bool TCALL >
+bool Generator::TryIntrinsicCall( const ast::Prefix& pref ,
+                                  const Register& output ,
+                                  bool* ok ) {
+
+// helper to return from intrinsic call check function
+#define bailout() do { *ok = false; return true; } while(false)
+
+  if(pref.list->size() != 1)            bailout();
+  if(!pref.var->IsVariable())           bailout();
+  if(!pref.list->First().IsCall())      bailout();
+
+  ast::Variable* var = pref.var->AsVariable();
+
+  // check whether this variable name can be resolved as local variable or upvalue
+  // if so, just don't do anything with this variable since it may be changed by
+  // the runtime already
+  {
+    // try resolve it as local variable
+    auto lreg = lexical_scope_->GetLocalVar(*var->name);
+    if(lreg) bailout();  // find it in local variable
+
+    // try resolve it as upvalue
+    std::uint8_t upindex;
+    if(func_scope()->GetUpValue(*var->name,&upindex) != FunctionScope::UV_NOT_EXISTED)
+      bailout();
+  }
+
+  // now we are sure this name is not bound to any known symbol to the bytecode-generator
+  // so we can safely emit code to do intrinsic call for this ast node
+  auto ic_index = MapIntrinsicCallIndex(var->name->data());
+  if(ic_index == SIZE_OF_INTRINSIC_CALL) bailout(); // not a known intrinsic call
+
+  ast::Prefix::Component& c = pref.list->First();
+
+  // check whether the intrinsic call has correct matched function argument
+  if(GetIntrinsicCallArgumentSize(ic_index) != c.fc->args->size()) bailout();
+
+  // TODO:: make the following code cleaner by reusing code inside of the
+  //        VisitPrefixComponent. A function call generation is pretty much
+  //        the same
+  //
+  // generate the intrinsic function call instruction
+  {
+    IFrameReserver fr(func_scope()->ra());
+    ScopedRegister temp_input(this);
+
+    const std::uint8_t base = func_scope()->ra()->base();
+    const std::size_t arglen = c.fc->args->size();
+    std::vector<std::uint8_t> argset;
+    argset.reserve(arglen);
+
+    // 1. Visit each argument and get all its related registers
+    for( std::size_t i = 0; i < arglen; ++i ) {
+      Optional<Register> expected(func_scope()->ra()->Grab());
+      if(!expected) {
+        Error(ERR_REGISTER_OVERFLOW,c.fc->sci());
+        return false;
+      }
+
+      // Force the argument goes into the correct registers that we want
+      if(!VisitExpressionWithOutputRegister(*c.fc->args->Index(i),expected.Get()))
+        return false;
+
+      argset.push_back(expected.Get().index());
+    }
+
+    lava_debug(NORMAL,
+        if(!argset.empty()) {
+          std::uint8_t p = argset.front();
+          for( std::size_t i = 1 ; i < argset.size() ; ++i ) {
+            // all argument's register should be consequtive
+            lava_verify(p == argset[i]-1);
+            p = argset[i];
+          }
+        }
+      );
+
+    // 2. Generate call instruction
+    // Check whether we can use tcall or not. The tcall instruction
+    // *must be* for the last component , since then we know we will
+    // forsure generate a ret instruction afterwards
+    {
+      if(TCALL) {
+        EEMIT(ticall,c.fc->sci(),
+                     static_cast<std::uint8_t>(ic_index),
+                     base,
+                     static_cast<std::uint8_t>(c.fc->args->size()));
+      } else {
+        EEMIT(icall,c.fc->sci(),
+                    static_cast<std::uint8_t>(ic_index),
+                    base,
+                    static_cast<std::uint8_t>(c.fc->args->size()));
+      }
+    }
+
+    // 3. Handle return value
+    //
+    // Since function's return value are in Acc registers, we need an
+    // extra move to move it back to var_reg. This could potentially be
+    // a performance problem due to the fact that we have too much chained
+    // function call and all its intermediate return value are shuffling
+    // around registers. Currently we have no way to specify return value
+    // in function call
+    if(!output.IsAcc())
+      EEMIT(move,c.fc->sci(),output.index(),Register::kAccIndex);
+
+    // 4. free all temporary register used by the func-call
+    for( auto &e : argset ) func_scope()->ra()->Drop(Register(e));
+  }
+
+  *ok = true;
+  return true;
+
+
+#undef bailout // bailout
+}
+
+template< bool TCALL >
 bool Generator::VisitPrefix( const ast::Prefix& node , const Register& hint ) {
+
+  // check whether we can treat it as a intrinsic call
+  {
+    bool ic_ok = false;
+    if(!TryIntrinsicCall<TCALL>(node,hint,&ic_ok)) return false;
+    if(ic_ok) return true;
+  }
+
   ScopedRegister input  (this); // tmeporary register to be used to *hold* intermediate
   ScopedRegister temp   (this);
   Register output;
@@ -1357,7 +1484,7 @@ bool Generator::VisitSimpleAssign( const ast::Assign& node ) {
      * Check it against upvalue and global variables. We support assignment
      * of upvalue since they are part of the closure
      */
-    std::uint16_t upindex;
+    std::uint8_t upindex;
     int ret = func_scope()->GetUpValue(*node.lhs_var->name,&upindex);
     if(ret == FunctionScope::UV_FAILED) {
       Error(ERR_UPVALUE_OVERFLOW,node.sci());

@@ -23,6 +23,7 @@ static const std::size_t kMaxObjectEntryCount      = 256;
 // Interpreter related confugration options
 namespace interpreter {
 
+static const std::size_t kMaxIntrinsicCall         = 256;
 static const std::size_t kMaxCodeLength            = 65536;
 static const std::size_t kRegisterSize             = 256;
 static const std::size_t kMaxFunctionArgumentCount = 256;

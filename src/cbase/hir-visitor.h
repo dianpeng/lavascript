@@ -34,9 +34,26 @@ class HIRVisitor : public ExprVisitor , ControlFlowVisitor {
   virtual ~HIRVisitor() = 0;
 };
 
+/**
+ * Visit a expression based on the input iterator type and invoke the corresponding
+ * expression via correct routine in the visitor
+ */
+template< typename T >
+bool VisitExpr( T* itr , ExprVisitor* visitor );
+
+
+/**
+ * Visit a control flow based on the input iterator type and invoke the corresponding
+ * control flow via correct routine in the visitor
+ */
+template< typename T >
+bool VisitControlFlow( T* itr , ControlFlowVisitor* visitor );
 
 } // namespace hir
 } // namespace cbase
 } // namespace lavascript
+
+// the implementation goes to another inline file
+#include "hir-visitor-inl.h"
 
 #endif // CBASE_HIR_VISITOR_H_

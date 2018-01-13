@@ -399,11 +399,11 @@ class FunctionScope : public Scope {
   // Try to treat a variable *name* as an upvalue . If we can resolve
   // it as an upvalue , then we return true and index ; otherwise
   // returns false
-  int GetUpValue( const zone::String& , std::uint16_t* ) ;
+  int GetUpValue( const zone::String& , std::uint8_t* ) ;
 
  private:
-  inline bool FindUpValue( const zone::String& , std::uint16_t* );
-  inline void AddUpValue ( const zone::String& , std::uint16_t  );
+  inline bool FindUpValue( const zone::String& , std::uint8_t* );
+  inline void AddUpValue ( const zone::String& , std::uint8_t  );
 
   // get next iterator register mapping
   Register GetLocalVarRegister();
@@ -421,8 +421,8 @@ class FunctionScope : public Scope {
   // UpValue table for this Function
   struct UpValue {
     const zone::String* name;
-    std::uint16_t index;
-    UpValue( const zone::String* n , std::uint16_t i ):name(n),index(i) {}
+    std::uint8_t index;
+    UpValue( const zone::String* n , std::uint8_t i ):name(n),index(i) {}
     bool operator == ( const zone::String& n ) const {
       return *name == n;
     }
@@ -615,6 +615,10 @@ class Generator {
   // Visit prefix like ast until end is met
   template< bool TCALL >
   bool VisitPrefix( const ast::Prefix& pref , const Register& output );
+
+  // try to resolve a prefix node as intrinsic function call
+  template< bool TCALL >
+  bool TryIntrinsicCall( const ast::Prefix& pref , const Register& output , bool* ok );
 
   /* -------------------------------------------
    * Statement Code Generation                 |
@@ -858,7 +862,7 @@ inline bool LexicalScope::AddContinue( const ast::Continue& node ) {
 }
 
 inline bool FunctionScope::FindUpValue( const zone::String& name ,
-                                        std::uint16_t* index ) {
+                                        std::uint8_t* index ) {
   std::vector<UpValue>::iterator
     ret = std::find( upvalue_.begin() , upvalue_.end() , name );
   if(ret == upvalue_.end()) return false;
@@ -867,7 +871,7 @@ inline bool FunctionScope::FindUpValue( const zone::String& name ,
 }
 
 inline void FunctionScope::AddUpValue ( const zone::String& name ,
-                                 std::uint16_t index ) {
+                                        std::uint8_t index ) {
   upvalue_.push_back(UpValue(&name,index));
 }
 

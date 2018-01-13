@@ -255,6 +255,8 @@ class BytecodeUsage {
   /* subroutine */ \
   __(D,CALL,   call  , INPUT , BASE   , IMM8   , UNUSED,true ) \
   __(D,TCALL, tcall  , INPUT , BASE   , IMM8   , UNUSED,true ) \
+  __(D,ICALL, icall  , IMM8  , BASE   , IMM8   , UNUSED,true ) \
+  __(D,TICALL,ticall , IMM8  , BASE   , IMM8   , UNUSED,true ) \
   __(X,RETNULL,retnull, UNUSED,UNUSED , UNUSED , UNUSED,false) \
   __(X,RET  , ret    , UNUSED, UNUSED , UNUSED , UNUSED,false) \
   /* forloop tag */ \

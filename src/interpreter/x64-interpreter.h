@@ -2,6 +2,7 @@
 #define X64_INTERPRETER_H_
 #include "src/objects.h"
 
+#include "intrinsic-call.h"
 #include "interpreter.h"
 #include "bytecode.h"
 
@@ -64,6 +65,16 @@ class AssemblyInterpreterStub {
   // dispatch table for each bytecode in jitting mode
   void* dispatch_jit_   [ SIZE_OF_BYTECODE ];
 
+  // all builtin intrinsic call function's entrance address. these builtin functions are *not*
+  // suitable for normal C++ call since they don't obey normal ABI but assume all the value are
+  // on the stack
+  void* ic_entry_       [ SIZE_OF_INTRINSIC_CALL ];
+
+  // all C++ ABI intrinsic call function's entry.
+  //
+  // These pointers are safe to cast back to C++ function call and call it via normal ABI
+  void* ic_abi_entry_   [ SIZE_OF_INTRINSIC_CALL ];
+
   // internal helper routine's entry
   std::vector<void*> interp_helper_;
 
@@ -110,6 +121,7 @@ struct AssemblyInterpreterStubLayout {
   static const std::uint32_t kDispatchRecordOffset = offsetof(AssemblyInterpreterStub,dispatch_profile_);
   static const std::uint32_t kDispatchJitOffset    = offsetof(AssemblyInterpreterStub,dispatch_jit_   );
   static const std::uint32_t kInterpEntryOffset    = offsetof(AssemblyInterpreterStub,interp_entry_   );
+  static const std::uint32_t kIntrinsicEntry       = offsetof(AssemblyInterpreterStub,ic_entry_);
 };
 
 // Concret class implementation for Interpreter interface
@@ -138,6 +150,8 @@ class AssemblyInterpreter : public Interpreter {
   void* dispatch_interp_ [SIZE_OF_BYTECODE];
   void* dispatch_profile_[SIZE_OF_BYTECODE];
   void* dispatch_jit_    [SIZE_OF_BYTECODE];
+  void**ic_entry_;
+  void**ic_abi_entry_;
   void* interp_entry_;
 
   LAVA_DISALLOW_COPY_AND_ASSIGN(AssemblyInterpreter)

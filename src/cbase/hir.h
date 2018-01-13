@@ -9,6 +9,7 @@
 #include "src/zone/string.h"
 #include "src/cbase/bytecode-analyze.h"
 
+#include <type_traits>
 #include <map>
 #include <vector>
 #include <deque>
@@ -66,6 +67,7 @@ struct PrototypeInfo : zone::ZoneObject {
   __(Nil,NIL,"null",true)                       \
   /* compound */                                \
   __(IRList,LIST,   "list",false)               \
+  __(IRObjectKV,OBJECT_KV,"object_kv",false)    \
   __(IRObject,OBJECT, "object",false)           \
   /* closure */                                 \
   __(LoadCls,LOAD_CLS,"load_cls",true)          \
@@ -313,6 +315,18 @@ class Expr : public Node {
    * 2) ref list     , represent list of expression that use *this*
    *    expression
    *
+   * NOTES:
+   *
+   * All the IR node must try to use OperandList to store their operand,
+   * and try to express any kinds of depdenency of the node as part of
+   * ir node and then use OperandList to store them. Do not add a new
+   * member inside of the IR node to store any kinds of ir node dependency,
+   * except for very specific data.
+   *
+   * The reason is OperandList provide way to modify all the reference
+   * introduced by certain node. During the optimization phase, any node
+   * is a candidate to be modified !
+   *
    */
   typedef zone::List<Expr*> OperandList;
   typedef OperandList::ForwardIterator OperandIterator;
@@ -365,6 +379,8 @@ class Expr : public Node {
   }
 
   bool IsNoneLeaf() const { return !IsLeaf(); }
+
+  IRInfo* ir_info() const { return ir_info_; }
 
  public:
   Expr( IRType type , std::uint32_t id , Graph* graph , IRInfo* info ):
@@ -564,58 +580,76 @@ class IRList : public Expr {
  public:
   inline static IRList* New( Graph* , std::size_t size , IRInfo* );
 
-  const zone::Vector<Expr*>& array() const { return array_; }
-  zone::Vector<Expr*>& array() { return array_; }
-
   void Add( Expr* node ) {
-    array_.Add(zone(),node);
+    AddOperand(node);
   }
 
   IRList( Graph* graph , std::uint32_t id , std::size_t size , IRInfo* info ):
-    Expr  (IRTYPE_LIST,id,graph,info),
-    array_()
+    Expr  (IRTYPE_LIST,id,graph,info)
   {
-    array_.Reserve(zone(),size);
+    (void)size; // implicit indicated by the size of operand_list()
   }
 
   virtual std::uint64_t GVNHash() const;
   virtual bool Equal( const Expr* ) const;
 
  private:
-  zone::Vector<Expr*> array_;
   LAVA_DISALLOW_COPY_AND_ASSIGN(IRList)
+};
+
+class IRObjectKV : public Expr {
+ public:
+  inline static IRObjectKV* New( Graph* , Expr* , Expr* ,IRInfo* );
+
+  Expr* key  () const { return operand_list()->First(); }
+  Expr* value() const { return operand_list()->Last(); }
+
+  IRObjectKV( Graph* graph , std::uint32_t id , Expr* key , Expr* val ,
+                                                            IRInfo* info ):
+    Expr(IRTYPE_OBJECT_KV,id,graph,info)
+  {
+    AddOperand(key);
+    AddOperand(val);
+  }
+
+  virtual std::uint64_t GVNHash() const {
+    auto khash = key()->GVNHash();
+    if(!khash) return 0;
+    auto vhash = value()->GVNHash();
+    if(!vhash) return 0;
+    return GVNHash2(type_name(),khash,vhash);
+  }
+
+  virtual bool Equal( const Expr* that ) const {
+    if(that->IsIRObjectKV()) {
+      auto kv = that->AsIRObjectKV();
+      return kv->key()->Equal(key()) && kv->value()->Equal(value());
+    }
+    return false;
+  }
+
+ private:
+  LAVA_DISALLOW_COPY_AND_ASSIGN(IRObjectKV)
 };
 
 class IRObject : public Expr {
  public:
   inline static IRObject* New( Graph* , std::size_t size , IRInfo* );
 
-  struct Pair : zone::ZoneObject {
-    Expr* key;
-    Expr* val;
-    Pair( Expr* k , Expr* v ): key(k), val(v) {}
-    Pair() : key(NULL), val(NULL) {}
-  };
-
-  const zone::Vector<Pair>& array() const { return array_; }
-  zone::Vector<Pair>& array() { return array_; }
-
   void Add( Expr* key , Expr* val ) {
-    array_.Add(zone(),Pair(key,val));
+    AddOperand(IRObjectKV::New(graph(),key,val,ir_info()));
   }
 
   IRObject( Graph* graph , std::uint32_t id , std::size_t size , IRInfo* info ):
-    Expr  (IRTYPE_OBJECT,id,graph,info),
-    array_()
+    Expr  (IRTYPE_OBJECT,id,graph,info)
   {
-    array_.Reserve(zone(),size);
+    (void)size;
   }
 
   virtual std::uint64_t GVNHash() const;
   virtual bool Equal( const Expr* ) const;
 
  private:
-  zone::Vector<Pair> array_;
   LAVA_DISALLOW_COPY_AND_ASSIGN(IRObject)
 };
 
@@ -1763,30 +1797,58 @@ class Graph {
 
 
 // --------------------------------------------------------------------------
-// A simple worker list for traversal of all IR and it prevents adding a node
-// for multiple times
-class WorkerList {
+// A simple stack tracks which node has been added into the stack. This avoids
+// adding element that is already in the list back to list again
+class SetList {
  public:
-  explicit WorkerList( const Graph& );
+  explicit SetList( const Graph& );
   bool Push( Node* node );
   void Pop();
-  Node* Top() const {
-    return array_.back();
-  }
+  Node* Top() const { return array_.back(); }
   bool empty() const { return array_.empty(); }
+  void Clear() { array_.clear(); BitSetReset(&existed_); }
  private:
   DynamicBitSet existed_;
   std::vector<Node*> array_ ;
 };
 
 // --------------------------------------------------------------------------
+// A simple stack tracks which node has been added for at least once. This
+// avoids adding element that has been added once to list again
+class OnceList {
+ public:
+  explicit OnceList( const Graph& );
+  bool Push( Node* node );
+  void Pop();
+  Node* Top() const { return array_.back(); }
+  bool empty() const { return array_.empty(); }
+  void Clear() { array_.clear(); BitSetReset(&existed_); }
+ private:
+  DynamicBitSet existed_;
+  std::vector<Node*> array_;
+};
+
+// For concept check when used with dispatch routine
+struct ControlFlowIterator  {};
+struct ExprIterator   {};
+
+template< typename T >
+constexpr bool IsControlFlowIterator() {
+  return std::is_base_of<ControlFlowIterator,T>::value;
+}
+
+template< typename T >
+constexpr bool IsExprIterator() {
+  return std::is_base_of<ExprIterator,T>::value;
+}
+
+// --------------------------------------------------------------------------
 // A graph dfs iterator that iterate all control flow graph node in DFS order
 // the expression node simply ignored and left the user to use whatever method
 // they like to iterate/visit them
-class GraphDFSIterator {
+class ControlFlowDFSIterator : public ControlFlowIterator {
  public:
-  GraphDFSIterator( const Graph& graph ):
-    visited_(graph.MaxID()),
+  ControlFlowDFSIterator( const Graph& graph ):
     stack_  (graph),
     graph_  (&graph),
     next_   (NULL)
@@ -1805,16 +1867,16 @@ class GraphDFSIterator {
   ControlFlow* value() const { lava_debug(NORMAL,lava_verify(HasNext());); return next_; }
 
  private:
-  DynamicBitSet visited_;
-  WorkerList stack_;
+  OnceList stack_;
   const Graph* graph_;
   ControlFlow* next_;
 };
 
-class GraphBFSIterator {
+// ---------------------------------------------------------------------------
+// A graph bfs iterator
+class ControlFlowBFSIterator : public ControlFlowIterator {
  public:
-  GraphBFSIterator( const Graph& graph ):
-    visited_(graph.MaxID()),
+  ControlFlowBFSIterator( const Graph& graph ):
     stack_  (graph),
     graph_  (&graph),
     next_   (NULL)
@@ -1830,13 +1892,15 @@ class GraphBFSIterator {
   ControlFlow* value() const { lava_debug(NORMAL,lava_verify(HasNext());); return next_; }
 
  private:
-  DynamicBitSet visited_;
-  WorkerList stack_;
+  OnceList stack_;
   const Graph* graph_;
   ControlFlow* next_;
 };
 
-class GraphEdgeIterator {
+// -------------------------------------------------------------------------------
+// A graph's edge iterator. It will not guarantee any order except visit the edge
+// exactly once
+class ControlFlowEdgeIterator {
  public:
   struct Edge {
     ControlFlow* from;
@@ -1848,15 +1912,13 @@ class GraphEdgeIterator {
     bool empty() const { return from == NULL; }
   };
  public:
-  GraphEdgeIterator( const Graph& graph ):
-    visited_(graph.MaxID()),
-    stack_  (),
+  ControlFlowEdgeIterator( const Graph& graph ):
+    stack_  (graph),
     results_(),
     graph_  (&graph),
     next_   ()
   {
-    visited_[graph.end()->id()] = true;
-    stack_.push_back(graph.end());
+    stack_.Push(graph.end());
     Move();
   }
 
@@ -1867,12 +1929,49 @@ class GraphEdgeIterator {
   const Edge& value() const { lava_debug(NORMAL,lava_verify(HasNext());); return next_; }
 
  private:
-  DynamicBitSet visited_;
-  std::vector<ControlFlow*> stack_;
+  OnceList stack_;
   std::deque<Edge> results_;
   const Graph* graph_;
   Edge next_;
 };
+
+// ---------------------------------------------------------------------------------
+// An expression iterator. It will visit a expression in DFS order
+class ExprDFSIterator : public ExprIterator {
+ public:
+  ExprDFSIterator( const Graph& graph , Expr* node ):
+    root_(node),
+    next_(NULL),
+    stack_(graph)
+  { stack_.Push(node); Move(); }
+
+  ExprDFSIterator( const Graph& graph ):
+    root_(NULL),
+    next_(NULL),
+    stack_(graph)
+  {}
+
+ public:
+
+  void Reset( Expr* node ) {
+    root_ = node;
+    next_ = NULL;
+    stack_.Clear();
+    Move();
+  }
+
+  bool HasNext() const { return next_ != NULL; }
+
+  bool Move();
+
+  Expr* value() const { lava_debug(NORMAL,lava_verify(HasNext());); return next_; }
+
+ private:
+  Expr* root_;
+  Expr* next_;
+  OnceList stack_;
+};
+
 
 // =========================================================================
 //
@@ -1951,6 +2050,10 @@ inline Nil* Nil::New( Graph* graph , IRInfo* info ) {
 
 inline IRList* IRList::New( Graph* graph , std::size_t size , IRInfo* info ) {
   return graph->zone()->New<IRList>(graph,graph->AssignID(),size,info);
+}
+
+inline IRObjectKV* IRObjectKV::New( Graph* graph , Expr* key , Expr* val , IRInfo* info ) {
+  return graph->zone()->New<IRObjectKV>(graph,graph->AssignID(),key,val,info);
 }
 
 inline IRObject* IRObject::New( Graph* graph , std::size_t size , IRInfo* info ) {

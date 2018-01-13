@@ -15,12 +15,13 @@ const char* IRTypeGetName( IRType type ) {
 }
 
 std::uint64_t IRList::GVNHash() const {
-  auto len = array_.size();
   GVNHashN hasher(type_name());
-  for( std::size_t i = 0 ; i < len ; ++i ) {
-    auto v = array_.Index(i)->GVNHash();
-    if(!v) return 0;
-    hasher.Add(v);
+  for( auto itr(operand_list()->GetForwardIterator()) ;
+       itr.HasNext(); itr.Move() ) {
+    auto v = itr.value();
+    auto h = v->GVNHash();
+    if(!h) return 0;
+    hasher.Add(h);
   }
   return hasher.value();
 }
@@ -28,13 +29,16 @@ std::uint64_t IRList::GVNHash() const {
 bool IRList::Equal( const Expr* that ) const {
   if(that->IsIRList()) {
     auto irlist = that->AsIRList();
-    if(irlist->array_.size() == array_.size()) {
-      auto len = array_.size();
-      for( std::size_t i = 0 ; i < len ; ++i ) {
-        auto v = array_.Index(i);
-        if(!v->Equal(irlist->array_.Index(i)))
+    if(irlist->operand_list()->size() == operand_list()->size()) {
+      auto that_itr(that->operand_list()->GetForwardIterator());
+
+      for( auto itr(operand_list()->GetForwardIterator()) ;
+           itr.HasNext(); itr.Move() , that_itr.Move() ) {
+        auto v = itr.value();
+        if(!v->Equal(that_itr.value()))
           return false;
       }
+
       return true;
     }
   }
@@ -42,29 +46,29 @@ bool IRList::Equal( const Expr* that ) const {
 }
 
 std::uint64_t IRObject::GVNHash() const {
-  auto len = array_.size();
   GVNHashN hasher(type_name());
-  for( std::size_t i = 0 ; i < len ; ++i ) {
-    auto e = array_.Index(i);
-    auto k = e.key->GVNHash();
-    if(!k) return 0;
-    auto v = e.val->GVNHash();
-    if(!v) return 0;
-    hasher.Add(k);
-    hasher.Add(v);
+
+  for( auto itr(operand_list()->GetForwardIterator()) ;
+       itr.HasNext() ; itr.Move() ) {
+    auto v = itr.value();
+    auto h = v->GVNHash();
+    if(!h) return 0;
+    hasher.Add(h);
   }
+
   return hasher.value();
 }
 
 bool IRObject::Equal( const Expr* that ) const {
   if(that->IsIRObject()) {
     auto irobj = that->AsIRObject();
-    if(irobj->array_.size() == array_.size()) {
-      auto len = array_.size();
-      for( std::size_t i = 0 ; i < len ; ++i ) {
-        auto lhs = array_.Index(i);
-        auto rhs = irobj->array_.Index(i);
-        if(!lhs.key->Equal(rhs.key) || !rhs.val->Equal(rhs.val))
+    if(irobj->operand_list()->size() == operand_list()->size()) {
+      auto that_itr(that->operand_list()->GetForwardIterator());
+
+      for( auto itr(operand_list()->GetForwardIterator()) ;
+           itr.HasNext(); itr.Move() , that_itr.Move()) {
+        auto v = itr.value();
+        if(!v->Equal(that_itr.value()))
           return false;
       }
       return true;
@@ -160,7 +164,7 @@ std::string DotGraphVisualizer::Visualize( const Graph& graph , const Graph::Dot
 
   // 2. edge iterator
   output << "digraph IR {\n";
-  for( GraphEdgeIterator itr(graph) ; itr.HasNext() ; itr.Move() ) {
+  for( ControlFlowEdgeIterator itr(graph) ; itr.HasNext() ; itr.Move() ) {
     auto edge = itr.value();
     RenderEdge(edge.from,edge.to);
   }
@@ -333,26 +337,45 @@ void DotGraphVisualizer::RenderExpr( const std::string& name , Expr* node ) {
       {
         Indent(1) << name << "[label=\"list\"]\n";
         auto list = node->AsIRList();
-        for( std::size_t i = 0 ; i < list->array().size() ; ++i ) {
-          auto element = list->array().Index(i);
+        std::size_t i = 0 ;
+
+        for( auto itr(list->operand_list()->GetForwardIterator()) ;
+             itr.HasNext() ; itr.Move() ) {
+          auto element = itr.value();
           auto element_name = GetNodeName(element);
           RenderExpr(element_name,element);
           Indent(1) << name << " -> " << element_name << "[label=\"" << i << "\"]\n";
+          ++i;
         }
+      }
+      break;
+    case IRTYPE_OBJECT_KV:
+      {
+        Indent(1) << name << "[label=\"object_kv\"]\n";
+        auto kv = node->AsIRObjectKV();
+        auto key= kv->key();
+        auto key_name = GetNodeName(key);
+        RenderExpr(key_name,key);
+        Indent(1) << name << " -> " << key_name << "[label=\"key\"]\n";
+
+        auto val = kv->value();
+        auto val_name = GetNodeName(val);
+        RenderExpr(val_name,val);
+        Indent(1) << name << " -> " << val_name << "[label=\"val\"]\n";
       }
       break;
     case IRTYPE_OBJECT:
       {
         Indent(1) << name << "[label=\"object\"]\n";
         auto obj = node->AsIRObject();
-        for( std::size_t i = 0 ; i < obj->array().size() ; ++i ) {
-          auto element = obj->array().Index(i);
-          auto key_name= GetNodeName(element.key);
-          auto val_name= GetNodeName(element.val);
-          RenderExpr(key_name,element.key);
-          RenderExpr(val_name,element.val);
-          Indent(1) << name << " -> " << key_name << "[label=\"key_" << i << "\"]\n";
-          Indent(1) << name << " -> " << val_name << "[label=\"val_" << i << "\"]\n";
+        std::size_t i = 0;
+        for( auto itr(obj->operand_list()->GetForwardIterator()) ;
+             itr.HasNext(); itr.Move() ) {
+          auto kv = itr.value();
+          auto kv_name = GetNodeName(kv);
+          RenderExpr(kv_name,kv);
+          Indent(1) << name << " -> " << kv_name << "[label=\"" << i << "\"]\n";
+          ++i;
         }
       }
       break;
@@ -553,7 +576,7 @@ void DotGraphVisualizer::RenderExpr( const std::string& name , Expr* node ) {
     case IRTYPE_PHI:
       {
         auto phi = node->AsPhi();
-        Indent(1) << name << "[label=\"PHI\" color=blue style=bold]\n";
+        Indent(1) << name << "[label=\"PHI\" color=gray style=filled]\n";
         std::size_t count = 0;
         for( auto itr = phi->operand_list()->GetForwardIterator() ; itr.HasNext() ; itr.Move() , ++count ) {
           auto node = itr.value();
@@ -600,12 +623,12 @@ std::string Graph::PrintToDotFormat( const Graph& graph , const Graph::DotFormat
   return DotGraphVisualizer().Visualize(graph,opt);
 }
 
-WorkerList::WorkerList( const Graph& graph ):
+SetList::SetList( const Graph& graph ):
   existed_(graph.MaxID()),
   array_  ()
 {}
 
-bool WorkerList::Push( Node* node ) {
+bool SetList::Push( Node* node ) {
   if(!existed_[node->id()]) {
     array_.push_back(node);
     existed_[node->id()] = true;
@@ -614,15 +637,32 @@ bool WorkerList::Push( Node* node ) {
   return false;
 }
 
-void WorkerList::Pop() {
+void SetList::Pop() {
   Node* top = Top();
   lava_debug(NORMAL,lava_verify(existed_[top->id()]););
   existed_[top->id()] = false;
   array_.pop_back();
 }
 
+OnceList::OnceList( const Graph& graph ):
+  existed_(graph.MaxID()),
+  array_  ()
+{}
 
-bool GraphDFSIterator::Move() {
+bool OnceList::Push( Node* node ) {
+  if(!existed_[node->id()]) {
+    existed_[node->id()] = true;
+    array_.push_back(node);
+    return true;
+  }
+  return false;
+}
+
+void OnceList::Pop() {
+  array_.pop_back();
+}
+
+bool ControlFlowDFSIterator::Move() {
   while(!stack_.empty()) {
 recursion:
     ControlFlow* top = stack_.Top()->AsControlFlow();
@@ -633,19 +673,13 @@ recursion:
       // and then do it recursively
       ControlFlow* pre = top->backward_edge()->Index(i);
 
-      if(!visited_[pre->id()]) {
-        // this node is not visited, so push it onto the top of the stack and
-        // then visit it recursively
-        stack_.Push(pre);
-        goto recursion;
-      }
+      if(stack_.Push(pre)) goto recursion;
     }
 
     // when we reach here it means we scan through all its predecessor nodes and
     // don't see any one not visited , or maybe this node is a singleton/leaf.
     next_ = top;
     stack_.Pop();
-    visited_[top->id()] = true; // set it to be visited before
     return true;
   }
 
@@ -653,39 +687,34 @@ recursion:
   return false;
 }
 
-bool GraphBFSIterator::Move() {
+bool ControlFlowBFSIterator::Move() {
   if(!stack_.empty()) {
     ControlFlow* top = stack_.Top()->AsControlFlow();
     stack_.Pop(); // pop the top element
-    lava_debug(NORMAL,lava_verify(!visited_[top->id()]););
-    visited_[top->id()] = true;
 
     for( auto itr = top->backward_edge()->GetBackwardIterator() ;
               itr.HasNext() ; itr.Move() ) {
       ControlFlow* pre = itr.value();
-      if(!visited_[pre->id()]) stack_.Push(pre);
+      stack_.Push(pre);
     }
 
     next_ = top;
     return true;
   }
+
   next_ = NULL;
   return false;
 }
 
-bool GraphEdgeIterator::Move() {
+bool ControlFlowEdgeIterator::Move() {
   if(!stack_.empty()) {
-    ControlFlow* top = stack_.back();
-    stack_.pop_back(); // pop the TOP element
-    lava_debug(NORMAL,lava_verify(visited_[top->id()]););
+    ControlFlow* top = stack_.Top()->AsControlFlow();
+    stack_.Pop();
 
     for( auto itr = top->backward_edge()->GetBackwardIterator();
          itr.HasNext(); itr.Move() ) {
       ControlFlow* pre = itr.value();
-      if(!visited_[pre->id()]) {
-        visited_[pre->id()] = true;
-        stack_.push_back(pre);
-      }
+      stack_.Push(pre);
       results_.push_back(Edge(top,pre));
     }
   }
@@ -698,6 +727,23 @@ bool GraphEdgeIterator::Move() {
     results_.pop_front();
     return true;
   }
+}
+
+bool ExprDFSIterator::Move() {
+  if(!stack_.empty()) {
+recursion:
+    Expr* top = stack_.Top()->AsExpr();
+    for( std::size_t i = 0 ; i < top->operand_list()->size() ; ++i ) {
+      Expr* val = top->operand_list()->Index(i);
+      if(stack_.Push(val)) goto recursion;
+    }
+
+    next_ = top;
+    stack_.Pop();
+    return true;
+  }
+  next_ = NULL;
+  return false;
 }
 
 } // namespace hir

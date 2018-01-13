@@ -1205,7 +1205,7 @@ bool GraphBuilder::Build( const Handle<Closure>& entry , Graph* graph ) {
     // patch all return nodes to merge back to the end
     end = End::New(graph_);
 
-    if(func_info().return_list.size() > 1) {
+    {
       Phi* return_value = Phi::New(graph_,end,NULL);
       end->set_return_value(return_value);
 
@@ -1213,10 +1213,6 @@ bool GraphBuilder::Build( const Handle<Closure>& entry , Graph* graph ) {
         return_value->AddOperand(e->AsReturn()->value());
         end->AddBackwardEdge(e);
       }
-    } else {
-      // just one return value, then just return that value instead of a PHI
-      end->set_return_value(func_info().return_list[0]->AsReturn()->value());
-      end->AddBackwardEdge (func_info().return_list[0]);
     }
   }
 

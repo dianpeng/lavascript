@@ -36,7 +36,7 @@ class BytecodeBuilder {
  public:
   inline BytecodeBuilder();
 
-  inline bool AddUpValue( UpValueState , std::uint16_t , std::uint16_t* );
+  inline bool AddUpValue( UpValueState , std::uint8_t , std::uint8_t* );
   inline std::int32_t Add( double );
   std::int32_t Add( const ::lavascript::zone::String& , GC* );
 
@@ -507,8 +507,8 @@ inline BytecodeBuilder::Label BytecodeBuilder::fevrstart_( std::uint8_t reg ,
   return EmitAt<BC_FEVRSTART,TYPE_G,false,false,false>(reg,sci);
 }
 
-inline bool BytecodeBuilder::AddUpValue( UpValueState state , std::uint16_t idx ,
-                                                              std::uint16_t* output ) {
+inline bool BytecodeBuilder::AddUpValue( UpValueState state , std::uint8_t idx ,
+                                                              std::uint8_t* output ) {
   lava_debug(NORMAL,
       if(state == UV_EMBED) {
         lava_verify(idx >=0 && idx <= 255);
@@ -519,7 +519,7 @@ inline bool BytecodeBuilder::AddUpValue( UpValueState state , std::uint16_t idx 
     return false;
   }
   upvalue_slot_.push_back(UpValueSlot(state,idx));
-  *output = static_cast<std::uint16_t>(upvalue_slot_.size()-1);
+  *output = static_cast<std::uint8_t>(upvalue_slot_.size()-1);
   return true;
 }
 

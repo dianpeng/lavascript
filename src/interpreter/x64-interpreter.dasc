@@ -15,12 +15,18 @@
 #include <climits>
 #include <Zydis/Zydis.h>
 
-// This the C symbol we use to resolve certain runtime function. Ideally these
-// functions *should* be replaced with carefully tuned inline assembly but we
-// could just call this out for current phase/stage. Later on to work at better
-// version of these functions
 extern "C" {
+
+/** pow version from glibc which frankly speaking is pretty fast **/
 double pow(double,double);
+
+/** the famous glibc's sin/cos/tan faster than fsin/fcos and ftan assembly
+ *  Plus use fsin is kind of painful since I have to mess up with x87
+ */
+double sin(double);
+double cos(double);
+double tan(double);
+
 } // extern "C"
 
 namespace lavascript {
@@ -1390,25 +1396,25 @@ static_assert( sizeof(compiler::hotcount_t) == 2 );
 |  mov reg,qword [reg]
 |.endmacro
 
-#define INTERP_HELPER_LIST(__)               \
-  /* arithmetic */                           \
-  __(INTERP_START,InterpStart)               \
-  __(INTERP_FAIL ,InterpFail)                \
-  __(INTERP_RETURN,InterpReturn)             \
-  __(INTERP_ARITH_REALL,InterpArithRealL)    \
-  __(INTERP_ARITH_REALR,InterpArithRealR)    \
-  __(INTERP_ARITH_VV,InterpArithVV)          \
-  __(INTERP_POW_SLOWVR,InterpPowSlowVR)      \
-  __(INTERP_POW_SLOWRV,InterpPowSlowRV)      \
-  __(INTERP_POW_SLOWVV,InterpPowSlowVV)      \
-  __(MOD_BY_ZERO,ModByZero)                  \
-  /* comparison */                           \
-  __(INTERP_COMPARERV,InterpCompareRV)       \
-  __(INTERP_COMPAREVR,InterpCompareVR)       \
-  __(INTERP_COMPARESV,InterpCompareSV)       \
-  __(INTERP_COMPAREVS,InterpCompareVS)       \
-  __(INTERP_COMPAREVV,InterpCompareVV)       \
-  /* property get/set */                     \
+#define INTERP_HELPER_LIST(__)                        \
+  /* arithmetic */                                    \
+  __(INTERP_START,InterpStart)                        \
+  __(INTERP_FAIL ,InterpFail)                         \
+  __(INTERP_RETURN,InterpReturn)                      \
+  __(INTERP_ARITH_REALL,InterpArithRealL)             \
+  __(INTERP_ARITH_REALR,InterpArithRealR)             \
+  __(INTERP_ARITH_VV,InterpArithVV)                   \
+  __(INTERP_POW_SLOWVR,InterpPowSlowVR)               \
+  __(INTERP_POW_SLOWRV,InterpPowSlowRV)               \
+  __(INTERP_POW_SLOWVV,InterpPowSlowVV)               \
+  __(MOD_BY_ZERO,ModByZero)                           \
+  /* comparison */                                    \
+  __(INTERP_COMPARERV,InterpCompareRV)                \
+  __(INTERP_COMPAREVR,InterpCompareVR)                \
+  __(INTERP_COMPARESV,InterpCompareSV)                \
+  __(INTERP_COMPAREVS,InterpCompareVS)                \
+  __(INTERP_COMPAREVV,InterpCompareVV)                \
+  /* property get/set */                              \
   __(INTERP_IDX_GETI,InterpIdxGetI)                   \
   __(INTERP_IDX_SETI,InterpIdxSetI)                   \
   __(INTERP_PROP_NEEDOBJECT ,InterpPropNeedObject)    \
@@ -1429,12 +1435,57 @@ static_assert( sizeof(compiler::hotcount_t) == 2 );
   __(PRINTF  ,PrintF )                                \
   __(PRINTV , PrintV )
 
+/** all intrinsic function call **/
+#define INTERP_IC_LIST(__)                            \
+  /* arithemtic */                                    \
+  __(IC_MIN,ic_min)                                   \
+  __(IC_MAX,ic_max)                                   \
+  __(IC_SQRT,ic_sqrt)                                 \
+  __(IC_SIN ,ic_sin)                                  \
+  __(IC_COS ,ic_cos)                                  \
+  __(IC_TAN ,ic_tan)                                  \
+  __(IC_CEIL,ic_ceil)                                 \
+  __(IC_FLOOR,ic_floor)                               \
+  /* bits */                                          \
+  __(IC_LSHIFT,ic_lshift)                             \
+  __(IC_RSHIFT,ic_rshift)                             \
+  __(IC_LROR  ,ic_lror  )                             \
+  __(IC_RROR  ,ic_rror  )                             \
+  __(IC_BAND  ,ic_band  )                             \
+  __(IC_BOR   ,ic_bor   )                             \
+  __(IC_BXOR  ,ic_bxor  )                             \
+  /* conversion */                                    \
+  __(IC_INT   ,ic_int   )                             \
+  __(IC_REAL  ,ic_real  )                             \
+  __(IC_STRING,ic_string)                             \
+  __(IC_BOOLEAN,ic_boolean)                           \
+  /* list */                                          \
+  __(IC_PUSH  ,ic_push)                               \
+  __(IC_POP   ,ic_pop )                               \
+  /* object */                                        \
+  __(IC_ADD   ,ic_add )                               \
+  __(IC_HAS   ,ic_has )                               \
+  __(IC_UPDATAE,ic_update)                            \
+  __(IC_PUT   ,ic_put)                                \
+  __(IC_REMOVE,ic_remove)                             \
+  /* misc */                                          \
+  __(IC_CLEAR,ic_clear )                              \
+  __(IC_TYPE,ic_type)                                 \
+  __(IC_LEN ,ic_len )                                 \
+  __(IC_EMPTY,ic_empty)
+
 enum {
   INTERP_HELPER_DUMMY = SIZE_OF_BYTECODE,
 
 #define __(A,B) A,
   INTERP_HELPER_LIST(__)
-#undef __
+  INTERP_IC_LIST(__)
+#undef __ // __
+
+  /** intrinsic function call's ABI compatible entry **/
+#define __(A,B) ABI_##A
+  INTERP_IC_LIST(__)
+#undef __ // __
 
   DASM_GROWABLE_PC_SIZE
 };
@@ -1459,6 +1510,120 @@ const char* GetInterpHelperName( int idx ) {
 #define Dst (&(bctx->dasm_ctx))
 
 #define IFRAME_EOF 0xffff  // End of function frame, should return from VM
+
+
+/* -----------------------------------------------------------
+ * All the intrinsic function call                           |
+ * ----------------------------------------------------------*/
+void GenerateIntrinsicCall( BuildContext* bctx ) {
+
+  |.macro Dec2Num, r1,r2,false_branch
+  |  cmp dword [STK+ARG2F*8+4], Value::FLAG_REAL
+  |  jnb false_branch
+  |  movsd r1 , qword [STK+ARG2F*8]
+  |  cmp dword [STK+ARG2F*8+12], Value::FLAG_REAL
+  |  jnb false_branch
+  |  movsd r2 , qowrd [STK+ARG2F*8+8]
+  |.endmacro
+
+  |.macro Dec1Num, r1, false_branch
+  |  cmp dword [STK+ARG2F*8+4], Value::FALG_REAL
+  |  jnb false_branch
+  |  movsd r1 , qword [STK+ARG2F*8]
+  |.endmacro
+
+  |.macro Check2Num, false_branch
+  |  cmp dword [STK+ARG2F*8+4], Value::FLAG_REAL
+  |  jnb false_branch
+  |  cmp dword [STK+ARG2F*8+12],Value::FLAG_REAL
+  |  jnb false_branch
+  |.endmacro
+
+  |.macro Check1Num, false_branch
+  |  cmp dword [STK+ARG2F*8+4], Value::FLAG_REAL
+  |  jnb false_branch
+  |.endmacro
+
+  |.macro ICallFail,INDEX
+  |  mov CARG1, SANDBOX
+  |  mov CARG2, INDEX
+  |  fcall InterpreterIntrinsicCallFail
+  // NOTES: there's a concern about the call/return needs to be matched.
+  //        some CPU vendor will mess up its call/return predication buffer
+  //        for *unmatched* call/return. Here we jump directly back to the
+  //        InterpFail routine which makes call and return not match
+  |  jmp ->InterpFail
+  |.endmacro
+
+  |.code
+
+  // min(a,b)
+  |=>IC_MIN:
+  |->ic_min:
+  |  Check2Num >1
+  |  mov   xmm0, qword [STK+ARG2F*8]
+  |  minsd xmm0, qword [STK+ARG2F*8+8]
+  |  mov qword [ACC], xmm0
+  |  ret
+  |1:
+  |  ICallFail ARG1F
+
+  // max(a,b)
+  |=>IC_MAX:
+  |->ic_max:
+  |  Check2Num >1
+  |  mov   xmm0, qword [STK+ARG2F*8]
+  |  maxsd xmm0, qword [STK+ARG2F*8+8]
+  |  mov qword [ACC], xmm0
+  |  ret
+  |1:
+  |  ICallFail ARG1F
+
+  // sqrt(a)
+  |=>IC_SQRT:
+  |->ic_sqrt:
+  |  Check1Num >1
+  |  sqrtsd xmm0, qword [STK+ARG2F*8]
+  |  mov qword[ACC], xmm0
+  |  ret
+  |1:
+  |  ICallFail ARG1F
+
+  // sin(a)
+  |=>IC_SIN:
+  |->ic_sin:
+  |  Dec1Num xmm0, >1
+  |  call sin
+  |  mov qword[ACC], xmm0
+  |  ret
+  |1:
+  |  ICallFail ARG1F
+
+  // cos(a)
+  |=>IC_COS:
+  |->ic_cos:
+  |  Dec1Num xmm0, >1
+  |  call cos
+  |  mov qword[ACC], xmm0
+  |  ret
+  |1:
+  |  ICallFail ARG1F
+
+  // tan(a)
+  |=>IC_TAN:
+  |->ic_tan:
+  |  Dec1Num xmm0, >1
+  |  call tan
+  |  mov qword[ACC], xmm0
+  |  ret
+  |1:
+  |  ICallFail ARG1F
+
+  // abs(a)
+  |=>IC_ABS:
+  |->ic_abs:
+
+}
 
 /* -----------------------------------------------------------
  * Interpreter Prolog                                        |
@@ -3748,6 +3913,8 @@ AssemblyInterpreterStub::AssemblyInterpreterStub():
   dispatch_interp_      (),
   dispatch_profile_     (),
   dispatch_jit_         (),
+  ic_entry_             (),
+  ic_abi_entry_         (),
   interp_helper_        (),
   interp_entry_         (),
   interp_code_buffer_   (),
@@ -3950,10 +4117,12 @@ void AssemblyInterpreterStub::Dump( DumpWriter* writer ) const {
 }
 
 AssemblyInterpreter::AssemblyInterpreter():
-  dispatch_interp_(),
+  dispatch_interp_ (),
   dispatch_profile_(),
-  dispatch_jit_   (),
-  interp_entry_   ()
+  dispatch_jit_    (),
+  interp_entry_    (),
+  ic_entry_        (NULL),
+  ic_abi_entry_    (NULL)
 {
   std::shared_ptr<AssemblyInterpreterStub> stub(AssemblyInterpreterStub::GetInstance());
   lava_debug(NORMAL,lava_verify(stub););
@@ -3962,6 +4131,8 @@ AssemblyInterpreter::AssemblyInterpreter():
   memcpy(dispatch_profile_,stub->dispatch_profile_,sizeof(dispatch_profile_));
   memcpy(dispatch_jit_   ,stub->dispatch_jit_   ,sizeof(dispatch_jit_   ));
 
+  ic_entry_ = stub->ic_entry_;
+  ic_abi_entry_ = stub->ic_abi_entry_;
   interp_entry_ = stub->interp_entry_;
 }
 

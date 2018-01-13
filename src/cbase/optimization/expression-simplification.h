@@ -21,10 +21,7 @@ namespace hir {
 
 class ExpressionSimplifier {
  public:
-  enum Flag {
-    NORMAL,
-    DEBUG
-  };
+  enum Flag { NORMAL, DEBUG };
 
   bool Perform( Graph* , Expr* , Flag );
 };

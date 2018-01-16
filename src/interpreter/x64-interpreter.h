@@ -37,8 +37,9 @@ class AssemblyInterpreterStub {
   void Dump( DumpWriter* ) const;
 
  private:
-  Bytecode CheckBytecodeRoutine( void* pc ) const;
-  int      CheckHelperRoutine  ( void* pc ) const;
+  Bytecode      CheckBytecodeRoutine ( void* pc ) const;
+  int           CheckHelperRoutine   ( void* pc ) const;
+  IntrinsicCall CheckIntrinsicCall   ( void* pc ) const;
 
   // Generate the dispatch interp
   bool GenerateDispatchInterp();
@@ -69,11 +70,6 @@ class AssemblyInterpreterStub {
   // suitable for normal C++ call since they don't obey normal ABI but assume all the value are
   // on the stack
   void* ic_entry_       [ SIZE_OF_INTRINSIC_CALL ];
-
-  // all C++ ABI intrinsic call function's entry.
-  //
-  // These pointers are safe to cast back to C++ function call and call it via normal ABI
-  void* ic_abi_entry_   [ SIZE_OF_INTRINSIC_CALL ];
 
   // internal helper routine's entry
   std::vector<void*> interp_helper_;
@@ -151,7 +147,6 @@ class AssemblyInterpreter : public Interpreter {
   void* dispatch_profile_[SIZE_OF_BYTECODE];
   void* dispatch_jit_    [SIZE_OF_BYTECODE];
   void**ic_entry_;
-  void**ic_abi_entry_;
   void* interp_entry_;
 
   LAVA_DISALLOW_COPY_AND_ASSIGN(AssemblyInterpreter)

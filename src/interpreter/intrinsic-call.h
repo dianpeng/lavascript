@@ -1,6 +1,5 @@
 #ifndef INTRINSIC_CALL_H_
 #define INTRINSIC_CALL_H_
-
 #include "src/config.h"
 #include "src/builtins.h"
 
@@ -20,7 +19,7 @@ namespace interpreter{
  * List of Builtins
  */
 enum IntrinsicCall {
-#define __(A,B,C) INTRINSIC_CALL_##B,
+#define __(A,B,...) INTRINSIC_CALL_##B,
 
   LAVASCRIPT_BUILTIN_FUNCTIONS(__)
 
@@ -41,6 +40,9 @@ std::uint8_t  GetIntrinsicCallArgumentSize( IntrinsicCall );
 
 // get the intrinsic function call's name based on the intrinsic call index
 const char* GetIntrinsicCallName  ( IntrinsicCall );
+
+// get the intrinsic function call's error message
+const char* GetIntrinsicCallErrorMessage( IntrinsicCall );
 
 } // namespace interpreter
 } // namespace lavascript

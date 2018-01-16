@@ -123,8 +123,8 @@ template< typename T > class Handle {
 class Value final {
   union {
     std::uint64_t raw_;
-    void* vptr_;
-    double real_;
+    void*         vptr_;
+    double        real_;
   };
 
   friend void interpreter::SetValueFlag( Value*, std::uint32_t );
@@ -143,11 +143,13 @@ class Value final {
     TAG_REAL   = 0xfff8000000000000,                        // Real
     TAG_TRUE   = 0xfff8100000000000,                        // True
     TAG_HEAP   = 0xfff9000000000000,                        // Heap ( normal heap pointer )
+
     /*
-    TAG_SSO    = 0xfffa000000000000,                        // SSO
-    TAG_LIST   = 0xfffb000000000000,                        // List
-    TAG_OBJECT = 0xfffc000000000000,                        // Object
-    */
+     * TAG_SSO    = 0xfffa000000000000,                     // SSO
+     * TAG_LIST   = 0xfffb000000000000,                     // List
+     * TAG_OBJECT = 0xfffc000000000000,                     // Object
+     */
+
     TAG_FALSE  = 0xfffd000000000000,                        // False
     TAG_NULL   = 0xfffd100000000000,                        // NULL
 
@@ -162,11 +164,12 @@ class Value final {
 
     FLAG_HEAP   = 0xfff9   ,       // pointer is 48 bits , so we only test the upper 16 bits
     FLAG_HEAP_UNMASK = ~FLAG_HEAP, // used to extract pointer from assembly
+
     /*
-    FLAG_SSO    = 0xfffa    ,
-    FLAG_LIST   = 0xfffb    ,
-    FLAG_OBJECT = 0xfffc    ,
-    */
+     * FLAG_SSO    = 0xfffa    ,
+     * FLAG_LIST   = 0xfffb    ,
+     * FLAG_OBJECT = 0xfffc    ,
+     */
 
     FLAG_FALSE  = 0xfffd0000,
     FLAG_NULL   = 0xfffd1000,
@@ -179,7 +182,7 @@ class Value final {
   // A flag used to help assembly interpreter to decide which value should be treated
   // as *TRUE* regardless
   enum {
-    FLAG_FALSECOND = FLAG_TRUE
+    FLAG_FALSECOND = FLAG_FALSE
   };
 
   enum {
@@ -216,6 +219,16 @@ class Value final {
    */
   ValueType type() const;
   const char* type_name() const;
+
+ public:
+  // This function will check whether the value can be converted to boolean.
+  // All value in lavascript can be converted to boolean.
+  //
+  // Except NULL and FALSE , any other value inside of lavascript is evaluated
+  // to be True inside of the boolean context.
+  bool AsBoolean() const {
+    return flag() < FLAG_FALSECOND;
+  }
 
  public:
   // Primitive types
@@ -451,6 +464,10 @@ struct LongString final {
 
 static_assert( std::is_standard_layout<LongString>::value );
 
+struct LongStringLayout {
+  static const std::uint32_t kSizeOffset = offsetof(LongString,size);
+  static const std::uint32_t kDataOffset = sizeof(LongString);
+};
 
 /**
  * A String object is a normal long string object that resides
@@ -526,7 +543,8 @@ class String final : public HeapObject {
   static Handle<String> New( GC* gc , const std::string& str ) {
     return New(gc,str.c_str(),str.size());
   }
-
+  static Handle<String> NewFromReal( GC* , double );
+  static Handle<String> NewFromBoolean( GC* , bool );
  private:
 
   friend class StringLayout;
@@ -684,6 +702,7 @@ class Object final : public HeapObject {
   inline bool Delete ( const char*   );
   inline bool Delete ( const std::string& );
 
+  void Clear  ( GC* );
  public:
   Handle<Iterator> NewIterator( GC* , const Handle<Object>& ) const;
 
@@ -1180,8 +1199,11 @@ class Extension : public HeapObject {
   // Iterator
   virtual Handle<Iterator> NewIterator( GC* , const Handle<Extension>& , std::string* ) const;
 
+  virtual bool Size( std::uint32_t* , std::string* ) const;
+
   // Function Call
   virtual bool Call( CallFrame* call_frame , std::string* error );
+
 
   // Unique type name
   virtual const char* name() const = 0;

@@ -19,6 +19,15 @@ Handle<String> String::New( GC* gc , const char* str , std::size_t length ) {
   return Handle<String>(gc->NewString(str,length));
 }
 
+Handle<String> String::NewFromReal( GC* gc , double value ) {
+  auto str = PrettyPrintReal(value);
+  return String::New(gc,str.c_str(),str.size());
+}
+
+Handle<String> String::NewFromBoolean( GC* gc , bool value ) {
+  return String::New(gc,value ? "true" : "false");
+}
+
 /* ---------------------------------------------------------------
  * List
  * --------------------------------------------------------------*/
@@ -118,6 +127,10 @@ Handle<Object> Object::New( GC* gc , const Handle<Map>& map ) {
 Handle<Iterator> Object::NewIterator( GC* gc , const Handle<Object>& self ) const {
   lava_debug(NORMAL,lava_verify(self.ptr() == this););
   return Handle<Iterator>(map_->NewIterator(gc,map_));
+}
+
+void Object::Clear( GC* gc ) {
+  map_ = Handle<Map>(gc->NewMap());
 }
 
 /* ---------------------------------------------------------------
@@ -420,6 +433,12 @@ Handle<Iterator> Extension::NewIterator( GC* gc , const Handle<Extension>& self 
   (void)self;
   Format(error,"iterator is not implemented in type %s",name());
   return Handle<Iterator>();
+}
+
+bool Extension::Size( std::uint32_t* size , std::string* error ) const {
+  (void)size;
+  Format(error,"size is not implemented in type %s",name());
+  return false;
 }
 
 // Call

@@ -74,7 +74,7 @@ inline void* BufferOffset( void* buffer , std::size_t offset ) {
       static_cast<T*>(buffer) + offset);
 }
 
-bool StringToInt    ( const char* , int* );
+bool StringToInt    ( const char* , std::int32_t * );
 bool StringToReal   ( const char* , double* );
 
 // Try to narrow a real number into a 32 bits integer. It will fail

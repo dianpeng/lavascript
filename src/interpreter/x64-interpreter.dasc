@@ -2,7 +2,7 @@
 
 #include "iframe.h"
 #include "runtime.h"
-
+#include "src/builtin-function.h"
 #include "src/call-frame.h"
 #include "src/context.h"
 #include "src/trace.h"
@@ -31,7 +31,10 @@ double tan(double);
 
 namespace lavascript {
 namespace interpreter{
+
 namespace {
+
+using namespace ::lavascript::builtin;
 
 // Used in dynasm library
 int ResolveExternalAddress( void**,unsigned char*,int,int );
@@ -61,7 +64,6 @@ struct BuildContext {
   }
 };
 
-
 // Shut the GCC's mouth fucked up
 template< typename T >
 int HorribleCast( T* ptr ) {
@@ -81,11 +83,12 @@ void ReportError( Runtime* sandbox , const char* fmt , ... ) {
 // ------------------------------------------------------------------
 // Prototype for the main interpreter function
 //
-// @ARG1: runtime
-// @ARG2: Prototype** of the function
-// @ARG3: start of the stack
-// @ARG4: start of the code buffer for the *Prototype*
-// @ARG5: start of the dispatch table
+// ARG1: runtime
+// ARG2: Closure**
+// ARG3: Prototype**
+// ARG4: start of the stack
+// ARG5: start of the code buffer for the *Prototype*
+// ARG6: start of the dispatch table
 typedef bool (*Main)(Runtime*,Closure**,Prototype**,void*,void*,void*);
 
 // ------------------------------------------------------------------
@@ -121,7 +124,14 @@ inline bool InsertExternalSymbolTable(const char* name, void* address) {
 // Builtin libc function exposure section
 // ------------------------------------------------------------------
 INTERPRETER_REGISTER_EXTERN_SYMBOL(pow)
+INTERPRETER_REGISTER_EXTERN_SYMBOL(sin)
+INTERPRETER_REGISTER_EXTERN_SYMBOL(cos)
+INTERPRETER_REGISTER_EXTERN_SYMBOL(tan)
 
+/** register all intrinsic call function's external symbol **/
+#define __(A,B,C,...) INTERPRETER_REGISTER_EXTERN_SYMBOL(Builtin##C)
+LAVASCRIPT_BUILTIN_FUNCTIONS(__)
+#undef __ // __
 
 // -------------------------------------------------------------------
 // Helper to set Value object to indicate special meaning
@@ -782,7 +792,10 @@ bool InterpreterCall( Runtime* sandbox , const Value& expr , std::uint8_t base ,
 
   // 1. get the new stack pos
   Value* new_pos = sandbox->cur_stk + base;
-  lava_debug(NORMAL,lava_verify(sandbox->stack_end - new_pos >= 256););
+
+  lava_debug(NORMAL,
+      lava_verify(sandbox->context->gc()->interp_stack_end() - new_pos >= 256);
+  );
 
   // 2. setup the *new frame*
   IFrame* frame = reinterpret_cast<IFrame*>(
@@ -824,6 +837,14 @@ bool InterpreterCall( Runtime* sandbox , const Value& expr , std::uint8_t base ,
   return true;
 }
 INTERPRETER_REGISTER_EXTERN_SYMBOL(InterpreterCall)
+
+/* ---------------------------------------------------------------------
+ * Intrinsic Function Call
+ * --------------------------------------------------------------------*/
+void InterpreterICFail( Runtime* runtime , IntrinsicCall ic_index ) {
+  ReportError(runtime,"%s",GetIntrinsicCallErrorMessage(ic_index));
+}
+INTERPRETER_REGISTER_EXTERN_SYMBOL(InterpreterICFail)
 
 /* ---------------------------------------------------------------------
  * JIT
@@ -904,11 +925,18 @@ inline bool CheckAddress( std::uintptr_t addr ) {
 || }
 |.endmacro
 
+|.macro ic_call,FUNC
+|  sub rsp, 8
+|  fcall FUNC
+|  add rsp, 8
+|.endmacro
+
 /* ---------------------------------------------------------------
  * summary of register usage                                     |
  * --------------------------------------------------------------*/
 // Runtime pointer
 |.define RUNTIME,               r12   // callee saved
+|.define CONTEXT,               qword [RUNTIME+RuntimeLayout::kContextOffset]
 
 // Current prototype's GCRef pointer
 |.define PROTO,                 r13   // callee saved
@@ -1198,9 +1226,11 @@ static_assert( sizeof(compiler::hotcount_t) == 2 );
 |.endmacro
 
 // Used to negate the double precision number's sign bit
+|.macro rconst_abs,XREG;  rconst  0xffffffff,0x7fffffff; .endmacro
 |.macro rconst_sign,XREG; rconstH XREG,0x80000000; .endmacro
 |.macro rconst_one ,XREG; rconstH XREG,0x3ff00000; .endmacro
 |.macro rconst_neg_one,XREG; rconstH XREG,0xbff00000; .endmacro
+|.macro rconst_neg_zero,XREG; rconst_sign XREG; .endmacro
 
 /* -----------------------------------------------------------
  * constant loading                                          |
@@ -1336,11 +1366,12 @@ static_assert( sizeof(compiler::hotcount_t) == 2 );
 // -------------------------------------------------------------------------
 // Object bit pattern
 
-#define OBJECT_BIT_PATTERN TYPE_OBJECT
-#define LIST_BIT_PATTERN TYPE_LIST
-#define SSO_BIT_PATTERN TYPE_STRING
-#define CLOSURE_BIT_PATTERN TYPE_CLOSURE
-#define EXTENSION_BIT_PATTERN TYPE_EXTENSION
+#define OBJECT_BIT_PATTERN        TYPE_OBJECT
+#define LIST_BIT_PATTERN          TYPE_LIST
+#define SSO_BIT_PATTERN           TYPE_STRING
+#define LSTR_BIT_PATTERN          (TYPE_STRING | 0x80)
+#define CLOSURE_BIT_PATTERN       TYPE_CLOSURE
+#define EXTENSION_BIT_PATTERN     TYPE_EXTENSION
 
 // -------------------------------------------------------------------------
 // Check an *GCRef* is Object or not
@@ -1435,72 +1466,41 @@ static_assert( sizeof(compiler::hotcount_t) == 2 );
   __(PRINTF  ,PrintF )                                \
   __(PRINTV , PrintV )
 
-/** all intrinsic function call **/
-#define INTERP_IC_LIST(__)                            \
-  /* arithemtic */                                    \
-  __(IC_MIN,ic_min)                                   \
-  __(IC_MAX,ic_max)                                   \
-  __(IC_SQRT,ic_sqrt)                                 \
-  __(IC_SIN ,ic_sin)                                  \
-  __(IC_COS ,ic_cos)                                  \
-  __(IC_TAN ,ic_tan)                                  \
-  __(IC_CEIL,ic_ceil)                                 \
-  __(IC_FLOOR,ic_floor)                               \
-  /* bits */                                          \
-  __(IC_LSHIFT,ic_lshift)                             \
-  __(IC_RSHIFT,ic_rshift)                             \
-  __(IC_LROR  ,ic_lror  )                             \
-  __(IC_RROR  ,ic_rror  )                             \
-  __(IC_BAND  ,ic_band  )                             \
-  __(IC_BOR   ,ic_bor   )                             \
-  __(IC_BXOR  ,ic_bxor  )                             \
-  /* conversion */                                    \
-  __(IC_INT   ,ic_int   )                             \
-  __(IC_REAL  ,ic_real  )                             \
-  __(IC_STRING,ic_string)                             \
-  __(IC_BOOLEAN,ic_boolean)                           \
-  /* list */                                          \
-  __(IC_PUSH  ,ic_push)                               \
-  __(IC_POP   ,ic_pop )                               \
-  /* object */                                        \
-  __(IC_ADD   ,ic_add )                               \
-  __(IC_HAS   ,ic_has )                               \
-  __(IC_UPDATAE,ic_update)                            \
-  __(IC_PUT   ,ic_put)                                \
-  __(IC_REMOVE,ic_remove)                             \
-  /* misc */                                          \
-  __(IC_CLEAR,ic_clear )                              \
-  __(IC_TYPE,ic_type)                                 \
-  __(IC_LEN ,ic_len )                                 \
-  __(IC_EMPTY,ic_empty)
-
 enum {
-  INTERP_HELPER_DUMMY = SIZE_OF_BYTECODE,
+  INTERP_HELPER_INDEX_START = SIZE_OF_BYTECODE,
 
-#define __(A,B) A,
+#define __(A,...) A,
   INTERP_HELPER_LIST(__)
-  INTERP_IC_LIST(__)
 #undef __ // __
 
-  /** intrinsic function call's ABI compatible entry **/
-#define __(A,B) ABI_##A
-  INTERP_IC_LIST(__)
+  INTERP_HELPER_INDEX_END,
+
+  // intrinsic function
+#define __(A,B,...) IC_##B,
+  LAVASCRIPT_BUILTIN_FUNCTIONS(__)
 #undef __ // __
 
   DASM_GROWABLE_PC_SIZE
 };
 
-#define INTERP_HELPER_START (INTERP_HELPER_DUMMY+1)
-#define INTERP_HELPER_SIZE (DASM_GROWABLE_PC_SIZE-INTERP_HELPER_ROUTINE_ENUM-1)
+#define INTERP_HELPER_START (INTERP_HELPER_INDEX_START+1)
+#define INTERP_HELPER_END   (INTERP_HELPER_INDEX_END)
+#define INTERP_HELPER_SIZE  (INTERP_HELPER_END - INTERP_HELPER_START)
+
+#define INTERP_IC_START     (INTERP_HELPER_INDEX_END+1)
+#define INTERP_IC_END       (DASM_GROWABLE_PC_SIZE)
+#define INTERP_IC_SIZE      SIZE_OF_INTRINSIC_CALL
 
 const char* GetInterpHelperName( int idx ) {
   switch(idx) {
+
 #define __(A,B) case A: return #B;
     INTERP_HELPER_LIST(__)
+#undef __ // __
+
     default:
       lava_unreachF("unknown helper with index:%d",idx);
       return NULL;
-#undef __ // __
   }
 }
 
@@ -1511,25 +1511,24 @@ const char* GetInterpHelperName( int idx ) {
 
 #define IFRAME_EOF 0xffff  // End of function frame, should return from VM
 
-
 /* -----------------------------------------------------------
- * All the intrinsic function call                           |
+ * Intrinsic Function Call
  * ----------------------------------------------------------*/
 void GenerateIntrinsicCall( BuildContext* bctx ) {
 
-  |.macro Dec2Num, r1,r2,false_branch
+  |.macro Dec2Num, REG1,REG2,false_branch
   |  cmp dword [STK+ARG2F*8+4], Value::FLAG_REAL
   |  jnb false_branch
-  |  movsd r1 , qword [STK+ARG2F*8]
+  |  movsd REG1 , qword [STK+ARG2F*8]
   |  cmp dword [STK+ARG2F*8+12], Value::FLAG_REAL
   |  jnb false_branch
-  |  movsd r2 , qowrd [STK+ARG2F*8+8]
+  |  movsd REG2, qowrd [STK+ARG2F*8+8]
   |.endmacro
 
-  |.macro Dec1Num, r1, false_branch
-  |  cmp dword [STK+ARG2F*8+4], Value::FALG_REAL
+  |.macro Dec1Num, REG1, false_branch
+  |  cmp dword [STK+ARG2F*8+4], Value::FLAG_REAL
   |  jnb false_branch
-  |  movsd r1 , qword [STK+ARG2F*8]
+  |  movsd REG1, qword [STK+ARG2F*8]
   |.endmacro
 
   |.macro Check2Num, false_branch
@@ -1544,85 +1543,549 @@ void GenerateIntrinsicCall( BuildContext* bctx ) {
   |  jnb false_branch
   |.endmacro
 
-  |.macro ICallFail,INDEX
-  |  mov CARG1, SANDBOX
-  |  mov CARG2, INDEX
-  |  fcall InterpreterIntrinsicCallFail
-  // NOTES: there's a concern about the call/return needs to be matched.
-  //        some CPU vendor will mess up its call/return predication buffer
-  //        for *unmatched* call/return. Here we jump directly back to the
-  //        InterpFail routine which makes call and return not match
-  |  jmp ->InterpFail
-  |.endmacro
+  // date section for intrinsic call function
+  |.data
+  |->RConstAbsMask:
+  |.dword 0xffffffff,0x7fffffff
 
   |.code
 
+  // ------------------------------------
   // min(a,b)
+  // ------------------------------------
   |=>IC_MIN:
-  |->ic_min:
-  |  Check2Num >1
-  |  mov   xmm0, qword [STK+ARG2F*8]
+  |  Check2Num ->ic_failure_handler
+  |  movsd xmm0, qword [STK+ARG2F*8]
   |  minsd xmm0, qword [STK+ARG2F*8+8]
-  |  mov qword [ACC], xmm0
+  |  movsd qword [ACC], xmm0
   |  ret
-  |1:
-  |  ICallFail ARG1F
 
+  // ------------------------------------
   // max(a,b)
+  // ------------------------------------
   |=>IC_MAX:
-  |->ic_max:
-  |  Check2Num >1
-  |  mov   xmm0, qword [STK+ARG2F*8]
+  |  Check2Num ->ic_failure_handler
+  |  movsd xmm0, qword [STK+ARG2F*8]
   |  maxsd xmm0, qword [STK+ARG2F*8+8]
-  |  mov qword [ACC], xmm0
+  |  movsd qword [ACC], xmm0
   |  ret
-  |1:
-  |  ICallFail ARG1F
 
+  // ------------------------------------
   // sqrt(a)
+  // ------------------------------------
   |=>IC_SQRT:
-  |->ic_sqrt:
-  |  Check1Num >1
+  |  Check1Num ->ic_failure_handler
   |  sqrtsd xmm0, qword [STK+ARG2F*8]
-  |  mov qword[ACC], xmm0
+  |  movsd  qword[ACC], xmm0
   |  ret
-  |1:
-  |  ICallFail ARG1F
 
+
+  // ------------------------------------
   // sin(a)
+  // ------------------------------------
   |=>IC_SIN:
-  |->ic_sin:
-  |  Dec1Num xmm0, >1
-  |  call sin
-  |  mov qword[ACC], xmm0
+  |  Dec1Num xmm0, ->ic_failure_handler
+  |  fcall sin
+  |  movsd qword[ACC], xmm0
   |  ret
-  |1:
-  |  ICallFail ARG1F
 
+  // ------------------------------------
   // cos(a)
+  // ------------------------------------
   |=>IC_COS:
-  |->ic_cos:
-  |  Dec1Num xmm0, >1
-  |  call cos
-  |  mov qword[ACC], xmm0
+  |  Dec1Num xmm0, ->ic_failure_handler
+  |  fcall cos
+  |  movsd qword[ACC], xmm0
   |  ret
-  |1:
-  |  ICallFail ARG1F
 
+  // ------------------------------------
   // tan(a)
+  // ------------------------------------
   |=>IC_TAN:
-  |->ic_tan:
-  |  Dec1Num xmm0, >1
-  |  call tan
-  |  mov qword[ACC], xmm0
+  |  Dec1Num xmm0, ->ic_failure_handler
+  |  fcall tan
+  |  movsd qword[ACC], xmm0
+  |  ret
+
+  // ------------------------------------
+  // abs(a)
+  // ------------------------------------
+  |=>IC_ABS:
+  |  Dec1Num xmm0, ->ic_failure_handler
+  // use rconst_abs ?? to embed it as imm number ??
+  |  movsd   xmm1, qword [->RConstAbsMask]
+  |  andps   xmm0, xmm1
+  |  movsd qword[ACC], xmm0
+  |  ret
+
+  // ------------------------------------
+  // ceil(a)
+  // ------------------------------------
+  |=>IC_CEIL:
+  |  Break
+
+
+  // ------------------------------------
+  // floor(a)
+  // ------------------------------------
+  |=>IC_FLOOR:
+  |  Break
+
+  // ------------------------------------
+  // lshift(a,b)
+  // ------------------------------------
+  |=>IC_LSHIFT:
+  |  Check2Num ->ic_failure_handler
+  |  cvtsd2si T0L, qword [STK+ARG2F*8]
+  |  cvtsd2si ecx, qword [STK+ARG2F*8+8] // ARG3 is not valid now
+  |  shl T0L, cl
+  |  cvtsi2sd xmm0, T0L
+  |  movsd qword [ACC], xmm0
+  |  ret
+
+  // ------------------------------------
+  // rshift(a,b)
+  // ------------------------------------
+  |=>IC_RSHIFT:
+  |  Check2Num ->ic_failure_handler
+  |  cvtsd2si T0L, qword [STK+ARG2F*8]
+  |  cvtsd2si ecx, qword [STK+ARG2F*8+8]
+  |  shr T0L, cl
+  |  cvtsi2sd xmm0, T0L
+  |  movsd qword [ACC], xmm0
+  |  ret
+
+  // ------------------------------------
+  // lro(a,b)
+  // ------------------------------------
+  |=>IC_LRO:
+  |  Check2Num ->ic_failure_handler
+  |  cvtsd2si T0L, qword [STK+ARG2F*8]
+  |  cvtsd2si ecx, qword [STK+ARG2F*8+8]
+  |  rol T0L, cl
+  |  cvtsi2sd xmm0, T0L
+  |  movsd qword [ACC], xmm0
+  |  ret
+
+  // ------------------------------------
+  // rro(a,b)
+  // ------------------------------------
+  |=>IC_RRO:
+  |  Check2Num ->ic_failure_handler
+  |  cvtsd2si T0L, qword [STK+ARG2F*8]
+  |  cvtsd2si ecx, qword [STK+ARG2F*8+8]
+  |  ror T0L,cl
+  |  cvtsi2sd xmm0, T0L
+  |  movsd qword [ACC], xmm0
+  |  ret
+
+  // ------------------------------------
+  // band(a,b)
+  // ------------------------------------
+  |=>IC_BAND:
+  |  Check2Num ->ic_failure_handler
+  |  cvtsd2si T0L , qword [STK+ARG2F*8]
+  |  cvtsd2si ARG2, qword [STK+ARG2F*8+8]
+  |  and T0L, ARG2 
+  |  cvtsi2sd xmm0, T0L
+  |  movsd qword [ACC], xmm0
+  |  ret
+
+  // ------------------------------------
+  // bor(a,b)
+  // ------------------------------------
+  |=>IC_BOR:
+  |  Check2Num ->ic_failure_handler
+  |  cvtsd2si T0L , qword [STK+ARG2F*8]
+  |  cvtsd2si ARG2, qword [STK+ARG2F*8+8]
+  |  or T0L, ARG2
+  |  cvtsi2sd xmm0, T0L
+  |  movsd qword [ACC], xmm0
+  |  ret
+
+  // ------------------------------------
+  // bxor(a,b)
+  // ------------------------------------
+  |=>IC_BXOR:
+  |  Check2Num ->ic_failure_handler
+  |  cvtsd2si T0L , qword [STK+ARG2F*8]
+  |  cvtsd2si ARG2, qword [STK+ARG2F*8+8]
+  |  xor T0L, ARG2
+  |  cvtsi2sd xmm0, T0L
+  |  movsd qword [ACC], xmm0
+  |  ret
+
+  // ------------------------------------
+  // int(a)
+  // ------------------------------------
+  |=>IC_INT:
+  |  Check1Num >1
+  |  cvtsd2si T0L, qword [STK+ARG2F*8]
+  |  cvtsi2sd xmm0, T0L
+  |  movsd qword [ACC], xmm0
   |  ret
   |1:
-  |  ICallFail ARG1F
+  |  cmp dword [STK+ARG2F*8+4], Value::FLAG_TRUE
+  |  jne >2
+  |  rconst_one xmm0
+  |  movsd qword [ACC], xmm0
+  |  ret
+  |2:
+  |  cmp dword [STK+ARG2F*8+4], Value::FLAG_FALSE
+  |  jne >3
+  |  pxor xmm0,xmm0
+  |  movsd qword [ACC], xmm0
+  |  ret
+  |3:
+  |  mov CARG1, CONTEXT 
+  |  lea CARG2, [STK+ARG2F*8]
+  |  lea CARG3, [ACC]
+  |  mov CARG4, qword [RUNTIME+RuntimeLayout::kErrorOffset]
+  |  ic_call BuiltinInt
+  |  test eax,eax
+  |  je ->InterpFail
+  |  ret
 
-  // abs(a)
-  |=>IC_ABS:
-  |->ic_abs:
+  // ------------------------------------
+  // real(a)
+  // ------------------------------------
+  |=>IC_REAL:
+  |  Check1Num >9
+  |  mov T0, qword [STK+ARG2F*8]
+  |  mov qword [ACC], T0
+  |  ret
+  |1:
+  |  cmp dword [STK+ARG2F*8+4], Value::FLAG_TRUE
+  |  jne >2
+  |  rconst_one xmm0
+  |  movsd qword [ACC], xmm0
+  |  ret
+  |2:
+  |  cmp dword [STK+ARG2F*8+4], Value::FLAG_FALSE
+  |  jne >3
+  |  pxor xmm0,xmm0
+  |  movsd qword [ACC], xmm0
+  |  ret
+  |3:
+  |  mov CARG1, CONTEXT 
+  |  lea CARG2, [STK+ARG2F*8]
+  |  lea CARG3, [ACC]
+  |  mov CARG4, qword [RUNTIME+RuntimeLayout::kErrorOffset]
+  |  ic_call BuiltinReal
+  |  test eax,eax
+  |  je ->InterpFail
+  |  ret
 
+  // ------------------------------------
+  // string(a)
+  // ------------------------------------
+  |=>IC_STRING:
+  |  mov CARG1, CONTEXT
+  |  lea CARG2, [STK+ARG2F*8]
+  |  lea CARG3, [ACC]
+  |  mov CARG4, qword [RUNTIME+RuntimeLayout::kErrorOffset]
+  |  ic_call BuiltinString
+  |  test eax,eax
+  |  je ->InterpFail
+  |  ret
+
+  // ------------------------------------
+  // boolean(a)
+  // ------------------------------------
+  |=>IC_BOOLEAN:
+  |  cmp dword[STK+ARG2F*8+4], Value::FLAG_FALSECOND
+  |  jb >1
+  |  mov dword [STK+ACCFIDX],  Value::FLAG_FALSE
+  |  ret
+  |1:
+  |  mov dword [STK+ACCFIDX],  Value::FLAG_TRUE
+  |  ret
+
+  // ------------------------------------
+  // push(a,b)
+  // ------------------------------------
+  |=>IC_PUSH:
+  |  mov CARG1, CONTEXT
+  |  lea CARG2, [STK+ARG2F*8]
+  |  lea CARG3, [STK+ARG2F*8+8]
+  |  lea CARG4, [ACC]
+  |  mov CARG5, qword [RUNTIME+RuntimeLayout::kErrorOffset]
+  |  ic_call BuiltinPush
+  |  test eax,eax
+  |  je ->InterpFail
+  |  ret
+
+  // ------------------------------------
+  // pop(a)
+  // ------------------------------------
+  |=>IC_POP:
+  |  mov CARG1, CONTEXT
+  |  lea CARG2, [STK+ARG2F*8]
+  |  lea CARG3, [ACC]
+  |  mov CARG4, qword [RUNTIME+RuntimeLayout::kErrorOffset]
+  |  ic_call BuiltinPop
+  |  test eax,eax
+  |  je ->InterpFail
+  |  ret
+
+  // ------------------------------------
+  // add(a,b,c)
+  // ------------------------------------
+  |=>IC_SET:
+  |  mov CARG1, CONTEXT
+  |  lea CARG2, [STK+ARG2F*8]
+  |  lea CARG3, [STK+ARG2F*8+8]
+  |  lea CARG4, [STK+ARG2F*8+16]
+  |  lea CARG5, [ACC]
+  |  mov CARG6, qword [RUNTIME+RuntimeLayout::kErrorOffset]
+  |  ic_call BuiltinSet
+  |  test eax,eax
+  |  je ->InterpFail
+  |  ret
+
+
+  // ------------------------------------
+  // has(a,b)
+  // ------------------------------------
+  |=>IC_HAS:
+  |  mov CARG1, CONTEXT
+  |  lea CARG2, [STK+ARG2F*8]
+  |  lea CARG3, [STK+ARG2F*8+8]
+  |  lea CARG4, [ACC]
+  |  mov CARG5, qword [RUNTIME+RuntimeLayout::kErrorOffset]
+  |  ic_call BuiltinHas
+  |  test eax,eax
+  |  je ->InterpFail
+  |  ret
+
+  // ------------------------------------
+  // get(a,b)
+  // ------------------------------------
+  |=>IC_GET:
+  |  mov CARG1, CONTEXT
+  |  lea CARG2, [STK+ARG2F*8]
+  |  lea CARG3, [STK+ARG2F*8+8]
+  |  lea CARG4, [ACC]
+  |  mov CARG5, qword [RUNTIME+RuntimeLayout::kErrorOffset]
+  |  ic_call BuiltinGet
+  |  test eax,eax
+  |  je ->InterpFail
+  |  ret
+
+  // ------------------------------------
+  // update(a,b,c)
+  // ------------------------------------
+  |=>IC_UPDATE:
+  |  mov CARG1, CONTEXT
+  |  lea CARG2, [STK+ARG2F*8]
+  |  lea CARG3, [STK+ARG2F*8+8]
+  |  lea CARG4, [STK+ARG2F*8+16]
+  |  lea CARG5, [ACC]
+  |  mov CARG6, qword [RUNTIME+RuntimeLayout::kErrorOffset]
+  |  ic_call BuiltinUpdate
+  |  test eax,eax
+  |  je ->InterpFail
+  |  ret
+
+  // ------------------------------------
+  // put(a,b,c)
+  // ------------------------------------
+  |=>IC_PUT:
+  |  mov CARG1, CONTEXT
+  |  lea CARG2, [STK+ARG2F*8]
+  |  lea CARG3, [STK+ARG2F*8+8]
+  |  lea CARG4, [STK+ARG2F*8+16]
+  |  lea CARG5, [ACC]
+  |  mov CARG6, qword [RUNTIME+RuntimeLayout::kErrorOffset]
+  |  ic_call BuiltinPut
+  |  test eax,eax
+  |  je ->InterpFail
+  |  ret
+
+  // ------------------------------------
+  // delete(a,b)
+  // ------------------------------------
+  |=>IC_DELETE:
+  |  mov CARG1, CONTEXT
+  |  lea CARG2, [STK+ARG2F*8]
+  |  lea CARG3, [STK+ARG2F*8+8]
+  |  lea CARG4, [ACC]
+  |  mov CARG5, qword [RUNTIME+RuntimeLayout::kErrorOffset]
+  |  ic_call BuiltinDelete
+  |  test eax,eax
+  |  je ->InterpFail
+  |  ret
+
+  // ------------------------------------
+  // clear(a)
+  // ------------------------------------
+  |=>IC_CLEAR:
+  |  mov CARG1, CONTEXT
+  |  lea CARG2, [STK+ARG2F*8]
+  |  lea CARG3, [ACC]
+  |  mov CARG4, qword [RUNTIME+RuntimeLayout::kErrorOffset]
+  |  ic_call BuiltinClear
+  |  test eax,eax
+  |  je ->InterpFail
+  |  ret
+
+
+  // ------------------------------------
+  // type(a)
+  // ------------------------------------
+  |=>IC_TYPE:
+  |  mov CARG1, CONTEXT
+  |  lea CARG2, [STK+ARG2F*8]
+  |  lea CARG3, [ACC]
+  |  mov CARG4, qword [RUNTIME+RuntimeLayout::kErrorOffset]
+  |  ic_call BuiltinType
+  |  test eax,eax
+  |  je ->InterpFail
+  |  Break
+
+
+  // ------------------------------------
+  // len(a)
+  // ------------------------------------
+  |=>IC_LEN:
+  |->ic_len:
+  |  cmp word [STK+ARG2F*8+6], Value::FLAG_HEAP
+  |  jne ->ic_failure_handler
+
+  |  mov T0, qword [STK+ARG2F*8]
+  |  and T0, qword [->ValueHeapMaskLoad]
+  |  mov T0, qword [T0]
+  |  CheckHeapPtrT T0, LIST_BIT_PATTERN , >2
+
+  // list
+  |  mov T0L, dword [T0+ListLayout::kSizeOffset]
+  |  cvtsi2sd   xmm0 , T0L
+  |  movsd qword  [ACC], xmm0
+  |  ret
+
+  // object
+  |2:
+  |  CheckHeapPtrT T0, OBJECT_BIT_PATTERN , >3
+  |  mov T0, qword [T0+ObjectLayout::kMapOffset]
+  |  mov T0, qword [T0]
+  |  mov T0L,dword [T0+MapLayout::kSizeOffset]
+  |  cvtsi2sd  xmm0 , T0L
+  |  movsd qword [ACC], xmm0
+  |  ret
+
+  // sso
+  |3:
+  |  CheckHeapPtrT T0, SSO_BIT_PATTERN, >4
+  |  mov T0, qword [T0] // SSO*
+  |  mov T0L, dword [T0+SSOLayout::kSizeOffset]
+  |  cvtsi2sd  xmm0 , T0L
+  |  movsd qword [ACC], xmm0
+  |  ret
+
+  // string
+  |4:
+  |  CheckHeapPtrT T0, LSTR_BIT_PATTERN, >5
+  |  mov T0L, dword [T0+LongStringLayout::kSizeOffset]
+  |  cvtsi2sd  xmm0 , T0L
+  |  movsd qword [ACC], xmm0
+  |  ret
+
+  // fallback
+  |5:
+  |  mov CARG1, CONTEXT
+  |  lea CARG2, [STK+ARG2F*8]
+  |  lea CARG3, [ACC]
+  |  mov CARG4, qword [RUNTIME+RuntimeLayout::kErrorOffset]
+  |  ic_call BuiltinLen
+  |  test eax,eax
+  |  je ->InterpFail
+  |  ret
+
+  // -------------------------------------
+  // empty(a)
+  // -------------------------------------
+  |=>IC_EMPTY:
+  |  cmp word [STK+ARG2F*8+6], Value::FLAG_HEAP
+  |  jne ->ic_failure_handler
+
+  |  mov T0, qword [STK+ARG2F*8]
+  |  and T0, qword [->ValueHeapMaskLoad]
+  |  mov T0, qword [T0]
+  |  CheckHeapPtrT T0, LIST_BIT_PATTERN , >2
+
+  // list
+  |  mov T0L, dword [T0+ListLayout::kSizeOffset]
+  |  cvtsi2sd   xmm0 , T0L
+  |  jmp >6
+
+  // object
+  |2:
+  |  CheckHeapPtrT T0, OBJECT_BIT_PATTERN , >3
+  |  mov T0, qword [T0+ObjectLayout::kMapOffset]
+  |  mov T0, qword [T0]
+  |  mov T0L,dword [T0+MapLayout::kSizeOffset]
+  |  cvtsi2sd  xmm0 , T0L
+  |  jmp >6
+
+  // sso
+  |3:
+  |  CheckHeapPtrT T0, SSO_BIT_PATTERN, >4
+  |  mov T0 , qword [T0] // SSO*
+  |  mov T0L, dword [T0+SSOLayout::kSizeOffset]
+  |  cvtsi2sd  xmm0 , T0L
+  |  jmp >6
+
+  // string
+  |4:
+  |  CheckHeapPtrT T0, LSTR_BIT_PATTERN, >5
+  |  mov T0L, dword [T0+LongStringLayout::kSizeOffset]
+  |  cvtsi2sd  xmm0 , T0L
+  |  jmp >6
+
+  // fallback
+  |5:
+  |  mov CARG1, CONTEXT
+  |  lea CARG2, [STK+ARG2F*8]
+  |  lea CARG3, [ACC]
+  |  mov CARG4, qword [RUNTIME+RuntimeLayout::kErrorOffset]
+  |  ic_call BuiltinLen
+  |  test eax,eax
+  |  je ->InterpFail
+  |  ret
+
+  // the length is in xmm0
+  |6:
+  |  xorpd   xmm1,xmm1
+  |  ucomisd xmm0,xmm1
+  |  jne >7
+  |  mov qword [STK+ACCFIDX], Value::FLAG_TRUE
+  |  ret
+  // false branch
+  |7:
+  |  mov qword [STK+ACCFIDX], Value::FLAG_FALSE
+  |  ret
+
+  // -------------------------------------
+  // iter(a)
+  // -------------------------------------
+  |=>IC_ITER:
+  |  mov CARG1, CONTEXT
+  |  lea CARG2, [STK+ARG2F*8]
+  |  lea CARG3, [ACC]
+  |  mov CARG4, qword [RUNTIME+RuntimeLayout::kErrorOffset]
+  |  ic_call BuiltinIter
+  |  test eax,eax
+  |  je ->InterpFail
+  |  ret
+
+  // ------------------------------------
+  // Error handler
+  // ------------------------------------
+  |->ic_failure_handler:
+  |  mov CARG1, RUNTIME
+  |  mov CARG2, ARG1F
+  |  ic_call InterpreterICFail
+  |  jmp ->InterpFail
 }
 
 /* -----------------------------------------------------------
@@ -1967,8 +2430,8 @@ void GenerateHelper( BuildContext* bctx ) {
   |->InterpIdxOutOfBoundSet:
   |  savepc
   |  mov CARG1, RUNTIME
-  |  lea CARG2, [STK+ARG2F*8]
-  |  mov CARG3L, ARG3
+  |  lea CARG2, [STK+ARG1F*8]
+  |  mov CARG3L, ARG2
   |  fcall InterpreterIdxOutOfBound
   |  jmp ->InterpFail
 
@@ -1976,8 +2439,8 @@ void GenerateHelper( BuildContext* bctx ) {
   |->InterpIdxOutOfBoundGet:
   |  savepc
   |  mov CARG1, RUNTIME
-  |  lea CARG2, [STK+ARG1F*8]
-  |  mov CARG3L, ARG2
+  |  lea CARG2, [STK+ARG2F*8]
+  |  mov CARG3L, ARG3
   |  fcall InterpreterIdxOutOfBound
   |  jmp ->InterpFail
 
@@ -2055,50 +2518,6 @@ void GenerateHelper( BuildContext* bctx ) {
   |  test eax,eax
   |  cmovne DISPATCH, rax  // the table has been patched, use new dispatch table
   |  Dispatch
-
-  // ------------------------------------------------------
-  // SSO Hash Lookup Fast Path
-  // ------------------------------------------------------
-
-  // This small assembly routine is used to do a key/value lookup inside
-  // of a Object/Map. This function is roughly the same as doing an normal
-  // open addressing chain resolution when key is SSO inside of Map object.
-
-  // assume objreg is type Map* , pointer to a *Map*
-  // assume ssoref is type SSO* , pointer to a *SSO*
-  // returned slot/entry is in RREG
-  |.macro objfind_sso,objreg,ssoreg,not_found,found
-  |  mov RREGL, dword [ssoreg+SSOLayout::kHashOffset]     // get the sso hash value
-  |  and RREGL, dword [objreg+MapLayout::kMaskOffset]     // do the masking
-
-  // Assuming Entry inside of Map is 24 bytes , 3 machine word
-  |  lea LREG , [objreg+MapLayout::kArrayOffset]          // Store the Entry's start address
-  |  lea RREG , [RREG+RREG*2]                             // RREG * 3
-  |  lea RREG , [LREG+RREG*8]                             // RREG = [start_of_address+LREG*24]
-
-  // check if entry is *deleted* or *used*
-  |2:
-  |  mov  T1L, dword [RREG+MapEntryLayout::kFlagOffset]
-  | // start the chain resolution loop
-  |  test T1L, (Map::Entry::kUseButNotDelBit)
-  |  jz not_found  // not found
-
-  |  mov T0, qword [RREG+MapEntryLayout::kKeyOffset]     // Get the key
-  |  CheckSSO T0, >3
-
-  |  cmp ssoreg, T0
-  |  jne >3
-  // we find our key here , RREG points to the entry
-  |  found
-  |3: // next iteration
-  |  test T1L, (Map::Entry::kMoreBit)
-  |  jz not_found // not found
-  |  and T1L , (bits::BitOn<std::uint32_t,0,29>::value)
-  |  lea T0  , [T1+T1*2]
-  |  lea RREG, [LREG+T0*8]
-  |  jmp <2
-  |.endmacro
-
 }
 
 void GenBytecode( BuildContext* bctx, Bytecode bc ) {
@@ -2892,12 +3311,8 @@ void GenBytecode( BuildContext* bctx, Bytecode bc ) {
       |=> bc:
       |  instr_E
       |  mov ARG3, Value::FLAG_FALSE
-      // check if the value is a heap object
-      |  cmp word [STK+ARG2F*8+6], Value::FLAG_HEAP
-      |  je >1
       |  cmp dword [STK+ARG2F*8+4], Value::FLAG_FALSECOND
-      |  cmova ARG3, dword [->FlagTrueConst]
-      |1:
+      |  cmovnb ARG3, dword [->FlagTrueConst]
       |  mov dword [STK+ARG1F*8+4], ARG3
       |  Dispatch
       break;
@@ -2915,10 +3330,8 @@ void GenBytecode( BuildContext* bctx, Bytecode bc ) {
     case BC_JMPT:
       |=>bc:
       |  instr_B
-      |  cmp word  [STK+ARG1F*8+6], Value::FLAG_HEAP
-      |  je >2
       |  cmp dword [STK+ARG1F*8+4], Value::FLAG_FALSECOND
-      |  ja >1
+      |  jnb >1
       |2:
       |  branch_to ARG2F,ARG3F
       |1:  // fallthrough
@@ -2928,10 +3341,8 @@ void GenBytecode( BuildContext* bctx, Bytecode bc ) {
     case BC_JMPF:
       |=>bc:
       |  instr_B
-      |  cmp word  [STK+ARG1F*8+6], Value::FLAG_HEAP
-      |  je >2
       |  cmp dword [STK+ARG1F*8+4], Value::FLAG_FALSECOND
-      |  jbe >2
+      |  jb >2
       |  branch_to ARG2F,ARG3F
       |2: // fallthrough
       |  Dispatch
@@ -2940,10 +3351,8 @@ void GenBytecode( BuildContext* bctx, Bytecode bc ) {
     case BC_TERN:
       |=>bc:
       |  instr_E
-      |  cmp word  [STK+ARG1F*8+6], Value::FLAG_HEAP
-      |  je >2
       |  cmp dword [STK+ARG1F*8+4], Value::FLAG_FALSECOND
-      |  jbe >2
+      |  jb >2
       |  mov ARG2, dword [PC]
       |  branch_to ARG2F,ARG3F
       |1: // fallthrough
@@ -2956,10 +3365,8 @@ void GenBytecode( BuildContext* bctx, Bytecode bc ) {
     case BC_AND:
       |=>bc:
       |  instr_E
-      |  cmp word  [STK+ARG1F*8+6], Value::FLAG_HEAP
-      |  je >1
       |  cmp dword [STK+ARG1F*8+4], Value::FLAG_FALSECOND
-      |  jbe >1
+      |  jb >1
 
       // move the value from ARG1F --> ARG2F
       |  mov ARG3F , qword [STK+ARG1F*8]
@@ -2977,10 +3384,8 @@ void GenBytecode( BuildContext* bctx, Bytecode bc ) {
     case BC_OR:
       |=>bc:
       |  instr_E
-      |  cmp word  [STK+ARG1F*8+6], Value::FLAG_HEAP
-      |  je >2
       |  cmp dword [STK+ARG1F*8+4], Value::FLAG_FALSECOND
-      |  ja >1
+      |  jnb >1
       |2:
       |  mov ARG3F, qword [STK+ARG1F*8]
       |  mov qword [STK+ARG2F*8], ARG3F
@@ -3009,6 +3414,49 @@ void GenBytecode( BuildContext* bctx, Bytecode bc ) {
     // Property/Index
     // ---------------------------------------------------------*/
 
+
+    // ------------------------------------------------------
+    // SSO Hash Lookup Fast Path
+    // ------------------------------------------------------
+
+    // This small assembly routine is used to do a key/value lookup inside
+    // of a Object/Map. This function is roughly the same as doing an normal
+    // open addressing chain resolution when key is SSO inside of Map object.
+
+    // assume objreg is type Map* , pointer to a *Map*
+    // assume ssoref is type SSO* , pointer to a *SSO*
+    // returned slot/entry is in RREG
+    |.macro objfind_sso,objreg,ssoreg,not_found,found
+    |  mov RREGL, dword [ssoreg+SSOLayout::kHashOffset]     // get the sso hash value
+    |  and RREGL, dword [objreg+MapLayout::kMaskOffset]     // do the masking
+
+    // Assuming Entry inside of Map is 24 bytes , 3 machine word
+    |  lea LREG , [objreg+MapLayout::kArrayOffset]          // Store the Entry's start address
+    |  lea RREG , [RREG+RREG*2]                             // RREG * 3
+    |  lea RREG , [LREG+RREG*8]                             // RREG = [start_of_address+LREG*24]
+
+    // check if entry is *deleted* or *used*
+    |2:
+    |  mov  T1L, dword [RREG+MapEntryLayout::kFlagOffset]
+    | // start the chain resolution loop
+    |  test T1L, (Map::Entry::kUseButNotDelBit)
+    |  jz not_found  // not found
+
+    |  mov T0, qword [RREG+MapEntryLayout::kKeyOffset]     // Get the key
+    |  CheckSSO T0, >3
+
+    |  cmp ssoreg, T0
+    |  jne >3
+    // we find our key here , RREG points to the entry
+    |  found
+    |3: // next iteration
+    |  test T1L, (Map::Entry::kMoreBit)
+    |  jz not_found // not found
+    |  and T1L , (bits::BitOn<std::uint32_t,0,29>::value)
+    |  lea T0  , [T1+T1*2]
+    |  lea RREG, [LREG+T0*8]
+    |  jmp <2
+    |.endmacro
 
     case BC_PROPGETSSO:
       |.macro getsso_found
@@ -3489,7 +3937,7 @@ void GenBytecode( BuildContext* bctx, Bytecode bc ) {
       //    stack since a function call *may* run out of the stack
       //    space
       |  lea T0, [STK+ARG2F*8]
-      |  cmp T0, qword [RUNTIME+RuntimeLayout::kStackEndOffset]
+      |  cmp T0, qword [RUNTIME+RuntimeLayout::kStackTestOffset]
       |  jae >9  // Resize stack
 
       // 2. Check object type
@@ -3586,7 +4034,6 @@ void GenBytecode( BuildContext* bctx, Bytecode bc ) {
       |  mov byte [STK-1], 1 // mark it as a tcall frame
       |.endmacro
 
-
     case BC_CALL:
       |=>bc:
       |  do_call call_flag,InterpCall
@@ -3597,8 +4044,16 @@ void GenBytecode( BuildContext* bctx, Bytecode bc ) {
       |  do_call tcall_flag,InterpTCall
       break;
 
-    |.macro do_ret
+    case BC_ICALL:
+    case BC_TICALL:
+      |=>bc:
+      |  instr_D
+      |  mov T0, qword [RUNTIME+RuntimeLayout::kICEntryOffset]
+      |  call aword [T0+ARG1F*8]
+      |  Dispatch
+      break;
 
+    |.macro do_ret
     |2:
     |  movzx ARG2F, word [STK-10]
     |  cmp ARG2F,IFRAME_EOF
@@ -3831,6 +4286,12 @@ void GenBytecodeProfile( BuildContext* bctx , Bytecode bc ) {
     case BC_TCALL:
       |  jmp extern tcall
       break;
+    case BC_ICALL:
+      |  jmp extern icall
+      break;
+    case BC_TICALL:
+      |  jmp extern ticall
+      break;
     /* loop */
     case BC_FEND1:
       |  jmp extern fend1
@@ -3914,7 +4375,6 @@ AssemblyInterpreterStub::AssemblyInterpreterStub():
   dispatch_profile_     (),
   dispatch_jit_         (),
   ic_entry_             (),
-  ic_abi_entry_         (),
   interp_helper_        (),
   interp_entry_         (),
   interp_code_buffer_   (),
@@ -3926,7 +4386,7 @@ bool AssemblyInterpreterStub::GenerateDispatchInterp() {
   BuildContext bctx;
 
   // initialize dasm_State object
-  dasm_init(&(bctx.dasm_ctx),2);
+  dasm_init(&(bctx.dasm_ctx),4);
 
   // setup the freaking global
   void* glb_arr[GLBNAME__MAX];
@@ -3937,14 +4397,18 @@ bool AssemblyInterpreterStub::GenerateDispatchInterp() {
 
   // initialize the tag value needed , at least for each BC we need one
   bctx.tag = DASM_GROWABLE_PC_SIZE;
-  dasm_growpc(&(bctx.dasm_ctx), DASM_GROWABLE_PC_SIZE );
+  dasm_growpc(&(bctx.dasm_ctx), DASM_GROWABLE_PC_SIZE);
 
   // ----------------------------------------------------------
-  // Order matters, it may change profile of our icache
+  // Order matters !
   // ----------------------------------------------------------
 
-  // build the helper
+  // build the helper, this includes several interpreter exit routine
+  // used by intrinsic call routine generation
   GenerateHelper(&bctx);
+
+  // build the intrinsic call
+  GenerateIntrinsicCall(&bctx);
 
   // build the prolog
   GenerateInterpMisc(&bctx);
@@ -3976,10 +4440,18 @@ bool AssemblyInterpreterStub::GenerateDispatchInterp() {
   }
 
   // get all pc labels for helper routines
-  for( int i = INTERP_HELPER_START ; i < DASM_GROWABLE_PC_SIZE ; ++i ) {
+  for( int i = INTERP_HELPER_START ; i < INTERP_HELPER_END ; ++i ) {
     int off = dasm_getpclabel(&(bctx.dasm_ctx),i);
     interp_helper_.push_back(
         reinterpret_cast<void*>(static_cast<char*>(buffer)+off));
+  }
+
+  // get all pc labels for entry of builtin intrinsic function
+  for( int i = INTERP_IC_START , count = 0 ; i < INTERP_IC_END ; ++i , ++count ) {
+    lava_debug(NORMAL,lava_verify(count < SIZE_OF_INTRINSIC_CALL););
+    int off = dasm_getpclabel(&(bctx.dasm_ctx),i);
+    ic_entry_[count] =
+      reinterpret_cast<void*>(static_cast<char*>(buffer)+off);
   }
 
   // get the *interpreter's* entry
@@ -4001,7 +4473,7 @@ bool AssemblyInterpreterStub::GenerateDispatchProfile() {
 
   // 2. build context to generate bytecode handler
   BuildContext bctx;
-  dasm_init(&(bctx.dasm_ctx),2);
+  dasm_init(&(bctx.dasm_ctx),4);
   void* glb_arr[GLBNAME__MAX];
   dasm_setupglobal(&(bctx.dasm_ctx),glb_arr,GLBNAME__MAX);
   dasm_setup(&(bctx.dasm_ctx),actions);
@@ -4071,6 +4543,14 @@ int AssemblyInterpreterStub::CheckHelperRoutine( void* pc ) const {
   }
 }
 
+IntrinsicCall AssemblyInterpreterStub::CheckIntrinsicCall( void* pc ) const {
+  auto itr = std::find(std::begin(ic_entry_),std::end(ic_entry_),pc);
+  if(itr != std::end(ic_entry_)) {
+    return static_cast<IntrinsicCall>(std::distance(std::begin(ic_entry_),itr));
+  }
+  return SIZE_OF_INTRINSIC_CALL;
+}
+
 void AssemblyInterpreterStub::CodeBuffer::FreeIfNeeded() {
   if(entry) {
     OS::FreeCodePage(entry,buffer_size);
@@ -4106,6 +4586,11 @@ void AssemblyInterpreterStub::Dump( DumpWriter* writer ) const {
         int idx = CheckHelperRoutine(reinterpret_cast<void*>(pc));
         if(idx >= 0) {
           writer->WriteL("Helper ===========> %s:",GetInterpHelperName(idx));
+        } else {
+          auto ic = CheckIntrinsicCall(reinterpret_cast<void*>(pc));
+          if(ic != SIZE_OF_INTRINSIC_CALL) {
+            writer->WriteL("IntrinsicCall ==========> %s:",GetIntrinsicCallName(ic));
+          }
         }
       }
     }
@@ -4120,19 +4605,17 @@ AssemblyInterpreter::AssemblyInterpreter():
   dispatch_interp_ (),
   dispatch_profile_(),
   dispatch_jit_    (),
-  interp_entry_    (),
   ic_entry_        (NULL),
-  ic_abi_entry_    (NULL)
+  interp_entry_    ()
 {
   std::shared_ptr<AssemblyInterpreterStub> stub(AssemblyInterpreterStub::GetInstance());
   lava_debug(NORMAL,lava_verify(stub););
 
-  memcpy(dispatch_interp_,stub->dispatch_interp_,sizeof(dispatch_interp_));
+  memcpy(dispatch_interp_,stub->dispatch_interp_  ,sizeof(dispatch_interp_));
   memcpy(dispatch_profile_,stub->dispatch_profile_,sizeof(dispatch_profile_));
-  memcpy(dispatch_jit_   ,stub->dispatch_jit_   ,sizeof(dispatch_jit_   ));
+  memcpy(dispatch_jit_   ,stub->dispatch_jit_     ,sizeof(dispatch_jit_   ));
 
   ic_entry_ = stub->ic_entry_;
-  ic_abi_entry_ = stub->ic_abi_entry_;
   interp_entry_ = stub->interp_entry_;
 }
 
@@ -4140,28 +4623,35 @@ bool AssemblyInterpreter::Run( Context* context , const Handle<Script>& script ,
                                                   const Handle<Object>& globals,
                                                   Value* rval ,
                                                   std::string* error ) {
-
-  // Get the runtime object pointer
-  Runtime* rt = context->gc()->GetInterpreterRuntime(script.ref(), globals.ref(), this , error);
-
   // Main function
   Handle<Prototype> main_proto(script->main());
 
   // Main function's closure
   Handle<Closure> cls(Closure::New(context->gc(),main_proto));
 
+  // Create a runtime object on stack , and this *interface* should be the very
+  // first interpreter entry
+  Runtime runtime(context,script,cls,globals,this,error);
+
+  // Set the missing pieces correctly
+  runtime.cur_stk = context->gc()->interp_stack_start();
+  runtime.cur_pc  = main_proto->code_buffer();
+  runtime.ic_entry= ic_entry_;
+
   // Entry of our assembly interpreter
   Main m = reinterpret_cast<Main>(interp_entry_);
 
   // Interpret the bytecode
-  bool ret = m(rt, cls.ref(), (main_proto.ref()),
-                              reinterpret_cast<void*>(rt->stack_begin),
-                              const_cast<void*>(reinterpret_cast<const void*>(main_proto->code_buffer())),
-                              dispatch_interp_);
+  bool ret = m(&runtime, cls.ref(),
+                         (main_proto.ref()),
+                         reinterpret_cast<void*>(context->gc()->interp_stack_start()),
+                         const_cast<void*>(
+                           reinterpret_cast<const void*>(main_proto->code_buffer())
+                         ),
+                         dispatch_interp_);
   // Check return
-  if(ret) *rval = rt->ret;
+  if(ret) *rval = runtime.ret;
 
-  context->gc()->ReturnInterpreterRuntime(rt);
   return ret;
 }
 

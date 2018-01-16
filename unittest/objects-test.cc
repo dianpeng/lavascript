@@ -599,6 +599,14 @@ TEST(Object,Object) {
       ASSERT_EQ(v.GetReal(),e.value.GetReal());
     }
   }
+
+  {
+    Handle<Object> object(Object::New(&gc,1));
+    object->Set(&gc,String::New(&gc,"a"),Value(1));
+    Value val;
+    ASSERT_TRUE(object->Get(String::New(&gc,"a"),&val));
+    ASSERT_TRUE(val.GetReal() == 1);
+  }
 }
 
 } // namespace lavascript

@@ -207,7 +207,6 @@ bool PrimitiveComp( const char* source , const Value& primitive , int op ) {
 namespace lavascript {
 namespace interpreter {
 
-
 TEST(Interpreter,Load) {
   PRIMITIVE_EQ(0,return 0;);
   PRIMITIVE_EQ(-1,return -1;);
@@ -763,6 +762,46 @@ TEST(Interpreter,ExtCall) {
       return print("Hello World"););
 }
 
+TEST(Interpreter,IntrinsicCall) {
+  PRIMITIVE_EQ(2,var a = 2; var b = min(a,3); return b;);
+  PRIMITIVE_EQ(3,var a = 2; var b = max(a,3); return b;);
+  PRIMITIVE_EQ(2,var a = 4; var b = sqrt(a);  return b;);
+  PRIMITIVE_EQ(std::sin(90),var a = 90; var b = sin(a); return b;);
+  PRIMITIVE_EQ(std::cos(90),var a = 90; var b = cos(a); return b;);
+  PRIMITIVE_EQ(std::tan(90),var a = 90; var b = tan(a); return b;);
+  PRIMITIVE_EQ(std::abs(-82.344),var a = -82.344; var b = abs(a); return b;);
+  PRIMITIVE_EQ(std::abs(82.344),var a = 82.344; var b = abs(a); return b;);
+
+  PRIMITIVE_EQ(static_cast<double>(4<<1),var a = 4; var b = lshift(a,1); return b;);
+  PRIMITIVE_EQ(static_cast<double>(4>>1),var a = 4; var b = rshift(a,1); return b;);
+  PRIMITIVE_EQ(static_cast<double>(4 & 3),var a = 4; var b = band(a,3);  return b;);
+  PRIMITIVE_EQ(static_cast<double>(4 | 3),var a = 4; var b = bor (a,3);  return b;);
+  PRIMITIVE_EQ(static_cast<double>(4 ^ 3),var a = 4; var b = bxor(a,3); return b; );
+  PRIMITIVE_EQ(1,var a = 1.1; var b = int(a); return b;);
+  PRIMITIVE_EQ(1,var a = "1"; var b = int(a); return b;);
+  PRIMITIVE_EQ(true,var a =0; var b = boolean(a); return b;);
+  PRIMITIVE_EQ(false,var a = null; var b = boolean(a); return b;);
+  PRIMITIVE_EQ(1,var a = []; push(a,1); return a[0];);
+  PRIMITIVE_EQ(0,var a = [1]; pop(a);   return len(a););
+  PRIMITIVE_EQ(1,var a = {}; set(a,"a",1); return a.a;);
+  PRIMITIVE_EQ(true,var a = {}; set(a,"b",1); var b = has(a,"b"); return b;);
+  PRIMITIVE_EQ(2,var a = { "a" : 1 }; update(a,"a",2); return a.a;);
+  PRIMITIVE_EQ(3,var a = { "a" : 2 }; put(a,"a",3); return a.a;);
+  PRIMITIVE_EQ(1,var a = { "bbbb": 1}; var b = get(a,"bbbb"); return b;);
+  PRIMITIVE_EQ(false,var a = { "a" : 1}; delete(a,"a"); var b = has(a,"a"); return b;);
+  PRIMITIVE_EQ(true,var a = [1,2,3,4,5]; var b = clear(a); return b;);
+  PRIMITIVE_EQ(true,var a = {"a":1,"b":2}; var b = clear(a); return b;);
+  PRIMITIVE_EQ(2,var a = [1,2]; var b = len(a); return b;);
+  PRIMITIVE_EQ(2,var a = {"a":1,"b":2}; var b = len(a); return b;);
+  PRIMITIVE_EQ(2,var a = "ab"; var b = len(a); return b;);
+  PRIMITIVE_EQ(true,var a = []; var b = empty(a); return b;);
+  PRIMITIVE_EQ(true,var a = {}; var b = empty(a); return b;);
+  PRIMITIVE_EQ(true,var a = ""; var b = empty(a); return b;);
+
+  PRIMITIVE_EQ(false,var a = [ 1 ]; var b = empty(a); return b;);
+  PRIMITIVE_EQ(false,var a = {"a":1}; var b = empty(a); return b;);
+  PRIMITIVE_EQ(false,var a = "a"; var b = empty(a); return b;);
+}
 
 } // namespace lavascript
 } // namespace interpreter

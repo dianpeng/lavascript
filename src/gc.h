@@ -685,28 +685,22 @@ class GC : AllStatic {
   bool TryGC();
 
  public:
-  // For interpreter's stack/frame management
-
-
-  // Get a interpreter runtime with its initial stack memory set up for
-  // interpreter. Each GC only supports one runtime at a time, so each
-  // context must only have one on going interpreter
-  interpreter::Runtime* GetInterpreterRuntime( Script** script_object,
-                                               Object** global_object,
-                                               interpreter::Interpreter* interp,
-                                               std::string* error );
-
-  // Free/Return the interpreter runtmie back to the GC. This just
-  // reset related field inside of the runtime which make GC mark
-  // algorithm works correct
-  void ReturnInterpreterRuntime( interpreter::Runtime* runtime );
-
   // Grow the interpreter stack size into the next possible stack size
   // which should not exceeds the maximum size, if so function returns
   // false. This function will *modify* the *cur_stk* field as well and
   // the intepreter should make change to corresponding register to reflect
   // the cur_stk field changes.
-  bool GrowInterpreterStack( interpreter::Runtime* runtime );
+  bool GrowInterpreterStack    ( interpreter::Runtime* runtime );
+
+  // Get the current interpreter stack size . NOTES: this is not a size of
+  // byte but size of Value object
+  std::size_t interpreter_stack_size() const {
+    return interp_stack_end_ - interp_stack_start_;
+  }
+
+  Value* interp_stack_start() const { return interp_stack_start_; }
+  Value* interp_stack_end  () const { return interp_stack_end_  ; }
+  Value* interp_stack_test () const { return interp_stack_end_ + interpreter::kRegisterSize; }
 
  private: // GC related code
 
@@ -739,11 +733,14 @@ class GC : AllStatic {
   std::size_t previous_alive_size_;                   // Previous marks active size
   std::size_t previous_dead_size_ ;                   // Previous dead size
   double factor_;                                     // Tunable factor
+
   gc::Heap heap_;                                     // Current active heap
   gc::GCRefPool ref_pool_;                            // Ref pool
   gc::SSOPool sso_pool_;                              // SSO pool
 
-  interpreter::Runtime interp_runtime_;               // Interpreter runtime
+  Value* interp_stack_start_;                         // Interpreter stack start
+  Value* interp_stack_end_  ;                         // Interpreter stack end
+
   Context* context_;                                  // Context object
   HeapAllocator* allocator_;                          // Allocator
 };
@@ -794,11 +791,17 @@ inline GC::GC( Context* context , HeapAllocator* allocator ):
                          LAVA_OPTION(GC,sso_init_capacity),
                          LAVA_OPTION(GC,sso_capacity),
                          allocator),
-  interp_runtime_       (context,NULL,0,LAVA_OPTION(Interpreter,max_stack_size),
-                                        LAVA_OPTION(Interpreter,max_call_size)),
+  interp_stack_start_   (NULL),
+  interp_stack_end_     (NULL),
   context_              (context),
   allocator_            (allocator)
-{}
+{
+  // initialize the interpreter stack pointer at very first
+  auto sz = LAVA_OPTION(Interpreter,init_stack_size);
+  void* data = Realloc( allocator_ , interp_stack_start_ , sz * sizeof(Value) );
+  interp_stack_start_ = reinterpret_cast<Value*>(data);
+  interp_stack_end_   = reinterpret_cast<Value*>(data) + sz;
+}
 
 } // namespace lavascript
 #endif // GC_H_

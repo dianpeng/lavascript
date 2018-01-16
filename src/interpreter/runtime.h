@@ -21,12 +21,15 @@ class Interpreter;
 // place since we could just easily and efficiently pass this object's pointer around and
 // mess with it.
 struct Runtime {
+  // pointer points to the previous runtime object on the stack
+  Runtime*             previous;
+
   // ---------------------------------------------------------
   // current interpreted frame information
   // ---------------------------------------------------------
   Closure**            cur_cls;          // current closure, if not called by closure , then it is NULL
   Value*               cur_stk;          // current frame's start of stack
-  const std::uint32_t* cur_pc;           // current frame's start of PC
+  const std::uint32_t* cur_pc ;          // current frame's start of PC
 
   Prototype* cur_proto() const { return (*cur_cls)->prototype().ptr(); }
   Handle<Prototype> cur_proto_handle() const { return (*cur_cls)->prototype(); }
@@ -42,14 +45,17 @@ struct Runtime {
   // ---------------------------------------------------------
   Script** script;
   Object** global;
-  Context* context;
   Value ret;
   std::string* error;
   Interpreter* interp;      // Which interpreter is used to interpreting it
+  Context* const context;   // Immutable , binded while initialized
+  void** ic_entry;          // Hold intrinsic call entry point, used only by assembly interpreter
 
-  Value* stack_begin;       // Start of the stack
-  Value* stack_end  ;       // End of the stack
-  std::uint32_t stack_size() const { return stack_begin ? stack_end - stack_begin : 0; }
+  // ---------------------------------------------------------
+  // interpretation information
+  // ---------------------------------------------------------
+  Value* stack_test ;       // If stack pointer is larger than this value, then it means
+                            // we don't have 256 register slots , needs to grow
   std::uint32_t call_size ; // how many function call is on going
 
   // ---------------------------------------------------------
@@ -83,49 +89,26 @@ struct Runtime {
   //
   // The hash is ((PC >> 2) & 0xff) , basically after shifting by 2 and then the least
   // significant 8 bits since the kHotCountArraySize is 256 and must be 256.
-  compiler::hotcount_t loop_hot_count[ compiler::kHotCountArraySize ];
-  compiler::hotcount_t call_hot_count[ compiler::kHotCountArraySize ];
+  compiler::hotcount_t* loop_hot_count;
+  compiler::hotcount_t* call_hot_count;
 
 
   // Whether we enable JIT compilation or not. This is useful for debugging purpose
   bool jit_enable;
 
  public:
-  inline Runtime( Context* context , Value* init_stack ,
-                                     std::uint32_t init_stack_size,
-                                     std::uint32_t max_stack_size ,
-                                     std::uint32_t max_call_size );
+  Runtime( Context* , const Handle<Script>& , const Handle<Closure>& closure ,
+                                              const Handle<Object>&  globals ,
+                                              Interpreter*           interp  ,
+                                              std::string*           error   );
+
+  Runtime( Context* , const Handle<Closure>& closure );
+
+
+  ~Runtime();
 };
 
 static_assert( std::is_standard_layout<Runtime>::value );
-
-inline Runtime::Runtime( Context* context , Value* init_stack ,
-                                            std::uint32_t init_stack_size ,
-                                            std::uint32_t max_stack_size  ,
-                                            std::uint32_t max_call_size ):
-  cur_cls  (NULL),
-  cur_stk  (NULL),
-  cur_pc   (NULL),
-
-  script   (NULL),
-  global   (NULL),
-  context  (NULL),
-  ret      (),
-  error    (NULL),
-  interp   (NULL),
-
-  stack_begin(init_stack),
-  stack_end  (init_stack + init_stack_size),
-  call_size(0),
-
-  max_stack_size(max_stack_size),
-  max_call_size (max_call_size),
-
-  cjob          (NULL),
-  loop_hot_count(),
-  call_hot_count(),
-  jit_enable    (true)
-{}
 
 struct RuntimeLayout {
   static const std::uint32_t kCurClsOffset   = offsetof(Runtime,cur_cls);
@@ -134,13 +117,13 @@ struct RuntimeLayout {
 
   static const std::uint32_t kScriptOffset   = offsetof(Runtime,script);
   static const std::uint32_t kGlobalOffset   = offsetof(Runtime,global);
-  static const std::uint32_t kContextOffset  = offsetof(Runtime,context);
   static const std::uint32_t kRetOffset      = offsetof(Runtime,ret);
   static const std::uint32_t kErrorOffset    = offsetof(Runtime,error);
   static const std::uint32_t kInterpOffset   = offsetof(Runtime,interp);
+  static const std::uint32_t kContextOffset  = offsetof(Runtime,context);
+  static const std::uint32_t kICEntryOffset  = offsetof(Runtime,ic_entry);
 
-  static const std::uint32_t kStackBeginOffset = offsetof(Runtime,stack_begin);
-  static const std::uint32_t kStackEndOffset   = offsetof(Runtime,stack_end);
+  static const std::uint32_t kStackTestOffset = offsetof(Runtime,stack_test);
 
   static const std::uint32_t kMaxStackSizeOffset = offsetof(Runtime,max_stack_size);
   static const std::uint32_t kMaxCallSizeOffset  = offsetof(Runtime,max_call_size);

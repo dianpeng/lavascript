@@ -22,8 +22,6 @@ TEST(BumpAllocator,Grab) {
       ASSERT_TRUE(*e == count);
       ++count;
     }
-
-    ASSERT_TRUE(allocator.size() == 10000);
   }
 }
 

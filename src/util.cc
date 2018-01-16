@@ -22,10 +22,10 @@ void FormatV(std::string* buffer, const char* format, va_list vl) {
   buffer->resize(old_size + ret);
 }
 
-bool StringToInt( const char* source , int* output ) {
+bool StringToInt( const char* source , std::int32_t * output ) {
   char* pend = NULL;
   errno = 0;
-  int val = std::strtol(source,&pend,10);
+  std::int32_t val = std::strtol(source,&pend,10);
   if(errno || *pend) return false;
   *output = val;
   return true;

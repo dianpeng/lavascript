@@ -36,6 +36,7 @@ static const std::uint8_t kAccRegisterIndex        = 255;
 namespace compiler {
 
 static const std::size_t kHotCountArraySize = 256;
+
 // type of hot count
 typedef std::uint16_t hotcount_t;
 

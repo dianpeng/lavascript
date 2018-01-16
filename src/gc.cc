@@ -404,7 +404,6 @@ Prototype** GC::NewPrototype( String** proto,
                               std::uint32_t code_buffer_size ) {
 
   // Highly sensitive to the layout of the Prototype object
-
   std::size_t rtable_bytes = Align(real_table_size*sizeof(double),gc::kAlignment);
   std::size_t stable_bytes = Align(string_table_size*sizeof(String**),gc::kAlignment);
   std::size_t ssotable_bytes = Align(sso_table_size*sizeof(Prototype::SSOTableEntry),gc::kAlignment);
@@ -435,21 +434,23 @@ Prototype** GC::NewPrototype( String** proto,
   void* roff   = roff_bytes   ? BufferOffset<char>(base,acc) : NULL; acc += roff_bytes;
 
   // construct the Prototype object right on the buffer
-  Prototype* p = ConstructFromBuffer<Prototype>(proto_buffer, Handle<String>(proto),
-                                                              argument_size,
-                                                              max_local_var_size,
-                                                              real_table_size,
-                                                              string_table_size,
-                                                              sso_table_size,
-                                                              upvalue_size,
-                                                              code_buffer_size,
-                                                              static_cast<double*>(rtable),
-                                                              static_cast<String***>(stable),
-                                                              static_cast<Prototype::SSOTableEntry*>(ssotable),
-                                                              static_cast<std::uint32_t*>(utable),
-                                                              static_cast<std::uint32_t*>(cb),
-                                                              static_cast<SourceCodeInfo*>(sci),
-                                                              static_cast<std::uint8_t*>(roff));
+  Prototype* p = ConstructFromBuffer<Prototype>(proto_buffer,
+                                                Handle<String>(proto),
+                                                argument_size,
+                                                max_local_var_size,
+                                                real_table_size,
+                                                string_table_size,
+                                                sso_table_size,
+                                                upvalue_size,
+                                                code_buffer_size,
+                                                static_cast<double*>(rtable),
+                                                static_cast<String***>(stable),
+                                                static_cast<Prototype::SSOTableEntry*>(ssotable),
+                                                static_cast<std::uint32_t*>(utable),
+                                                static_cast<std::uint32_t*>(cb),
+                                                static_cast<SourceCodeInfo*>(sci),
+                                                static_cast<std::uint8_t*>(roff)
+                                                );
 
   Prototype** ref = reinterpret_cast<Prototype**>(ref_pool_.Grab());
   *ref = p;
@@ -488,65 +489,56 @@ Script** GC::NewScript( Context* context ,
   return ref;
 }
 
-interpreter::Runtime* GC::GetInterpreterRuntime( Script** script ,
-                                                 Object** globals,
-                                                 interpreter::Interpreter* interp,
-                                                 std::string* err ) {
-  // setup the global pointer
-  interp_runtime_.script = script;
-  interp_runtime_.global = globals;
-  interp_runtime_.error  = err;
-  interp_runtime_.interp = interp;
-  interp_runtime_.context = context_;
-
-  // initialize the stack if needed
-  if(interp_runtime_.stack_begin == interp_runtime_.stack_end ||
-     interp_runtime_.stack_begin == NULL )
-    GrowInterpreterStack(&interp_runtime_);
-
-  return &interp_runtime_;
-}
-
-void GC::ReturnInterpreterRuntime( interpreter::Runtime* runtime ) {
-  lava_debug(NORMAL,lava_verify( runtime == &interp_runtime_ ););
-
-  interp_runtime_.script    = NULL;
-  interp_runtime_.global    = NULL;
-  interp_runtime_.error     = NULL;
-  interp_runtime_.interp    = NULL;
-  interp_runtime_.cur_cls   = NULL;
-  interp_runtime_.cur_stk   = NULL;
-  interp_runtime_.cur_pc    = NULL;
-  interp_runtime_.call_size = 0;
-}
-
 bool GC::GrowInterpreterStack( interpreter::Runtime* runtime ) {
-  lava_debug(NORMAL,lava_verify( runtime == &interp_runtime_ ););
+  // Get max_stack_size of interpreter
+  const std::size_t max_stack_size = LAVA_OPTION(Interpreter,max_stack_size);
 
-  if(runtime->stack_size() >= runtime->max_stack_size)
-    return false;
+  if(interpreter_stack_size() >= max_stack_size) return false;
 
-  std::size_t nsize = runtime->stack_size() * 2;
+  std::size_t nsize = interpreter_stack_size() * 2;
 
-  if(nsize > runtime->max_stack_size)
-    nsize = runtime->max_stack_size;
+  if(nsize > max_stack_size) nsize = max_stack_size;
 
   if(!nsize) nsize = LAVA_OPTION(Interpreter,init_stack_size);
 
-  // this diff is in bytes
-  std::size_t cur_stk_diff = (char*)(runtime->cur_stk) - (char*)(runtime->stack_begin);
+  /**
+   * this loop figures out the diff for each runtime object created while
+   * doing the intepretation. Because after the realloc, we gonna lose the
+   * diff information due to the old pointer is not valid anymore
+   */
+  std::vector<std::uint64_t> diff_array;
+  diff_array.reserve(16);
 
-  // reallocate to the new pos and new value
-  void* new_stk = Realloc( allocator_ , runtime->stack_begin , nsize * sizeof(Value) );
+  {
+    auto temp = runtime;
+    do {
+      auto diff = (char*)(temp->cur_stk) - (char*)(interp_stack_start_);
+      diff_array.push_back(diff);
+      temp = temp->previous;
+    } while(temp);
+  }
 
-  // update the new cur_stk pointer
-  runtime->cur_stk = reinterpret_cast<Value*>((char*)(new_stk) + cur_stk_diff);
+  // do the reallcation
+  void* data = Realloc( allocator_ , interp_stack_start_ , nsize * sizeof(Value) );
 
-  // update start of the stack
-  runtime->stack_begin = reinterpret_cast<Value*>(new_stk);
+  interp_stack_start_ = reinterpret_cast<Value*>(data);
+  interp_stack_end_   = reinterpret_cast<Value*>(data) + nsize;
 
-  // update stack's size
-  runtime->stack_end  = reinterpret_cast<Value*>(static_cast<char*>(new_stk)+nsize);
+  // setup the test field for indicating the stack is overflow
+  Value* test_field = interp_stack_end_ - interpreter::kRegisterSize;
+
+
+  /**
+   * Restore each runtime's field due to the nested call or other stuff
+   */
+  {
+    std::size_t idx = 0;
+    do {
+      runtime->cur_stk = interp_stack_start_ + diff_array[idx];
+      runtime->stack_test = test_field;
+      runtime = runtime->previous;
+    } while(runtime);
+  }
 
   return true;
 }

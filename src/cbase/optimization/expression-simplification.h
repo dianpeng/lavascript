@@ -35,9 +35,9 @@ class ExpressionSimplifier {
  * If function returns NULL , it means it cannot do any constant folding;
  * otherwise it will return the new node
  */
-Expr* ExprSimplify( Graph* , Unary::Operator , Expr* , const std::function<IRInfo* ()>& );
-Expr* ExprSimplify( Graph* , Binary::Operator, Expr* , Expr* , const std::function<IRInfo* ()>& );
-Expr* ExprSimplify( Graph* , Expr* , Expr* , Expr* , const std::function<IRInfo* ()>& );
+Expr* SimplifyUnary  ( Graph* , Unary::Operator , Expr* , const std::function<IRInfo* ()>& );
+Expr* SimplifyBinary ( Graph* , Binary::Operator, Expr* , Expr* , const std::function<IRInfo* ()>& );
+Expr* SimplifyTernary( Graph* , Expr* , Expr* , Expr* , const std::function<IRInfo* ()>& );
 
 } // namespace hir
 } // namespace cbase

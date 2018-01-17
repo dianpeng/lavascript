@@ -45,6 +45,15 @@ bool IRList::Equal( const Expr* that ) const {
   return false;
 }
 
+IRList* IRList::Clone() const {
+  IRLIst* list = New( graph() , operand_list()->size() , ir_info() );
+  for( auto itr(operand_list()->GetForwardIterator());
+       itr.HasNext() ; itr.Move() ) {
+    list->AddOperand(itr.value());
+  }
+  return list;
+}
+
 std::uint64_t IRObject::GVNHash() const {
   GVNHashN hasher(type_name());
 
@@ -75,6 +84,15 @@ bool IRObject::Equal( const Expr* that ) const {
     }
   }
   return false;
+}
+
+IRObject* IRObject::Clone() const {
+  auto obj = New(graph(),operand_list()->size(),ir_info());
+  for( auto itr(operand_list()->GetForwardIterator());
+       itr.HasNext() ; itr.Move() ) {
+    obj->AddOperand(itr.value());
+  }
+  return obj;
 }
 
 std::uint64_t Phi::GVNHash() const {
@@ -599,11 +617,33 @@ void DotGraphVisualizer::RenderExpr( const std::string& name , Expr* node ) {
       break;
     case IRTYPE_INIT_CLS:
       {
+        Indent(1) << name << "[label=\"init_cls\"]\n";
         auto icls = node->AsInitCls();
         auto key  = icls->key();
         auto key_name = GetNodeName(key);
         RenderExpr(key_name,key);
-        Indent(1) << name << " -> " << key_name << "[label=\"init_cls\"]\n";
+        Indent(1) << name << " -> " << key_name;
+      }
+      break;
+    /** function call and icall **/
+    case IRTYPE_ICALL:
+      {
+        auto ic = node->AsICall();
+
+        Indent(1) << name << "[label=\"icall(" << (ic->tail_call() ? "tail" : "normal")
+                                               <<','
+                                               << interpreter::GetIntrinsicCallName(ic->ic())
+                                               <<")\"]\n";
+
+        int count = 0;
+        for( auto itr(ic->operand_list()->GetForwardIterator()) ;
+             itr.HasNext() ; itr.Move() ) {
+          auto arg      = itr.value();
+          auto arg_name = GetNodeName(arg);
+          RenderExpr(arg_name,arg);
+          Indent(1) << name << " -> " << arg_name << "[label=" << count << "]\n";
+          ++count;
+        }
       }
       break;
     case IRTYPE_OSR_LOAD:

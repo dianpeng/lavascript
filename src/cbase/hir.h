@@ -8,6 +8,7 @@
 #include "src/zone/list.h"
 #include "src/zone/string.h"
 #include "src/cbase/bytecode-analyze.h"
+#include "src/interpreter/intrinsic-call.h"
 
 #include <type_traits>
 #include <map>
@@ -96,6 +97,8 @@ struct PrototypeInfo : zone::ZoneObject {
   __(ItrDeref,ITR_DEREF,"itr_deref",false)      \
   /* call     */                                \
   __(Call,CALL   ,"call",false)                 \
+  /* intrinsic call */                          \
+  __(ICall,ICALL ,"icall",false)                \
   /* phi */                                     \
   __(Phi,PHI,"phi",false)                       \
   /* statement */                               \
@@ -231,6 +234,7 @@ class Node : public zone::ZoneObject {
 #undef __ // __
 
   bool IsString() const { return IsSString() || IsLString(); }
+  inline const zone::String* ToZoneString() const;
 
   bool IsControlFlow() const { return IRTypeIsControlFlow(type()); }
   inline ControlFlow* AsControlFlow();
@@ -277,6 +281,7 @@ class BailoutEntry {
 };
 
 // ================================================================
+//
 // Expr
 //
 //   This node is the mother all other expression node and its solo
@@ -302,6 +307,9 @@ class Expr : public Node {
   // will only change all the node that *reference* this node but not
   // touch all the operands' reference list
   virtual void Replace( Expr* );
+
+  // Clone a new node as fully duplication of this Expr node
+  virtual Expr* Clone() = 0;
  public:
   /**
    * Def-Use chain and Use-Def chain. We rename these field to
@@ -353,6 +361,23 @@ class Expr : public Node {
   // it will take care of the input node's ref list as well
   inline void AddOperand( Expr* node );
 
+  // Dependency list
+  //
+  // This list is used to track all the dependency when doing scheduling.
+  // This list is empty at very first , later on build up during the optimization
+  // phase.
+  //
+  // During scheduling , the order we enforce is represented implicitly represented
+  // by following 2 types of inputs:
+  //
+  //   1) checkpoint
+  //   2) dependency
+  //
+  OperandList* dependency_list() { return &dependency_list_; }
+  const OperandList* dependency_list() const { return &dependency_list_; }
+
+  inline void AddDependency( Expr* node );
+
   // Reference list
   //
   // This list returns a list of Ref object which allow user to
@@ -393,13 +418,13 @@ class Expr : public Node {
 
  private:
   OperandList operand_list_;
+  OperandList dependency_list_;
   RefList     ref_list_;
   IRInfo*     ir_info_;
   EffectEdge  effect_;
 };
 
-/**
- * ============================================================
+/** ============================================================
  * GVN hash function helper implementation
  *
  * Helper function to implement the GVN hash table function
@@ -580,9 +605,9 @@ class IRList : public Expr {
  public:
   inline static IRList* New( Graph* , std::size_t size , IRInfo* );
 
-  void Add( Expr* node ) {
-    AddOperand(node);
-  }
+  void Add( Expr* node ) { AddOperand(node); }
+
+  std::size_t Size() const { return operand_list()->size(); }
 
   IRList( Graph* graph , std::uint32_t id , std::size_t size , IRInfo* info ):
     Expr  (IRTYPE_LIST,id,graph,info)
@@ -592,6 +617,8 @@ class IRList : public Expr {
 
   virtual std::uint64_t GVNHash() const;
   virtual bool Equal( const Expr* ) const;
+
+  IRList* Clone() const;
 
  private:
   LAVA_DISALLOW_COPY_AND_ASSIGN(IRList)
@@ -640,6 +667,8 @@ class IRObject : public Expr {
     AddOperand(IRObjectKV::New(graph(),key,val,ir_info()));
   }
 
+  std::size_t Size() const { return operand_list()->size(); }
+
   IRObject( Graph* graph , std::uint32_t id , std::size_t size , IRInfo* info ):
     Expr  (IRTYPE_OBJECT,id,graph,info)
   {
@@ -648,6 +677,8 @@ class IRObject : public Expr {
 
   virtual std::uint64_t GVNHash() const;
   virtual bool Equal( const Expr* ) const;
+
+  IRObject* Clone() const;
 
  private:
   LAVA_DISALLOW_COPY_AND_ASSIGN(IRObject)
@@ -677,6 +708,43 @@ class LoadCls : public Expr {
  private:
   std::uint32_t ref_;
   LAVA_DISALLOW_COPY_AND_ASSIGN(LoadCls);
+};
+
+class Unary : public Expr , public BailoutEntry {
+ public:
+  enum Operator { MINUS, NOT };
+
+  inline static Unary* New( Graph* , Expr* , Operator , IRInfo* );
+
+  inline static Operator BytecodeToOperator( interpreter::Bytecode bc );
+  inline static const char* GetOperatorName( Operator op );
+
+ public:
+  Expr* operand() const { return operand_list()->First(); }
+  Operator op  () const { return op_;      }
+  const char* op_name() const { return GetOperatorName(op()); }
+
+  Unary( Graph* graph , std::uint32_t id , Expr* opr , Operator op ,
+                                                       IRInfo* info ):
+    Expr  (IRTYPE_UNARY,id,graph,info),
+    op_   (op)
+  {
+    AddOperand(opr);
+  }
+
+  virtual std::uint64_t GVNHash() const {
+    auto opr = operand()->GVNHash();
+    if(!opr) return 0;
+    return GVNHash1(op_name(),opr);
+  }
+
+  virtual bool Equal( const Expr* that ) const {
+    return that->IsUnary() && (operand()->Equal(that->AsUnary()->operand()));
+  }
+
+ private:
+  Operator   op_;
+  LAVA_DISALLOW_COPY_AND_ASSIGN(Unary)
 };
 
 class Binary : public Expr , public BailoutEntry {
@@ -737,43 +805,6 @@ class Binary : public Expr , public BailoutEntry {
  private:
   Operator op_;
   LAVA_DISALLOW_COPY_AND_ASSIGN(Binary)
-};
-
-class Unary : public Expr , public BailoutEntry {
- public:
-  enum Operator { MINUS, NOT };
-
-  inline static Unary* New( Graph* , Expr* , Operator , IRInfo* );
-
-  inline static Operator BytecodeToOperator( interpreter::Bytecode bc );
-  inline static const char* GetOperatorName( Operator op );
-
- public:
-  Expr* operand() const { return operand_list()->First(); }
-  Operator op  () const { return op_;      }
-  const char* op_name() const { return GetOperatorName(op()); }
-
-  Unary( Graph* graph , std::uint32_t id , Expr* opr , Operator op ,
-                                                       IRInfo* info ):
-    Expr  (IRTYPE_UNARY,id,graph,info),
-    op_   (op)
-  {
-    AddOperand(opr);
-  }
-
-  virtual std::uint64_t GVNHash() const {
-    auto opr = operand()->GVNHash();
-    if(!opr) return 0;
-    return GVNHash1(op_name(),opr);
-  }
-
-  virtual bool Equal( const Expr* that ) const {
-    return that->IsUnary() && (operand()->Equal(that->AsUnary()->operand()));
-  }
-
- private:
-  Operator   op_;
-  LAVA_DISALLOW_COPY_AND_ASSIGN(Unary)
 };
 
 class Ternary: public Expr , public BailoutEntry {
@@ -1235,6 +1266,40 @@ class Call : public Expr , public BailoutEntry {
   std::uint8_t base_;
   std::uint8_t narg_;
   LAVA_DISALLOW_COPY_AND_ASSIGN(Call)
+};
+
+// intrinsic function call
+class ICall : public Expr {
+ public:
+  inline static ICall* New( Graph* , interpreter::IntrinsicCall , bool tail ,
+                                                                  IRInfo* );
+  // add argument back to the ICall's argument list
+  void AddArgument( Expr* expr ) {
+    lava_debug(NORMAL,lava_verify(
+          operand_list()->size() < interpreter::GetIntrinsicCallArgumentSize(ic_)););
+
+    AddOperand(expr);
+  }
+
+  // intrinsic call method index
+  interpreter::IntrinsicCall ic() const { return ic_; }
+
+  // whether this call is a tail call
+  bool tail_call() const { return tail_call_; }
+
+  ICall( Graph* graph , std::uint32_t id , interpreter::IntrinsicCall ic ,
+                                           bool tail ,
+                                           IRInfo* info ):
+    Expr(IRTYPE_ICALL,id,graph,info),
+    ic_ (ic),
+    tail_call_(tail)
+  {}
+
+ private:
+  interpreter::IntrinsicCall ic_;
+  bool tail_call_;
+
+  LAVA_DISALLOW_COPY_AND_ASSIGN(ICall)
 };
 
 // -------------------------------------------------------------------------
@@ -1993,8 +2058,19 @@ CBASE_IR_LIST(__)
 
 #undef __ // __
 
+inline const zone::String* Node::ToZoneString() const {
+  lava_debug(NORMAL,lava_verify(IsString()););
+  return IsLString() ? AsLString()->value() :
+                       AsSString()->value() ;
+}
+
 inline void Expr::AddOperand( Expr* node ) {
   auto itr = operand_list()->PushBack(zone(),node);
+  node->AddRef(this,itr);
+}
+
+inline void Expr::AddOperand( Expr* node ) {
+  auto itr = dependency_list()->PushBack(zone(),node);
   node->AddRef(this,itr);
 }
 
@@ -2231,6 +2307,12 @@ inline Phi* Phi::New( Graph* graph , Expr* lhs , Expr* rhs , ControlFlow* region
 
 inline Phi* Phi::New( Graph* graph , ControlFlow* region , IRInfo* info ) {
   return graph->zone()->New<Phi>(graph,graph->AssignID(),region,info);
+}
+
+inline ICall* ICall::New( Graph* graph , interpreter::IntrinsicCall ic ,
+                                         bool tc,
+                                         IRInfo* info ) {
+  return graph->zone()->New<ICall>(graph,graph->AssignID(),ic,tc,info);
 }
 
 inline LoadCls* LoadCls::New( Graph* graph , std::uint32_t ref , IRInfo* info ) {

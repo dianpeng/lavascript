@@ -1,5 +1,5 @@
-#ifndef CBASE_IR_STL_HELPER_H_
-#define CBASE_IR_STL_HELPER_H_
+#ifndef CBASE_IR_HELPER_H_
+#define CBASE_IR_HELPER_H_
 #include "hir.h"
 
 namespace std {
@@ -21,4 +21,28 @@ template<> struct equal<::lavascript::cbase::hir::Expr*> {
 
 } // namespace std
 
-#endif // CBASE_IR_STL_HELPER_H_
+namespace lavascript {
+namespace cbase {
+namespace hir   {
+
+/**
+ * Several type traits check for HIR node
+ */
+inline bool HIRIsPrimitive( const Expr* node ) {
+  switch(node->type()) {
+    case IRTYPE_FLOAT64:
+    case IRTYPE_SSTRING:
+    case IRTYPE_LSTRING:
+    case IRTYPE_BOOLEAN:
+    case IRTYPE_NIL:
+      return true;
+    default:
+      return false;
+  }
+}
+
+} // namespace hir
+} // namespace cbase
+} // namespace lavascript
+
+#endif // CBASE_IR_HELPER_H_

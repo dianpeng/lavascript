@@ -3,6 +3,7 @@
 #include "hir.h"
 #include "src/objects.h"
 #include "src/zone/zone.h"
+#include "src/interpreter/intrinsic-call.h"
 
 #include <cstdint>
 #include <vector>
@@ -177,6 +178,11 @@ class GraphBuilder {
   Expr* StackGet( std::uint32_t index ) {
     return stack_->at(StackIndex(index));
   }
+
+  Expr* StackGet( std::uint32_t index , std::uint32_t base ) {
+    return stack_->at(base+index);
+  }
+
  private: // Current FuncInfo
   std::uint32_t method_index() const {
     return static_cast<std::uint32_t>(func_info_.size());
@@ -235,6 +241,11 @@ class GraphBuilder {
   Expr* NewUnary      ( Expr* , Unary::Operator , const interpreter::BytecodeLocation& );
   Expr* NewBinary     ( Expr* , Expr* , Binary::Operator , const interpreter::BytecodeLocation& );
   Expr* NewTernary    ( Expr* , Expr* , Expr* , const interpreter::BytecodeLocation& );
+
+  // create a intrinsic call node
+  Expr* NewICall      ( std::uint8_t a1 , std::uint8_t a2 , std::uint8_t a3 ,
+                                                            bool tcall ,
+                                                            const interpreter::BytecodeLocation&);
 
  private: // Checkpoint generation
   Checkpoint* BuildCheckpoint( const interpreter::BytecodeLocation& );

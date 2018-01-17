@@ -236,7 +236,7 @@ Expr* GraphBuilder::NewBoolean( bool value ) {
 Expr* GraphBuilder::NewUnary  ( Expr* node , Unary::Operator op ,
                                              const BytecodeLocation& pc ) {
   // try constant folding
-  auto new_node = ExprSimplify(graph_,op,node,[this,pc]() {
+  auto new_node = SimplifyUnary(graph_,op,node,[this,pc]() {
       return NewIRInfo(pc);
   });
   if(new_node) return new_node;
@@ -249,7 +249,7 @@ Expr* GraphBuilder::NewUnary  ( Expr* node , Unary::Operator op ,
 
 Expr* GraphBuilder::NewBinary  ( Expr* lhs , Expr* rhs , Binary::Operator op ,
                                                          const BytecodeLocation& pc ) {
-  auto new_node = ExprSimplify(graph_,op,lhs,rhs,[this,pc]() {
+  auto new_node = SimplifyBinary(graph_,op,lhs,rhs,[this,pc]() {
       return NewIRInfo(pc);
   });
   if(new_node) return new_node;
@@ -262,7 +262,7 @@ Expr* GraphBuilder::NewBinary  ( Expr* lhs , Expr* rhs , Binary::Operator op ,
 
 Expr* GraphBuilder::NewTernary ( Expr* cond , Expr* lhs , Expr* rhs,
                                                           const BytecodeLocation& pc ) {
-  auto new_node = ExprSimplify(graph_,cond,lhs,rhs,[this,pc]() {
+  auto new_node = SimplifyTernary(graph_,cond,lhs,rhs,[this,pc]() {
       return NewIRInfo(pc);
   });
   if(new_node) return new_node;
@@ -271,6 +271,23 @@ Expr* GraphBuilder::NewTernary ( Expr* cond , Expr* lhs , Expr* rhs,
   auto ternary = Ternary::New(graph_,cond,lhs,rhs,NewIRInfo(pc));
   ternary->set_checkpoint(checkpoint);
   return ternary;
+}
+
+Expr* GraphBuilder::NewICall   ( std::uint8_t a1 , std::uint8_t a2 , std::uint8_t a3 ,
+                                                                     bool tcall ,
+                                                                     const BytecodeLocation& pc ) {
+  IntrinsicCall ic = static_cast<IntrinsicCall>(a1);
+  auto base = a2; // new base to get value from current stack
+  auto node = ICall::New(graph_,ic,tcall,NewIRInfo(pc));
+
+  for( std::uint8_t i = 0 ; i < a3 ; ++i ) {
+    node->AddArgument(StackGet(i,base));
+  }
+
+  lava_debug(NORMAL,lava_verify(GetIntrinsicCallArgumentSize(ic) == a3););
+
+  // intrinsic call doesn't have checkpoint since it should not be bailout
+  return node;
 }
 
 IRInfo* GraphBuilder::NewIRInfo( const BytecodeLocation& pc ) {
@@ -1081,6 +1098,23 @@ GraphBuilder::StopReason GraphBuilder::BuildBytecode( BytecodeIterator* itr ) {
         Expr* key = (itr->opcode() == BC_GSET ? NewString(a1) :
                                                 NewSSO   (a1));
         GSet::New(graph_,key,StackGet(a2),NewIRInfo(itr->bytecode_location()),region());
+      }
+      break;
+
+    /* call/icall */
+    case BC_ICALL:
+      {
+        std::uint8_t a1,a2,a3;
+        itr->GetOperand(&a1,&a2,&a3);
+        StackSet(kAccRegisterIndex,NewICall(a1,a2,a3,false,itr->bytecode_location()));
+      }
+      break;
+
+    case BC_TICALL:
+      {
+        std::uint8_t a1,a2,a3;
+        itr->GetOperand(&a1,&a2,&a3);
+        StackSet(kAccRegisterIndex,NewICall(a1,a2,a3,true ,itr->bytecode_location()));
       }
       break;
 

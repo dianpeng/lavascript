@@ -3,7 +3,7 @@
 
 /** List of builtin functions for lavascript */
 #define LAVASCRIPT_BUILTIN_FUNCTIONS(__) \
-  /* name  , tag , argument-count */     \
+  /* ==1. name ; ==2. upper case name; ==3. argument size; ==4. error message; ==5. side effect */       \
   /** math/arithmetic **/                \
   __(min,MIN,Min,2,"function min needs 2 input arguments, both must be real number" )                    \
   __(max,MAX,Max,2,"function max needs 2 input arguments, both must be real number" )                    \

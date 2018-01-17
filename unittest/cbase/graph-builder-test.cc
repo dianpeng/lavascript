@@ -95,8 +95,9 @@ bool CheckGraphOSR( const char* source , std::size_t offset ) {
   GraphBuilder gb(scp);
   Graph graph;
 
-  if(!gb.BuildOSR(Closure::New(ctx.gc(),scp->main()),scp->main()->code_buffer() + offset ,
-                                                     &graph)) {
+  if(!gb.BuildOSR(Closure::New(ctx.gc(),scp->main()),
+                                        scp->main()->code_buffer() + offset ,
+                                        &graph)) {
     std::cerr<<"cannot build graph"<<std::endl;
     return false;
   }
@@ -108,13 +109,15 @@ bool CheckGraphOSR( const char* source , std::size_t offset ) {
 
 } // namespace
 
-#define CASE(...) ASSERT_TRUE(CheckGraph(#__VA_ARGS__))
+#define CASE(...)         ASSERT_TRUE(CheckGraph(#__VA_ARGS__))
 #define CASE_OSR(IDX,...) ASSERT_TRUE(CheckGraphOSR(#__VA_ARGS__,(IDX)))
 
-TEST(BytecodeAnalyze,Basic) {
+TEST(GraphBuilder,Basic) {
   CASE(
-      var arr = {"a": 1 , "b": 2, "c": 3};
-      return arr;
+    var a = [1,2,3,4];
+    var b = a[0];
+    a[0] = 20;
+    return a[0] + b;
   );
 }
 

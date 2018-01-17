@@ -7,7 +7,7 @@ namespace hir {
 
 namespace detail {
 
-bool VisitExprNode( Expr* node , ExprVisitor* visitor ) {
+inline bool VisitExprNode( Expr* node , ExprVisitor* visitor ) {
   lava_debug(NORMAL,lava_verify(node->IsExpr()););
 
 #define __(A,B,C,D) case IRTYPE_##B: return visitor->Visit##A(node->As##A());
@@ -18,7 +18,7 @@ bool VisitExprNode( Expr* node , ExprVisitor* visitor ) {
 #undef __ // __
 }
 
-bool VisitControlFlowNode( ControlFlow* node , ControlFlowVisitor* visitor ) {
+inline bool VisitControlFlowNode( ControlFlow* node , ControlFlowVisitor* visitor ) {
   lava_debug(NORMAL,lava_verify(node->IsControlFlow()););
 
 #define __(A,B,C,D) case IRTYPE_##B: return visitor->Visit##A(node->As##A());

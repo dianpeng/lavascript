@@ -143,6 +143,9 @@ template< typename T > class List : ZoneObject {
   // complexity
   const T& Index( std::size_t ) const;
 
+  // set a certain value to an index
+  void Set( std::size_t , const T& );
+
  public:
   std::size_t size() const { return size_; }
   bool empty() const { return size() == 0; }
@@ -228,6 +231,14 @@ const T& List<T>::Index( std::size_t index ) const {
   ForwardIterator itr(GetForwardIterator());
   itr.Advance(index);
   return itr.value();
+}
+
+template< typename T >
+void List<T>::Set( std::size_t index , const T& value ) {
+  lava_debug(NORMAL,lava_verify(index < size_););
+  ForwardIterator itr(GetForwardIterator());
+  itr.Advance(index);
+  itr.set_value(index,value);
 }
 
 namespace detail {

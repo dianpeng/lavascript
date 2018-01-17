@@ -7,8 +7,6 @@ ExprVisitor::~ExprVisitor() {}
 
 ControlFlowVisitor::~ControlFlowVisitor() {}
 
-HIRVisitor::~HIRVisitor() {}
-
 } // namespace hir
 } // namespace cbase
 } // namespace lavascript

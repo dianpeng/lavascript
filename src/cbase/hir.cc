@@ -45,15 +45,6 @@ bool IRList::Equal( const Expr* that ) const {
   return false;
 }
 
-IRList* IRList::Clone() const {
-  IRLIst* list = New( graph() , operand_list()->size() , ir_info() );
-  for( auto itr(operand_list()->GetForwardIterator());
-       itr.HasNext() ; itr.Move() ) {
-    list->AddOperand(itr.value());
-  }
-  return list;
-}
-
 std::uint64_t IRObject::GVNHash() const {
   GVNHashN hasher(type_name());
 
@@ -290,11 +281,11 @@ void DotGraphVisualizer::RenderControlFlow( const std::string& region_name ,
         Indent(1) << region_name << " -> " << name << '\n';
       }
       break;
-    case IRTYPE_END:
+    case IRTYPE_GUARD:
       {
-        auto node = region->AsEnd();
-        auto name = GetNodeName(node->return_value());
-        RenderExpr(name,node->return_value());
+        auto guard = region->AsGuard();
+        auto name = GetNodeName(guard->test());
+        RenderExpr(name,guard->test());
         Indent(1) << region_name << " -> " << name << '\n';
       }
       break;
@@ -622,9 +613,37 @@ void DotGraphVisualizer::RenderExpr( const std::string& name , Expr* node ) {
         auto key  = icls->key();
         auto key_name = GetNodeName(key);
         RenderExpr(key_name,key);
-        Indent(1) << name << " -> " << key_name;
+        Indent(1) << name << " -> " << key_name << '\n';
       }
       break;
+
+    /** test **/
+    case IRTYPE_TEST_INDEXOOB:
+      {
+        Indent(1) << name << "[label=\"index-oob\"]\n";
+        auto oob = node->AsTestIndexOOB();
+
+        auto obj = oob->object();
+        auto obj_name = GetNodeName(obj);
+        RenderExpr(obj_name,obj);
+        Indent(1) << name << " -> " << obj_name << '\n';
+
+        auto idx = oob->index();
+        auto idx_name = GetNodeName(idx);
+        Indent(1) << name << " -> " << idx_name << '\n';
+      }
+      break;
+
+    case IRTYPE_TEST_TYPE:
+      {
+        auto tt = node->AsTestType();
+        Indent(1) << name << "[label=\"test-type(" << tt->type_category_name() << ")\"]\n";
+        auto obj = tt->object();
+        auto obj_name = GetNodeName(obj);
+        Indent(1) << name << " -> " << obj_name << '\n';
+      }
+      break;
+
     /** function call and icall **/
     case IRTYPE_ICALL:
       {

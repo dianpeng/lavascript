@@ -2,6 +2,8 @@
 #define ZONE_LIST_H_
 #include "zone.h"
 
+#include <functional>
+
 namespace lavascript {
 namespace zone {
 template< typename T > class List;
@@ -146,6 +148,18 @@ template< typename T > class List : ZoneObject {
   // set a certain value to an index
   void Set( std::size_t , const T& );
 
+  ForwardIterator      FindIf( const std::function<bool (const ConstForwardIterator&) >& );
+
+  ConstForwardIterator FindIf( const std::function<bool (const ConstForwardIterator&) >& ) const;
+
+  ForwardIterator      Find( const T& value ) {
+    return FindIf([value]( const ConstForwardIterator& itr ) { return itr.value() == value; });
+  }
+
+  ConstForwardIterator Find( const T& value ) const {
+    return FindIf([value]( const ConstForwardIterator& itr ) { return itr.value() == value; });
+  }
+
  public:
   std::size_t size() const { return size_; }
   bool empty() const { return size() == 0; }
@@ -239,6 +253,26 @@ void List<T>::Set( std::size_t index , const T& value ) {
   ForwardIterator itr(GetForwardIterator());
   itr.Advance(index);
   itr.set_value(index,value);
+}
+
+template< typename T >
+typename List<T>::ForwardIterator List<T>::FindIf(
+    const std::function<bool (const ConstForwardIterator&)>& predicate ) {
+  auto i(GetForwardIterator());
+  for( ; i.HasNext(); i.Move() ) {
+    if(predicate(i)) break;
+  }
+  return i;
+}
+
+template< typename T >
+typename List<T>::ConstForwardIterator List<T>::FindIf(
+    const std::function<bool (const ConstForwardIterator&)>& predicate ) const {
+  auto i(GetForwardIterator());
+  for( ; i.HasNext(); i.Move() ) {
+    if(predicate(i)) break;
+  }
+  return i;
 }
 
 namespace detail {

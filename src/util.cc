@@ -16,7 +16,7 @@ void FormatV(std::string* buffer, const char* format, va_list vl) {
 
   int ret = vsnprintf(AsBuffer(buffer, old_size), 128, format, vl);
   if (ret >= 128) {
-    buffer->resize(old_size + ret);
+    buffer->resize(old_size + ret + 1); // ret doesn't count for null terminator
     ret = vsnprintf(AsBuffer(buffer, old_size), ret, format, backup);
   }
   buffer->resize(old_size + ret);

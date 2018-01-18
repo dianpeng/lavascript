@@ -290,6 +290,146 @@ Expr* GraphBuilder::NewICall   ( std::uint8_t a1 , std::uint8_t a2 , std::uint8_
   return node;
 }
 
+Expr* GraphBuilder::FoldObjectSet( IRObject* object , const zone::String& key ,
+                                                      Expr* value,
+                                                      const BytecodeLocation& pc ) {
+  auto itr  = object->operand_list()->FindIf(
+      [key]( const OperandList::ConstForwardIterator& itr ) {
+        auto v = itr.value()->AsIRObjectKV();
+        return (v->key()->IsString() && v->key()->AsZoneString() == key);
+      }
+    );
+  if(itr.HasNext()) {
+    auto ir_info = NewIRInfo(pc);
+    auto new_obj = IRObject::New(graph_,object->Size(),ir_info);
+
+    for( auto i(object->operand_list()->GetForwardIterator());
+         i.HasNext(); i.Move() ) {
+      auto kv = i.value()->AsIRObjectKV();
+      if(kv == itr.value()) {
+        new_obj->Add(kv->key(),value);
+      } else {
+        new_obj->AddOperand(kv);
+      }
+    }
+    return new_obj;
+  }
+  return NULL;
+}
+
+Expr* GraphBuilder::FoldObjectGet( IRObject* object , const zone::String& key ,
+                                                      const BytecodeLocation& pc ) {
+  auto itr = object->operand_list()->FindIf(
+      [key]( const OperandList::ConstForwardIterator& itr ) {
+        auto v = itr.value()->AsIRObjectKV();
+        return (v->key()->IsString() && v->key()->AsZoneString() == key);
+      }
+    );
+
+  if(itr.HasNext()) {
+    return itr.value()->AsIRObjectKV()->value(); // forward the value
+  }
+  return NULL;
+}
+
+Expr* GraphBuilder::NewPSet( Expr* object , Expr* key , Expr* value ,
+                                                        const BytecodeLocation& pc ) {
+  // try to fold the object if object is a literal
+  if(object->IsIRObject()) {
+    auto kstr = key->AsZoneString();
+    auto obj  = object->AsIRObject();
+    auto v    = FoldObjectSet(obj,kstr,value,pc);
+    if(v) return v;
+  }
+
+  auto ir_info = NewIRInfo(pc);
+  NewGuard(TestType::New(graph_,TestType::TT_PROPERTIABLE, object, ir_info));
+  NewGuard(TestIndexOOB::New(graph_,object,key,ir_info));
+  return PSet::New(graph_,object,key,value,ir_info,region());
+}
+
+Expr* GraphBuilder::NewPGet( Expr* object , Expr* key , const BytecodeLocation& pc ) {
+  // here we *do not* do any folding operations and let the later on pass handle it
+  // and we just simply do a pget node test plus some guard if needed
+  if(object->IsIRObject()) {
+    auto kstr= key->AsZoneString();
+    auto obj = object->AsIRObject();
+    auto v   = FoldObjectGet(obj,kstr,pc);
+    if(v) return v;
+  }
+
+  // when we reach here we needs to generate guard
+  auto ir_info = NewIRInfo(pc);
+  NewGuard(TestType::New(graph_,TestType::TT_PROPERTIABLE, object, ir_info));
+  NewGuard(TestIndexOOB::New(graph_,object,key,ir_info));
+  return PGet::New(graph_,object,key,ir_info,region());
+}
+
+Expr* GraphBuilder::NewISet( Expr* object, Expr* index, Expr* value,
+                                                        const BytecodeLocation& pc ) {
+  if(object->IsIRList() && index->IsFloat64()) {
+    auto iidx = static_cast<std::uint32_t>(index->AsFloat64()->value());
+    auto list = object->AsIRList();
+    if(iidx < list->Size()) {
+      auto ir_info = NewIRInfo(pc);
+      auto new_list = IRList::New(graph_,list->Size(),ir_info);
+
+      // create a new list
+      std::uint32_t count = 0;
+      for( auto itr(list->operand_list()->GetForwardIterator()) ;
+           itr.HasNext() ; itr.Move() ) {
+        if(iidx != count ) {
+          new_list->AddOperand(itr.value());
+        } else {
+          new_list->AddOperand(value);
+        }
+        ++count;
+      }
+
+      return new_list;
+    }
+  } else if(object->IsIRObject() && index->IsString()) {
+    auto key = index->AsZoneString();
+    auto obj = object->AsIRObject();
+    auto v   = FoldObjectSet(obj,key,value,pc);
+    if(v) return v;
+  }
+
+  auto ir_info = NewIRInfo(pc);
+  NewGuard(TestType::New(graph_,TestType::TT_COMPONENT, object, ir_info));
+  NewGuard(TestIndexOOB::New(graph_,object,index,ir_info));
+  return ISet::New(graph_,object,index,value,ir_info,region());
+}
+
+Expr* GraphBuilder::NewIGet( Expr* object, Expr* index, const BytecodeLocation& pc ) {
+  if(object->IsIRList() && index->IsFloat64()) {
+    auto iidx = static_cast<std::uint32_t>(index->AsFloat64()->value());
+    auto list = object->AsIRList();
+    if(iidx < list->Size()) {
+      return list->operand_list()->Index(iidx);
+    }
+  } else if(object->IsIRObject() && index->IsString()) {
+    auto key = index->AsZoneString();
+    auto obj = object->AsIRObject();
+    auto v   = FoldObjectGet(obj,key,pc);
+    if(v) return v;
+  }
+
+  auto ir_info = NewIRInfo(pc);
+  NewGuard(TestType::New(graph_,TestType::TT_COMPONENT,object,ir_info));
+  NewGuard(TestIndexOOB::New(graph_,object,index,ir_info));
+  return IGet::New(graph_,object,index,ir_info,region());
+}
+
+Guard* GraphBuilder::NewGuard( Expr* test ) {
+  auto guard = Guard::New(graph_,test,region());
+  auto r     = Region::New(graph_,guard);
+  // push the guard into the list
+  func_info().guard_list.push_back(guard);
+  set_region(r);
+  return guard;
+}
+
 IRInfo* GraphBuilder::NewIRInfo( const BytecodeLocation& pc ) {
   IRInfo* ret;
   {
@@ -1028,7 +1168,7 @@ GraphBuilder::StopReason GraphBuilder::BuildBytecode( BytecodeIterator* itr ) {
         itr->GetOperand(&a1,&a2,&a3);
         Expr* key = (itr->opcode() == BC_PROPGET ? NewString(a3):
                                                    NewSSO   (a3));
-        StackSet(a1,PGet::New(graph_,StackGet(a2),key,NewIRInfo(itr->bytecode_location()),region()));
+        StackSet(a1,NewPGet(StackGet(a2),key,itr->bytecode_location()));
       }
       break;
     case BC_PROPSET: case BC_PROPSETSSO:
@@ -1037,30 +1177,25 @@ GraphBuilder::StopReason GraphBuilder::BuildBytecode( BytecodeIterator* itr ) {
         itr->GetOperand(&a1,&a2,&a3);
         Expr* key = (itr->opcode() == BC_PROPSET ? NewString(a2):
                                                    NewSSO   (a2));
-        auto pset =
-          PSet::New(graph_,StackGet(a1),key,StackGet(a3),NewIRInfo(itr->bytecode_location()),region());
-
-        StackSet(a1,pset);
+        StackSet(a1,NewPSet(StackGet(a1),key,StackGet(a3),itr->bytecode_location()));
       }
       break;
     case BC_IDXGET: case BC_IDXGETI:
       {
         std::uint8_t a1,a2,a3;
         itr->GetOperand(&a1,&a2,&a3);
-        Expr* key = (itr->opcode() == BC_IDXGET ? StackGet(a3) :
-                                                  NewConstNumber(a3));
-        StackSet(a1,IGet::New(graph_,StackGet(a2),key,NewIRInfo(itr->bytecode_location()),region()));
+        Expr* key = (itr->opcode() == BC_IDXGET ? StackGet(a3) : NewConstNumber(a3));
+        StackSet(a1,NewIGet(StackGet(a2),key,itr->bytecode_location()));
       }
       break;
     case BC_IDXSET: case BC_IDXSETI:
       {
         std::uint8_t a1,a2,a3;
         itr->GetOperand(&a1,&a2,&a3);
-        Expr* key = (itr->opcode() == BC_IDXGET ? StackGet(a2) :
+        Expr* key = (itr->opcode() == BC_IDXSET ? StackGet(a2) :
                                                   NewConstNumber(a2));
-        auto iset = ISet::New(graph_,StackGet(a1),key,StackGet(a3), NewIRInfo(itr->bytecode_location()),
-                                                                    region());
-        StackSet(a1,iset);
+
+        StackSet(a1,NewISet(StackGet(a1),key,StackGet(a3),itr->bytecode_location()));
       }
       break;
 
@@ -1209,7 +1344,9 @@ bool GraphBuilder::Build( const Handle<Closure>& entry , Graph* graph ) {
 
   // 1. create the start and end region
   Start* start = Start::New(graph_);
-  End*   end;
+  End*   end = NULL;
+  Fail* fail   = Fail::New(graph_);
+  Success* succ= Success::New(graph_);
 
   // create the first region
   Region* region = Region::New(graph_,start);
@@ -1232,21 +1369,20 @@ bool GraphBuilder::Build( const Handle<Closure>& entry , Graph* graph ) {
     if(BuildBasicBlock(&itr) == STOP_BAILOUT)
       return false;
 
-    // NOTES:: we don't need to link natural fallthrough edge from *end* region
-    //         since bytecode will *always* generate a RET instruction at last.
-    //         For OSR compliation, we need to since OSR only compiles a loop
-    //
-    // patch all return nodes to merge back to the end
-    end = End::New(graph_);
-
     {
       Phi* return_value = Phi::New(graph_,end,NULL);
-      end->set_return_value(return_value);
+      succ->set_return_value(return_value);
 
       for( auto &e : func_info().return_list ) {
         return_value->AddOperand(e->AsReturn()->value());
-        end->AddBackwardEdge(e);
+        succ->AddBackwardEdge(e);
       }
+
+      for( auto &e : func_info().guard_list ) {
+        fail->AddBackwardEdge(e);
+      }
+
+      end = End::New(graph_,succ,fail);
     }
   }
 
@@ -1428,12 +1564,13 @@ GraphBuilder::BuildOSRStart( const Handle<Closure>& closure ,  const std::uint32
 
   // 1. create OSRStart node which is the entry of OSR compilation
   OSRStart* start = OSRStart::New(graph);
+  OSREnd*   end   = NULL;
 
   // next region node connect back to the OSRStart
   Region* header = Region::New(graph,start);
 
-  // 2. create OSREnd node which is the *end* of the OSR compilation
-  OSREnd* end = OSREnd::New(graph);
+  Fail* fail = Fail::New(graph);
+  Success* succ = Success::New(graph);
 
   {
     // set up the value stack/expression stack
@@ -1464,14 +1601,20 @@ GraphBuilder::BuildOSRStart( const Handle<Closure>& closure ,  const std::uint32
     // fallback to interpreter
     {
       Trap* trap = Trap::New(graph_,region());
-      end->AddBackwardEdge(trap);
+      succ->AddBackwardEdge(trap);
     }
 
     // create trap for each return block
     for( auto & e : func_info().return_list ) {
       Trap* trap = Trap::New(graph_,e);
-      end->AddBackwardEdge(trap);
+      succ->AddBackwardEdge(trap);
     }
+
+    for( auto & e : func_info().guard_list ) {
+      fail->AddBackwardEdge(e);
+    }
+
+    end = OSREnd::New(graph_,succ,fail);
   }
 
   graph->Initialize(start,end);

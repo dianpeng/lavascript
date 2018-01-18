@@ -119,21 +119,6 @@ class Simplifier : public ExprVisitor {
   virtual bool VisitBinary( Binary* );
   virtual bool VisitTernary( Ternary* );
 
-  // index get and index set
-  virtual bool VisitIGet( IGet* );
-  virtual bool VisitISet( ISet* );
-
-  virtual bool VisitPGet( PGet* );
-  virtual bool VisitPSet( PSet* );
-
-  // intrinsic function call
-  virtual bool VisitICall( ICall* );
-
- private:
-
-  void FoldSet( Expr* , Expr* , Expr* , Expr* );
-  void FoldGet( Expr* , Expr* , Expr* );
-
  private:
   Graph* graph_;
 };
@@ -160,114 +145,6 @@ bool Simplifier::VisitTernary( Ternary* node ) {
   auto result = Fold(graph_,cond,lhs,rhs,[node]() { return node->ir_info(); });
   if(result) node->Replace(result);
   return true;
-}
-
-// -------------------------------------------------
-//
-// index get and index set
-//
-// -------------------------------------------------
-void Simplifier::FoldGet( Expr* obj, Expr* key, Expr* node ) {
-  if(key->IsFloat64()) {
-    auto index_value = static_cast<std::uint32_t>(key->AsFloat64()->value());
-    if(obj->IsIRList()) {
-      auto list = obj->AsIRList();
-      if(index_value < list->Size()) {
-        auto value = obj->operand_list()->Index(index_value);
-        node->Replace(value);
-      }
-    }
-  } else if(key->IsString()) {
-    auto string = key->ToZoneString();
-
-    if(obj->IsIRObject()) {
-      auto object = obj->AsIRObject();
-
-      // try to find where the value is in the IRObject and then we can do a fold
-      auto itr    = object->operand_list()->Find(
-          [string]( const Expr::OperandList::ConstForwardIterator& itr ) {
-            auto kv = itr.value();
-            if(kv->key()->IsString() && (*kv->key()->ToZoneString() == *string))
-              return true;
-            return false;
-          });
-
-      if(itr.HasNext()) {
-        node->Replace(itr.value());
-      }
-    }
-  }
-}
-
-void Simplifier::FoldSet( Expr* obj , Expr* key , Expr* value, Expr* node ) {
-
-  if(key->IsFloat64()) {
-    std::uint32_t idx = static_cast<std::uint32_t>(key->AsFloat64()->value());
-    if(obj->IsIRList()) {
-      auto list = obj->AsIRList();
-      if(idx < list->Size()) {
-        auto new_list = list->Clone();
-        new_list->operand_list()->Set(idx,value);
-        node->Replace(new_list);
-      }
-    }
-  } else if(key->IsString()) {
-    auto string = key->ToZoneString();
-    if(obj->IsIRObject()) {
-      auto object = obj->AsObject();
-      auto slot = object->operand_list()->Find(
-          [string]( const Expr::OperandList::ConstForwardIterator& itr ) {
-            auto kv = itr.value();
-            if( kv->key()->IsString() && (*kv->key()->ToZoneString() == *string))
-              return true;
-            return false;
-          }
-      );
-      auto target = slot.value()->AsIRObjectKV(); // should never fail
-
-      if(slot.HasNext()) {
-
-        // create a new node except the one that needs to be modified to the patched value
-        auto new_object = IRObject::New(graph_,object->Size(),object->ir_info());
-        for( auto itr(object->operand_list()->GetForwardIterator());
-             itr.HasNext(); itr.Move() ) {
-          auto ele = itr.value();
-          if(ele == target) {
-            // except this one needs to be modified
-            auto new_kv = IRObjectKV::New(graph_,target->key(),value,target->ir_info());
-            new_object->AddOperand(new_kb);
-          } else {
-            new_object->AddOperand(itr.value());
-          }
-        }
-
-        node->Replace(new_object);
-      }
-    }
-  }
-}
-
-bool Simplifier::VisitIGet( IGet* node ) {
-  FoldGet(node->object(),node->index(),node);
-  return true;
-}
-
-bool Simplifier::VisitISet( ISet* node ) {
-  FoldSet(node->object(),node->index(),node->value(),node);
-  return true;
-}
-
-bool Simplifier::VisitPGet( PGet* node ) {
-  FoldGet(node->object(),node->index(),node);
-  return true;
-}
-
-bool Simplifier::VisitPSet( PSet* node ) {
-  FoldSet(node->object(),node->key(),node->value(),node);
-  return true;
-}
-
-bool Simplifier::VisitICall( ICall* node ) {
 }
 
 } // namespace

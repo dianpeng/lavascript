@@ -111,10 +111,14 @@ struct PrototypeInfo : zone::ZoneObject {
   /* checkpoints */                             \
   __(Checkpoint,CHECKPOINT,"checkpoint",false)  \
   __(StackSlot,STACK_SLOT, "stackslot" ,false)  \
-  __(UValSlot ,UVAL_SLOT , "uvalslot"  ,false)
+  __(UValSlot ,UVAL_SLOT , "uvalslot"  ,false)  \
+  /* test , used for guarding */                \
+  __(TestIndexOOB,TEST_INDEXOOB,"test_indexoob", false)   \
+  __(TestType    ,TEST_TYPE     ,"test_type"  ,   false)
 
 #define CBASE_IR_CONTROL_FLOW(__)               \
   __(Start,START,"start",false)                 \
+  __(End,END  , "end" ,false)                   \
   __(LoopHeader,LOOP_HEADER,"loop_header",false)\
   __(Loop,LOOP ,"loop",false)                   \
   __(LoopExit,LOOP_EXIT,"loop_exit",false)      \
@@ -122,9 +126,11 @@ struct PrototypeInfo : zone::ZoneObject {
   __(IfTrue,IF_TRUE,"if_true",false)            \
   __(IfFalse,IF_FALSE,"if_false",false)         \
   __(Jump,JUMP,"jump",false)                    \
+  __(Guard,GUARD,"guard",false)                 \
+  __(Fail ,FAIL,"fail" ,true)                   \
+  __(Success,SUCCESS,"success",false)           \
   __(Return,RETURN,"return",false)              \
   __(Region,REGION,"region",false)              \
-  __(End,END  , "end" ,false)                   \
   __(Trap,TRAP, "trap",false)                   \
   /* osr */                                     \
   __(OSRStart,OSR_START,"osr_start",false)      \
@@ -169,6 +175,7 @@ CBASE_IR_LIST(__)
 #undef __ // __
 
 // Base class for each node type
+class Node;
 class Expr;
 class ControlFlow;
 class Stmt;
@@ -204,6 +211,44 @@ struct EffectEdge {
   EffectEdge(): region(NULL), iterator() {}
 };
 
+/**
+ * Def-Use chain and Use-Def chain. We rename these field to
+ * make it more easy to understand since I personally don't
+ * think Def-Use and Use-Def chain to be a easy way to express
+ * what it does mean
+ *
+ * 1) operand list , represent what expression is used/depend on
+ *    by this expression
+ *
+ * 2) ref list     , represent list of expression that use *this*
+ *    expression
+ *
+ * NOTES:
+ *
+ * All the IR node must try to use OperandList to store their operand,
+ * and try to express any kinds of depdenency of the node as part of
+ * ir node and then use OperandList to store them. Do not add a new
+ * member inside of the IR node to store any kinds of ir node dependency,
+ * except for very specific data.
+ *
+ * The reason is OperandList provide way to modify all the reference
+ * introduced by certain node. During the optimization phase, any node
+ * is a candidate to be modified !
+ *
+ */
+typedef zone::List<Expr*> OperandList;
+typedef OperandList::ForwardIterator OperandIterator;
+
+struct Ref {
+  OperandIterator id;  // iterator used for fast deletion of this Ref it is
+                       // modified
+  Node* node;
+  Ref( const OperandIterator& iter , Node* n ): id(iter),node(n) {}
+  Ref(): id(), node(NULL) {}
+};
+
+typedef zone::List<Ref>          RefList;
+
 // Mother of all IR node , most of the important information should be stored via ID
 // as out of line storage
 class Node : public zone::ZoneObject {
@@ -234,7 +279,7 @@ class Node : public zone::ZoneObject {
 #undef __ // __
 
   bool IsString() const { return IsSString() || IsLString(); }
-  inline const zone::String* ToZoneString() const;
+  inline const zone::String& AsZoneString() const;
 
   bool IsControlFlow() const { return IRTypeIsControlFlow(type()); }
   inline ControlFlow* AsControlFlow();
@@ -307,47 +352,7 @@ class Expr : public Node {
   // will only change all the node that *reference* this node but not
   // touch all the operands' reference list
   virtual void Replace( Expr* );
-
-  // Clone a new node as fully duplication of this Expr node
-  virtual Expr* Clone() = 0;
  public:
-  /**
-   * Def-Use chain and Use-Def chain. We rename these field to
-   * make it more easy to understand since I personally don't
-   * think Def-Use and Use-Def chain to be a easy way to express
-   * what it does mean
-   *
-   * 1) operand list , represent what expression is used/depend on
-   *    by this expression
-   *
-   * 2) ref list     , represent list of expression that use *this*
-   *    expression
-   *
-   * NOTES:
-   *
-   * All the IR node must try to use OperandList to store their operand,
-   * and try to express any kinds of depdenency of the node as part of
-   * ir node and then use OperandList to store them. Do not add a new
-   * member inside of the IR node to store any kinds of ir node dependency,
-   * except for very specific data.
-   *
-   * The reason is OperandList provide way to modify all the reference
-   * introduced by certain node. During the optimization phase, any node
-   * is a candidate to be modified !
-   *
-   */
-  typedef zone::List<Expr*> OperandList;
-  typedef OperandList::ForwardIterator OperandIterator;
-
-  struct Ref {
-    OperandIterator id;  // iterator used for fast deletion of this Ref it is
-                         // modified
-    Expr* node;
-    Ref( const OperandIterator& iter , Expr* n ): id(iter),node(n) {}
-    Ref(): id(), node(NULL) {}
-  };
-
-  typedef zone::List<Ref>          RefList;
 
   // Operand list
   //
@@ -361,23 +366,6 @@ class Expr : public Node {
   // it will take care of the input node's ref list as well
   inline void AddOperand( Expr* node );
 
-  // Dependency list
-  //
-  // This list is used to track all the dependency when doing scheduling.
-  // This list is empty at very first , later on build up during the optimization
-  // phase.
-  //
-  // During scheduling , the order we enforce is represented implicitly represented
-  // by following 2 types of inputs:
-  //
-  //   1) checkpoint
-  //   2) dependency
-  //
-  OperandList* dependency_list() { return &dependency_list_; }
-  const OperandList* dependency_list() const { return &dependency_list_; }
-
-  inline void AddDependency( Expr* node );
-
   // Reference list
   //
   // This list returns a list of Ref object which allow user to
@@ -388,7 +376,7 @@ class Expr : public Node {
   RefList* ref_list() { return &ref_list_; }
 
   // Add the referece into the reference list
-  void AddRef( Expr* who_uses_me , const OperandIterator& iter ) {
+  void AddRef( Node* who_uses_me , const OperandIterator& iter ) {
     ref_list()->PushBack(zone(),Ref(iter,who_uses_me));
   }
 
@@ -418,7 +406,6 @@ class Expr : public Node {
 
  private:
   OperandList operand_list_;
-  OperandList dependency_list_;
   RefList     ref_list_;
   IRInfo*     ir_info_;
   EffectEdge  effect_;
@@ -617,8 +604,6 @@ class IRList : public Expr {
 
   virtual std::uint64_t GVNHash() const;
   virtual bool Equal( const Expr* ) const;
-
-  IRList* Clone() const;
 
  private:
   LAVA_DISALLOW_COPY_AND_ASSIGN(IRList)
@@ -1499,6 +1484,68 @@ class UValSlot : public Expr {
   LAVA_DISALLOW_COPY_AND_ASSIGN(UValSlot)
 };
 
+class TestIndexOOB : public Expr {
+ public:
+  inline static TestIndexOOB* New( Graph* , Expr* , Expr* , IRInfo* );
+
+  Expr* object() const { return operand_list()->First(); }
+  Expr* index () const { return operand_list()->Last (); }
+
+  TestIndexOOB( Graph* graph , std::uint32_t id , Expr* obj , Expr* idx ,
+                                                              IRInfo* info ):
+    Expr(IRTYPE_TEST_INDEXOOB,id,graph,info)
+  {
+    AddOperand(obj);
+    AddOperand(idx);
+  }
+
+ private:
+  LAVA_DISALLOW_COPY_AND_ASSIGN(TestIndexOOB)
+};
+
+class TestType : public Expr {
+ public:
+  enum TypeCategory {
+    TT_FLOAT64,
+    TT_BOOLEAN,
+    TT_NIL,
+    TT_SSTRING,
+    TT_LSTRING,
+    TT_STRING,
+    TT_LIST,
+    TT_OBJECT,
+    TT_EXTENSION,
+
+    TT_COMPONENT,       // test whether this object can have component
+    TT_INDEXABLE,       // test whether this object can be indexable
+    TT_PROPERTIABLE     // test whether this object can be used with dot/property
+  };
+
+  inline static const char* GetTypeCategoryName( TypeCategory );
+
+  inline static TestType* New( Graph* , TypeCategory , Expr* , IRInfo* );
+
+  TypeCategory type_category() const { return type_category_; }
+
+  const char* type_category_name() const { return GetTypeCategoryName(type_category_); }
+
+  Expr* object() const { return operand_list()->First(); }
+
+  TestType( Graph* graph , std::uint32_t id , TypeCategory tc ,
+                                              Expr* obj,
+                                              IRInfo* info ):
+    Expr(IRTYPE_TEST_TYPE,id,graph,info),
+    type_category_(tc)
+  {
+    AddOperand(obj);
+  }
+
+ private:
+  TypeCategory type_category_;
+
+  LAVA_DISALLOW_COPY_AND_ASSIGN(TestType)
+};
+
 // -------------------------------------------------------------------------
 // Control Flow
 //
@@ -1521,7 +1568,6 @@ class ControlFlow : public Node {
     backward_edge_.Add(zone(),edge);
   }
 
-  // --------------------------------------------------------------------------
   // Effective expression doesn't belong to certain expression chain
   //
   // Like free function invocation, they are not part certain expression chain
@@ -1529,7 +1575,6 @@ class ControlFlow : public Node {
   //
   // All these types of expressions are stored inside of the effect_expr list
   // to be used later on for code generation
-  // --------------------------------------------------------------------------
   const EffectList* effect_expr() const {
     return &effect_expr_;
   }
@@ -1543,10 +1588,30 @@ class ControlFlow : public Node {
     node->set_effect(EffectEdge(this,itr));
   }
 
+  // OperandList
+  //
+  // All control flow's related data input should be stored via this list
+  // since this list supports expression substitution/replacement. It is
+  // used in all optimization pass
+
+  OperandList* operand_list() {
+    return &operand_list_;
+  }
+
+  const OperandList* operand_list() const {
+    return &operand_list_;
+  }
+
+  void AddOperand( Expr* node ) {
+    auto itr = operand_list()->PushBack(zone(),node);
+    node->AddRef(this,itr);
+  }
+
   ControlFlow( IRType type , std::uint32_t id , Graph* graph , ControlFlow* parent = NULL ):
     Node(type,id,graph),
     backward_edge_   (),
-    effect_expr_     ()
+    effect_expr_     (),
+    operand_list_    ()
   {
     if(parent) backward_edge_.Add(zone(),parent);
   }
@@ -1554,6 +1619,8 @@ class ControlFlow : public Node {
  private:
   zone::Vector<ControlFlow*> backward_edge_;
   EffectList                 effect_expr_;
+  OperandList                operand_list_;
+
   LAVA_DISALLOW_COPY_AND_ASSIGN(ControlFlow)
 };
 
@@ -1580,19 +1647,18 @@ class LoopHeader : public ControlFlow {
  public:
   inline static LoopHeader* New( Graph* , ControlFlow* );
 
-  Expr* condition() const { return condition_; }
+  Expr* condition() const { return operand_list()->First(); }
 
   void set_condition( Expr* condition ) {
-    condition_ = condition;
+    lava_debug(NORMAL,lava_verify(operand_list()->empty()););
+    AddOperand(condition);
   }
 
   LoopHeader( Graph* graph , std::uint32_t id , ControlFlow* region ):
-    ControlFlow(IRTYPE_LOOP_HEADER,id,graph,region),
-    condition_ (NULL)
+    ControlFlow(IRTYPE_LOOP_HEADER,id,graph,region)
   {}
 
  private:
-  Expr* condition_;
   LAVA_DISALLOW_COPY_AND_ASSIGN(LoopHeader);
 };
 
@@ -1611,15 +1677,15 @@ class Loop : public ControlFlow {
 class LoopExit : public ControlFlow {
  public:
   inline static LoopExit* New( Graph* , Expr* );
-  Expr* condition() const { return condition_; }
+  Expr* condition() const { return operand_list()->First(); }
 
   LoopExit( Graph* graph , std::uint32_t id , Expr* cond ):
-    ControlFlow(IRTYPE_LOOP_EXIT,id,graph),
-    condition_ (cond)
-  {}
+    ControlFlow(IRTYPE_LOOP_EXIT,id,graph)
+  {
+    AddOperand(cond);
+  }
 
  private:
-  Expr* condition_;
   LAVA_DISALLOW_COPY_AND_ASSIGN(LoopExit)
 };
 
@@ -1631,15 +1697,15 @@ class LoopExit : public ControlFlow {
 class If : public ControlFlow {
  public:
   inline static If* New( Graph* , Expr* , ControlFlow* );
-  Expr* condition() const { return condition_; }
+  Expr* condition() const { return operand_list()->First(); }
 
   If( Graph* graph , std::uint32_t id , Expr* cond , ControlFlow* region ):
-    ControlFlow(IRTYPE_IF,id,graph,region),
-    condition_ (cond)
-  {}
+    ControlFlow(IRTYPE_IF,id,graph,region)
+  {
+    AddOperand(cond);
+  }
 
  private:
-  Expr* condition_;
   LAVA_DISALLOW_COPY_AND_ASSIGN(If)
 };
 
@@ -1689,18 +1755,66 @@ class Jump : public ControlFlow {
   LAVA_DISALLOW_COPY_AND_ASSIGN(Jump)
 };
 
-class Return : public ControlFlow {
+class Guard : public ControlFlow {
  public:
-  inline static Return* New( Graph* , Expr* , ControlFlow* );
-  Expr* value() const { return value_; }
+  inline static Guard* New( Graph* , Expr* , ControlFlow* );
 
-  Return( Graph* graph , std::uint32_t id , Expr* value , ControlFlow* region ):
-    ControlFlow(IRTYPE_RETURN,id,graph,region),
-    value_     (value)
+  Expr* test() const { return operand_list()->First(); }
+
+  Guard( Graph* graph , std::uint32_t id , Expr* t , ControlFlow* r ):
+    ControlFlow(IRTYPE_GUARD,id,graph,r)
+  {
+    AddOperand(t);
+  }
+
+ private:
+  LAVA_DISALLOW_COPY_AND_ASSIGN(Guard)
+};
+
+class Fail : public ControlFlow {
+ public:
+  inline static Fail* New( Graph* );
+
+  Fail( Graph* graph , std::uint32_t id ):
+    ControlFlow(IRTYPE_FAIL,id,graph)
   {}
 
  private:
-  Expr* value_;
+  LAVA_DISALLOW_COPY_AND_ASSIGN(Fail)
+};
+
+class Success : public ControlFlow {
+ public:
+  inline static Success* New( Graph* );
+
+  Expr* return_value() const { return operand_list()->First(); }
+
+  void set_return_value( Expr* return_value ) {
+    lava_debug(NORMAL,lava_verify(operand_list()->empty()););
+    AddOperand(return_value);
+  }
+
+  Success( Graph* graph , std::uint32_t id ):
+    ControlFlow  (IRTYPE_END,id,graph)
+  {}
+
+ private:
+  LAVA_DISALLOW_COPY_AND_ASSIGN(Success)
+};
+
+
+class Return : public ControlFlow {
+ public:
+  inline static Return* New( Graph* , Expr* , ControlFlow* );
+  Expr* value() const { return operand_list()->First(); }
+
+  Return( Graph* graph , std::uint32_t id , Expr* value , ControlFlow* region ):
+    ControlFlow(IRTYPE_RETURN,id,graph,region)
+  {
+    AddOperand(value);
+  }
+
+ private:
   LAVA_DISALLOW_COPY_AND_ASSIGN(Return)
 };
 
@@ -1719,22 +1833,19 @@ class Start : public ControlFlow {
 
 class End : public ControlFlow {
  public:
-  inline static End* New( Graph* );
+  inline static End* New( Graph* , Success* , Fail* );
 
-  Expr* return_value() const {
-    return return_value_;
-  }
-  void set_return_value( Expr* return_value ) {
-    return_value_ = return_value;
-  }
+  Success* success() const { return backward_edge()->First()->AsSuccess(); }
+  Fail*    fail()    const { return backward_edge()->Last ()->AsFail   (); }
 
-  End( Graph* graph , std::uint32_t id ):
-    ControlFlow  (IRTYPE_END,id,graph),
-    return_value_(NULL)
-  {}
+  End( Graph* graph , std::uint32_t id , Success* s , Fail* f ):
+    ControlFlow(IRTYPE_END,id,graph)
+  {
+    AddBackwardEdge(s);
+    AddBackwardEdge(f);
+  }
 
  private:
-  Expr* return_value_;
   LAVA_DISALLOW_COPY_AND_ASSIGN(End)
 };
 
@@ -1781,11 +1892,17 @@ class OSRStart : public ControlFlow {
 
 class OSREnd : public ControlFlow {
  public:
-  inline static OSREnd* New( Graph* );
+  inline static OSREnd* New( Graph* , Success* succ , Fail* f );
 
-  OSREnd( Graph* graph , std::uint32_t id ):
+  Success* success() const { return backward_edge()->First()->AsSuccess(); }
+  Fail*    fail   () const { return backward_edge()->Last()->AsFail(); }
+
+  OSREnd( Graph* graph , std::uint32_t id , Success* succ , Fail* f ):
     ControlFlow(IRTYPE_OSR_END,id,graph)
-  {}
+  {
+    AddBackwardEdge(succ);
+    AddBackwardEdge(f);
+  }
 
  private:
   LAVA_DISALLOW_COPY_AND_ASSIGN(OSREnd)
@@ -1807,12 +1924,13 @@ class Graph {
   {}
 
   // initialize the *graph* object with start and end
-  void Initialize( Start* start , End* end );
-  void Initialize( OSRStart* start , OSREnd* end );
+  void Initialize( Start* start    , End* end );
+  void Initialize( OSRStart* start , OSREnd* end  );
 
  public: // getter and setter
   ControlFlow* start() const { return start_; }
   ControlFlow* end  () const { return end_;   }
+
   zone::Zone* zone()   { return &zone_; }
   const zone::Zone* zone() const { return &zone_; }
 
@@ -1853,6 +1971,7 @@ class Graph {
   zone::Zone                  zone_;
   ControlFlow*                start_;
   ControlFlow*                end_;
+
   zone::Vector<PrototypeInfo> prototype_info_;
   std::uint32_t               id_;
 
@@ -1983,7 +2102,7 @@ class ControlFlowEdgeIterator {
     graph_  (&graph),
     next_   ()
   {
-    stack_.Push(graph.end());
+    stack_.Push(graph.end()) ;
     Move();
   }
 
@@ -2058,19 +2177,14 @@ CBASE_IR_LIST(__)
 
 #undef __ // __
 
-inline const zone::String* Node::ToZoneString() const {
+inline const zone::String& Node::AsZoneString() const {
   lava_debug(NORMAL,lava_verify(IsString()););
-  return IsLString() ? AsLString()->value() :
-                       AsSString()->value() ;
+  return IsLString() ? *AsLString()->value() :
+                       *AsSString()->value() ;
 }
 
 inline void Expr::AddOperand( Expr* node ) {
   auto itr = operand_list()->PushBack(zone(),node);
-  node->AddRef(this,itr);
-}
-
-inline void Expr::AddOperand( Expr* node ) {
-  auto itr = dependency_list()->PushBack(zone(),node);
   node->AddRef(this,itr);
 }
 
@@ -2345,6 +2459,34 @@ inline void Checkpoint::AddUValSlot ( Expr* val , std::uint32_t index ) {
   AddOperand(UValSlot::New(graph(),val,index));
 }
 
+inline TestIndexOOB* TestIndexOOB::New( Graph* graph , Expr* object , Expr* key ,
+                                                                      IRInfo* info ) {
+  return graph->zone()->New<TestIndexOOB>(graph,graph->AssignID(),object,key,info);
+}
+
+inline TestType* TestType::New( Graph* graph , TypeCategory tc , Expr* object ,
+                                                                 IRInfo* info ) {
+  return graph->zone()->New<TestType>(graph,graph->AssignID(),tc,object,info);
+}
+
+inline const char* TestType::GetTypeCategoryName( TypeCategory tc ) {
+  switch(tc) {
+    case TT_FLOAT64: return "tt_float64";
+    case TT_BOOLEAN: return "tt_boolean";
+    case TT_NIL    : return "tt_nil";
+    case TT_STRING : return "tt_string";
+    case TT_SSTRING: return "tt_sstring";
+    case TT_LSTRING: return "tt_lstring";
+    case TT_LIST   : return "tt_list";
+    case TT_OBJECT : return "tt_object";
+    case TT_EXTENSION: return "tt_extension";
+    case TT_COMPONENT: return "tt_component";
+    case TT_INDEXABLE: return "tt_indexable";
+    case TT_PROPERTIABLE: return "tt_propertiable";
+    default: lava_die(); return NULL;
+  }
+}
+
 inline StackSlot* StackSlot::New( Graph* graph , Expr* expr , std::uint32_t index ) {
   return graph->zone()->New<StackSlot>(graph,graph->AssignID(),expr,index);
 }
@@ -2397,6 +2539,18 @@ inline Jump* Jump::New( Graph* graph , const std::uint32_t* pc , ControlFlow* pa
   return graph->zone()->New<Jump>(graph,graph->AssignID(),parent,pc);
 }
 
+inline Guard* Guard::New( Graph* graph , Expr* test , ControlFlow* parent ) {
+  return graph->zone()->New<Guard>(graph,graph->AssignID(),test,parent);
+}
+
+inline Fail* Fail::New( Graph* graph ) {
+  return graph->zone()->New<Fail>(graph,graph->AssignID());
+}
+
+inline Success* Success::New( Graph* graph ) {
+  return graph->zone()->New<Success>(graph,graph->AssignID());
+}
+
 inline bool Jump::TrySetTarget( const std::uint32_t* bytecode_pc , ControlFlow* target ) {
   if(bytecode_pc_ == bytecode_pc) {
     target_ = target;
@@ -2415,8 +2569,8 @@ inline Start* Start::New( Graph* graph ) {
   return graph->zone()->New<Start>(graph,graph->AssignID());
 }
 
-inline End* End::New( Graph* graph ) {
-  return graph->zone()->New<End>(graph,graph->AssignID());
+inline End* End::New( Graph* graph , Success* s , Fail* f ) {
+  return graph->zone()->New<End>(graph,graph->AssignID(),s,f);
 }
 
 inline Trap* Trap::New( Graph* graph , ControlFlow* region ) {
@@ -2427,8 +2581,8 @@ inline OSRStart* OSRStart::New( Graph* graph ) {
   return graph->zone()->New<OSRStart>(graph,graph->AssignID());
 }
 
-inline OSREnd* OSREnd::New( Graph* graph ) {
-  return graph->zone()->New<OSREnd>(graph,graph->AssignID());
+inline OSREnd* OSREnd::New( Graph* graph , Success* s , Fail* f ) {
+  return graph->zone()->New<OSREnd>(graph,graph->AssignID(),s,f);
 }
 
 } // namespace hir

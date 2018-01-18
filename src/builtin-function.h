@@ -1,6 +1,7 @@
 #ifndef BUILTIN_FUNCTION_H_
 #define BUILTIN_FUNCTION_H_
 
+#include "src/bits.h"
 #include "src/util.h"
 #include "src/objects.h"
 #include "src/gc.h"
@@ -189,8 +190,7 @@ inline bool BuiltinLRo( Context* ctx , const Value& lhs , const Value& rhs ,
 
     std::uint8_t rhs_value = static_cast<std::uint8_t>(rhs.GetReal());
 
-    output->SetReal( static_cast<double>(
-          (lhs_value << rhs_value) | (lhs_value >> (32-rhs_value))));
+    output->SetReal(static_cast<double>(::lavascript::bits::BRol(lhs_value,rhs_value)));
 
     return true;
   }
@@ -210,8 +210,7 @@ inline bool BuiltinRRo( Context* ctx , const Value& lhs , const Value& rhs ,
 
     std::uint8_t rhs_value = static_cast<std::uint8_t>(rhs.GetReal());
 
-    output->SetReal( static_cast<double>(
-          (lhs_value >> rhs_value) | (lhs_value << (32-rhs_value))));
+    output->SetReal(static_cast<double>(::lavascript::bits::BRor(lhs_value,rhs_value)));
 
     return true;
   }
@@ -604,6 +603,7 @@ inline bool BuiltinIter( Context* ctx , const Value& obj , Value* output ,
 }
 
 } // namespace builtin
+#include "src/bits.h"
 } // namespace lavascript
 
 #endif // BUILTIN_FUNCTION_H_

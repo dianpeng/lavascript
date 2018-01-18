@@ -109,6 +109,17 @@ std::uint64_t NextPowerOf2( std::uint64_t v ) {
   return v+1;
 }
 
+// mimic rol/ror x64 instruction since C++ doesn't have builtin operator supports
+inline
+std::uint32_t BRol( std::uint32_t lhs , std::uint8_t rhs ) {
+  return (lhs << rhs) | (lhs >> (32-rhs));
+}
+
+inline
+std::uint32_t BRor( std::uint32_t lhs , std::uint8_t rhs ) {
+  return (lhs >> rhs) | (lhs << (32-rhs));
+}
+
 } // namespace bits
 } // namespace lavascript
 

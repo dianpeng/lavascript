@@ -368,7 +368,7 @@ Expr* GraphBuilder::NewPGet( Expr* object , Expr* key , const BytecodeLocation& 
 Expr* GraphBuilder::NewISet( Expr* object, Expr* index, Expr* value,
                                                         const BytecodeLocation& pc ) {
   if(object->IsIRList() && index->IsFloat64()) {
-    auto iidx = static_cast<std::uint32_t>(index->AsFloat64()->value());
+    auto iidx = static_cast<std::int32_t>(index->AsFloat64()->value());
     auto list = object->AsIRList();
     if(iidx < list->Size()) {
       auto ir_info = NewIRInfo(pc);
@@ -403,7 +403,7 @@ Expr* GraphBuilder::NewISet( Expr* object, Expr* index, Expr* value,
 
 Expr* GraphBuilder::NewIGet( Expr* object, Expr* index, const BytecodeLocation& pc ) {
   if(object->IsIRList() && index->IsFloat64()) {
-    auto iidx = static_cast<std::uint32_t>(index->AsFloat64()->value());
+    auto iidx = static_cast<std::int32_t>(index->AsFloat64()->value());
     auto list = object->AsIRList();
     if(iidx < list->Size()) {
       return list->operand_list()->Index(iidx);
@@ -421,11 +421,15 @@ Expr* GraphBuilder::NewIGet( Expr* object, Expr* index, const BytecodeLocation& 
   return IGet::New(graph_,object,index,ir_info,region());
 }
 
-Guard* GraphBuilder::NewGuard( Expr* test ) {
-  auto guard = Guard::New(graph_,test,region());
-  auto r     = Region::New(graph_,guard);
-  // push the guard into the list
-  func_info().guard_list.push_back(guard);
+If* GraphBuilder::NewGuard( Expr* test ) {
+  auto guard    = If::New(graph_,test,region());
+  auto if_true  = IfTrue::New(graph_,guard);
+  auto if_false = IfFalse::New(graph_,guard);
+  auto r        = Region::New(graph_,if_true);
+
+  // push the if_false into the guard_list and waiting for the final link
+  func_info().guard_list.push_back(if_false);
+
   set_region(r);
   return guard;
 }

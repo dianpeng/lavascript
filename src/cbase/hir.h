@@ -110,11 +110,11 @@ struct PrototypeInfo : zone::ZoneObject {
   __(Effect,EFFECT,"effect",false)              \
   /* checkpoints */                             \
   __(Checkpoint,CHECKPOINT,"checkpoint",false)  \
-  __(StackSlot,STACK_SLOT, "stackslot" ,false)  \
-  __(UValSlot ,UVAL_SLOT , "uvalslot"  ,false)  \
+  __(StackSlot ,STACK_SLOT, "stackslot",false)  \
+  __(UValSlot  ,UVAL_SLOT , "uvalslot" ,false)  \
   /* test , used for guarding */                \
   __(TestIndexOOB,TEST_INDEXOOB,"test_indexoob", false)   \
-  __(TestType    ,TEST_TYPE     ,"test_type"  ,   false)
+  __(TestType    ,TEST_TYPE     ,"test_type"  ,  false)
 
 #define CBASE_IR_CONTROL_FLOW(__)               \
   __(Start,START,"start",false)                 \
@@ -126,7 +126,6 @@ struct PrototypeInfo : zone::ZoneObject {
   __(IfTrue,IF_TRUE,"if_true",false)            \
   __(IfFalse,IF_FALSE,"if_false",false)         \
   __(Jump,JUMP,"jump",false)                    \
-  __(Guard,GUARD,"guard",false)                 \
   __(Fail ,FAIL,"fail" ,true)                   \
   __(Success,SUCCESS,"success",false)           \
   __(Return,RETURN,"return",false)              \
@@ -411,10 +410,13 @@ class Expr : public Node {
   EffectEdge  effect_;
 };
 
-/** ============================================================
+/*
+ * ============================================================
+ *
  * GVN hash function helper implementation
  *
  * Helper function to implement the GVN hash table function
+ *
  * ============================================================
  */
 
@@ -1755,22 +1757,6 @@ class Jump : public ControlFlow {
   LAVA_DISALLOW_COPY_AND_ASSIGN(Jump)
 };
 
-class Guard : public ControlFlow {
- public:
-  inline static Guard* New( Graph* , Expr* , ControlFlow* );
-
-  Expr* test() const { return operand_list()->First(); }
-
-  Guard( Graph* graph , std::uint32_t id , Expr* t , ControlFlow* r ):
-    ControlFlow(IRTYPE_GUARD,id,graph,r)
-  {
-    AddOperand(t);
-  }
-
- private:
-  LAVA_DISALLOW_COPY_AND_ASSIGN(Guard)
-};
-
 class Fail : public ControlFlow {
  public:
   inline static Fail* New( Graph* );
@@ -2537,10 +2523,6 @@ inline IfFalse* IfFalse::New( Graph* graph ) {
 
 inline Jump* Jump::New( Graph* graph , const std::uint32_t* pc , ControlFlow* parent ) {
   return graph->zone()->New<Jump>(graph,graph->AssignID(),parent,pc);
-}
-
-inline Guard* Guard::New( Graph* graph , Expr* test , ControlFlow* parent ) {
-  return graph->zone()->New<Guard>(graph,graph->AssignID(),test,parent);
 }
 
 inline Fail* Fail::New( Graph* graph ) {

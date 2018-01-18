@@ -281,14 +281,6 @@ void DotGraphVisualizer::RenderControlFlow( const std::string& region_name ,
         Indent(1) << region_name << " -> " << name << '\n';
       }
       break;
-    case IRTYPE_GUARD:
-      {
-        auto guard = region->AsGuard();
-        auto name = GetNodeName(guard->test());
-        RenderExpr(name,guard->test());
-        Indent(1) << region_name << " -> " << name << '\n';
-      }
-      break;
     default:
       break;
   }

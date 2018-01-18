@@ -99,7 +99,7 @@ class GraphBuilder {
     std::uint8_t  max_local_var_size;
     std::vector<LoopInfo> loop_info;
     std::vector<ControlFlow*> return_list;
-    std::vector<Guard*> guard_list;
+    std::vector<ControlFlow*> guard_list;
     BytecodeAnalyze bc_analyze;
     const std::uint32_t* osr_start;
 
@@ -259,7 +259,7 @@ class GraphBuilder {
   Expr* FoldObjectGet ( IRObject* , const zone::String& , const interpreter::BytecodeLocation& );
 
   // some helper functions to create different node in IR graph
-  Guard* NewGuard( Expr* );
+  If* NewGuard( Expr* );
 
  private: // Checkpoint generation
   Checkpoint* BuildCheckpoint( const interpreter::BytecodeLocation& );

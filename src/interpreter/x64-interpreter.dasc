@@ -1686,7 +1686,7 @@ void GenerateIntrinsicCall( BuildContext* bctx ) {
   |  Check2Num ->ic_failure_handler
   |  cvtsd2si T0L , qword [STK+ARG2F*8]
   |  cvtsd2si ARG2, qword [STK+ARG2F*8+8]
-  |  and T0L, ARG2 
+  |  and T0L, ARG2
   |  cvtsi2sd xmm0, T0L
   |  movsd qword [ACC], xmm0
   |  ret
@@ -1737,7 +1737,7 @@ void GenerateIntrinsicCall( BuildContext* bctx ) {
   |  movsd qword [ACC], xmm0
   |  ret
   |3:
-  |  mov CARG1, CONTEXT 
+  |  mov CARG1, CONTEXT
   |  lea CARG2, [STK+ARG2F*8]
   |  lea CARG3, [ACC]
   |  mov CARG4, qword [RUNTIME+RuntimeLayout::kErrorOffset]
@@ -1767,7 +1767,7 @@ void GenerateIntrinsicCall( BuildContext* bctx ) {
   |  movsd qword [ACC], xmm0
   |  ret
   |3:
-  |  mov CARG1, CONTEXT 
+  |  mov CARG1, CONTEXT
   |  lea CARG2, [STK+ARG2F*8]
   |  lea CARG3, [ACC]
   |  mov CARG4, qword [RUNTIME+RuntimeLayout::kErrorOffset]
@@ -1829,7 +1829,7 @@ void GenerateIntrinsicCall( BuildContext* bctx ) {
   |  ret
 
   // ------------------------------------
-  // add(a,b,c)
+  // set(a,b,c)
   // ------------------------------------
   |=>IC_SET:
   |  mov CARG1, CONTEXT

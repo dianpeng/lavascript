@@ -8,6 +8,7 @@
 
 #include <src/cbase/graph-builder.h>
 #include <src/cbase/bytecode-analyze.h>
+#include <src/cbase/optimization/gvn.h>
 
 #include <gtest/gtest.h>
 
@@ -76,6 +77,15 @@ bool CheckGraph( const char* source ) {
 
   std::cerr << Graph::PrintToDotFormat(graph) << std::endl;
   PrintHeap(graph);
+
+  {
+    GVN gvn;
+    gvn.Perform(&graph,HIRPass::NORMAL);
+  }
+
+  std::cerr << Graph::PrintToDotFormat(graph) << std::endl;
+  PrintHeap(graph);
+
   return true;
 }
 
@@ -114,9 +124,11 @@ bool CheckGraphOSR( const char* source , std::size_t offset ) {
 
 TEST(GraphBuilder,Basic) {
   CASE(
-    var a = g;
-    a["b"] = 3;
-    return a.b;
+      var a = f;
+      var b = f;
+      var c = a + b;
+      var d = a + b;
+      return c+d;
   );
 }
 

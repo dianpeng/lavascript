@@ -14,6 +14,7 @@
 #include <new>
 #include <cmath>
 #include <limits>
+#include <inttypes.h>
 
 #include "trace.h"
 

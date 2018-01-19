@@ -35,7 +35,7 @@ template< typename T >
 bool VisitExpr( T* itr , ExprVisitor* visitor ) {
   static_assert( IsExprIterator<T>() );
   for( ; itr->HasNext(); itr->Move() ) {
-    if(!VisitExprNode(itr->value(),visitor)) return false;
+    if(!detail::VisitExprNode(itr->value(),visitor)) return false;
   }
   return true;
 }
@@ -44,7 +44,7 @@ template< typename T >
 bool VisitControlFlow( T* itr , ControlFlowVisitor* visitor ) {
   static_assert( IsControlFlowIterator<T>() );
   for( ; itr->HasNext() ; itr->Move() ) {
-    if(!VisitControlFlowNode(itr->value(),visitor)) return false;
+    if(!detail::VisitControlFlowNode(itr->value(),visitor)) return false;
   }
   return true;
 }

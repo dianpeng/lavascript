@@ -7,7 +7,7 @@ class DumpWriter;
 
 // Disassemble a chunk of memory with length into human readable assembly into
 // DumpWriter object
-void Disassemble( void* buffer , std::size_t length , DumpWriter* );
+void SimpleDisassemble( void* buffer , std::size_t length , DumpWriter* );
 
 } // namespace
 

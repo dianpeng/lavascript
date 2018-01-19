@@ -10,6 +10,8 @@ namespace hir {
 
 namespace {
 
+using namespace ::lavascript::interpreter;
+
 Expr* Fold( Graph* graph , Unary::Operator op , Expr* expr ,
                                                 const std::function<IRInfo*()>& irinfo ) {
   if(op == Unary::MINUS && expr->IsFloat64()) {
@@ -112,7 +114,6 @@ Expr* Fold( Graph* graph , Expr* cond , Expr* lhs , Expr* rhs ,
 
 // -----------------------------------------------------------------------
 // Expression visitor for doing expression simplification
-//
 class Simplifier : public ExprVisitor {
  public:
   // normal arithmetic operations
@@ -120,22 +121,49 @@ class Simplifier : public ExprVisitor {
   virtual bool VisitBinary( Binary* );
   virtual bool VisitTernary( Ternary* );
 
-  // iget/iset && pget/pset
-  virtual bool VisitISet( ISet* );
-  virtual bool VisitPSet( PSet* );
+  // we can only fold IGet/PGet
+  virtual bool VisitIGet( IGet* );
+  virtual bool VisitPGet( PGet* );
 
   // intrinsic call function folding
   virtual bool VisitICall ( ICall* );
 
  private:
-  Expr* FoldPSet( PSet* , const zone::ZoneString& );
+  Expr* FoldPSet( PSet* , const zone::String& );
 
+  bool AsUInt8 ( Expr* , std::uint8_t*  );
   bool AsUInt32( Expr* , std::uint32_t* );
   bool AsReal  ( Expr* , double* );
 
  private:
   Graph* graph_;
 };
+
+bool Simplifier::AsUInt8( Expr* node , std::uint8_t* value ) {
+  if(node->IsFloat64()) {
+    // we don't care about the shifting overflow, the underly ISA
+    // only allows a 8bit register serve as how many bits shifted.
+    *value = static_cast<std::uint8_t>(node->AsFloat64()->value());
+    return true;
+  }
+  return false;
+}
+
+bool Simplifier::AsUInt32( Expr* node , std::uint32_t* value ) {
+  if(node->IsFloat64()) {
+    *value = static_cast<std::uint32_t>(node->AsFloat64()->value());
+    return true;
+  }
+  return false;
+}
+
+bool Simplifier::AsReal  ( Expr* node , double* real ) {
+  if(node->IsFloat64()) {
+    *real = node->AsFloat64()->value();
+    return true;
+  }
+  return false;
+}
 
 bool Simplifier::VisitUnary ( Unary* node ) {
   auto opr = node->operand();
@@ -161,9 +189,9 @@ bool Simplifier::VisitTernary( Ternary* node ) {
   return true;
 }
 
-Expr* Simplifier::FoldPSet( PSet* pset , const zone::ZoneString& key ) {
-  auto key = pset->key();
-  if(key->IsString() && (key->AsZoneString() == key))
+Expr* Simplifier::FoldPSet( PSet* pset , const zone::String& key ) {
+  auto k = pset->key();
+  if(k->IsString() && (k->AsZoneString() == key))
     return pset->value();
   return NULL;
 }
@@ -179,13 +207,13 @@ bool Simplifier::VisitIGet( IGet* node ) {
   auto idx = node->index ();
 
   if(obj->IsISet() && idx->IsFloat64()) {
-    auto iidx = static_cast<std::int32_t>(idx->AsFloat64()->value());
+    auto iidx = static_cast<std::uint32_t>(idx->AsFloat64()->value());
     auto iset = obj->AsISet();
     if(iset->index()->IsFloat64()) {
       auto iset_idx = iset->index()->AsFloat64();
-      auto iset_iidx= static_cast<std::int32_t>(iset_idx->value());
+      auto iset_iidx= static_cast<std::uint32_t>(iset_idx->value());
 
-      if(iset_idx = iset_iidx) {
+      if(iset_iidx == iidx) {
         node->Replace(iset->value());
       }
     }
@@ -213,7 +241,7 @@ bool Simplifier::VisitICall( ICall* node ) {
       {
         double a1 ,a2;
         if(AsReal(node->operand_list()->Index(0),&a1) &&
-           AsReal(node->opreand_list()->Index(1),&a2)) {
+           AsReal(node->operand_list()->Index(1),&a2)) {
           node->Replace(Float64::New(graph_,std::max(a1,a2),node->ir_info()));
         }
       }
@@ -324,10 +352,10 @@ bool Simplifier::VisitICall( ICall* node ) {
         }
       }
       break;
-
-
-
+    default:
+      break;
   }
+  return true;
 }
 
 } // namespace
@@ -346,6 +374,16 @@ Expr* SimplifyBinary ( Graph* graph , Binary::Operator op , Expr* lhs ,
 Expr* SimplifyTernary( Graph* graph , Expr* cond , Expr* lhs , Expr* rhs ,
                                                                const std::function<IRInfo*()>& irinfo) {
   return Fold(graph,cond,lhs,rhs,irinfo);
+}
+
+bool ExpressionSimplifier::Perform( Graph* graph , Expr* expr , Flag flag ) {
+  (void)flag;
+
+  ExprDFSIterator itr(*graph,expr);
+  Simplifier visitor;
+
+  VisitExpr(&itr,&visitor);
+  return true;
 }
 
 } // namespace hir

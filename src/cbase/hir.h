@@ -324,6 +324,70 @@ class BailoutEntry {
   LAVA_DISALLOW_COPY_AND_ASSIGN(BailoutEntry)
 };
 
+
+/* =========================================================================
+ *
+ * GVN hash function helper implementation
+ *
+ * Helper function to implement the GVN hash table function
+ *
+ *
+ * GVN general rules:
+ *
+ * 1) for any primitive type or type that doesn't have observable
+ *    side effect, the GVNHash it generates should *not* take into
+ *    consideration of the node identity. Example like : any float64
+ *    node with same value should have exactly same GVNHash value and
+ *    also the Equal function should behave correctly
+ *
+ * 2) for any type that has side effect , then the GVNHash value should
+ *    take into consideration of its node identity. A generaly rules
+ *    is put the node's id() value into the GVNHash generation. Prefer
+ *    using id() function instead of use this pointer address as seed.
+ *
+ * ==========================================================================
+ */
+
+template< typename T >
+std::uint64_t GVNHash0( T* ptr ) {
+  std::uint64_t type = reinterpret_cast<std::uint64_t>(ptr);
+  return type;
+}
+
+template< typename T , typename V >
+std::uint64_t GVNHash1( T* ptr , const V& value ) {
+  std::uint64_t uval = static_cast<std::uint64_t>(value);
+  std::uint64_t type = reinterpret_cast<std::uint64_t>(ptr);
+  return (uval << 7) ^ (type);
+}
+
+template< typename T , typename V1 , typename V2 >
+std::uint64_t GVNHash2( T* ptr , const V1& v1 , const V2& v2 ) {
+  std::uint64_t uv2 = static_cast<std::uint64_t>(v2);
+  return GVNHash1(ptr,v1) ^ (uv2);
+}
+
+template< typename T , typename V1, typename V2 , typename V3 >
+std::uint64_t GVNHash3( T* ptr , const V1& v1 , const V2& v2 ,
+                                                const V3& v3 ) {
+  std::uint64_t uv3 = static_cast<std::uint64_t>(v3);
+  return GVNHash2(ptr,v1,v2) ^ (uv3);
+}
+
+class GVNHashN {
+ public:
+  template< typename T >
+  GVNHashN( T* seed ): value_(reinterpret_cast<std::uint64_t>(seed)<<7) {}
+
+  template< typename T >
+  void Add( const T& value ) { value_ ^= static_cast<std::uint64_t>(value); }
+
+  std::uint64_t value() const { return value_; }
+ private:
+  std::uint64_t value_;
+  LAVA_DISALLOW_COPY_AND_ASSIGN(GVNHashN)
+};
+
 // ================================================================
 //
 // Expr
@@ -335,10 +399,8 @@ class BailoutEntry {
 
 class Expr : public Node {
  public: // GVN hash value and hash function
-
-  // If GVNHash returns 0 means this expression doesn't support GVN
-  virtual std::uint64_t GVNHash()   const { return 0; }
-  virtual bool Equal( const Expr* ) const { return false; }
+  virtual std::uint64_t GVNHash()        const { return GVNHash1(type_name(),id()); }
+  virtual bool Equal( const Expr* that ) const { return this == that;       }
 
  public:
   bool HasEffect() const { return effect_.IsUsed(); }
@@ -410,55 +472,11 @@ class Expr : public Node {
   EffectEdge  effect_;
 };
 
-/*
- * ============================================================
+/* ---------------------------------------------------
  *
- * GVN hash function helper implementation
+ * Node Definition
  *
- * Helper function to implement the GVN hash table function
- *
- * ============================================================
- */
-
-template< typename T >
-std::uint64_t GVNHash0( T* ptr ) {
-  std::uint64_t type = reinterpret_cast<std::uint64_t>(ptr);
-  return type;
-}
-
-template< typename T , typename V >
-std::uint64_t GVNHash1( T* ptr , const V& value ) {
-  std::uint64_t uval = static_cast<std::uint64_t>(value);
-  std::uint64_t type = reinterpret_cast<std::uint64_t>(ptr);
-  return (uval << 7) ^ (type);
-}
-
-template< typename T , typename V1 , typename V2 >
-std::uint64_t GVNHash2( T* ptr , const V1& v1 , const V2& v2 ) {
-  std::uint64_t uv2 = static_cast<std::uint64_t>(v2);
-  return GVNHash1(ptr,v1) ^ (uv2);
-}
-
-template< typename T , typename V1, typename V2 , typename V3 >
-std::uint64_t GVNHash3( T* ptr , const V1& v1 , const V2& v2 ,
-                                                const V3& v3 ) {
-  std::uint64_t uv3 = static_cast<std::uint64_t>(v3);
-  return GVNHash2(ptr,v1,v2) ^ (uv3);
-}
-
-class GVNHashN {
- public:
-  template< typename T >
-  GVNHashN( T* seed ): value_(reinterpret_cast<std::uint64_t>(seed)<<7) {}
-
-  template< typename T >
-  void Add( const T& value ) { value_ ^= static_cast<std::uint64_t>(value); }
-
-  std::uint64_t value() const { return value_; }
- private:
-  std::uint64_t value_;
-  LAVA_DISALLOW_COPY_AND_ASSIGN(GVNHashN)
-};
+ * --------------------------------------------------*/
 
 class Arg : public Expr {
  public:
@@ -604,8 +622,6 @@ class IRList : public Expr {
     (void)size; // implicit indicated by the size of operand_list()
   }
 
-  virtual std::uint64_t GVNHash() const;
-  virtual bool Equal( const Expr* ) const;
 
  private:
   LAVA_DISALLOW_COPY_AND_ASSIGN(IRList)
@@ -624,22 +640,6 @@ class IRObjectKV : public Expr {
   {
     AddOperand(key);
     AddOperand(val);
-  }
-
-  virtual std::uint64_t GVNHash() const {
-    auto khash = key()->GVNHash();
-    if(!khash) return 0;
-    auto vhash = value()->GVNHash();
-    if(!vhash) return 0;
-    return GVNHash2(type_name(),khash,vhash);
-  }
-
-  virtual bool Equal( const Expr* that ) const {
-    if(that->IsIRObjectKV()) {
-      auto kv = that->AsIRObjectKV();
-      return kv->key()->Equal(key()) && kv->value()->Equal(value());
-    }
-    return false;
   }
 
  private:
@@ -662,9 +662,6 @@ class IRObject : public Expr {
     (void)size;
   }
 
-  virtual std::uint64_t GVNHash() const;
-  virtual bool Equal( const Expr* ) const;
-
   IRObject* Clone() const;
 
  private:
@@ -683,14 +680,6 @@ class LoadCls : public Expr {
     Expr (IRTYPE_LOAD_CLS,id,graph,info),
     ref_ (ref)
   {}
-
-  virtual std::uint64_t GVNHash() const {
-    return GVNHash1(type_name(),ref_);
-  }
-
-  virtual bool Equal( const Expr* that ) const {
-    return that->IsLoadCls() && (that->AsLoadCls()->ref() == ref_);
-  }
 
  private:
   std::uint32_t ref_;
@@ -721,7 +710,6 @@ class Unary : public Expr , public BailoutEntry {
 
   virtual std::uint64_t GVNHash() const {
     auto opr = operand()->GVNHash();
-    if(!opr) return 0;
     return GVNHash1(op_name(),opr);
   }
 
@@ -775,9 +763,7 @@ class Binary : public Expr , public BailoutEntry {
 
   virtual std::uint64_t GVNHash() const {
     auto l = lhs()->GVNHash();
-    if(!l) return 0;
     auto r = rhs()->GVNHash();
-    if(!r) return 0;
     return GVNHash2(op_name(),l,r);
   }
 
@@ -814,11 +800,8 @@ class Ternary: public Expr , public BailoutEntry {
 
   virtual std::uint64_t GVNHash() const {
     auto c = condition()->GVNHash();
-    if(!c) return 0;
     auto l = lhs()->GVNHash();
-    if(!l) return 0;
     auto r = rhs()->GVNHash();
-    if(!r) return 0;
     return GVNHash3(type_name(),c,l,r);
   }
 
@@ -894,22 +877,6 @@ class PGet : public Expr , public BailoutEntry {
     AddOperand(index );
   }
 
-  virtual std::uint64_t GVNHash() const {
-    auto o = object()->GVNHash();
-    if(!o) return 0;
-    auto k = object()->GVNHash();
-    if(!k) return 0;
-    return GVNHash2(type_name(),o,k);
-  }
-
-  virtual bool Equal( const Expr* that ) const {
-    if(that->IsPGet()) {
-      auto pget = that->AsPGet();
-      return object()->Equal(pget->object()) && key()->Equal(pget->key());
-    }
-    return false;
-  }
-
  private:
   LAVA_DISALLOW_COPY_AND_ASSIGN(PGet)
 };
@@ -932,25 +899,6 @@ class PSet : public Expr , public BailoutEntry {
     AddOperand(value );
   }
 
-  virtual std::uint64_t GVNHash() const {
-    auto o = object()->GVNHash();
-    if(!o) return 0;
-    auto k = key()->GVNHash();
-    if(!k) return 0;
-    auto v = value()->GVNHash();
-    if(!v) return 0;
-    return GVNHash3(type_name(),o,k,v);
-  }
-
-  virtual bool Equal( const Expr* that ) const {
-    if(that->IsPSet()) {
-      auto pset = that->AsPSet();
-      return object()->Equal(pset->object()) && key()->Equal(pset->key()) &&
-                                                value()->Equal(pset->value()) ;
-    }
-    return false;
-  }
-
  private:
   LAVA_DISALLOW_COPY_AND_ASSIGN(PSet)
 };
@@ -968,23 +916,6 @@ class IGet : public Expr , public BailoutEntry {
     AddOperand(object);
     AddOperand(index );
   }
-
-  virtual std::uint64_t GVNHash() const {
-    auto o = object()->GVNHash();
-    if(!o) return 0;
-    auto i = index()->GVNHash();
-    if(!i) return 0;
-    return GVNHash2(type_name(),o,i);
-  }
-
-  virtual bool Equal( const Expr* that ) const {
-    if(that->IsIGet()) {
-      auto iget = that->AsIGet();
-      return object()->Equal(iget->object()) && index()->Equal(iget->index());
-    }
-    return false;
-  }
-
 
  private:
   LAVA_DISALLOW_COPY_AND_ASSIGN(IGet)
@@ -1009,25 +940,6 @@ class ISet : public Expr , public BailoutEntry {
     AddOperand(value );
   }
 
-  virtual std::uint64_t GVNHash() const {
-    auto o = object()->GVNHash();
-    if(!o) return 0;
-    auto i = index()->GVNHash();
-    if(!i) return 0;
-    auto v = value()->GVNHash();
-    if(!v) return 0;
-    return GVNHash3(type_name(),o,i,v);
-  }
-
-  virtual bool Equal( const Expr* that ) const {
-    if(that->IsISet()) {
-      auto iset = that->AsISet();
-      return object()->Equal(iset->object()) && index()->Equal(iset->index()) &&
-                                                value()->Equal(iset->value());
-    }
-    return false;
-  }
-
  private:
   LAVA_DISALLOW_COPY_AND_ASSIGN(ISet)
 };
@@ -1044,16 +956,6 @@ class GGet : public Expr , public BailoutEntry {
     Expr  (IRTYPE_GGET,id,graph,info)
   {
     AddOperand(name);
-  }
-
-  virtual std::uint64_t GVNHash() const {
-    auto k = key()->GVNHash();
-    if(!k) return 0;
-    return GVNHash1(type_name(),k);
-  }
-
-  virtual bool Equal( const Expr* that ) const {
-    return that->IsGGet() && (key()->Equal(that->AsGGet()->key()));
   }
 
  private:
@@ -1075,22 +977,6 @@ class GSet : public Expr , public BailoutEntry {
     AddOperand(value);
   }
 
-  virtual std::uint64_t GVNHash() const {
-    auto k = key()->GVNHash();
-    if(!k) return 0;
-    auto v = value()->GVNHash();
-    if(!v) return 0;
-    return GVNHash2(type_name(),k,v);
-  }
-
-  virtual bool Equal( const Expr* that ) const {
-    if(that->IsGSet()) {
-      auto gset = that->AsGSet();
-      return key()->Equal(gset->key()) && value()->Equal(gset->value());
-    }
-    return false;
-  }
-
  private:
   LAVA_DISALLOW_COPY_AND_ASSIGN(GSet)
 };
@@ -1109,16 +995,6 @@ class ItrNew : public Expr , public BailoutEntry {
     AddOperand(operand);
   }
 
-  virtual std::uint64_t GVNHash() const {
-    auto opr = operand()->GVNHash();
-    if(!opr) return 0;
-    return GVNHash1(type_name(),opr);
-  }
-
-  virtual bool Equal( const Expr* that ) const {
-    return that->IsItrNew() && (operand()->Equal(that->AsItrNew()->operand()));
-  }
-
  private:
   LAVA_DISALLOW_COPY_AND_ASSIGN(ItrNew)
 };
@@ -1132,16 +1008,6 @@ class ItrNext : public Expr , public BailoutEntry {
     Expr  (IRTYPE_ITR_NEXT,id,graph,info)
   {
     AddOperand(operand);
-  }
-
-  virtual std::uint64_t GVNHash() const {
-    auto opr = operand()->GVNHash();
-    if(!opr) return 0;
-    return GVNHash1(type_name(),opr);
-  }
-
-  virtual bool Equal( const Expr* that ) const {
-    return that->IsItrNew() && (operand()->Equal(that->AsItrNew()->operand()));
   }
 
  private:
@@ -1190,16 +1056,6 @@ class ItrDeref : public Expr , public BailoutEntry {
     AddOperand(operand);
   }
 
-  virtual std::uint64_t GVNHash() const {
-    auto opr = operand()->GVNHash();
-    if(!opr) return 0;
-    return GVNHash1(type_name(),opr);
-  }
-
-  virtual bool Equal( const Expr* that ) const {
-    return that->IsItrNew() && (operand()->Equal(that->AsItrNew()->operand()));
-  }
-
  private:
   LAVA_DISALLOW_COPY_AND_ASSIGN(ItrDeref)
 };
@@ -1225,9 +1081,6 @@ class Phi : public Expr {
     Expr           (IRTYPE_PHI,id,graph,info),
     region_        (region)
   {}
-
-  virtual std::uint64_t GVNHash() const;
-  virtual bool Equal( const Expr* ) const;
 
  private:
   ControlFlow* region_;
@@ -1338,16 +1191,6 @@ class InitCls : public Expr , public BailoutEntry {
   }
 
   Expr* key() const { return operand_list()->First(); }
-
-  virtual std::uint64_t GVNHash() const {
-    auto k = key()->GVNHash();
-    if(!k) return 0;
-    return GVNHash1(type_name(),k);
-  }
-
-  virtual bool Equal( const Expr* that ) const {
-    return that->IsInitCls() && (key()->Equal(that->AsInitCls()->key()));
-  }
 
  private:
   LAVA_DISALLOW_COPY_AND_ASSIGN(InitCls)

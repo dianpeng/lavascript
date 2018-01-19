@@ -6,7 +6,7 @@
 
 namespace lavascript {
 
-void Disassemble( void* buffer , std::size_t length , DumpWriter* writer ) {
+void SimpleDisassemble( void* buffer , std::size_t length , DumpWriter* writer ) {
   ZydisDecoder decoder;
   ZydisDecoderInit(
       &decoder,

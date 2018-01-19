@@ -19,7 +19,7 @@ LUA=luajit
 # Zydis
 #
 # -------------------------------------------------------------------------------
-ZYDIS:=zydis-2.0.0-alpha2
+ZYDIS:=zydis-2.0.0-beta1
 ZYDIS_LIB:=$(PWD)/dep/$(ZYDIS)/build/
 ZYDIS_INC:=$(PWD)/dep/$(ZYDIS)/include/
 ZYDIS_GEN:=$(PWD)/dep/$(ZYDIS)/build/

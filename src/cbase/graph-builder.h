@@ -368,7 +368,7 @@ inline GraphBuilder::FuncInfo::FuncInfo( const Handle<Closure>& cls , ControlFlo
   max_local_var_size(cls->prototype()->max_local_var_size()),
   loop_info         (),
   return_list       (),
-  guard_list         (),
+  guard_list        (),
   bc_analyze        (cls->prototype()),
   osr_start         (NULL)
 {}
@@ -383,7 +383,7 @@ inline GraphBuilder::FuncInfo::FuncInfo( const Handle<Closure>& cls , ControlFlo
   max_local_var_size(cls->prototype()->max_local_var_size()),
   loop_info         (),
   return_list       (),
-  guard_list         (),
+  guard_list        (),
   bc_analyze        (cls->prototype()),
   osr_start         (ostart)
 {}
@@ -397,7 +397,7 @@ inline GraphBuilder::FuncInfo::FuncInfo( FuncInfo&& that ):
   max_local_var_size (that.max_local_var_size),
   loop_info          (std::move(that.loop_info)),
   return_list        (std::move(that.return_list)),
-  guard_list          (std::move(that.guard_list)),
+  guard_list         (std::move(that.guard_list)),
   bc_analyze         (std::move(that.bc_analyze)),
   osr_start          (that.osr_start)
 {}

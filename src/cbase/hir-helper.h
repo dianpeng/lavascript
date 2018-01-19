@@ -12,37 +12,13 @@ template<> struct hash<::lavascript::cbase::hir::Expr*> {
   }
 };
 
-template<> struct equal<::lavascript::cbase::hir::Expr*> {
+template<> struct equal_to<::lavascript::cbase::hir::Expr*> {
   typedef ::lavascript::cbase::hir::Expr* type;
-  bool operator ( const type& lhs , const type& rhs ) const {
+  bool operator () ( const type& lhs , const type& rhs ) const {
     return lhs->Equal(rhs);
   }
 };
 
 } // namespace std
-
-namespace lavascript {
-namespace cbase {
-namespace hir   {
-
-/**
- * Several type traits check for HIR node
- */
-inline bool HIRIsPrimitive( const Expr* node ) {
-  switch(node->type()) {
-    case IRTYPE_FLOAT64:
-    case IRTYPE_SSTRING:
-    case IRTYPE_LSTRING:
-    case IRTYPE_BOOLEAN:
-    case IRTYPE_NIL:
-      return true;
-    default:
-      return false;
-  }
-}
-
-} // namespace hir
-} // namespace cbase
-} // namespace lavascript
 
 #endif // CBASE_IR_HELPER_H_

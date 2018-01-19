@@ -368,7 +368,7 @@ Expr* GraphBuilder::NewPGet( Expr* object , Expr* key , const BytecodeLocation& 
 Expr* GraphBuilder::NewISet( Expr* object, Expr* index, Expr* value,
                                                         const BytecodeLocation& pc ) {
   if(object->IsIRList() && index->IsFloat64()) {
-    auto iidx = static_cast<std::int32_t>(index->AsFloat64()->value());
+    auto iidx = static_cast<std::uint32_t>(index->AsFloat64()->value());
     auto list = object->AsIRList();
     if(iidx < list->Size()) {
       auto ir_info = NewIRInfo(pc);
@@ -403,7 +403,7 @@ Expr* GraphBuilder::NewISet( Expr* object, Expr* index, Expr* value,
 
 Expr* GraphBuilder::NewIGet( Expr* object, Expr* index, const BytecodeLocation& pc ) {
   if(object->IsIRList() && index->IsFloat64()) {
-    auto iidx = static_cast<std::int32_t>(index->AsFloat64()->value());
+    auto iidx = static_cast<std::uint32_t>(index->AsFloat64()->value());
     auto list = object->AsIRList();
     if(iidx < list->Size()) {
       return list->operand_list()->Index(iidx);

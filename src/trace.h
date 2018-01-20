@@ -165,6 +165,12 @@ class LexicalScopeBenchmark {
 #define lava_bench(MESSAGE) (void)(MESSAGE)
 #endif // LAVASCRIPT_BENCH
 
+enum DumpFlag {
+  DUMP_NORMAL = 0,
+  DUMP_VERBOSE= 1,
+  DUMP_CRAZY
+};
+
 
 /** ---------------------------------------------
  * Helper class for dumpping internal states    |

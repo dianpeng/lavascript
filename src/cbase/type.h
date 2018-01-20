@@ -5,31 +5,9 @@
 #include "src/trace.h"
 #include "src/util.h"
 
-#include <memory>
-#include <vector>
-
-/**
- * Type
- *
- * The type system here will be used throughout the optimization phase. Each HIR node will
- * have a type field used to indicate which type it has. The type is generated during the
- * lowering phas after the GVN phase.
- *
- * The type system is a tree structure. And each type field has a TypeDescriptor which is
- * a singleton used to indicate the general type. Also a range is attached for each node,
- * the range based type check will help us to deep branch elimination and other optimization
- */
 
 namespace lavascript {
 namespace cbase {
-
-class TypeDescriptor;
-class TypeDescriptorBuilder;
-
-// Type forms a type graph, to make life easier we just use shared_ptr and stl.
-// Performance will not be a thing since this graph is a singleton and needs no
-// modification
-typedef std::shared_ptr<TypeDescriptor> TypeDescriptorPtr;
 
 /**
  * Type flag definitions
@@ -72,52 +50,6 @@ enum TypeKind {
 };
 
 const char* GetTypeKindName( TypeKind );
-
-// TypeOperation
-//
-// A type operation interface define the algebra that can be used with type
-// operation.
-//
-// Several pass of optimization basically forms a propositional logical system
-// and its solo goal is to answer type question
-class TypeOperation {
-};
-
-// Type descriptor is a concret class used to represent a certain general type
-class TypeDescriptor {
- public:
-  // Name of the type
-  const char* type_name() const { return GetTypeKindName(type_); }
-
-  // Tag of the TypeDescriptor object
-  TypeKind type() const { return type_; }
-
-  // List of parent
-  const std::vector<TypeDescriptorPtr>& parent() const { return parent_; }
-
-  // Check whether a node is |this| node's predecessor
-  bool IsPredecessor( TypeDescriptor* ) const;
-
-  // Check whether a node is |this| node's parent
-  bool IsParent     ( TypeDescriptor* ) const;
-
- private:
-  void AddParent( const TypeDescriptorPtr& parent ) {
-    parent_.push_back(parent);
-  }
-
- private:
-  TypeKind type_;
-
-  std::vector<TypeDescriptorPtr> parent_;
-
-  friend class TypeDescriptorBuilder;
-
-  LAVA_DISALLOW_COPY_AND_ASSIGN(TypeDescriptor)
-};
-
-
-
 
 
 } // namespace cbase

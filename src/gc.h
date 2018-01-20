@@ -10,7 +10,6 @@
 #include "heap-object-header.h"
 #include "heap-allocator.h"
 
-#include "flags.h"
 #include "bits.h"
 #include "util.h"
 #include "trace.h"

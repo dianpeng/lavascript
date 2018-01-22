@@ -407,42 +407,51 @@ bool InterpreterAddObj( Runtime* sandbox , Value* output , const Value& key,
 INTERPRETER_REGISTER_EXTERN_SYMBOL(InterpreterAddObj)
 
 LAVA_ALWAYS_INLINE
-Handle<Closure> NewClosure( Runtime* sandbox , std::uint32_t ref ,
-                                               Handle<String>* name ) {
-  Script* scp = *(sandbox->script);
-  const Script::FunctionTableEntry& entry = scp->GetFunction(ref);
-  Handle<Closure> cls(Closure::New(sandbox->context->gc(),entry.prototype));
+void InitUpValue( Runtime* sandbox , const Handle<Closure>& c ) {
 
-  // Initialize the UpValue array
-  {
-    Value* stk = sandbox->cur_stk;
-    Closure* cls = *(sandbox->cur_cls);  // cannot trigger gc here
-    Value* uv_arr = cls->upvalue();
-    const std::uint32_t len = entry.prototype->upvalue_size();
-    for( std::uint32_t i = 0 ; i < len ; ++i ) {
-      UpValueState st;
-      std::uint8_t idx = entry.prototype->GetUpValue(i,&st);
-      if(st == UV_EMBED) {
-        uv_arr[i] = stk[idx];
-      } else {
-        uv_arr[i] = cls->GetUpValue(idx);
-      }
+  Handle<Closure> cls(c); // remove const
+
+  auto prototype = cls->prototype();
+  auto stk       = sandbox->cur_stk;
+  auto cur_cls   = Handle<Closure>(sandbox->cur_cls);
+  auto uv_arr    = cls->upvalue();
+  auto len       = prototype->upvalue_size();
+
+  for( std::uint32_t i = 0 ; i < len ; ++i ) {
+    UpValueState st;
+    std::uint8_t idx = prototype->GetUpValue(i,&st);
+    if(st == UV_EMBED) {
+      uv_arr[i] = stk[idx];
+    } else {
+      uv_arr[i] = cur_cls->GetUpValue(idx);
     }
   }
-
-  if(name) *name = entry.name;
-  return cls;
 }
 
 void InterpreterLoadCls( Runtime* sandbox , std::uint32_t ref, Value* dest ) {
-  dest->SetClosure(NewClosure(sandbox,ref,NULL));
+  auto scp   = *(sandbox->script);
+  auto entry = scp->GetFunction(ref);
+  auto cls   = Closure::New(sandbox->context->gc(),entry.prototype);
+
+  // 1. must set cls at very first to make recursive call possible
+  dest->SetClosure(cls);
+
+  // 2. initialize upvalue array
+  InitUpValue(sandbox,cls);
 }
 INTERPRETER_REGISTER_EXTERN_SYMBOL(InterpreterLoadCls)
 
 bool InterpreterInitCls( Runtime* sandbox , std::uint32_t ref ) {
   Handle<String> name;
-  // get the function's closure and its name
-  Handle<Closure> cls(NewClosure(sandbox,ref,&name));
+
+  // initialize the closure object
+  auto scp   = *(sandbox->script);
+  auto entry = scp->GetFunction(ref);
+  auto cls   = Closure::New(sandbox->context->gc(),entry.prototype);
+  InitUpValue(sandbox,cls);
+
+  // get the name of the entry
+  name = entry.name;
 
   // set it up into the *global* table
   Handle<Object> glb(sandbox->global);
@@ -1272,16 +1281,16 @@ static_assert( sizeof(compiler::hotcount_t) == 2 );
 
 // --------------------------------------------
 // load upvalue value into register
-|.macro LdUV,reg,index
-|  mov T1,qword [RUNTIME+RuntimeLayout::kCurClsOffset]
-|  mov T1,qword [T1+ClosureLayout::kUpValueOffset]
-|  mov reg, qword [T1+index*8]
+|.macro LdUV,reg,index,temp
+|  mov temp,qword [RUNTIME+RuntimeLayout::kCurClsOffset]
+|  mov temp,qword [temp]
+|  mov reg ,qword [temp+index*8+ClosureLayout::kUpValueOffset]
 |.endmacro
 
-|.macro StUV,index,reg
-|  mov T1,qword [RUNTIME+RuntimeLayout::kCurClsOffset]
-|  mov T1,qword [T1+ClosureLayout::kUpValueOffset]
-|  mov qword [T1+index*8], reg
+|.macro StUV,index,reg,temp
+|  mov temp,qword [RUNTIME+RuntimeLayout::kCurClsOffset]
+|  mov temp,qword [temp]
+|  mov qword [temp+index*8+ClosureLayout::kUpValueOffset], reg
 |.endmacro
 
 // ----------------------------------------------
@@ -3754,7 +3763,7 @@ void GenBytecode( BuildContext* bctx, Bytecode bc ) {
     case BC_UVGET:
       |=>bc:
       |  instr_B
-      |  LdUV LREG,ARG2F
+      |  LdUV LREG,ARG2F,ARG3F
       |  mov  qword [STK+ARG1F*8], LREG
       |  Dispatch
       break;
@@ -3763,7 +3772,7 @@ void GenBytecode( BuildContext* bctx, Bytecode bc ) {
       |=>bc:
       |  instr_C
       |  mov RREG, qword [STK+ARG2F*8]
-      |  StUV ARG1F,RREG
+      |  StUV ARG1F,RREG,ARG3F
       |  Dispatch
       break;
 

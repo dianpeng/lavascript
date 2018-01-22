@@ -1433,6 +1433,11 @@ class ControlFlow : public Node {
     node->set_effect(EffectEdge(this,itr));
   }
 
+  void RemoveEffectExpr( const EffectEdge& ee ) {
+    lava_debug(NORMAL,lava_verify(ee.region == this););
+    effect_expr()->Remove(ee.iterator);
+  }
+
   // OperandList
   //
   // All control flow's related data input should be stored via this list

@@ -31,6 +31,8 @@
 *.out
 *.app
 
+# Generated file
+*.pp.cc
 
 *.pyc
 *.t

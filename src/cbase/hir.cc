@@ -24,9 +24,11 @@ void Expr::Replace( Expr* another ) {
   // 2. check whether this operation has side effect or not and update the
   //    side effect accordingly
   if(HasEffect()) {
-    EffectEdge ee (effect());
-    ee.iterator.set_value(another);
-    another->set_effect(ee);
+    auto region = effect().region;
+    // remove old effect
+    region->RemoveEffectExpr(effect());
+    // add new effect
+    region->AddEffectExpr(another);
   }
 }
 

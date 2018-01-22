@@ -207,6 +207,8 @@ bool PrimitiveComp( const char* source , const Value& primitive , int op ) {
 namespace lavascript {
 namespace interpreter {
 
+#if 0
+
 TEST(Interpreter,Load) {
   PRIMITIVE_EQ(0,return 0;);
   PRIMITIVE_EQ(-1,return -1;);
@@ -801,6 +803,19 @@ TEST(Interpreter,IntrinsicCall) {
   PRIMITIVE_EQ(false,var a = [ 1 ]; var b = empty(a); return b;);
   PRIMITIVE_EQ(false,var a = {"a":1}; var b = empty(a); return b;);
   PRIMITIVE_EQ(false,var a = "a"; var b = empty(a); return b;);
+}
+
+#endif
+
+TEST(Interpreter,UpValue) {
+  PRIMITIVE_EQ(10, var a = 10; var b = function() { return a; }; return b(););
+  PRIMITIVE_EQ(5702887,
+      var fib = function(a) {
+        if(a < 2) return a;
+        return fib(a-1) + fib(a-2);
+      };
+      return fib(34);
+     );
 }
 
 } // namespace lavascript

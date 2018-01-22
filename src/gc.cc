@@ -459,8 +459,10 @@ Prototype** GC::NewPrototype( String** proto,
 
 Closure** GC::NewClosure( Prototype** proto ) {
   // Get memory from *heap_buffer* object
-  void* heap_buffer = heap_.Grab( sizeof(Closure) + sizeof(Value)*((*proto)->upvalue_size()),
-                                  TYPE_CLOSURE, GC_WHITE, false );
+  void* heap_buffer = heap_.Grab( sizeof(Closure) +sizeof(Value)*((*proto)->upvalue_size()),
+                                  TYPE_CLOSURE,
+                                  GC_WHITE,
+                                  false );
 
   Closure* cls = ConstructFromBuffer<Closure>(heap_buffer,Handle<Prototype>(proto));
   Closure** ref = reinterpret_cast<Closure**>(ref_pool_.Grab());

@@ -22,13 +22,13 @@ using namespace ::lavascript::interpreter;
  * -----------------------------------------------------------*/
 class GraphBuilder::OSRScope {
  public:
-  OSRScope( GraphBuilder* gb , const Handle<Closure>& cls ,
+  OSRScope( GraphBuilder* gb , const Handle<Prototype>& proto ,
                                ControlFlow* region ,
                                const std::uint32_t* osr_start ):
     gb_(gb) ,
     old_upvalue_(gb->upvalue_) {
 
-    FuncInfo temp(cls,region,osr_start); // initialize a FuncInfo as OSR entry
+    FuncInfo temp(proto,region,osr_start); // initialize a FuncInfo as OSR entry
 
     // get the loop header information and recursively register all its needed
     // loop info object inside of the FuncInfo object
@@ -54,7 +54,7 @@ class GraphBuilder::OSRScope {
 
     }
 
-    gb->graph_->AddPrototypeInfo(cls,0);
+    gb->graph_->AddPrototypeInfo(proto,0);
     gb->func_info_.push_back(FuncInfo(std::move(temp)));
     gb->stack_->resize(interpreter::kRegisterSize);
 
@@ -79,14 +79,14 @@ class GraphBuilder::OSRScope {
 
 class GraphBuilder::FuncScope {
  public:
-  FuncScope( GraphBuilder* gb , const Handle<Closure>& cls ,
+  FuncScope( GraphBuilder* gb , const Handle<Prototype>& proto ,
                                 ControlFlow* region ,
                                 std::uint32_t base ):
     gb_(gb),
     old_upvalue_(gb->upvalue_) {
 
-    gb->graph_->AddPrototypeInfo(cls,base);
-    gb->func_info_.push_back(FuncInfo(cls,region,base));
+    gb->graph_->AddPrototypeInfo(proto,base);
+    gb->func_info_.push_back(FuncInfo(proto,region,base));
     gb->stack_->resize(base+interpreter::kRegisterSize);
 
     if(gb->func_info_.size() == 1) {
@@ -95,7 +95,7 @@ class GraphBuilder::FuncScope {
        * inline frame, we dont need to populate its argument since they
        * will be taken care of by the graph builder
        */
-      auto arg_size = cls->prototype()->argument_size();
+      auto arg_size = proto->argument_size();
       for( std::size_t i = 0 ; i < arg_size ; ++i ) {
         gb->stack_->at(i) = Arg::New(gb->graph_,static_cast<std::uint32_t>(i));
       }
@@ -1342,7 +1342,7 @@ GraphBuilder::BuildBasicBlock( BytecodeIterator* itr , const std::uint32_t* end_
   return STOP_SUCCESS;
 }
 
-bool GraphBuilder::Build( const Handle<Closure>& entry , Graph* graph ) {
+bool GraphBuilder::Build( const Handle<Prototype>& entry , Graph* graph ) {
   graph_ = graph;
   zone_  = graph->zone();
 
@@ -1363,8 +1363,7 @@ bool GraphBuilder::Build( const Handle<Closure>& entry , Graph* graph ) {
     BackupState backup(&stack,this);
 
     FuncScope scope(this,entry,region,0);
-    Handle<Prototype> proto(entry->prototype());
-    BytecodeIterator itr(proto->GetBytecodeIterator());
+    BytecodeIterator itr(entry->GetBytecodeIterator());
 
     // set the current region
     set_region(region);
@@ -1561,7 +1560,7 @@ GraphBuilder::PeelOSRLoop( BytecodeIterator* itr ) {
 }
 
 GraphBuilder::StopReason
-GraphBuilder::BuildOSRStart( const Handle<Closure>& closure ,  const std::uint32_t* pc ,
+GraphBuilder::BuildOSRStart( const Handle<Prototype>& entry ,  const std::uint32_t* pc ,
                                                                Graph* graph ) {
   graph_ = graph;
   zone_  = graph->zone();
@@ -1582,15 +1581,15 @@ GraphBuilder::BuildOSRStart( const Handle<Closure>& closure ,  const std::uint32
     BackupState backup_stack(&stack,this);
 
     // set up the OSR scope
-    OSRScope scope(this,closure,header,pc);
+    OSRScope scope(this,entry,header,pc);
 
     // set up OSR local variable
     BuildOSRLocalVariable();
 
     // craft a bytecode iterator *starts* at the OSR instruction entry
     // which should be a loop start instruction like FESTART,FSTART,FEVRSTART
-    const std::uint32_t* code_buffer   = closure->prototype()->code_buffer();
-    const std::size_t code_buffer_size = closure->prototype()->code_buffer_size();
+    const std::uint32_t* code_buffer   = entry->code_buffer();
+    const std::size_t code_buffer_size = entry->code_buffer_size();
     lava_debug(NORMAL,lava_verify(pc >= code_buffer););
 
     BytecodeIterator itr(code_buffer,code_buffer_size);
@@ -1625,9 +1624,9 @@ GraphBuilder::BuildOSRStart( const Handle<Closure>& closure ,  const std::uint32
   return STOP_SUCCESS;
 }
 
-bool GraphBuilder::BuildOSR( const Handle<Closure>& closure , const std::uint32_t* osr_start ,
+bool GraphBuilder::BuildOSR( const Handle<Prototype>& entry , const std::uint32_t* osr_start ,
                                                               Graph* graph ) {
-  return BuildOSRStart(closure,osr_start,graph) == STOP_SUCCESS;
+  return BuildOSRStart(entry,osr_start,graph) == STOP_SUCCESS;
 }
 
 

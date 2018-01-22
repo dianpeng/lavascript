@@ -91,7 +91,6 @@ class GraphBuilder {
   // stack/vector
   struct FuncInfo {
     /** member field **/
-    Handle<Closure> closure;
     Handle<Prototype> prototype; // cached for faster access
     std::vector<Expr*> upvalue;
     ControlFlow* region;
@@ -104,8 +103,8 @@ class GraphBuilder {
     const std::uint32_t* osr_start;
 
    public:
-    inline FuncInfo( const Handle<Closure>& , ControlFlow* , std::uint32_t );
-    inline FuncInfo( const Handle<Closure>& , ControlFlow* , const std::uint32_t* );
+    inline FuncInfo( const Handle<Prototype>& , ControlFlow* , std::uint32_t );
+    inline FuncInfo( const Handle<Prototype>& , ControlFlow* , const std::uint32_t* );
     inline FuncInfo( FuncInfo&& );
 
     bool IsOSR() const { return osr_start != NULL; }
@@ -158,10 +157,10 @@ class GraphBuilder {
   {}
 
   // Build a normal function's IR graph
-  bool Build( const Handle<Closure>& , Graph* );
+  bool Build( const Handle<Prototype>& , Graph* );
 
   // Build a function's graph assume OSR
-  bool BuildOSR( const Handle<Closure>& , const std::uint32_t* , Graph* );
+  bool BuildOSR( const Handle<Prototype>& , const std::uint32_t* , Graph* );
 
  private: // Stack accessing
   std::uint32_t StackIndex( std::uint32_t index ) const {
@@ -194,10 +193,6 @@ class GraphBuilder {
   const FuncInfo& func_info() const { return func_info_.back(); }
 
   bool IsTopFunction() const { return func_info_.size() == 1; }
-
-  const Handle<Closure>& closure() const {
-    return func_info().closure;
-  }
 
   const Handle<Prototype>& prototype() const {
     return func_info().prototype;
@@ -265,7 +260,7 @@ class GraphBuilder {
   Checkpoint* BuildCheckpoint( const interpreter::BytecodeLocation& );
 
  private:
-  StopReason BuildOSRStart( const Handle<Closure>& , const std::uint32_t* , Graph* );
+  StopReason BuildOSRStart( const Handle<Prototype>& , const std::uint32_t* , Graph* );
 
   void BuildOSRLocalVariable();
 
@@ -358,56 +353,51 @@ class GraphBuilder {
   friend class OSRScope;
 };
 
-inline GraphBuilder::FuncInfo::FuncInfo( const Handle<Closure>& cls , ControlFlow* start_region ,
-                                                                      std::uint32_t b ):
-  closure           (cls),
-  prototype         (cls->prototype()),
-  upvalue           (cls->prototype()->upvalue_size()),
+inline GraphBuilder::FuncInfo::FuncInfo( const Handle<Prototype>& proto , ControlFlow* start_region ,
+                                                                          std::uint32_t b ):
+  prototype         (proto),
+  upvalue           (proto->upvalue_size()),
   region            (start_region),
   base              (b),
-  max_local_var_size(cls->prototype()->max_local_var_size()),
+  max_local_var_size(proto->max_local_var_size()),
   loop_info         (),
   return_list       (),
   guard_list        (),
-  bc_analyze        (cls->prototype()),
+  bc_analyze        (proto),
   osr_start         (NULL)
 {}
 
-inline GraphBuilder::FuncInfo::FuncInfo( const Handle<Closure>& cls , ControlFlow* start_region ,
-                                                                      const std::uint32_t* ostart ):
-  closure           (cls),
-  prototype         (cls->prototype()),
-  upvalue           (cls->prototype()->upvalue_size()),
+inline GraphBuilder::FuncInfo::FuncInfo( const Handle<Prototype>& proto , ControlFlow* start_region ,
+                                                                          const std::uint32_t* ostart ):
+  prototype         (proto),
+  upvalue           (proto->upvalue_size()),
   region            (start_region),
   base              (0),
-  max_local_var_size(cls->prototype()->max_local_var_size()),
+  max_local_var_size(proto->max_local_var_size()),
   loop_info         (),
   return_list       (),
   guard_list        (),
-  bc_analyze        (cls->prototype()),
+  bc_analyze        (proto),
   osr_start         (ostart)
 {}
 
 inline GraphBuilder::FuncInfo::FuncInfo( FuncInfo&& that ):
-  closure            (that.closure),
-  prototype          (that.prototype),
-  upvalue            (std::move(that.upvalue)),
-  region             (that.region),
-  base               (that.base),
-  max_local_var_size (that.max_local_var_size),
-  loop_info          (std::move(that.loop_info)),
-  return_list        (std::move(that.return_list)),
-  guard_list         (std::move(that.guard_list)),
-  bc_analyze         (std::move(that.bc_analyze)),
-  osr_start          (that.osr_start)
+  prototype         (that.prototype),
+  upvalue           (std::move(that.upvalue)),
+  region            (that.region),
+  base              (that.base),
+  max_local_var_size(that.max_local_var_size),
+  loop_info         (std::move(that.loop_info)),
+  return_list       (std::move(that.return_list)),
+  guard_list        (std::move(that.guard_list)),
+  bc_analyze        (std::move(that.bc_analyze)),
+  osr_start         (that.osr_start)
 {}
 
 inline void GraphBuilder::FuncInfo::EnterLoop( const std::uint32_t* pc ) {
-  {
-    const BytecodeAnalyze::LoopHeaderInfo* info = bc_analyze.LookUpLoopHeader(pc);
-    lava_debug(NORMAL,lava_verify(info););
-    loop_info.push_back(LoopInfo(info));
-  }
+  const BytecodeAnalyze::LoopHeaderInfo* info = bc_analyze.LookUpLoopHeader(pc);
+  lava_debug(NORMAL,lava_verify(info););
+  loop_info.push_back(LoopInfo(info));
 }
 
 } // namespace hir

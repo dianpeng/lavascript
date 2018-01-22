@@ -70,7 +70,7 @@ bool CheckGraph( const char* source ) {
   GraphBuilder gb(scp);
   Graph graph;
 
-  if(!gb.Build(Closure::New(ctx.gc(),scp->main()),&graph)) {
+  if(!gb.Build(scp->main(),&graph)) {
     std::cerr<<"cannot build graph"<<std::endl;
     return false;
   }
@@ -105,9 +105,8 @@ bool CheckGraphOSR( const char* source , std::size_t offset ) {
   GraphBuilder gb(scp);
   Graph graph;
 
-  if(!gb.BuildOSR(Closure::New(ctx.gc(),scp->main()),
-                                        scp->main()->code_buffer() + offset ,
-                                        &graph)) {
+  if(!gb.BuildOSR(scp->main(), scp->main()->code_buffer() + offset ,
+                               &graph)) {
     std::cerr<<"cannot build graph"<<std::endl;
     return false;
   }

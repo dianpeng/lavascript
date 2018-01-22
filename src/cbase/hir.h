@@ -52,10 +52,10 @@ class IRInfo {
  */
 struct PrototypeInfo : zone::ZoneObject {
   std::uint32_t base;
-  Handle<Closure> closure;
-  PrototypeInfo( std::uint32_t b , const Handle<Closure>& cls ):
+  Handle<Prototype> prototype;
+  PrototypeInfo( std::uint32_t b , const Handle<Prototype>& proto ):
     base(b),
-    closure(cls)
+    prototype(proto)
   {}
 };
 
@@ -1777,9 +1777,9 @@ class Graph {
     return start_->IsOSRStart();
   }
  public:
-  std::uint32_t AddPrototypeInfo( const Handle<Closure>& cls ,
+  std::uint32_t AddPrototypeInfo( const Handle<Prototype>& proto ,
       std::uint32_t base ) {
-    prototype_info_.Add(zone(),PrototypeInfo(base,cls));
+    prototype_info_.Add(zone(),PrototypeInfo(base,proto));
     return static_cast<std::uint32_t>(prototype_info_.size()-1);
   }
 

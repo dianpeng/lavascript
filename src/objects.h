@@ -291,6 +291,13 @@ class Value final {
   template< typename T >
   void SetHandle( const Handle<T>& h ) { SetHeapObject(h.heap_object()); }
 
+ public: // Helpers
+
+  // This equality checks *identity* for heap object and value equality
+  // for normal primitive types. i.e , for heap object the pointer must
+  // be the same ; for primitive type the value must be the same.
+  inline bool Equal( const Value& that ) const;
+
  public:
   Value() { SetNull(); }
   explicit Value( double v ) { SetReal(v); }
@@ -1586,6 +1593,21 @@ inline void Value::SetExtension( const Handle<Extension>& ext ) {
 
 inline void Value::SetIterator( const Handle<Iterator>& itr ) {
   SetHeapObject(itr.heap_object());
+}
+
+inline bool Value::Equal( const Value& that ) const {
+  if(this == &that) return true;
+
+  if(that.IsBoolean() && IsBoolean())
+    return that.GetBoolean() == GetBoolean();
+  else if(that.IsNull() && IsNull())
+    return true;
+  else if(that.IsReal() && IsReal())
+    return that.GetReal() == GetReal();
+  else {
+    lava_debug(NORMAL,lava_verify(that.IsHeapObject()););
+    return IsHeapObject() ? (that.GetHeapObject() == GetHeapObject()) : false;
+  }
 }
 
 /* --------------------------------------------------------------------

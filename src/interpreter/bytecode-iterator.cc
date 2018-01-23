@@ -66,5 +66,24 @@ bool BytecodeIterator::SkipTo( const std::function<bool(BytecodeIterator*)>& pre
   return false;
 }
 
+std::string GetBytecodeRepresentation( const std::uint32_t* address ) {
+  Bytecode bc;
+  BytecodeType bt;
+  std::size_t offset;
+  std::uint32_t a1,a2,a3,a4;
+  DecodeBytecode(address,&bc,&bt,&a1,&a2,&a3,&a4,&offset);
+  switch(bt) {
+    case TYPE_B: case TYPE_C: case TYPE_E:
+      return Format("%x. %s(%d,%d)/%d",GetBytecodeName(bc), a1, a2, offset);
+    case TYPE_D:
+      return Format("%x. %s(%d,%d,%d)/%d", GetBytecodeName(bc),a1,a2,offset);
+    case TYPE_F:
+      return Format("%x. %s(%d)/%d", GetBytecodeName(bc),a1,offset);
+    default:
+      lava_debug(NORMAL,lava_verify(bt == TYPE_H););
+      return Format("%x. %s(%d,%d,%d,%d)/%d", GetBytecodeName(bc),a1,a2,a3,a4,offset);
+  }
+}
+
 } // namespace interpreter
 } // namespace lavascript

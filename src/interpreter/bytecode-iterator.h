@@ -36,6 +36,10 @@ void DecodeBytecode( const std::uint32_t* address ,
                      T4* a4,
                      std::size_t* offset );
 
+// Decode a bytecode from the input address and forms a human readable
+// string representation for this bytecode
+std::string GetBytecodeRepresentation( const std::uint32_t* address );
+
 
 // Bytecode location encode a single bytecode's *address* within its
 // bytecode stream and it also encodes how long this bytecode will be

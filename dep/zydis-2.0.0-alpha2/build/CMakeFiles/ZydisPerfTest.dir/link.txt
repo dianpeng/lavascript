@@ -1,0 +1,1 @@
+/usr/bin/cc     CMakeFiles/ZydisPerfTest.dir/examples/ZydisPerfTest.c.o  -o ZydisPerfTest -rdynamic libZydis.a -lpthread 

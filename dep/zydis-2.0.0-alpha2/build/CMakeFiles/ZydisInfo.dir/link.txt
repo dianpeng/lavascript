@@ -1,0 +1,1 @@
+/usr/bin/cc     CMakeFiles/ZydisInfo.dir/tools/ZydisInfo.c.o  -o ZydisInfo -rdynamic libZydis.a 

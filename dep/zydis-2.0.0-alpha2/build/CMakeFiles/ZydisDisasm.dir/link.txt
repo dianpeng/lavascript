@@ -1,0 +1,1 @@
+/usr/bin/cc     CMakeFiles/ZydisDisasm.dir/tools/ZydisDisasm.c.o  -o ZydisDisasm -rdynamic libZydis.a 

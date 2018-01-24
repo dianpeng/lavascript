@@ -533,7 +533,7 @@ void DotGraphVisualizer::RenderExpr( const std::string& name , Expr* node ) {
     case IRTYPE_TEST_TYPE:
       {
         auto tt = node->AsTestType();
-        Indent(1) << name << "[label=\"test-type(" << tt->type_category_name() << ")\"]\n";
+        Indent(1) << name << "[label=\"test-type(" << tt->type_kind_name() << ")\"]\n";
         auto obj = tt->object();
         auto obj_name = GetNodeName(obj);
         Indent(1) << name << " -> " << obj_name << '\n';

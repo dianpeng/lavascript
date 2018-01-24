@@ -1,0 +1,12 @@
+/home/dianpeng/lavascript/dep/zydis-2.0.0-alpha2/build/CMakeFiles/rebuild_cache.dir
+/home/dianpeng/lavascript/dep/zydis-2.0.0-alpha2/build/CMakeFiles/install/local.dir
+/home/dianpeng/lavascript/dep/zydis-2.0.0-alpha2/build/CMakeFiles/install.dir
+/home/dianpeng/lavascript/dep/zydis-2.0.0-alpha2/build/CMakeFiles/install/strip.dir
+/home/dianpeng/lavascript/dep/zydis-2.0.0-alpha2/build/CMakeFiles/Zydis.dir
+/home/dianpeng/lavascript/dep/zydis-2.0.0-alpha2/build/CMakeFiles/list_install_components.dir
+/home/dianpeng/lavascript/dep/zydis-2.0.0-alpha2/build/CMakeFiles/ZydisDisasm.dir
+/home/dianpeng/lavascript/dep/zydis-2.0.0-alpha2/build/CMakeFiles/ZydisFuzzIn.dir
+/home/dianpeng/lavascript/dep/zydis-2.0.0-alpha2/build/CMakeFiles/FormatterHooks.dir
+/home/dianpeng/lavascript/dep/zydis-2.0.0-alpha2/build/CMakeFiles/ZydisPerfTest.dir
+/home/dianpeng/lavascript/dep/zydis-2.0.0-alpha2/build/CMakeFiles/edit_cache.dir
+/home/dianpeng/lavascript/dep/zydis-2.0.0-alpha2/build/CMakeFiles/ZydisInfo.dir

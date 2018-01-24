@@ -1,0 +1,1 @@
+/usr/bin/cc     CMakeFiles/FormatterHooks.dir/examples/FormatterHooks.c.o  -o FormatterHooks -rdynamic libZydis.a 

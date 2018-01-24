@@ -4,6 +4,7 @@
 #include "src/objects.h"
 #include "src/zone/zone.h"
 #include "src/interpreter/intrinsic-call.h"
+#include "src/type-trace.h"
 
 #include <cstdint>
 #include <vector>
@@ -148,12 +149,13 @@ class GraphBuilder {
   };
 
  public:
-  GraphBuilder( const Handle<Script>& script ):
+  GraphBuilder( const Handle<Script>& script , const TypeTrace& tt ):
     zone_        (NULL),
     script_      (script),
     graph_       (NULL),
     stack_       (),
-    func_info_   ()
+    func_info_   (),
+    type_trace_  (tt)
   {}
 
   // Build a normal function's IR graph
@@ -338,6 +340,9 @@ class GraphBuilder {
   ValueStack*           upvalue_;
 
   std::vector<FuncInfo> func_info_;
+
+  // Type trace for speculative operation generation
+  const TypeTrace&      type_trace_;
 
  private:
   class OSRScope ;

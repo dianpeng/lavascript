@@ -1,0 +1,2 @@
+/usr/bin/ar qc libZydis.a  CMakeFiles/Zydis.dir/src/MetaInfo.c.o CMakeFiles/Zydis.dir/src/Mnemonic.c.o CMakeFiles/Zydis.dir/src/Register.c.o CMakeFiles/Zydis.dir/src/SharedData.c.o CMakeFiles/Zydis.dir/src/Utils.c.o CMakeFiles/Zydis.dir/src/Zydis.c.o CMakeFiles/Zydis.dir/src/Decoder.c.o CMakeFiles/Zydis.dir/src/DecoderData.c.o CMakeFiles/Zydis.dir/src/Formatter.c.o CMakeFiles/Zydis.dir/src/FormatHelper.c.o
+/usr/bin/ranlib libZydis.a

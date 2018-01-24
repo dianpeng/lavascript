@@ -1,5 +1,7 @@
 #ifndef CBASE_HIR_H_
 #define CBASE_HIR_H_
+#include "type.h"
+
 #include "src/config.h"
 #include "src/util.h"
 #include "src/stl-helper.h"
@@ -59,7 +61,7 @@ struct PrototypeInfo : zone::ZoneObject {
   {}
 };
 
-#define CBASE_IR_EXPRESSION(__)                 \
+#define CBASE_IR_EXPRESSION_HIGH(__)            \
   /* const    */                                \
   __(Float64,FLOAT64,"float64",true)            \
   __(LString,LONG_STRING,"lstring",true)        \
@@ -74,10 +76,9 @@ struct PrototypeInfo : zone::ZoneObject {
   __(LoadCls,LOAD_CLS,"load_cls",true)          \
   /* argument node */                           \
   __(Arg,ARG,"arg",true)                        \
-  /* ariethmetic/comparison node */             \
-  __(Binary,BINARY,"binary",false)              \
+  /* arithmetic/comparison node */              \
   __(Unary,UNARY ,"unary",false)                \
-  /* ternary node */                            \
+  __(Binary,BINARY,"binary",false)              \
   __(Ternary,TERNARY,"ternary",false)           \
   /* upvalue */                                 \
   __(UVal,UVAL,"uval",true)                     \
@@ -111,10 +112,39 @@ struct PrototypeInfo : zone::ZoneObject {
   /* checkpoints */                             \
   __(Checkpoint,CHECKPOINT,"checkpoint",false)  \
   __(StackSlot ,STACK_SLOT, "stackslot",false)  \
-  __(UValSlot  ,UVAL_SLOT , "uvalslot" ,false)  \
-  /* test , used for guarding */                \
-  __(TestIndexOOB,TEST_INDEXOOB,"test_indexoob", false)   \
-  __(TestType    ,TEST_TYPE     ,"test_type"  ,  false)
+  __(UValSlot  ,UVAL_SLOT , "uvalslot" ,false)
+
+/**
+ * These are low level primitives ir node. It is used when speculative
+ * execution can be applied and corresponding guard node needs to be
+ * added properly.
+ * If we cannot use speculative execution, then the normal execution will
+ * be used , which corresponds to the normal Binary/Unary or IGet/ISet
+ * and PGet/PSet.
+ * When doing code gen, these high level ir node corresponds to JIT code
+ * helper routine but low level ir node is totally different
+ */
+#define CBASE_IR_EXPRESSION_LOW(__)                                   \
+  __(Float64Unary ,FLOAT64_UNARY ,"float64_unary",false)              \
+  __(Float64Binary,FLOAT64_BINARY,"float64_binary",false)             \
+  __(ObjectGet    ,OBJECT_GET    ,"object_get"   ,false)              \
+  __(ObjectSet    ,OBJECT_SET    ,"object_set"   ,false)              \
+  __(ListGet      ,LIST_GET      ,"list_get"     ,false)              \
+  __(ListSet      ,LIST_SET      ,"list_set"     ,false)              \
+  __(ExtensionGet ,EXTENSION_GET ,"extension_get",false)              \
+  __(ExtensionSet ,EXTENSION_SET ,"extension_set",false)
+
+
+#define CBASE_IR_EXPRESSION_TEST(__)                                  \
+  /* test , used for guarding */                                      \
+  __(TestType    ,TEST_TYPE     ,"test_type"      , false)            \
+  __(TestListOOB ,TEST_LISTOOB  ,"test_listobb"   , false)            \
+  __(TestObjectOOB,TEST_OBJECTOOB,"test_objectoob", false)
+
+#define CBASE_IR_EXPRESSION(__)                 \
+  CBASE_IR_EXPRESSION_HIGH(__)                  \
+  CBASE_IR_EXPRESSION_LOW (__)                  \
+  CBASE_IR_EXPRESSION_TEST(__)
 
 #define CBASE_IR_CONTROL_FLOW(__)               \
   __(Start,START,"start",false)                 \
@@ -686,6 +716,9 @@ class LoadCls : public Expr {
   LAVA_DISALLOW_COPY_AND_ASSIGN(LoadCls);
 };
 
+// ----------------------------------------------------------------
+// Arithmetic
+// ----------------------------------------------------------------
 class Unary : public Expr , public BailoutEntry {
  public:
   enum Operator { MINUS, NOT };
@@ -700,14 +733,6 @@ class Unary : public Expr , public BailoutEntry {
   Operator op  () const { return op_;      }
   const char* op_name() const { return GetOperatorName(op()); }
 
-  Unary( Graph* graph , std::uint32_t id , Expr* opr , Operator op ,
-                                                       IRInfo* info ):
-    Expr  (IRTYPE_UNARY,id,graph,info),
-    op_   (op)
-  {
-    AddOperand(opr);
-  }
-
   virtual std::uint64_t GVNHash() const {
     auto opr = operand()->GVNHash();
     return GVNHash1(op_name(),opr);
@@ -716,6 +741,25 @@ class Unary : public Expr , public BailoutEntry {
   virtual bool Equal( const Expr* that ) const {
     return that->IsUnary() && (operand()->Equal(that->AsUnary()->operand()));
   }
+
+  Unary( Graph* graph , std::uint32_t id , Expr* opr , Operator op ,
+                                                       IRInfo* info ):
+    Expr  (IRTYPE_UNARY,id,graph,info),
+    op_   (op)
+  {
+    AddOperand(opr);
+  }
+
+ protected:
+  Unary( IRType type , Graph* graph , std::uint32_t id , Expr* opr ,
+                                                         Operator op ,
+                                                         IRInfo* info ):
+    Expr  (type,id,graph,info),
+    op_   (op)
+  {
+    AddOperand(opr);
+  }
+
 
  private:
   Operator   op_;
@@ -752,15 +796,6 @@ class Binary : public Expr , public BailoutEntry {
   Operator op() const { return op_;  }
   const char* op_name() const { return GetOperatorName(op()); }
 
-  Binary( Graph* graph , std::uint32_t id , Expr* lhs , Expr* rhs , Operator op ,
-                                                                    IRInfo* info ):
-    Expr  (IRTYPE_BINARY,id,graph,info),
-    op_   (op)
-  {
-    AddOperand(lhs);
-    AddOperand(rhs);
-  }
-
   virtual std::uint64_t GVNHash() const {
     auto l = lhs()->GVNHash();
     auto r = rhs()->GVNHash();
@@ -773,6 +808,26 @@ class Binary : public Expr , public BailoutEntry {
       return lhs()->Equal(bin->lhs()) && rhs()->Equal(bin->rhs());
     }
     return false;
+  }
+
+  Binary( Graph* graph , std::uint32_t id , Expr* lhs , Expr* rhs , Operator op ,
+                                                                    IRInfo* info ):
+    Expr  (IRTYPE_BINARY,id,graph,info),
+    op_   (op)
+  {
+    AddOperand(lhs);
+    AddOperand(rhs);
+  }
+
+ protected:
+  Binary( IRType irtype , Graph* graph , std::uint32_t id , Expr* lhs , Expr* rhs ,
+                                                                        Operator op,
+                                                                        IRInfo* info ):
+    Expr  (irtype,id,graph,info),
+    op_   (op)
+  {
+    AddOperand(lhs);
+    AddOperand(rhs);
   }
 
  private:
@@ -818,6 +873,14 @@ class Ternary: public Expr , public BailoutEntry {
  private:
   LAVA_DISALLOW_COPY_AND_ASSIGN(Ternary)
 };
+
+// -------------------------------------------------------------------------
+// Specific Arithmetic
+//
+// Specific arithmetic node means the node has already been properly guarded
+// and type hint will be provided inside of the node for code generation
+// -------------------------------------------------------------------------
+
 
 // -------------------------------------------------------------------------
 // upvalue get/set
@@ -1350,45 +1413,81 @@ class TestIndexOOB : public Expr {
 
 class TestType : public Expr {
  public:
-  enum TypeCategory {
-    TT_FLOAT64,
-    TT_BOOLEAN,
-    TT_NIL,
-    TT_SSTRING,
-    TT_LSTRING,
-    TT_STRING,
-    TT_LIST,
-    TT_OBJECT,
-    TT_EXTENSION,
+  inline static TestType* New( Graph* , TypeKind , Expr* , IRInfo* );
 
-    TT_COMPONENT,       // test whether this object can have component
-    TT_INDEXABLE,       // test whether this object can be indexable
-    TT_PROPERTIABLE     // test whether this object can be used with dot/property
-  };
+  TypeKind type_kind() const { return type_kind_; }
 
-  inline static const char* GetTypeCategoryName( TypeCategory );
-
-  inline static TestType* New( Graph* , TypeCategory , Expr* , IRInfo* );
-
-  TypeCategory type_category() const { return type_category_; }
-
-  const char* type_category_name() const { return GetTypeCategoryName(type_category_); }
+  const char* type_kind_name() const { return GetTypeKindName(type_kind_); }
 
   Expr* object() const { return operand_list()->First(); }
 
-  TestType( Graph* graph , std::uint32_t id , TypeCategory tc ,
+  TestType( Graph* graph , std::uint32_t id , TypeKind tc ,
                                               Expr* obj,
                                               IRInfo* info ):
     Expr(IRTYPE_TEST_TYPE,id,graph,info),
-    type_category_(tc)
+    type_kind_(tc)
   {
     AddOperand(obj);
   }
 
  private:
-  TypeCategory type_category_;
+  TypeKind type_kind_;
 
   LAVA_DISALLOW_COPY_AND_ASSIGN(TestType)
+};
+
+/* -------------------------------------------------------
+ * Low level operations
+ * ------------------------------------------------------*/
+
+class Float64Unary  : public Unary  {
+ public:
+  using Unary::Operator;
+
+  inline static Float64Unary* New( Graph* , TypeKind , Expr* ,
+                                                       Operator op,
+                                                       IRInfo* );
+
+  TypeKind type_kind() const { return type_kind_; }
+
+  Float64Unary( Graph* graph , std::uint32_t id , TypeKind tk ,
+                                                  Expr* opr ,
+                                                  Operator op,
+                                                  IRInfo* info ):
+    Unary(IRTYPE_FLOAT64_UNARY,graph,id,opr,op,info),
+    type_kind_(tk)
+  {}
+
+ private:
+  TypeKind type_kind_;
+
+  LAVA_DISALLOW_COPY_AND_ASSIGN(Float64Unary)
+};
+
+class Float64Binary : public Binary {
+ public:
+  using Binary::Operator;
+
+  inline static Float64Binary* New( Graph* , TypeKind , Expr*,
+                                                        Expr*,
+                                                        Operator,
+                                                        IRInfo* );
+
+  TypeKind type_kind() const { return type_kind_; }
+
+  Float64Binary( Graph* graph , std::uint32_t id , TypeKind tk ,
+                                                   Expr* lhs,
+                                                   Expr* rhs,
+                                                   Operator op,
+                                                   IRInfo* info ):
+    Binary(IRTYPE_FLOAT64_BINARY,graph,id,lhs,rhs,op,info),
+    type_kind_(tk)
+  {}
+
+ private:
+  TypeKind type_kind_;
+
+  LAVA_DISALLOW_COPY_AND_ASSIGN(Float64Binary)
 };
 
 // -------------------------------------------------------------------------
@@ -2298,27 +2397,9 @@ inline TestIndexOOB* TestIndexOOB::New( Graph* graph , Expr* object , Expr* key 
   return graph->zone()->New<TestIndexOOB>(graph,graph->AssignID(),object,key,info);
 }
 
-inline TestType* TestType::New( Graph* graph , TypeCategory tc , Expr* object ,
+inline TestType* TestType::New( Graph* graph , TypeKind tc , Expr* object ,
                                                                  IRInfo* info ) {
   return graph->zone()->New<TestType>(graph,graph->AssignID(),tc,object,info);
-}
-
-inline const char* TestType::GetTypeCategoryName( TypeCategory tc ) {
-  switch(tc) {
-    case TT_FLOAT64: return "tt_float64";
-    case TT_BOOLEAN: return "tt_boolean";
-    case TT_NIL    : return "tt_nil";
-    case TT_STRING : return "tt_string";
-    case TT_SSTRING: return "tt_sstring";
-    case TT_LSTRING: return "tt_lstring";
-    case TT_LIST   : return "tt_list";
-    case TT_OBJECT : return "tt_object";
-    case TT_EXTENSION: return "tt_extension";
-    case TT_COMPONENT: return "tt_component";
-    case TT_INDEXABLE: return "tt_indexable";
-    case TT_PROPERTIABLE: return "tt_propertiable";
-    default: lava_die(); return NULL;
-  }
 }
 
 inline StackSlot* StackSlot::New( Graph* graph , Expr* expr , std::uint32_t index ) {

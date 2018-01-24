@@ -343,7 +343,7 @@ Expr* GraphBuilder::NewPSet( Expr* object , Expr* key , Expr* value ,
   }
 
   auto ir_info = NewIRInfo(pc);
-  NewGuard(TestType::New(graph_,TestType::TT_PROPERTIABLE, object, ir_info));
+  NewGuard(TestType::New(graph_,TPKIND_PROPTIABLE, object, ir_info));
   NewGuard(TestIndexOOB::New(graph_,object,key,ir_info));
   return PSet::New(graph_,object,key,value,ir_info,region());
 }
@@ -360,7 +360,7 @@ Expr* GraphBuilder::NewPGet( Expr* object , Expr* key , const BytecodeLocation& 
 
   // when we reach here we needs to generate guard
   auto ir_info = NewIRInfo(pc);
-  NewGuard(TestType::New(graph_,TestType::TT_PROPERTIABLE, object, ir_info));
+  NewGuard(TestType::New(graph_,TPKIND_PROPTIABLE, object, ir_info));
   NewGuard(TestIndexOOB::New(graph_,object,key,ir_info));
   return PGet::New(graph_,object,key,ir_info,region());
 }
@@ -385,6 +385,7 @@ Expr* GraphBuilder::NewISet( Expr* object, Expr* index, Expr* value,
         }
         ++count;
       }
+      lava_debug(NORMAL,lava_verify(count == list->operand_list()->size()););
 
       return new_list;
     }
@@ -396,7 +397,7 @@ Expr* GraphBuilder::NewISet( Expr* object, Expr* index, Expr* value,
   }
 
   auto ir_info = NewIRInfo(pc);
-  NewGuard(TestType::New(graph_,TestType::TT_COMPONENT, object, ir_info));
+  NewGuard(TestType::New(graph_,TPKIND_INDEXABLE, object, ir_info));
   NewGuard(TestIndexOOB::New(graph_,object,index,ir_info));
   return ISet::New(graph_,object,index,value,ir_info,region());
 }
@@ -416,7 +417,7 @@ Expr* GraphBuilder::NewIGet( Expr* object, Expr* index, const BytecodeLocation& 
   }
 
   auto ir_info = NewIRInfo(pc);
-  NewGuard(TestType::New(graph_,TestType::TT_COMPONENT,object,ir_info));
+  NewGuard(TestType::New(graph_,TPKIND_INDEXABLE,object,ir_info));
   NewGuard(TestIndexOOB::New(graph_,object,index,ir_info));
   return IGet::New(graph_,object,index,ir_info,region());
 }

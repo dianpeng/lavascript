@@ -343,8 +343,6 @@ Expr* GraphBuilder::NewPSet( Expr* object , Expr* key , Expr* value ,
   }
 
   auto ir_info = NewIRInfo(pc);
-  NewGuard(TestType::New(graph_,TPKIND_PROPTIABLE, object, ir_info));
-  NewGuard(TestIndexOOB::New(graph_,object,key,ir_info));
   return PSet::New(graph_,object,key,value,ir_info,region());
 }
 
@@ -360,8 +358,6 @@ Expr* GraphBuilder::NewPGet( Expr* object , Expr* key , const BytecodeLocation& 
 
   // when we reach here we needs to generate guard
   auto ir_info = NewIRInfo(pc);
-  NewGuard(TestType::New(graph_,TPKIND_PROPTIABLE, object, ir_info));
-  NewGuard(TestIndexOOB::New(graph_,object,key,ir_info));
   return PGet::New(graph_,object,key,ir_info,region());
 }
 
@@ -397,8 +393,6 @@ Expr* GraphBuilder::NewISet( Expr* object, Expr* index, Expr* value,
   }
 
   auto ir_info = NewIRInfo(pc);
-  NewGuard(TestType::New(graph_,TPKIND_INDEXABLE, object, ir_info));
-  NewGuard(TestIndexOOB::New(graph_,object,index,ir_info));
   return ISet::New(graph_,object,index,value,ir_info,region());
 }
 
@@ -417,22 +411,7 @@ Expr* GraphBuilder::NewIGet( Expr* object, Expr* index, const BytecodeLocation& 
   }
 
   auto ir_info = NewIRInfo(pc);
-  NewGuard(TestType::New(graph_,TPKIND_INDEXABLE,object,ir_info));
-  NewGuard(TestIndexOOB::New(graph_,object,index,ir_info));
   return IGet::New(graph_,object,index,ir_info,region());
-}
-
-If* GraphBuilder::NewGuard( Expr* test ) {
-  auto guard    = If::New(graph_,test,region());
-  auto if_true  = IfTrue::New(graph_,guard);
-  auto if_false = IfFalse::New(graph_,guard);
-  auto r        = Region::New(graph_,if_true);
-
-  // push the if_false into the guard_list and waiting for the final link
-  func_info().guard_list.push_back(if_false);
-
-  set_region(r);
-  return guard;
 }
 
 IRInfo* GraphBuilder::NewIRInfo( const BytecodeLocation& pc ) {
@@ -1382,10 +1361,6 @@ bool GraphBuilder::Build( const Handle<Prototype>& entry , Graph* graph ) {
         succ->AddBackwardEdge(e);
       }
 
-      for( auto &e : func_info().guard_list ) {
-        fail->AddBackwardEdge(e);
-      }
-
       end = End::New(graph_,succ,fail);
     }
   }
@@ -1612,10 +1587,6 @@ GraphBuilder::BuildOSRStart( const Handle<Prototype>& entry ,  const std::uint32
     for( auto & e : func_info().return_list ) {
       Trap* trap = Trap::New(graph_,e);
       succ->AddBackwardEdge(trap);
-    }
-
-    for( auto & e : func_info().guard_list ) {
-      fail->AddBackwardEdge(e);
     }
 
     end = OSREnd::New(graph_,succ,fail);

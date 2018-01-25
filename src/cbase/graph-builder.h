@@ -99,7 +99,6 @@ class GraphBuilder {
     std::uint8_t  max_local_var_size;
     std::vector<LoopInfo> loop_info;
     std::vector<ControlFlow*> return_list;
-    std::vector<ControlFlow*> guard_list;
     BytecodeAnalyze bc_analyze;
     const std::uint32_t* osr_start;
 
@@ -255,9 +254,6 @@ class GraphBuilder {
                                                           const interpreter::BytecodeLocation& );
   Expr* FoldObjectGet ( IRObject* , const zone::String& , const interpreter::BytecodeLocation& );
 
-  // some helper functions to create different node in IR graph
-  If* NewGuard( Expr* );
-
  private: // Checkpoint generation
   Checkpoint* BuildCheckpoint( const interpreter::BytecodeLocation& );
 
@@ -367,7 +363,6 @@ inline GraphBuilder::FuncInfo::FuncInfo( const Handle<Prototype>& proto , Contro
   max_local_var_size(proto->max_local_var_size()),
   loop_info         (),
   return_list       (),
-  guard_list        (),
   bc_analyze        (proto),
   osr_start         (NULL)
 {}
@@ -381,7 +376,6 @@ inline GraphBuilder::FuncInfo::FuncInfo( const Handle<Prototype>& proto , Contro
   max_local_var_size(proto->max_local_var_size()),
   loop_info         (),
   return_list       (),
-  guard_list        (),
   bc_analyze        (proto),
   osr_start         (ostart)
 {}
@@ -394,7 +388,6 @@ inline GraphBuilder::FuncInfo::FuncInfo( FuncInfo&& that ):
   max_local_var_size(that.max_local_var_size),
   loop_info         (std::move(that.loop_info)),
   return_list       (std::move(that.return_list)),
-  guard_list        (std::move(that.guard_list)),
   bc_analyze        (std::move(that.bc_analyze)),
   osr_start         (that.osr_start)
 {}

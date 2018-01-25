@@ -46,7 +46,7 @@ namespace {
 
 class DotGraphVisualizer {
  public:
-  DotGraphVisualizer(): graph_(NULL), existed_(NULL), output_(NULL) , opt_() {}
+  DotGraphVisualizer(): graph_(NULL), existed_(), output_() , opt_() {}
 
   // Visiualize the graph into DOT representation and return the string
   std::string Visualize( const Graph& , const Graph::DotFormatOption& opt );
@@ -60,37 +60,34 @@ class DotGraphVisualizer {
   std::string GetNodeName( Node* );
  private:
   const Graph* graph_;
-  DynamicBitSet* existed_;
-  std::stringstream* output_;
+  DynamicBitSet existed_;
+  std::stringstream output_;
   Graph::DotFormatOption opt_;
 };
 
 std::string DotGraphVisualizer::Visualize( const Graph& graph , const Graph::DotFormatOption& opt ) {
   // 1. prepare all the status variables
-  std::stringstream output;
-  DynamicBitSet bitset(graph.MaxID());
 
   graph_   = &graph;
-  output_  = &output;
-  existed_ = &bitset;
-  opt_ = opt;
+  opt_     = opt;
+  existed_.resize(graph.MaxID());
 
   // 2. edge iterator
-  output << "digraph IR {\n";
+  output_ << "digraph IR {\n";
   for( ControlFlowEdgeIterator itr(graph) ; itr.HasNext() ; itr.Move() ) {
     auto edge = itr.value();
     RenderEdge(edge.from,edge.to);
   }
-  output << "}\n";
+  output_ << "}\n";
 
-  return output_->str();
+  return output_.str();
 }
 
 std::stringstream& DotGraphVisualizer::Indent( int level ) {
   const char* kIndent = "  ";
   for( ; level > 0 ; --level )
-    (*output_) << kIndent;
-  return (*output_);
+    output_ << kIndent;
+  return output_;
 }
 
 std::string DotGraphVisualizer::GetNodeName( Node* node ) {
@@ -202,13 +199,13 @@ void DotGraphVisualizer::RenderEdge( ControlFlow* from , ControlFlow* to ) {
   std::string from_name = GetNodeName(from);
   std::string to_name   = GetNodeName(to);
 
-  if(!(*existed_)[from->id()]) {
-    (*existed_)[from->id()] = true;
+  if(!existed_[from->id()]) {
+    existed_[from->id()] = true;
     RenderControlFlow(from_name,from);
   }
 
-  if(!(*existed_)[to->id()]) {
-    (*existed_)[to->id()] = true;
+  if(!existed_[to->id()]) {
+    existed_[to->id()] = true;
     RenderControlFlow(to_name,to);
   }
 
@@ -216,10 +213,10 @@ void DotGraphVisualizer::RenderEdge( ControlFlow* from , ControlFlow* to ) {
 }
 
 void DotGraphVisualizer::RenderExpr( const std::string& name , Expr* node ) {
-  if((*existed_)[node->id()])
+  if(existed_[node->id()])
     return;
 
-  (*existed_)[node->id()] = true;
+  existed_[node->id()] = true;
 
   switch(node->type()) {
     case IRTYPE_FLOAT64:
@@ -297,13 +294,23 @@ void DotGraphVisualizer::RenderExpr( const std::string& name , Expr* node ) {
       }
       break;
     case IRTYPE_BINARY:
+    case IRTYPE_FLOAT64_BINARY:
+    case IRTYPE_EXTENSION_LBINARY:
+    case IRTYPE_EXTENSION_RBINARY:
       {
-        auto binary = node->AsBinary();
+        auto binary = static_cast<Binary*>(node);
+
         auto lhs_name = GetNodeName(binary->lhs());
         auto rhs_name = GetNodeName(binary->rhs());
         RenderExpr(lhs_name,binary->lhs());
         RenderExpr(rhs_name,binary->rhs());
-        Indent(1) << name << "[label=\"bin(" << binary->op_name() << ")\"]\n";
+
+        Indent(1) << name << "[label=\""
+                          << binary->type_name()
+                          << '('
+                          << binary->op_name()
+                          << ")\"]\n";
+
         Indent(1) << name << " -> " << lhs_name << '\n';
         Indent(1) << name << " -> " << rhs_name << '\n';
 
@@ -311,9 +318,14 @@ void DotGraphVisualizer::RenderExpr( const std::string& name , Expr* node ) {
       }
       break;
     case IRTYPE_UNARY:
+    case IRTYPE_FLOAT64_UNARY:
       {
-        auto unary = node->AsUnary();
-        Indent(1) << name << "[label=una(" << unary->op_name() << ")\"]\n";
+        auto unary = static_cast<Unary*>(node);
+        Indent(1) << name << "[label=\""
+                          << unary->type_name()
+                          << '('
+                          << unary->op_name()
+                          << ")\"]\n";
 
         RenderCheckpoint(name,unary->checkpoint());
       }
@@ -348,8 +360,10 @@ void DotGraphVisualizer::RenderExpr( const std::string& name , Expr* node ) {
       }
       break;
     case IRTYPE_PGET:
+    case IRTYPE_OBJECT_GET:
       {
-        auto pget = node->AsPGet();
+        auto pget = static_cast<PGet*>(node);
+
         auto obj_name = GetNodeName(pget->object());
         auto key_name = GetNodeName(pget->key());
         RenderExpr(obj_name,pget->object());
@@ -362,8 +376,10 @@ void DotGraphVisualizer::RenderExpr( const std::string& name , Expr* node ) {
       }
       break;
     case IRTYPE_PSET:
+    case IRTYPE_OBJECT_SET:
       {
-        auto pset = node->AsPSet();
+        auto pset = static_cast<PSet*>(node);
+
         auto obj_name = GetNodeName(pset->object());
         auto key_name = GetNodeName(pset->key());
         auto val_name = GetNodeName(pset->value());
@@ -379,8 +395,11 @@ void DotGraphVisualizer::RenderExpr( const std::string& name , Expr* node ) {
       }
       break;
     case IRTYPE_IGET:
+    case IRTYPE_LIST_GET:
+    case IRTYPE_EXTENSION_GET:
       {
-        auto iget = node->AsIGet();
+        auto iget = static_cast<IGet*>(node);
+
         auto obj_name = GetNodeName(iget->object());
         auto idx_name = GetNodeName(iget->index());
         RenderExpr(obj_name,iget->object());
@@ -393,8 +412,11 @@ void DotGraphVisualizer::RenderExpr( const std::string& name , Expr* node ) {
       }
       break;
     case IRTYPE_ISET:
+    case IRTYPE_LIST_SET:
+    case IRTYPE_EXTENSION_SET:
       {
-        auto iset = node->AsISet();
+        auto iset = static_cast<ISet*>(node);
+
         auto obj_name = GetNodeName(iset->object());
         auto idx_name = GetNodeName(iset->index() );
         auto val_name = GetNodeName(iset->value() );
@@ -514,10 +536,10 @@ void DotGraphVisualizer::RenderExpr( const std::string& name , Expr* node ) {
       break;
 
     /** test **/
-    case IRTYPE_TEST_INDEXOOB:
+    case IRTYPE_TEST_LISTOOB:
       {
-        Indent(1) << name << "[label=\"index-oob\"]\n";
-        auto oob = node->AsTestIndexOOB();
+        Indent(1) << name << "[label=\"list-oob\"]\n";
+        auto oob = node->AsTestListOOB();
 
         auto obj = oob->object();
         auto obj_name = GetNodeName(obj);
@@ -536,6 +558,31 @@ void DotGraphVisualizer::RenderExpr( const std::string& name , Expr* node ) {
         Indent(1) << name << "[label=\"test-type(" << tt->type_kind_name() << ")\"]\n";
         auto obj = tt->object();
         auto obj_name = GetNodeName(obj);
+        RenderExpr(obj_name,obj);
+
+        Indent(1) << name << " -> " << obj_name << '\n';
+      }
+      break;
+
+    case IRTYPE_BOX:
+      {
+        auto box = node->AsBox();
+        Indent(1) << name << "[label=\"box(" << GetTypeKindName(box->type_kind()) << ")\"]\n";
+        auto obj = box->value();
+        auto obj_name = GetNodeName(obj);
+        RenderExpr(obj_name,obj);
+
+        Indent(1) << name << " -> " << obj_name << '\n';
+      }
+      break;
+    case IRTYPE_UNBOX:
+      {
+        auto unbox = node->AsUnbox();
+        Indent(1) << name << "[label=\"unbox(" << GetTypeKindName(unbox->type_kind()) << ")\"]\n";
+        auto obj = unbox->value();
+        auto obj_name = GetNodeName(obj);
+        RenderExpr(obj_name,obj);
+
         Indent(1) << name << " -> " << obj_name << '\n';
       }
       break;

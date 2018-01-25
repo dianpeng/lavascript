@@ -127,6 +127,8 @@ struct PrototypeInfo : zone::ZoneObject {
 #define CBASE_IR_EXPRESSION_LOW(__)                                   \
   __(Float64Unary ,FLOAT64_UNARY ,"float64_unary",false)              \
   __(Float64Binary,FLOAT64_BINARY,"float64_binary",false)             \
+  __(ExtensionLBinary,EXTENSION_LBINARY,"extension_lbinary",false)    \
+  __(ExtensionRBinary,EXTENSION_RBINARY,"extension_rbinary",false)    \
   __(ObjectGet    ,OBJECT_GET    ,"object_get"   ,false)              \
   __(ObjectSet    ,OBJECT_SET    ,"object_set"   ,false)              \
   __(ListGet      ,LIST_GET      ,"list_get"     ,false)              \
@@ -137,14 +139,30 @@ struct PrototypeInfo : zone::ZoneObject {
 
 #define CBASE_IR_EXPRESSION_TEST(__)                                  \
   /* test , used for guarding */                                      \
-  __(TestType    ,TEST_TYPE     ,"test_type"      , false)            \
-  __(TestListOOB ,TEST_LISTOOB  ,"test_listobb"   , false)            \
-  __(TestObjectOOB,TEST_OBJECTOOB,"test_objectoob", false)
+  __(TestType    ,TEST_TYPE      ,"test_type"      , false)           \
+  __(TestListOOB ,TEST_LISTOOB   ,"test_listobb"   , false)
+
+
+/**
+ * Box operation will wrap a value into the internal box representation
+ * basically use Value object as wrapper
+ * Unbox is on the contary, basically load the actual value inside of
+ * Value object into its plain value.
+ *
+ * It means for primitive type, the actual primitive value will be loaded
+ * out ; for heap type, the GCRef (pointer of pointer) will be loaded out.
+ *
+ * It is added after the lowering phase of the HIR
+ */
+#define CBASE_IR_BOXOP(__)                      \
+  __(Box,BOX,"box",false)                       \
+  __(Unbox,UNBOX,"unbox",false)
 
 #define CBASE_IR_EXPRESSION(__)                 \
   CBASE_IR_EXPRESSION_HIGH(__)                  \
   CBASE_IR_EXPRESSION_LOW (__)                  \
-  CBASE_IR_EXPRESSION_TEST(__)
+  CBASE_IR_EXPRESSION_TEST(__)                  \
+  CBASE_IR_BOXOP(__)
 
 #define CBASE_IR_CONTROL_FLOW(__)               \
   __(Start,START,"start",false)                 \
@@ -940,6 +958,16 @@ class PGet : public Expr , public BailoutEntry {
     AddOperand(index );
   }
 
+ protected:
+  PGet( IRType type , Graph* graph , std::uint32_t id , Expr* object ,
+                                                        Expr* index  ,
+                                                        IRInfo* info ):
+    Expr(type,id,graph,info)
+  {
+    AddOperand(object);
+    AddOperand(index );
+  }
+
  private:
   LAVA_DISALLOW_COPY_AND_ASSIGN(PGet)
 };
@@ -956,6 +984,18 @@ class PSet : public Expr , public BailoutEntry {
                                                          Expr* value ,
                                                          IRInfo* info ):
     Expr  (IRTYPE_PSET,id,graph,info)
+  {
+    AddOperand(object);
+    AddOperand(index );
+    AddOperand(value );
+  }
+
+ protected:
+  PSet( IRType type , Graph* graph , std::uint32_t id , Expr* object ,
+                                                        Expr* index  ,
+                                                        Expr* value  ,
+                                                        IRInfo* info ):
+    Expr(type,id,graph,info)
   {
     AddOperand(object);
     AddOperand(index );
@@ -980,6 +1020,16 @@ class IGet : public Expr , public BailoutEntry {
     AddOperand(index );
   }
 
+ protected:
+  IGet( IRType type , Graph* graph , std::uint32_t id , Expr* object ,
+                                                        Expr* index ,
+                                                        IRInfo* info ):
+    Expr(type,id,graph,info)
+  {
+    AddOperand(object);
+    AddOperand(index );
+  }
+
  private:
   LAVA_DISALLOW_COPY_AND_ASSIGN(IGet)
 };
@@ -997,6 +1047,18 @@ class ISet : public Expr , public BailoutEntry {
                                                          Expr* value ,
                                                          IRInfo* info ):
     Expr(IRTYPE_ISET,id,graph,info)
+  {
+    AddOperand(object);
+    AddOperand(index );
+    AddOperand(value );
+  }
+
+ protected:
+  ISet( IRType type , Graph* graph , std::uint32_t id , Expr* object ,
+                                                        Expr* index  ,
+                                                        Expr* value  ,
+                                                        IRInfo* info ):
+    Expr(type,id,graph,info)
   {
     AddOperand(object);
     AddOperand(index );
@@ -1392,24 +1454,9 @@ class UValSlot : public Expr {
   LAVA_DISALLOW_COPY_AND_ASSIGN(UValSlot)
 };
 
-class TestIndexOOB : public Expr {
- public:
-  inline static TestIndexOOB* New( Graph* , Expr* , Expr* , IRInfo* );
-
-  Expr* object() const { return operand_list()->First(); }
-  Expr* index () const { return operand_list()->Last (); }
-
-  TestIndexOOB( Graph* graph , std::uint32_t id , Expr* obj , Expr* idx ,
-                                                              IRInfo* info ):
-    Expr(IRTYPE_TEST_INDEXOOB,id,graph,info)
-  {
-    AddOperand(obj);
-    AddOperand(idx);
-  }
-
- private:
-  LAVA_DISALLOW_COPY_AND_ASSIGN(TestIndexOOB)
-};
+/* -------------------------------------------------------
+ * Low level operations
+ * ------------------------------------------------------*/
 
 class TestType : public Expr {
  public:
@@ -1436,6 +1483,25 @@ class TestType : public Expr {
   LAVA_DISALLOW_COPY_AND_ASSIGN(TestType)
 };
 
+class TestListOOB : public Expr {
+ public:
+  inline static TestListOOB* New( Graph* , Expr* , Expr* , IRInfo* );
+
+  Expr* object() const { return operand_list()->First(); }
+  Expr* index () const { return operand_list()->Last (); }
+
+  TestListOOB( Graph* graph , std::uint32_t id , Expr* obj , Expr* idx ,
+                                                             IRInfo* info ):
+    Expr(IRTYPE_TEST_LISTOOB,id,graph,info)
+  {
+    AddOperand(obj);
+    AddOperand(idx);
+  }
+
+ private:
+  LAVA_DISALLOW_COPY_AND_ASSIGN(TestListOOB)
+};
+
 /* -------------------------------------------------------
  * Low level operations
  * ------------------------------------------------------*/
@@ -1444,23 +1510,17 @@ class Float64Unary  : public Unary  {
  public:
   using Unary::Operator;
 
-  inline static Float64Unary* New( Graph* , TypeKind , Expr* ,
-                                                       Operator op,
-                                                       IRInfo* );
+  inline static Float64Unary* New( Graph* , Expr* ,
+                                            Operator op,
+                                            IRInfo* );
 
-  TypeKind type_kind() const { return type_kind_; }
-
-  Float64Unary( Graph* graph , std::uint32_t id , TypeKind tk ,
-                                                  Expr* opr ,
+  Float64Unary( Graph* graph , std::uint32_t id , Expr* opr ,
                                                   Operator op,
                                                   IRInfo* info ):
-    Unary(IRTYPE_FLOAT64_UNARY,graph,id,opr,op,info),
-    type_kind_(tk)
+    Unary(IRTYPE_FLOAT64_UNARY,graph,id,opr,op,info)
   {}
 
  private:
-  TypeKind type_kind_;
-
   LAVA_DISALLOW_COPY_AND_ASSIGN(Float64Unary)
 };
 
@@ -1468,26 +1528,190 @@ class Float64Binary : public Binary {
  public:
   using Binary::Operator;
 
-  inline static Float64Binary* New( Graph* , TypeKind , Expr*,
-                                                        Expr*,
-                                                        Operator,
-                                                        IRInfo* );
+  inline static Float64Binary* New( Graph* , Expr*, Expr*,
+                                                    Operator,
+                                                    IRInfo* );
 
-  TypeKind type_kind() const { return type_kind_; }
-
-  Float64Binary( Graph* graph , std::uint32_t id , TypeKind tk ,
-                                                   Expr* lhs,
+  Float64Binary( Graph* graph , std::uint32_t id , Expr* lhs,
                                                    Expr* rhs,
                                                    Operator op,
                                                    IRInfo* info ):
-    Binary(IRTYPE_FLOAT64_BINARY,graph,id,lhs,rhs,op,info),
-    type_kind_(tk)
+    Binary(IRTYPE_FLOAT64_BINARY,graph,id,lhs,rhs,op,info)
   {}
 
  private:
-  TypeKind type_kind_;
 
   LAVA_DISALLOW_COPY_AND_ASSIGN(Float64Binary)
+};
+
+class ExtensionLBinary : public Binary {
+ public:
+  using Binary::Operator;
+
+  inline static ExtensionLBinary* New( Graph* , Expr* , Expr* ,
+                                                        Operator ,
+                                                        IRInfo* );
+
+  ExtensionLBinary( Graph* graph , std::uint32_t id , Expr* lhs ,
+                                                      Expr* rhs ,
+                                                      Operator op,
+                                                      IRInfo* info ):
+    Binary(IRTYPE_EXTENSION_LBINARY,graph,id,lhs,rhs,op,info)
+  {}
+
+ private:
+  LAVA_DISALLOW_COPY_AND_ASSIGN(ExtensionLBinary)
+};
+
+class ExtensionRBinary : public Binary {
+ public:
+  using Binary::Operator;
+
+  inline static ExtensionRBinary* New( Graph* , Expr* , Expr* ,
+                                                        Operator ,
+                                                        IRInfo* );
+
+  ExtensionRBinary( Graph* graph , std::uint32_t id , Expr* lhs ,
+                                                      Expr* rhs ,
+                                                      Operator op,
+                                                      IRInfo* info ):
+    Binary(IRTYPE_EXTENSION_RBINARY,graph,id,lhs,rhs,op,info)
+  {}
+
+ private:
+  LAVA_DISALLOW_COPY_AND_ASSIGN(ExtensionRBinary)
+};
+
+class ObjectGet : public PGet {
+ public:
+  inline static ObjectGet* New( Graph* , Expr* , Expr* , IRInfo* );
+
+  ObjectGet( Graph* graph , std::uint32_t id , Expr* object ,
+                                               Expr* key,
+                                               IRInfo* info ):
+    PGet(IRTYPE_OBJECT_GET,graph,id,object,key,info)
+  {}
+
+ private:
+  LAVA_DISALLOW_COPY_AND_ASSIGN(ObjectGet)
+};
+
+class ObjectSet : public PSet {
+ public:
+  inline static ObjectSet* New( Graph* , Expr* , Expr* , Expr* , IRInfo* );
+
+  ObjectSet( Graph* graph , std::uint32_t id , Expr* object ,
+                                               Expr* key,
+                                               Expr* value,
+                                               IRInfo* info ):
+    PSet(IRTYPE_OBJECT_SET,graph,id,object,key,value,info)
+  {}
+
+ private:
+  LAVA_DISALLOW_COPY_AND_ASSIGN(ObjectSet)
+};
+
+class ListGet : public IGet {
+ public:
+  inline static ListGet* New( Graph* , Expr* , Expr* , IRInfo* );
+
+  ListGet( Graph* graph , std::uint32_t id, Expr* object,
+                                            Expr* index ,
+                                            IRInfo* info ):
+    IGet(IRTYPE_LIST_GET,graph,id,object,index,info)
+  {}
+
+ private:
+  LAVA_DISALLOW_COPY_AND_ASSIGN(ListGet)
+};
+
+class ListSet : public ISet {
+ public:
+  inline static ListSet* New( Graph* , Expr* , Expr* , Expr* , IRInfo* );
+
+  ListSet( Graph* graph , std::uint32_t id , Expr* object ,
+                                             Expr* index  ,
+                                             Expr* value  ,
+                                             IRInfo* info ):
+    ISet(IRTYPE_LIST_SET,graph,id,object,index,value,info)
+  {}
+
+ private:
+  LAVA_DISALLOW_COPY_AND_ASSIGN(ListSet)
+};
+
+class ExtensionGet : public IGet {
+ public:
+  inline static ExtensionGet* New( Graph* , Expr* , Expr* , IRInfo* );
+
+  ExtensionGet( Graph* graph , std::uint32_t id , Expr* extension ,
+                                                  Expr* index,
+                                                  IRInfo* info ):
+    IGet(IRTYPE_EXTENSION_GET,graph,id,extension,index,info)
+  {}
+
+ private:
+  LAVA_DISALLOW_COPY_AND_ASSIGN(ExtensionGet)
+};
+
+class ExtensionSet : public ISet {
+ public:
+  inline static ExtensionSet* New( Graph* , Expr* , Expr* , Expr* , IRInfo* );
+
+  ExtensionSet( Graph* graph , std::uint32_t id , Expr* extension ,
+                                                  Expr* index,
+                                                  Expr* value,
+                                                  IRInfo* info ):
+    ISet(IRTYPE_EXTENSION_SET,graph,id,extension,index,value,info)
+  {}
+
+ private:
+  LAVA_DISALLOW_COPY_AND_ASSIGN(ExtensionSet)
+};
+
+// -------------------------------------------------------------------------
+//  Box/Unbox
+// -------------------------------------------------------------------------
+class Box : public Expr {
+ public:
+  inline static Box* New( Graph* , Expr* , TypeKind , IRInfo* );
+
+  Expr* value() const { return operand_list()->First(); }
+
+  TypeKind type_kind() const { return type_kind_; }
+
+  Box( Graph* graph , std::uint32_t id , Expr* object , TypeKind tk ,
+                                                        IRInfo* info ):
+    Expr(IRTYPE_BOX,id,graph,info),
+    type_kind_(tk)
+  {
+    AddOperand(object);
+  }
+
+ private:
+  TypeKind type_kind_;
+  LAVA_DISALLOW_COPY_AND_ASSIGN(Box)
+};
+
+class Unbox : public Expr {
+ public:
+  inline static Unbox* New( Graph* , Expr* , TypeKind , IRInfo* );
+
+  Expr* value() const { return operand_list()->First(); }
+
+  TypeKind type_kind() const { return type_kind_; }
+
+  Unbox( Graph* graph , std::uint32_t id , Expr* object , TypeKind tk ,
+                                                          IRInfo* info ):
+    Expr(IRTYPE_UNBOX,id,graph,info),
+    type_kind_(tk)
+  {
+    AddOperand(object);
+  }
+
+ private:
+  TypeKind type_kind_;
+  LAVA_DISALLOW_COPY_AND_ASSIGN(Unbox)
 };
 
 // -------------------------------------------------------------------------
@@ -2276,7 +2500,6 @@ inline USet* USet::New( Graph* graph , std::uint32_t method , Expr* opr , IRInfo
 inline PGet* PGet::New( Graph* graph , Expr* obj , Expr* key , IRInfo* info ,
                                                                ControlFlow* region ) {
   auto ret = graph->zone()->New<PGet>(graph,graph->AssignID(),obj,key,info);
-  region->AddEffectExpr(ret);
   return ret;
 }
 
@@ -2291,7 +2514,6 @@ inline PSet* PSet::New( Graph* graph , Expr* obj , Expr* key , Expr* value ,
 inline IGet* IGet::New( Graph* graph , Expr* obj, Expr* key , IRInfo* info ,
                                                               ControlFlow* region ) {
   auto ret = graph->zone()->New<IGet>(graph,graph->AssignID(),obj,key,info);
-  region->AddEffectExpr(ret);
   return ret;
 }
 
@@ -2392,14 +2614,72 @@ inline void Checkpoint::AddUValSlot ( Expr* val , std::uint32_t index ) {
   AddOperand(UValSlot::New(graph(),val,index));
 }
 
-inline TestIndexOOB* TestIndexOOB::New( Graph* graph , Expr* object , Expr* key ,
-                                                                      IRInfo* info ) {
-  return graph->zone()->New<TestIndexOOB>(graph,graph->AssignID(),object,key,info);
-}
-
 inline TestType* TestType::New( Graph* graph , TypeKind tc , Expr* object ,
                                                                  IRInfo* info ) {
   return graph->zone()->New<TestType>(graph,graph->AssignID(),tc,object,info);
+}
+
+inline TestListOOB* TestListOOB::New( Graph* graph , Expr* object , Expr* key ,
+                                                                      IRInfo* info ) {
+  return graph->zone()->New<TestListOOB>(graph,graph->AssignID(),object,key,info);
+}
+
+inline Float64Unary* Float64Unary::New( Graph* graph , Expr* opr , Operator op ,
+                                                                   IRInfo* info ) {
+  return graph->zone()->New<Float64Unary>(graph,graph->AssignID(),opr,op,info);
+}
+
+inline Float64Binary* Float64Binary::New( Graph* graph , Expr* lhs , Expr* rhs ,
+                                                                     Operator op,
+                                                                     IRInfo* info ) {
+  return graph->zone()->New<Float64Binary>(graph,graph->AssignID(),lhs,rhs,op,info);
+}
+
+inline ExtensionLBinary* ExtensionLBinary::New( Graph* graph , Expr* lhs , Expr* rhs ,
+                                                                           Operator op,
+                                                                           IRInfo* info ) {
+  return graph->zone()->New<ExtensionLBinary>(graph,graph->AssignID(),lhs,rhs,op,info);
+}
+
+inline ExtensionRBinary* ExtensionRBinary::New( Graph* graph , Expr* lhs , Expr* rhs ,
+                                                                           Operator op,
+                                                                           IRInfo* info ) {
+  return graph->zone()->New<ExtensionRBinary>(graph,graph->AssignID(),lhs,rhs,op,info);
+}
+
+inline ListGet* ListGet::New( Graph* graph , Expr* obj , Expr* index , IRInfo* info ) {
+  return graph->zone()->New<ListGet>(graph,graph->AssignID(),obj,index,info);
+}
+
+inline ListSet* ListSet::New( Graph* graph , Expr* obj , Expr* index , Expr* value ,
+                                                                       IRInfo* info ) {
+  return graph->zone()->New<ListSet>(graph,graph->AssignID(),obj,index,value,info);
+}
+
+inline ObjectGet* ObjectGet::New( Graph* graph , Expr* obj , Expr* key , IRInfo* info ) {
+  return graph->zone()->New<ObjectGet>(graph,graph->AssignID(),obj,key,info);
+}
+
+inline ObjectSet* ObjectSet::New( Graph* graph , Expr* obj , Expr* key , Expr* value ,
+                                                                         IRInfo* info ) {
+  return graph->zone()->New<ObjectSet>(graph,graph->AssignID(),obj,key,value,info);
+}
+
+inline ExtensionGet* ExtensionGet::New( Graph* graph , Expr* obj , Expr* key , IRInfo* info ) {
+  return graph->zone()->New<ExtensionGet>(graph,graph->AssignID(),obj,key,info);
+}
+
+inline ExtensionSet* ExtensionSet::New( Graph* graph , Expr* obj , Expr* key , Expr* value ,
+                                                                               IRInfo* info ) {
+  return graph->zone()->New<ExtensionSet>(graph,graph->AssignID(),obj,key,value,info);
+}
+
+inline Box* Box::New( Graph* graph , Expr* obj , TypeKind tk , IRInfo* info ) {
+  return graph->zone()->New<Box>(graph,graph->AssignID(),obj,tk,info);
+}
+
+inline Unbox* Unbox::New( Graph* graph , Expr* obj , TypeKind tk , IRInfo* info ) {
+  return graph->zone()->New<Unbox>(graph,graph->AssignID(),obj,tk,info);
 }
 
 inline StackSlot* StackSlot::New( Graph* graph , Expr* expr , std::uint32_t index ) {

@@ -159,7 +159,6 @@ inline std::uint32_t CurrentBytecode( Runtime* sandbox ) {
 inline Bytecode CurrentOpcode( Runtime* sandbox ) {
   std::uint32_t pbc = CurrentBytecode(sandbox);
   Bytecode bc = static_cast<Bytecode>(pbc&0xff);
-  lava_error("BC:%s",GetBytecodeName(bc));
   return bc;
 }
 
@@ -188,7 +187,6 @@ INTERPRETER_REGISTER_EXTERN_SYMBOL(InterpreterModByZero)
 bool InterpreterArithmetic( Runtime* sandbox , const Value& left ,
                                                const Value& right,
                                                Value* output ) {
-  lava_error("Into arithmetic %s,%s",left.type_name(),right.type_name());
   if(left.IsExtension() || right.IsExtension()) {
     Handle<Extension> ext(left.IsExtension() ? left.GetExtension() :
         right.GetExtension());

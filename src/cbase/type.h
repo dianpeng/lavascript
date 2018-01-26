@@ -1,5 +1,6 @@
 #ifndef CBASE_TYPE_H_
 #define CBASE_TYPE_H_
+#include "src/object-type.h"
 
 namespace lavascript {
 namespace cbase {
@@ -30,6 +31,7 @@ namespace cbase {
   __(proptiable,PROPTIABLE)                             \
   __(array_indexable,ARRAY_INDEXABLE)                   \
   __(callable,CALLABLE)                                 \
+  __(iterator,ITERATOR)                                 \
   __(closure,CLOSURE)                                   \
   __(extension,EXTENSION)
 
@@ -45,7 +47,18 @@ enum TypeKind {
   SIZE_OF_TYPE_KIND
 };
 
+class TPKind {
+ public:
+  static bool IsString( TypeKind tp ) {
+    return tp == TPKIND_SMALL_STRING ||
+           tp == TPKIND_LONG_STRING  ||
+           tp == TPKIND_STRING;
+  }
+};
+
 const char* GetTypeKindName( TypeKind );
+
+TypeKind MapValueTypeToTypeKind( ValueType );
 
 } // namespace cbase
 } // namespace lavascript

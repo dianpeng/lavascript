@@ -20,6 +20,8 @@ bool TypeTrace::AddTrace( BytecodeAddress addr , const Value& d1 ,
        * not stable at all. We mark it to be forbidden and let JIT to
        * generate a full polymorphic operator
        */
+      map_.erase(itr.first); // remove the old one since this type feedback is not
+                             // stable , so later on JIT can generte dynamic dispatch
       forbidden_set_.insert(addr);
       return false;
     }

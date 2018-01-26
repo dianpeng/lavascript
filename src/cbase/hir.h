@@ -107,8 +107,8 @@ struct PrototypeInfo : zone::ZoneObject {
   __(Projection,PROJECTION,"projection",false)  \
   /* osr */                                     \
   __(OSRLoad,OSR_LOAD,"osr_load",true)          \
-  /* effect */                                  \
-  __(Effect,EFFECT,"effect",false)              \
+  /* alias */                                   \
+  __(Alias,ALIAS,"alias",false)                 \
   /* checkpoints */                             \
   __(Checkpoint,CHECKPOINT,"checkpoint",false)  \
   __(StackSlot ,STACK_SLOT, "stackslot",false)  \
@@ -127,6 +127,13 @@ struct PrototypeInfo : zone::ZoneObject {
 #define CBASE_IR_EXPRESSION_LOW(__)                                   \
   __(Float64Unary ,FLOAT64_UNARY ,"float64_unary",false)              \
   __(Float64Binary,FLOAT64_BINARY,"float64_binary",false)             \
+  __(StringCompare,STRING_COMPARE,"string_compare",false)             \
+  __(SStringEq,SSTRING_EQ,"sstring_eq",false)                         \
+  __(SStringNe,SSTRING_NE,"sstring_ne",false)                         \
+  __(IsTrue,IS_TRUE,"is_true",false)                                  \
+  __(IsFalse,IS_FALSE,"is_false",false)                               \
+  __(IsNil ,IS_NIL,"is_nil",false)                                    \
+  __(IsNotNil,IS_NOT_NIL,"is_not_nil",false)                          \
   __(ExtensionLBinary,EXTENSION_LBINARY,"extension_lbinary",false)    \
   __(ExtensionRBinary,EXTENSION_RBINARY,"extension_rbinary",false)    \
   __(ObjectGet    ,OBJECT_GET    ,"object_get"   ,false)              \
@@ -170,6 +177,7 @@ struct PrototypeInfo : zone::ZoneObject {
   __(LoopHeader,LOOP_HEADER,"loop_header",false)\
   __(Loop,LOOP ,"loop",false)                   \
   __(LoopExit,LOOP_EXIT,"loop_exit",false)      \
+  __(Guard,GUARD,"guard",false)                 \
   __(If,IF,"if",false)                          \
   __(IfTrue,IF_TRUE,"if_true",false)            \
   __(IfFalse,IF_FALSE,"if_false",false)         \
@@ -226,71 +234,80 @@ class Node;
 class Expr;
 class ControlFlow;
 class Stmt;
-class BailoutEntry;
 
 // ----------------------------------------------------------------------------
-// Effect
-// Some operation has side effect which is visiable to rest of the
-// program. This types of dependency is not explicit represented by
-// use-def and def-use , so it must be taken care of specifically.
+// Statement list
 //
-// For each expression inside of our IR they are not bounded to a certain
-// basic block due to the nature of sea of nodes , but for expression
-// that has a certain side effect we will bind it to a certain basic
-// block where we see the bytecode lies in.
-//
-// This relationship basically define the side effect of certain expression.
-// Due to the natural order of control flow node, so these operations that
-// has side effect will have automatic order.
-typedef zone::List<Expr*> EffectList;
+// Bunch of statements that are not used by any expression but have observable
+// effects. Example like : foo() , a free function call
+typedef zone::List<Expr*> StatementList;
 
-typedef EffectList::ForwardIterator EffectNodeIterator;
+typedef StatementList::ForwardIterator StatementIterator;
 
 // This structure is held by *all* the expression. If the region field is not
 // NULL then it means this expression has side effect and it is bounded at
 // certain control flow region
-struct EffectEdge {
+struct StatementEdge {
   ControlFlow* region;
-  EffectNodeIterator iterator;
+  StatementIterator iterator;
   bool IsUsed() const { return region != NULL; }
 
-  EffectEdge( ControlFlow* r , const EffectNodeIterator& itr ): region(r), iterator(itr) {}
-  EffectEdge(): region(NULL), iterator() {}
+  StatementEdge( ControlFlow* r , const StatementIterator& itr ): region(r), iterator(itr) {}
+  StatementEdge(): region(NULL), iterator() {}
 };
 
+
 /**
- * Def-Use chain and Use-Def chain. We rename these field to
- * make it more easy to understand since I personally don't
- * think Def-Use and Use-Def chain to be a easy way to express
- * what it does mean
+ * Each expression will have 2 types of dependency with regards to other expression.
  *
- * 1) operand list , represent what expression is used/depend on
- *    by this expression
+ * 1. OperandList   , describe the operands used by this expression node
+ * 2. EffectList    , describe the observable effects of this expression node
  *
- * 2) ref list     , represent list of expression that use *this*
- *    expression
+ * A operand list is easy to understand, example like :
  *
- * NOTES:
+ *   a = b + c ; for node a , node b and node c are operands and they are inside of the
+ *               operands list
  *
- * All the IR node must try to use OperandList to store their operand,
- * and try to express any kinds of depdenency of the node as part of
- * ir node and then use OperandList to store them. Do not add a new
- * member inside of the IR node to store any kinds of ir node dependency,
- * except for very specific data.
+ *   a <= b    ; for node a , its value is implicitly dependend on node b's evaluation.
+ *               or in other word, b's evaluation has observable effect that a needs to
+ *               say.
  *
- * The reason is OperandList provide way to modify all the reference
- * introduced by certain node. During the optimization phase, any node
- * is a candidate to be modified !
  *
+ * Essentially effect list are only used to describe dependency that is not esay to
+ * be expressed inside of IR graph or inefficient to be described here. Example like :
+ *
+ * a[10] = 10;
+ * return a[10] + 1;
+ *
+ * We can forward 10 to the return statements, but return statments has effect dependency
+ * on a[10] = 10 since a[10] = 10 can *fail* due to a is an C++ side extension. But if
+ * we don't describe such dependency, then the problem is return a[10] + 1 can be folded
+ * into return 11 and it may be able to schedule before a[10] = 10 , obviously this is
+ * incorrect execution flow. With effect list we are able to add a[10] = 10 to be effect
+ * dependent of return statment, then the scheduler will consider this facts and also guarantee
+ * that a[10] + 1 will be scheduled *after* a[10] = 10
+ *
+ *
+ * All these 2 types of dependency are tracked by RefList, so a substituion of node by
+ * using *Replace* function will modify all these 2 dependency list
  */
-typedef zone::List<Expr*> OperandList;
+
+typedef zone::List<Expr*> DependencyList;
+typedef DependencyList::ForwardIterator DependencyIterator;
+
+// OperandList
+typedef DependencyList OperandList;
 typedef OperandList::ForwardIterator OperandIterator;
+
+// EffectList
+typedef DependencyList EffectList;
+typedef EffectList::ForwardIterator   EffectIterator;
 
 struct Ref {
   OperandIterator id;  // iterator used for fast deletion of this Ref it is
                        // modified
   Node* node;
-  Ref( const OperandIterator& iter , Node* n ): id(iter),node(n) {}
+  Ref( const DependencyIterator& iter , Node* n ): id(iter),node(n) {}
   Ref(): id(), node(NULL) {}
 };
 
@@ -350,28 +367,6 @@ class Node : public zone::ZoneObject {
 
   LAVA_DISALLOW_COPY_AND_ASSIGN(Node)
 };
-
-// Mother of IR node that can be bailout or needs to hold a check point.
-// Basically IR supports speculative execution or needs to bailout to GC
-// routine needs a Checkpoint expression attached to it to generate frame
-// state while bailout.
-//
-// One thing to note, we can omit this frame state if we only need a allocation
-// since we could disable GC temporarily
-class BailoutEntry {
- public:
-  void set_checkpoint( Checkpoint* node ) { checkpoint_ = node; }
-  Checkpoint* checkpoint() const { return checkpoint_; }
-  bool HasCheckpoint() const { return checkpoint_ != NULL; }
-  void ClearCheckpoint()  { checkpoint_ = NULL; }
-
-  BailoutEntry() : checkpoint_(NULL) {}
- private:
-  Checkpoint* checkpoint_;
-
-  LAVA_DISALLOW_COPY_AND_ASSIGN(BailoutEntry)
-};
-
 
 /* =========================================================================
  *
@@ -451,9 +446,9 @@ class Expr : public Node {
   virtual bool Equal( const Expr* that ) const { return this == that;       }
 
  public:
-  bool HasEffect() const { return effect_.IsUsed(); }
-  void set_effect( const EffectEdge& ee ) { effect_ = ee; }
-  const EffectEdge& effect() const { return effect_; }
+  bool  IsStatement() const { return stmt_.IsUsed(); }
+  void  set_statement_edge ( const StatementEdge& st ) { stmt_= st; }
+  const StatementEdge& statement_edge() const { return stmt_; }
 
  public: // patching function helps to mutate any def-use and use-def
 
@@ -474,6 +469,13 @@ class Expr : public Node {
   // This function will add the input node into this node's operand list and
   // it will take care of the input node's ref list as well
   inline void AddOperand( Expr* node );
+
+  // Effect list
+  //
+  EffectList* effect_list() { return &effect_list_; }
+  const EffectList* effect_list() const { return &effect_list_; }
+
+  inline void AddEffect ( Expr* node );
 
   // Reference list
   //
@@ -508,16 +510,18 @@ class Expr : public Node {
   Expr( IRType type , std::uint32_t id , Graph* graph , IRInfo* info ):
     Node             (type,id,graph),
     operand_list_    (),
+    effect_list_     (),
     ref_list_        (),
     ir_info_         (info),
-    effect_          ()
+    stmt_            ()
   {}
 
  private:
   OperandList operand_list_;
+  EffectList  effect_list_;
   RefList     ref_list_;
   IRInfo*     ir_info_;
-  EffectEdge  effect_;
+  StatementEdge  stmt_;
 };
 
 /* ---------------------------------------------------
@@ -737,7 +741,7 @@ class LoadCls : public Expr {
 // ----------------------------------------------------------------
 // Arithmetic
 // ----------------------------------------------------------------
-class Unary : public Expr , public BailoutEntry {
+class Unary : public Expr {
  public:
   enum Operator { MINUS, NOT };
 
@@ -784,7 +788,7 @@ class Unary : public Expr , public BailoutEntry {
   LAVA_DISALLOW_COPY_AND_ASSIGN(Unary)
 };
 
-class Binary : public Expr , public BailoutEntry {
+class Binary : public Expr {
  public:
   enum Operator {
     ADD,
@@ -853,7 +857,7 @@ class Binary : public Expr , public BailoutEntry {
   LAVA_DISALLOW_COPY_AND_ASSIGN(Binary)
 };
 
-class Ternary: public Expr , public BailoutEntry {
+class Ternary: public Expr {
  public:
   inline static Ternary* New( Graph* , Expr* , Expr* , Expr* , IRInfo* );
 
@@ -868,8 +872,8 @@ class Ternary: public Expr , public BailoutEntry {
   }
 
   Expr* condition() const { return operand_list()->First(); }
-  Expr* lhs () const { return operand_list()->Index(1); }
-  Expr* rhs () const { return operand_list()->Last(); }
+  Expr* lhs      () const { return operand_list()->Index(1); }
+  Expr* rhs      () const { return operand_list()->Last(); }
 
   virtual std::uint64_t GVNHash() const {
     auto c = condition()->GVNHash();
@@ -944,7 +948,7 @@ class USet : public Expr {
 // -------------------------------------------------------------------------
 // property set/get (side effect)
 // -------------------------------------------------------------------------
-class PGet : public Expr , public BailoutEntry {
+class PGet : public Expr {
  public:
   inline static PGet* New( Graph* , Expr* , Expr* , IRInfo* , ControlFlow* );
   Expr* object() const { return operand_list()->First(); }
@@ -972,7 +976,7 @@ class PGet : public Expr , public BailoutEntry {
   LAVA_DISALLOW_COPY_AND_ASSIGN(PGet)
 };
 
-class PSet : public Expr , public BailoutEntry {
+class PSet : public Expr {
  public:
   inline static PSet* New( Graph* , Expr* , Expr* , Expr* , IRInfo* ,
                                                             ControlFlow* );
@@ -1006,7 +1010,7 @@ class PSet : public Expr , public BailoutEntry {
   LAVA_DISALLOW_COPY_AND_ASSIGN(PSet)
 };
 
-class IGet : public Expr , public BailoutEntry {
+class IGet : public Expr {
  public:
   inline static IGet* New( Graph* , Expr* , Expr* , IRInfo* , ControlFlow* );
   Expr* object() const { return operand_list()->First(); }
@@ -1034,7 +1038,7 @@ class IGet : public Expr , public BailoutEntry {
   LAVA_DISALLOW_COPY_AND_ASSIGN(IGet)
 };
 
-class ISet : public Expr , public BailoutEntry {
+class ISet : public Expr {
  public:
   inline static ISet* New( Graph* , Expr* , Expr* , Expr* , IRInfo* ,
                                                             ControlFlow* );
@@ -1072,7 +1076,7 @@ class ISet : public Expr , public BailoutEntry {
 // -------------------------------------------------------------------------
 // global set/get (side effect)
 // -------------------------------------------------------------------------
-class GGet : public Expr , public BailoutEntry {
+class GGet : public Expr {
  public:
   inline static GGet* New( Graph* , Expr* , IRInfo* , ControlFlow* );
   Expr* key() const { return operand_list()->First(); }
@@ -1087,7 +1091,7 @@ class GGet : public Expr , public BailoutEntry {
   LAVA_DISALLOW_COPY_AND_ASSIGN(GGet)
 };
 
-class GSet : public Expr , public BailoutEntry {
+class GSet : public Expr {
  public:
   inline static GSet* New( Graph* , Expr* key , Expr* value , IRInfo* ,
                                                               ControlFlow* );
@@ -1109,7 +1113,7 @@ class GSet : public Expr , public BailoutEntry {
 // -------------------------------------------------------------------------
 // Iterator node (side effect)
 // -------------------------------------------------------------------------
-class ItrNew : public Expr , public BailoutEntry {
+class ItrNew : public Expr {
  public:
   inline static ItrNew* New( Graph* , Expr* , IRInfo* , ControlFlow* );
   Expr* operand() const { return operand_list()->First(); }
@@ -1124,7 +1128,7 @@ class ItrNew : public Expr , public BailoutEntry {
   LAVA_DISALLOW_COPY_AND_ASSIGN(ItrNew)
 };
 
-class ItrNext : public Expr , public BailoutEntry {
+class ItrNext : public Expr {
  public:
   inline static ItrNext* New( Graph* , Expr* , IRInfo* , ControlFlow* );
   Expr* operand() const { return operand_list()->First(); }
@@ -1139,7 +1143,7 @@ class ItrNext : public Expr , public BailoutEntry {
   LAVA_DISALLOW_COPY_AND_ASSIGN(ItrNext)
 };
 
-class ItrTest : public Expr , public BailoutEntry {
+class ItrTest : public Expr {
  public:
   inline static ItrTest* New( Graph* , Expr* , IRInfo* , ControlFlow* );
   Expr* operand() const { return operand_list()->First(); }
@@ -1164,7 +1168,7 @@ class ItrTest : public Expr , public BailoutEntry {
   LAVA_DISALLOW_COPY_AND_ASSIGN(ItrTest)
 };
 
-class ItrDeref : public Expr , public BailoutEntry {
+class ItrDeref : public Expr {
  public:
   enum {
     PROJECTION_KEY = 0,
@@ -1212,7 +1216,7 @@ class Phi : public Expr {
   LAVA_DISALLOW_COPY_AND_ASSIGN(Phi)
 };
 
-class Call : public Expr , public BailoutEntry {
+class Call : public Expr {
  public:
   inline static Call* New( Graph* graph , Expr* , std::uint8_t , std::uint8_t ,
                                                                  IRInfo* );
@@ -1305,7 +1309,7 @@ class Projection : public Expr {
   LAVA_DISALLOW_COPY_AND_ASSIGN(Projection)
 };
 
-class InitCls : public Expr , public BailoutEntry {
+class InitCls : public Expr {
  public:
   inline static InitCls* New( Graph* , Expr* , IRInfo* );
 
@@ -1347,31 +1351,41 @@ class OSRLoad : public Expr {
   LAVA_DISALLOW_COPY_AND_ASSIGN(OSRLoad)
 };
 
-// Effect node
+// Alias
 //
-// This node is mainly used to represent side effect can be observed
-// introduced by certain type of operations. This node is mainly used
-// to mark side effect generated by function call in none OSR graph. In
-// OSR graph, everything has side effect and we use another way to mark
-// side effect
-class Effect : public Expr {
+// A alias node will represents a certain operations's alias effect towards
+// the receiver. It is used to guard certain optimization cross boundary.
+// Example like this:
+//
+// var a = [1,2,3,4];
+//
+// g = a; // set a to g as a global variable , this gset has a alias effect
+//        // and potentially this operation can mutate a's value since it is
+//        // in C++ side and the global variable supports introspection
+//
+// return a[0] + 10; // the optimizer may *incorrectly* fold a[0] + 10 => 11 due
+//                   // to we don't know the potential effect
+//
+// With alias node, the node a will be guarded by this alias which prevents any
+// optimization happened
+class Alias : public Expr {
  public:
-  inline static Effect* New( Graph* , Expr* , Expr* , IRInfo* );
+  inline static Alias* New( Graph* , Expr* , Expr* , IRInfo* );
 
   Expr* receiver() const { return operand_list()->First(); }
   Expr* applier () const { return operand_list()->Last (); }
 
-  Effect( Graph* graph , std::uint32_t id , Expr* receiver ,
+  Alias ( Graph* graph , std::uint32_t id , Expr* receiver ,
                                             Expr* applier  ,
                                             IRInfo* info ):
-    Expr(IRTYPE_EFFECT,id,graph,info)
+    Expr(IRTYPE_ALIAS,id,graph,info)
   {
     AddOperand(receiver);
     AddOperand(applier);
   }
 
  private:
-  LAVA_DISALLOW_COPY_AND_ASSIGN(Effect)
+  LAVA_DISALLOW_COPY_AND_ASSIGN(Alias)
 };
 
 // Checkpoint node
@@ -1532,7 +1546,7 @@ class Float64Binary : public Binary {
                                                     Operator,
                                                     IRInfo* );
 
-  Float64Binary( Graph* graph , std::uint32_t id , Expr* lhs,
+  Float64Binary( Graph* graph , std::uint32_t id , ExpNr* lhs,
                                                    Expr* rhs,
                                                    Operator op,
                                                    IRInfo* info ):
@@ -1542,6 +1556,122 @@ class Float64Binary : public Binary {
  private:
 
   LAVA_DISALLOW_COPY_AND_ASSIGN(Float64Binary)
+};
+
+class StringCompare : public Binary {
+ public:
+  using Binary::Operator;
+
+  inline static StringCompare* New( Graph* , Expr* , Expr* ,
+                                                     Operator ,
+                                                     IRInfo* );
+
+  StringCompare( Graph* graph , std::uint32_t id , Expr* lhs ,
+                                                   Expr* rhs ,
+                                                   Operator op ,
+                                                   IRInfo* info ):
+    Binary(IRTYPE_STRING_COMPARE,graph,id,lhs,rhs,op,info)
+  {
+    lava_debug(NORMAL,lava_verify(Binary::IsComparisonOperator(op)););
+  }
+ private:
+  LAVA_DISALLOW_COPY_AND_ASSIGN(StringCompare);
+};
+
+class SStringEq : public Binary {
+ public:
+
+  inline static SStringEq* New( Graph* , Expr* , Expr* ,
+                                                 IRInfo* );
+
+  SStringEq( Graph* graph , std::uint32_t id , Expr* lhs ,
+                                               Expr* rhs ,
+                                               Opereator op,
+                                               IRInfo* info ):
+    Binary(IRTYPE_SSTRING_EQ,graph,id,lhs,rhs,Binary::EQ,info)
+  {}
+};
+
+class SStringNe : public Binary {
+ public:
+
+  inline static SStringNe* New( Graph* , Expr* , Expr* ,
+                                                 IRInfo* );
+
+  SStringNe( Graph* graph , std::uint32_t id , Expr* lhs ,
+                                               Expr* rhs ,
+                                               Opereator op,
+                                               IRInfo* info ):
+    Binary(IRTYPE_SSTRING_EQ,graph,id,lhs,rhs,Binary::NE,info)
+  {}
+};
+
+class IsTrue : public Expr {
+ public:
+  inline static IsTrue* New( Graph* , Expr* , IRinfo* );
+
+  Expr* operand() const { return operand_list()->First(); }
+
+  IsTrue( Graph* graph , std::uint32_t id , Expr* opr ,
+                                            IRInfo* info ):
+    Expr(IRTYPE_IS_TRUE,graph,id,info)
+  {
+    AddOperand(opr);
+  }
+
+ private:
+  LAVA_DISALLOW_COPY_AND_ASSIGN(IsTrue)
+};
+
+class IsFalse : public Expr {
+ public:
+  inline static IsFalse* New( Graph* , Expr* , IRInfo* );
+
+  Expr* operand() const { return operand_list()->First(); }
+
+  IsFalse( Graph* graph , std::uint32_t id , Expr* opr ,
+                                             IRInfo* info ):
+    Expr(IRTYPE_IS_FALSE,graph,id,info)
+  {
+    AddOperand(opr);
+  }
+
+ private:
+  LAVA_DISALLOW_COPY_AND_ASSIGN(IsFalse)
+};
+
+class IsNil : public Expr {
+ public:
+  inline static IsNil* New( Graph* , Expr* , IRinfo* );
+
+  Expr* operand() const { return operand_list()->First(); }
+
+  IsNil( Graph* graph , std::uint32_t id , Expr* opr ,
+                                           IRInfo* info ):
+    Expr(IRTYPE_IS_NIL,graph,id,info)
+  {
+    AddOperand(opr);
+  }
+
+ private:
+  LAVA_DISALLOW_COPY_AND_ASSIGN(IsNil)
+};
+
+class IsNotNil: public Expr {
+ public:
+  inline static IsNotNil* New( Graph* , Expr* , IRinfo* );
+
+  Expr* operand() const { return operand_list()->First(); }
+
+  IsNotNil( Graph* graph , std::uint32_t id , Expr* opr ,
+                                              IRInfo* info ):
+    Expr(IRTYPE_IS_NOT_NIL,graph,id,info)
+  {
+    AddOperand(opr);
+  }
+
+ private:
+  LAVA_DISALLOW_COPY_AND_ASSIGN(IsNotNil)
 };
 
 class ExtensionLBinary : public Binary {
@@ -1743,22 +1873,22 @@ class ControlFlow : public Node {
   //
   // All these types of expressions are stored inside of the effect_expr list
   // to be used later on for code generation
-  const EffectList* effect_expr() const {
-    return &effect_expr_;
+  const StatementList* statement_list() const {
+    return &stmt_expr_;
   }
 
-  EffectList* effect_expr() {
-    return &effect_expr_;
+  StatementList* statement_list() {
+    return &stmt_expr_;
   }
 
-  void AddEffectExpr( Expr* node ) {
-    auto itr = effect_expr_.PushBack(zone(),node);
-    node->set_effect(EffectEdge(this,itr));
+  void AddStatement( Expr* node ) {
+    auto itr = stmt_expr_.PushBack(zone(),node);
+    node->set_statement_edge(StatementEdge(this,itr));
   }
 
-  void RemoveEffectExpr( const EffectEdge& ee ) {
+  void RemoveStatement( const StatementEdge& ee ) {
     lava_debug(NORMAL,lava_verify(ee.region == this););
-    effect_expr()->Remove(ee.iterator);
+    statement_list()->Remove(ee.iterator);
   }
 
   // OperandList
@@ -1783,7 +1913,7 @@ class ControlFlow : public Node {
   ControlFlow( IRType type , std::uint32_t id , Graph* graph , ControlFlow* parent = NULL ):
     Node(type,id,graph),
     backward_edge_   (),
-    effect_expr_     (),
+    stmt_expr_     (),
     operand_list_    ()
   {
     if(parent) backward_edge_.Add(zone(),parent);
@@ -1791,17 +1921,17 @@ class ControlFlow : public Node {
 
  private:
   zone::Vector<ControlFlow*> backward_edge_;
-  EffectList                 effect_expr_;
+  StatementList              stmt_expr_;
   OperandList                operand_list_;
 
   LAVA_DISALLOW_COPY_AND_ASSIGN(ControlFlow)
 };
 
 
-class Region: public ControlFlow {
+class Region : public ControlFlow {
  public:
   inline static Region* New( Graph* );
-  inline static Region* New( Graph* , ControlFlow* parent );
+  inline static Region* New( Graph* , ControlFlow* );
 
   Region( Graph* graph , std::uint32_t id ):
     ControlFlow(IRTYPE_REGION,id,graph)
@@ -1860,6 +1990,27 @@ class LoopExit : public ControlFlow {
 
  private:
   LAVA_DISALLOW_COPY_AND_ASSIGN(LoopExit)
+};
+
+// -----------------------------------------------------------------------
+//
+// Guard
+//
+// -----------------------------------------------------------------------
+class Guard : public ControlFlow {
+ public:
+  inline static Guard* New( Graph* , Expr* , ControlFlow* );
+
+  Expr* condition() const { return operand_list()->First(); }
+
+  Guard( Graph* graph , std::uint32_t id , Expr* cond , ControlFlow* region ):
+    ControlFlow(IRTYPE_GUARD,id,graph,region)
+  {
+    AddOperand(cond);
+  }
+
+ private:
+  LAVA_DISALLOW_COPY_AND_ASSIGN(Branch)
 };
 
 // -----------------------------------------------------------------------
@@ -2007,31 +2158,19 @@ class End : public ControlFlow {
 };
 
 class Trap : public ControlFlow {
-  enum {
-    FRAME_STATE_UNINIT = -1
-  };
-
  public:
-  inline static Trap* New( Graph* , ControlFlow* region );
+  inline static Trap* New( Graph* , Checkpoin* , ControlFlow* region );
 
-  void set_frame_state_index( std::uint32_t idx ) {
-    frame_state_index_ = static_cast<std::int32_t>(idx);
+  Checkpoint* checkpoint() const { return operand_list()->First(); }
+
+  Trap( Graph* graph , std::uint32_t id , Checkpoint* cp ,
+                                          ControlFlow* region ):
+    ControlFlow(IRTYPE_TRAP,id,graph,region)
+  {
+    AddOperand(cp);
   }
 
-  std::uint32_t frame_state_index() const {
-    lava_debug(NORMAL,lava_verify(HasFrameState()););
-    return static_cast<std::uint32_t>(frame_state_index_);
-  }
-  bool HasFrameState() const { return frame_state_index_ >= 0; }
-  void ClearFrameState()     { frame_state_index_ = FRAME_STATE_UNINIT; }
-
-  Trap( Graph* graph , std::uint32_t id , ControlFlow* region ):
-    ControlFlow(IRTYPE_TRAP,id,graph,region),
-    frame_state_index_(FRAME_STATE_UNINIT)
-  {}
  private:
-
-  std::int32_t frame_state_index_;
   LAVA_DISALLOW_COPY_AND_ASSIGN(Trap)
 };
 
@@ -2345,6 +2484,11 @@ inline void Expr::AddOperand( Expr* node ) {
   node->AddRef(this,itr);
 }
 
+inline void Expr::AddEffect ( Expr* node ) {
+  auto itr = effect_list()->PushBack(zone(),node);
+  node->AddRef(this,itr);
+}
+
 inline ControlFlow* Node::AsControlFlow() {
   lava_debug(NORMAL,lava_verify(IsControlFlow()););
   return static_cast<ControlFlow*>(this);
@@ -2493,7 +2637,6 @@ inline UVal* UVal::New( Graph* graph , std::uint8_t index ) {
 inline USet* USet::New( Graph* graph , std::uint32_t method , Expr* opr , IRInfo* info ,
                                                                           ControlFlow* region ) {
   auto ret = graph->zone()->New<USet>(graph,graph->AssignID(),method,opr,info);
-  region->AddEffectExpr(ret);
   return ret;
 }
 
@@ -2507,7 +2650,6 @@ inline PSet* PSet::New( Graph* graph , Expr* obj , Expr* key , Expr* value ,
                                                                IRInfo* info,
                                                                ControlFlow* region ) {
   auto ret = graph->zone()->New<PSet>(graph,graph->AssignID(),obj,key,value,info);
-  region->AddEffectExpr(ret);
   return ret;
 }
 
@@ -2521,48 +2663,41 @@ inline ISet* ISet::New( Graph* graph , Expr* obj , Expr* key , Expr* val ,
                                                                IRInfo* info ,
                                                                ControlFlow* region ) {
   auto ret = graph->zone()->New<ISet>(graph,graph->AssignID(),obj,key,val,info);
-  region->AddEffectExpr(ret);
   return ret;
 }
 
 inline GGet* GGet::New( Graph* graph , Expr* key , IRInfo* info , ControlFlow* region ) {
   auto ret = graph->zone()->New<GGet>(graph,graph->AssignID(),key,info);
-  region->AddEffectExpr(ret);
   return ret;
 }
 
 inline GSet* GSet::New( Graph* graph , Expr* key, Expr* value , IRInfo* info ,
                                                                 ControlFlow* region ) {
   auto ret = graph->zone()->New<GSet>(graph,graph->AssignID(),key,value,info);
-  region->AddEffectExpr(ret);
   return ret;
 }
 
 inline ItrNew* ItrNew::New( Graph* graph , Expr* operand , IRInfo* info ,
                                                            ControlFlow* region ) {
   auto ret = graph->zone()->New<ItrNew>(graph,graph->AssignID(),operand,info);
-  region->AddEffectExpr(ret);
   return ret;
 }
 
 inline ItrNext* ItrNext::New( Graph* graph , Expr* operand , IRInfo* info ,
                                                              ControlFlow* region ) {
   auto ret = graph->zone()->New<ItrNext>(graph,graph->AssignID(),operand,info);
-  region->AddEffectExpr(ret);
   return ret;
 }
 
 inline ItrTest* ItrTest::New( Graph* graph , Expr* operand , IRInfo* info ,
                                                              ControlFlow* region ) {
   auto ret = graph->zone()->New<ItrTest>(graph,graph->AssignID(),operand,info);
-  region->AddEffectExpr(ret);
   return ret;
 }
 
 inline ItrDeref* ItrDeref::New( Graph* graph , Expr* operand , IRInfo* info ,
                                                                ControlFlow* region ) {
   auto ret = graph->zone()->New<ItrDeref>(graph,graph->AssignID(),operand,info);
-  region->AddEffectExpr(ret);
   return ret;
 }
 
@@ -2597,9 +2732,9 @@ inline OSRLoad* OSRLoad::New( Graph* graph , std::uint32_t index ) {
   return graph->zone()->New<OSRLoad>(graph,graph->AssignID(),index);
 }
 
-inline Effect* Effect::New( Graph* graph , Expr* receiver , Expr* applier ,
-                                                            IRInfo* info ) {
-  return graph->zone()->New<Effect>(graph,graph->AssignID(),receiver,applier,info);
+inline Alias* Alias::New( Graph* graph , Expr* receiver , Expr* applier ,
+                                                          IRInfo* info ) {
+  return graph->zone()->New<Alias>(graph,graph->AssignID(),receiver,applier,info);
 }
 
 inline Checkpoint* Checkpoint::New( Graph* graph ) {
@@ -2633,6 +2768,36 @@ inline Float64Binary* Float64Binary::New( Graph* graph , Expr* lhs , Expr* rhs ,
                                                                      Operator op,
                                                                      IRInfo* info ) {
   return graph->zone()->New<Float64Binary>(graph,graph->AssignID(),lhs,rhs,op,info);
+}
+
+inline StringCompare* StringCompare::New( Graph* graph , Expr* lhs , Expr* rhs ,
+                                                                     Operator op ,
+                                                                     IRInfo* info ) {
+  return graph->zone()->New<StringCompare>(graph,graph->AssignID(),lhs,rhs,op,info);
+}
+
+inline SStringEq* SStringEq::New( Graph* graph , Expr* lhs , Expr* rhs , IRInfo* info ) {
+  return graph->zone()->New<SStringEq>(graph,graph->AssignID(),lhs,rhs,info);
+}
+
+inline SStringNe* SStringNe::New( Graph* graph , Expr* lhs , Expr* rhs , IRInfo* info ) {
+  return graph->zone()->New<SStringNe>(graph,graph->AssignID(),lhs,rhs,info);
+}
+
+inline IsTrue* IsTrue::New( Graph* graph , Expr* opr , IRInfo* info ) {
+  return graph->zone()->New<IsTrue>(graph,graph->AssignID(),opr,info);
+}
+
+inline IsFalse* IsFalse::New( Graph* graph , Expr* opr , IRInfo* info ) {
+  return graph->zone()->New<IsFalse>(graph,graph->AssignID(),opr,info);
+}
+
+inline IsNil* IsNil::New( Graph* graph , Expr* opr , IRInfo* info ) {
+  return graph->zone()->New<IsNil>(graph,graph->AssignID(),opr,info);
+}
+
+inline IsNotNil* IsNotNil::New( Graph* graph , Expr* opr , IRInfo* info ) {
+  return graph->zone()->New<IsNotNil>(graph,graph->AssignID(),opr,info);
 }
 
 inline ExtensionLBinary* ExtensionLBinary::New( Graph* graph , Expr* lhs , Expr* rhs ,
@@ -2714,6 +2879,10 @@ inline If* If::New( Graph* graph , Expr* condition , ControlFlow* parent ) {
   return graph->zone()->New<If>(graph,graph->AssignID(),condition,parent);
 }
 
+inline Guard* Guard::New( Graph* graph , Expr* test , ControlFlow* region ) {
+  return graph->zone()->New<Graph>(graph,graph->AssignID(),test,region);
+}
+
 inline IfTrue* IfTrue::New( Graph* graph , ControlFlow* parent ) {
   return graph->zone()->New<IfTrue>(graph,graph->AssignID(),parent);
 }
@@ -2764,8 +2933,8 @@ inline End* End::New( Graph* graph , Success* s , Fail* f ) {
   return graph->zone()->New<End>(graph,graph->AssignID(),s,f);
 }
 
-inline Trap* Trap::New( Graph* graph , ControlFlow* region ) {
-  return graph->zone()->New<Trap>(graph,graph->AssignID(),region);
+inline Trap* Trap::New( Graph* graph , Checkpoint* cp , ControlFlow* region ) {
+  return graph->zone()->New<Trap>(graph,graph->AssignID(),cp,region);
 }
 
 inline OSRStart* OSRStart::New( Graph* graph ) {

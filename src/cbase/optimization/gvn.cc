@@ -1,5 +1,4 @@
 #include "gvn.h"
-#include "expression-simplification.h"
 
 #include "src/cbase/hir-helper.h"
 #include "src/cbase/hir-visitor.h"
@@ -57,7 +56,6 @@ bool GVN::Perform( Graph* graph , HIRPass::Flag flag ) {
   (void)flag;
 
   ControlFlowDFSIterator itr(*graph);
-  ExpressionSimplifier simplifier;
   GVNHashTable table;
   DynamicBitSet visited(graph->MaxID());
 
@@ -86,9 +84,6 @@ bool GVN::Perform( Graph* graph , HIRPass::Flag flag ) {
             table.Insert(subexpr);
           }
         }
-
-        // do a simplification against new node to see whether we have chance
-        simplifier.Perform(graph,expr,ExpressionSimplifier::NORMAL);
 
         // mark it to be visited
         visited[expr->id()] = true;

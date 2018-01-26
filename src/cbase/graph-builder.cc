@@ -1,9 +1,8 @@
 #include "graph-builder.h"
+#include "constant-fold.h"
 
 #include "src/interpreter/bytecode.h"
 #include "src/interpreter/bytecode-iterator.h"
-
-#include "src/cbase/optimization/expression-simplification.h"
 
 #include <vector>
 #include <set>
@@ -233,36 +232,228 @@ Expr* GraphBuilder::NewBoolean( bool value ) {
   return Boolean::New(graph_,value,NULL);
 }
 
+Guard* GraphBuilder::NewGuard( Expr* tester , const BytecodeLocation& pc ) {
+  /**
+   * A guard is essentially a if else branch with following pattern :
+   *
+   * [test]
+   *  |
+   *  |
+   * [guard] ---> [trap] ---> [Fail]
+   *  |
+   *  |
+   *  |
+   * [region]
+   */
+
+  auto guard = Guard::New(graph_,tester,region());
+  auto region= Region::New(graph_,guard);
+  auto cp    = BuildCheckpoint(pc);
+  auto trap  = Trap::New(graph_,cp,guard);
+
+  // push all the trap into guard_list for later patch
+  func_info().guard_list.push_back(trap);
+
+  set_region(region);
+  return guard;
+}
+
+Guard* GraphBuilder::NewTypeTestGuardIfNeed( ValueType type , Expr* node ,
+                                                              IRInfo* info ,
+                                                              const BytecodeLocation& pc ) {
+  auto t = static_type_infer_.GetType(node);
+  if(t != TPKIND_UNKNOWN && TPKind::Contains(t,type))
+    return NULL; // the static type record the node's type is
+                 // compatible with the expected type here, so
+                 // we don't need to generate any guard
+
+
+  // generate the guard
+  return NewGuard( TestType::New(graph_,MapValueTypeToTypeKind(type),node,info) , pc );
+}
+
 Expr* GraphBuilder::NewUnary  ( Expr* node , Unary::Operator op ,
                                              const BytecodeLocation& pc ) {
-  // try constant folding
-  auto new_node = SimplifyUnary(graph_,op,node,[this,pc]() {
+  // 1. try to do a constant folding
+  auto new_node = ConstantFoldUnary(graph_,op,node,[this,pc]() {
       return NewIRInfo(pc);
   });
   if(new_node) return new_node;
 
-  auto checkpoint = BuildCheckpoint(pc);
-  auto unary = Unary::New(graph_,node,op,NewIRInfo(pc));
-  unary->set_checkpoint(checkpoint);
-  return unary;
+  // 2. now we know there's no way we can resolve the expression and
+  //    we don't have any type information from static type inference.
+  //    fallback to do speculative unary or dynamic dispatch if needed
+  return TrySpeculativeUnary(node,op,pc);
+}
+
+Expr* GraphBuilder::TrySpeculativeUnary( Expr* node , Unary::Operator op ,
+                                                      const BytecodeLocation& pc ) {
+  // try to get the value feedback from type trace operations
+  auto tt = type_trace_.GetTrace( pc.address() );
+  if(tt) {
+    auto v = t->data[1]; // unary's input argument
+    if(op == Unary::NOT) {
+      auto ir_info = NewIRInfo(pc);
+      // create a guard here
+      NewTypeTestGuardIfNeed(v.type(),node,ir_info,pc);
+      // based on the input type , we do a speculative *not* operations
+      return Boolean::New(graph_,!v.AsBoolean(),ir_info);
+    } else {
+      if(v.IsReal()) {
+        // generate speculative unary operation for float64 type
+        auto ir_info = NewIRInfo(pc);
+
+        NewTypeTestGuardIfNeed(TYPE_REAL,node,ir_info,pc);
+        auto ret = Float64Unary::New(graph_,node,op,ir_info);
+
+        // record the type to helper further type inference
+        static_type_inference_.AddType( ret->id() , TPKIND_FLOAT64 );
+
+        return ret;
+      }
+    }
+  }
+
+  // Fallback:
+  // okay, we are not able to get *any* types of type information, fallback to
+  // generate a fully dynamic dispatch node
+  return Unary::New(graph_,node,op,NewIRInfo(pc));
 }
 
 Expr* GraphBuilder::NewBinary  ( Expr* lhs , Expr* rhs , Binary::Operator op ,
                                                          const BytecodeLocation& pc ) {
-  auto new_node = SimplifyBinary(graph_,op,lhs,rhs,[this,pc]() {
+  auto new_node = ConstantFoldBinary(graph_,op,lhs,rhs,[this,pc]() {
       return NewIRInfo(pc);
   });
   if(new_node) return new_node;
 
-  auto checkpoint = BuildCheckpoint(pc);
-  auto binary = Binary::New(graph_,lhs,rhs,op,NewIRInfo(pc));
-  binary->set_checkpoint(checkpoint);
-  return binary;
+  // try to specialize it into certain specific common cases which doesn't
+  // require guard instruction and deoptimization
+  new_node = TrySpecialTestBinary(lhs,rhs,op,pc);
+  if(new_node) return new_node;
+
+  // lastly, try to do a speculative binary node
+  return TrySpeculativeBinary(lhs,rhs,op,pc);
+}
+
+Expr* GraphBuilder::TrySpecialTestBinary( Expr* lhs , Expr* rhs , Binary::Operator op ,
+                                                                  const BytecodLocation& pc ) {
+
+  if((lhs->IsBoolean() || rhs->IsBoolean()) && (op == Binary::EQ || op == Binary::NE)) {
+    if(lhs->IsBoolean()) {
+      auto ret = lhs->AsBoolean()->value() ? IsTrue::New(graph_,rhs,NewIRInfo(pc)) :
+                                             IsFalse::New(graph_,rhs,NewIRInfo(pc));
+
+      static_type_infer_.AddType(ret->id(),TPKIND_BOOLEAN);
+      return ret;
+
+    } else {
+      auto ret = rhs->AsBoolean()->value() ? IsTrue::New(graph_,lhs,NewIRInfo(pc)) :
+                                             IsFalse::New(graph_,lhs,NewIRInfo(pc));
+
+      static_type_infer_.AddType(ret->id(),TPKIND_BOOLEAN);
+      return ret;
+    }
+  } else if((lhs->IsNil() || rhs->IsNil()) && (op == Binary::EQ || op == Binary::NE)) {
+    if(lhs->IsNil()) {
+      auto ret = (op == Binary::EQ ? IsNil::New(graph_,rhs,NewIRInfo(pc)) :
+                                     IsNotNil::New(graph_,rhs,NewIRInfo(pc)));
+
+      static_type_infer_.AddType(ret->id(),TPKIND_BOOLEAN);
+      return ret;
+    } else {
+      auto ret (op == Binary::EQ ? IsNil::New(graph_,lhs,NewIRInfo(pc)) :
+                                   IsNotNil::New(graph_,lhs,NewIRInfo(pc)));
+
+      static_type_infer_.AddType(ret->id(),TPKIND_BOOLEAN);
+      return ret;
+    }
+  }
+  return NULL; // can be specialized
+}
+
+Expr* GraphBuilder::TrySpeculativeBinary( Expr* lhs , Expr* rhs , Binary::Operator op,
+                                                                  const BytecodeLocation& pc ) {
+
+  auto tt = type_trace_.GetTrace(pc.address());
+  if(tt) {
+
+    auto lhs_val = v->data[1];
+    auto rhs_val = v->data[2];
+
+    switch(op) {
+      case Binary::ADD: case Binary::SUB: case Binary::MUL:
+      case Binary::DIV: case Binary::POW: case Binary::MOD:
+        if(lhs_val.IsReal() && rhs_val.IsReal()) {
+          auto ir_info = NewIRInfo(pc);
+
+          // type test both operands, not just only one
+          NewTypeTestGuardIfNeed(TYPE_REAL,lhs,ir_info,pc);
+          NewTypeTestGuardIfNeed(TYPE_REAL,rhs,ir_info,pc);
+
+          // do a speculative binary operations
+          auto ret = Float64Binary::New(graph_,lhs,rhs,op,ir_info);
+
+          // record the type information
+          static_type_infer_.AddType(ret->node(),TPKIND_FLOAT64);
+
+          return ret;
+        }
+        break;
+      case Binary::LT: case Binary::LE: case Binary::GT:
+      case Binary::GE: case Binary::EQ: case Binary::NE:
+        if(lhs_val.IsReal() && rhs_val.IsReal()) {
+          auto ir_info = NewIRInfo(pc);
+
+          NewTypeTestGuardIfNeed(TYPE_REAL,lhs,ir_info,pc);
+          NewTypeTestGuardIfNeed(TYPE_REAL,rhs,ir_info,pc);
+
+          auto ret = Float64Binary::New(graph_,lhs,rhs,op,ir_info);
+
+          static_type_infer_.AddType(ret->node(),TPKIND_BOOLEAN);
+          return ret;
+
+        } else if(lhs_val.IsString() && rhs_val.IsString()) {
+          auto ir_info = NewIRInfo(pc);
+          if((lhs_val.AsString()->IsSSO() && rhs_val.AsString()->IsSSO()) &&
+             (op == Binary::EQ || Binary::NE)) {
+
+            // generate guard to test both are all small strings
+            NewGuard( TestType::New(graph_,TPKIND_SMALL_STRING,lhs,ir_info) , pc );
+            NewGuard( TestType::New(graph_,TPKIND_SMALL_STRING,rhs,ir_info) , pc );
+
+            auto ret = (op == Binary::EQ ? SStringEq::New(graph_,lhs,rhs,ir_info) :
+                                           SStringNe::New(graph_,lhs,rhs,ir_info));
+
+            static_type_infer_.AddType(ret->id(),TYPE_BOOLEAN);
+            return ret;
+          } else {
+
+            // just generate general string comparison
+            NewGuard( TestType::New(graph_,TPKIND_STRING,lhs,ir_info), pc );
+            NewGuard( TestType::New(graph_,TPKIND_STRING,rhs,ir_info), pc );
+
+            auto ret = StringCompare::New(graph_,lhs,rhs,op,ir_info);
+
+            static_type_infer_.AddType(ret->id(),TYPE_BOOLEAN);
+            return ret;
+          }
+        }
+        // rest of the test is not specialized
+        break;
+
+      default:
+        break;
+    }
+  }
+
+  // Fallback version
+  return Binary::New(graph_,lhs,rhs,op,NewIRInfo(pc));
 }
 
 Expr* GraphBuilder::NewTernary ( Expr* cond , Expr* lhs , Expr* rhs,
                                                           const BytecodeLocation& pc ) {
-  auto new_node = SimplifyTernary(graph_,cond,lhs,rhs,[this,pc]() {
+  auto new_node = ConstantFoldTernary(graph_,cond,lhs,rhs,[this,pc]() {
       return NewIRInfo(pc);
   });
   if(new_node) return new_node;

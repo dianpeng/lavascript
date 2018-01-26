@@ -1,6 +1,7 @@
-#include "expression-simplification.h"
+#include "constant-fold.h"
+#include "static-type-inference.h"
+
 #include "src/bits.h"
-#include "src/cbase/hir-visitor.h"
 
 #include <cmath>
 
@@ -13,6 +14,7 @@ namespace {
 using namespace ::lavascript::interpreter;
 
 Expr* Fold( Graph* graph , Unary::Operator op , Expr* expr ,
+                                                const StaticTypeInference& infer ,
                                                 const std::function<IRInfo*()>& irinfo ) {
   if(op == Unary::MINUS && expr->IsFloat64()) {
     return Float64::New(graph,-expr->AsFloat64()->value(),irinfo());
@@ -32,6 +34,23 @@ Expr* Fold( Graph* graph , Unary::Operator op , Expr* expr ,
         break;
     }
   }
+
+  // do constant folding based on the type inference if applicable
+  auto t = infer.ResolveUnaryOperatorType( expr, op );
+  switch(t) {
+    case TPKIND_NIL:
+      if(op == Unary::NOT)
+        return Boolean::New(graph,true,irinfo());
+      break;
+    case TPKIND_UNKNOWN:
+    case TPKIND_BOOLEAN:
+      break;
+    default:
+      if(op == Unary::NOT)
+        return Boolean::New(graph,false,irinfo());
+      break;
+  }
+
   return NULL;
 }
 
@@ -112,34 +131,7 @@ Expr* Fold( Graph* graph , Expr* cond , Expr* lhs , Expr* rhs ,
   return NULL;
 }
 
-// -----------------------------------------------------------------------
-// Expression visitor for doing expression simplification
-class Simplifier : public ExprVisitor {
- public:
-  // normal arithmetic operations
-  virtual bool VisitUnary ( Unary* );
-  virtual bool VisitBinary( Binary* );
-  virtual bool VisitTernary( Ternary* );
-
-  // we can only fold IGet/PGet
-  virtual bool VisitIGet( IGet* );
-  virtual bool VisitPGet( PGet* );
-
-  // intrinsic call function folding
-  virtual bool VisitICall ( ICall* );
-
- private:
-  Expr* FoldPSet( PSet* , const zone::String& );
-
-  bool AsUInt8 ( Expr* , std::uint8_t*  );
-  bool AsUInt32( Expr* , std::uint32_t* );
-  bool AsReal  ( Expr* , double* );
-
- private:
-  Graph* graph_;
-};
-
-bool Simplifier::AsUInt8( Expr* node , std::uint8_t* value ) {
+bool AsUInt8( Expr* node , std::uint8_t* value ) {
   if(node->IsFloat64()) {
     // we don't care about the shifting overflow, the underly ISA
     // only allows a 8bit register serve as how many bits shifted.
@@ -149,7 +141,7 @@ bool Simplifier::AsUInt8( Expr* node , std::uint8_t* value ) {
   return false;
 }
 
-bool Simplifier::AsUInt32( Expr* node , std::uint32_t* value ) {
+bool AsUInt32( Expr* node , std::uint32_t* value ) {
   if(node->IsFloat64()) {
     *value = static_cast<std::uint32_t>(node->AsFloat64()->value());
     return true;
@@ -157,7 +149,7 @@ bool Simplifier::AsUInt32( Expr* node , std::uint32_t* value ) {
   return false;
 }
 
-bool Simplifier::AsReal  ( Expr* node , double* real ) {
+bool AsReal  ( Expr* node , double* real ) {
   if(node->IsFloat64()) {
     *real = node->AsFloat64()->value();
     return true;
@@ -165,84 +157,14 @@ bool Simplifier::AsReal  ( Expr* node , double* real ) {
   return false;
 }
 
-bool Simplifier::VisitUnary ( Unary* node ) {
-  auto opr = node->operand();
-  auto result = Fold(graph_,node->op(),opr,[node](){ return node->ir_info(); });
-  if(result) node->Replace(result);
-  return true;
-}
-
-bool Simplifier::VisitBinary( Binary* node ) {
-  auto lhs = node->lhs();
-  auto rhs = node->rhs();
-  auto result = Fold(graph_,node->op(),lhs,rhs,[node]() { return node->ir_info(); });
-  if(result) node->Replace(result);
-  return true;
-}
-
-bool Simplifier::VisitTernary( Ternary* node ) {
-  auto cond = node->condition();
-  auto lhs  = node->lhs();
-  auto rhs  = node->rhs();
-  auto result = Fold(graph_,cond,lhs,rhs,[node]() { return node->ir_info(); });
-  if(result) node->Replace(result);
-  return true;
-}
-
-Expr* Simplifier::FoldPSet( PSet* pset , const zone::String& key ) {
-  auto k = pset->key();
-  if(k->IsString() && (k->AsZoneString() == key))
-    return pset->value();
-  return NULL;
-}
-
-bool Simplifier::VisitIGet( IGet* node ) {
-  /**
-   * it tries to fold situations of following combination
-   *
-   * a[0]  = 10;  // a is a unknown type , not a literal
-   * return a[0]; // 10 can be forwarded, though we don't know a's type
-   */
-  auto obj = node->object();
-  auto idx = node->index ();
-
-  if(obj->IsISet() && idx->IsFloat64()) {
-    auto iidx = static_cast<std::uint32_t>(idx->AsFloat64()->value());
-    auto iset = obj->AsISet();
-    if(iset->index()->IsFloat64()) {
-      auto iset_idx = iset->index()->AsFloat64();
-      auto iset_iidx= static_cast<std::uint32_t>(iset_idx->value());
-
-      if(iset_iidx == iidx) {
-        node->Replace(iset->value());
-      }
-    }
-  } else if(obj->IsPSet() && idx->IsString()) {
-    auto r = FoldPSet(obj->AsPSet(),idx->AsZoneString());
-    if(r) node->Replace(r);
-  }
-  return true;
-}
-
-bool Simplifier::VisitPGet( PGet* node ) {
-  auto obj = node->object();
-  auto idx = node->key();
-
-  if(obj->IsPSet() && idx->IsString()) {
-    auto r = FoldPSet(obj->AsPSet(),idx->AsZoneString());
-    if(r) node->Replace(r);
-  }
-  return true;
-}
-
-bool Simplifier::VisitICall( ICall* node ) {
+Expr* FoldICall( Graph* graph , ICall* node ) {
   switch(node->ic()) {
     case INTRINSIC_CALL_MAX:
       {
         double a1 ,a2;
         if(AsReal(node->operand_list()->Index(0),&a1) &&
            AsReal(node->operand_list()->Index(1),&a2)) {
-          node->Replace(Float64::New(graph_,std::max(a1,a2),node->ir_info()));
+          return (Float64::New(graph,std::max(a1,a2),node->ir_info()));
         }
       }
       break;
@@ -252,7 +174,7 @@ bool Simplifier::VisitICall( ICall* node ) {
         double a1,a2;
         if(AsReal(node->operand_list()->Index(0),&a1) &&
            AsReal(node->operand_list()->Index(1),&a2)) {
-          node->Replace(Float64::New(graph_,std::min(a1,a2),node->ir_info()));
+          return (Float64::New(graph,std::min(a1,a2),node->ir_info()));
         }
       }
       break;
@@ -261,7 +183,7 @@ bool Simplifier::VisitICall( ICall* node ) {
       {
         double a1;
         if(AsReal(node->operand_list()->Index(0),&a1)) {
-          node->Replace(Float64::New(graph_,std::sqrt(a1),node->ir_info()));
+          return (Float64::New(graph,std::sqrt(a1),node->ir_info()));
         }
       }
       break;
@@ -270,7 +192,7 @@ bool Simplifier::VisitICall( ICall* node ) {
       {
         double a1;
         if(AsReal(node->operand_list()->Index(0),&a1)) {
-          node->Replace(Float64::New(graph_,std::sin(a1),node->ir_info()));
+          return (Float64::New(graph,std::sin(a1),node->ir_info()));
         }
       }
       break;
@@ -279,7 +201,7 @@ bool Simplifier::VisitICall( ICall* node ) {
       {
         double a1;
         if(AsReal(node->operand_list()->Index(0),&a1)) {
-          node->Replace(Float64::New(graph_,std::cos(a1),node->ir_info()));
+          return (Float64::New(graph,std::cos(a1),node->ir_info()));
         }
       }
       break;
@@ -288,7 +210,7 @@ bool Simplifier::VisitICall( ICall* node ) {
       {
         double a1;
         if(AsReal(node->operand_list()->Index(0),&a1)) {
-          node->Replace(Float64::New(graph_,std::tan(a1),node->ir_info()));
+          return (Float64::New(graph,std::tan(a1),node->ir_info()));
         }
       }
       break;
@@ -297,7 +219,7 @@ bool Simplifier::VisitICall( ICall* node ) {
       {
         double a1;
         if(AsReal(node->operand_list()->Index(0),&a1)) {
-          node->Replace(Float64::New(graph_,std::abs(a1),node->ir_info()));
+          return (Float64::New(graph,std::abs(a1),node->ir_info()));
         }
       }
       break;
@@ -306,7 +228,7 @@ bool Simplifier::VisitICall( ICall* node ) {
       {
         double a1;
         if(AsReal(node->operand_list()->Index(0),&a1)) {
-          node->Replace(Float64::New(graph_,std::ceil(a1),node->ir_info()));
+          return (Float64::New(graph,std::ceil(a1),node->ir_info()));
         }
       }
       break;
@@ -315,7 +237,7 @@ bool Simplifier::VisitICall( ICall* node ) {
       {
         double a1;
         if(AsReal(node->operand_list()->Index(0),&a1)) {
-          node->Replace(Float64::New(graph_,std::floor(a1),node->ir_info()));
+          return (Float64::New(graph,std::floor(a1),node->ir_info()));
         }
       }
       break;
@@ -326,7 +248,7 @@ bool Simplifier::VisitICall( ICall* node ) {
         std::uint8_t  a2;
         if(AsUInt32(node->operand_list()->Index(0),&a1) &&
            AsUInt8(node->operand_list()->Index(1),&a2)) {
-          node->Replace(Float64::New(graph_,static_cast<double>(a1 << a2),node->ir_info()));
+          return (Float64::New(graph,static_cast<double>(a1 << a2),node->ir_info()));
         }
       }
       break;
@@ -337,7 +259,7 @@ bool Simplifier::VisitICall( ICall* node ) {
         std::uint8_t  a2;
         if(AsUInt32(node->operand_list()->Index(0),&a1) &&
            AsUInt8 (node->operand_list()->Index(1),&a2)) {
-          node->Replace(Float64::New(graph_,static_cast<double>(a1 >> a2), node->ir_info()));
+          return (Float64::New(graph,static_cast<double>(a1 >> a2), node->ir_info()));
         }
       }
       break;
@@ -348,42 +270,38 @@ bool Simplifier::VisitICall( ICall* node ) {
         std::uint8_t  a2;
         if(AsUInt32(node->operand_list()->Index(0),&a1) &&
            AsUInt8 (node->operand_list()->Index(1),&a2)) {
-          node->Replace(Float64::New(graph_,static_cast<double>(bits::BRol(a1,a2)),node->ir_info()));
+          return (Float64::New(graph,static_cast<double>(bits::BRol(a1,a2)),node->ir_info()));
         }
       }
       break;
     default:
       break;
   }
-  return true;
+
+  return NULL; // nothing can be done
 }
 
 } // namespace
 
-Expr* SimplifyUnary  ( Graph* graph , Unary::Operator op , Expr* expr ,
-                                                           const std::function<IRInfo*()>& irinfo ) {
-  return Fold(graph,op,expr,irinfo);
+Expr* ConstantFoldUnary  ( Graph* graph , Unary::Operator op , Expr* expr ,
+                                                               const StaticTypeInference& infer ,
+                                                               const std::function<IRInfo*()>& irinfo ) {
+  return Fold(graph,op,expr,infer,irinfo);
 }
 
-Expr* SimplifyBinary ( Graph* graph , Binary::Operator op , Expr* lhs ,
-                                                            Expr* rhs ,
-                                                            const std::function<IRInfo* ()>& irinfo ) {
+Expr* ConstantFoldBinary ( Graph* graph , Binary::Operator op , Expr* lhs ,
+                                                                Expr* rhs ,
+                                                                const std::function<IRInfo* ()>& irinfo ) {
   return Fold(graph,op,lhs,rhs,irinfo);
 }
 
-Expr* SimplifyTernary( Graph* graph , Expr* cond , Expr* lhs , Expr* rhs ,
-                                                               const std::function<IRInfo*()>& irinfo) {
+Expr* ConstantFoldTernary( Graph* graph , Expr* cond , Expr* lhs , Expr* rhs ,
+                                                                   const std::function<IRInfo*()>& irinfo) {
   return Fold(graph,cond,lhs,rhs,irinfo);
 }
 
-bool ExpressionSimplifier::Perform( Graph* graph , Expr* expr , Flag flag ) {
-  (void)flag;
-
-  ExprDFSIterator itr(*graph,expr);
-  Simplifier visitor;
-
-  VisitExpr(&itr,&visitor);
-  return true;
+Expr* ConstantFoldIntrinsicCall( Graph* graph , ICall* icall ) {
+  return FoldICall(graph,icall);
 }
 
 } // namespace hir

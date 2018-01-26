@@ -369,12 +369,14 @@ inline bool BuiltinBoolean( Context* ctx , const Value& operand , Value* output 
 }
 
 inline bool BuiltinPush( Context* ctx , const Value& obj , const Value& val ,
+                                                           Value* output,
                                                            std::string* error ) {
   (void)ctx;
 
   if(obj.IsList()) {
     auto list = obj.GetList();
     list->Push(ctx->gc(),val);
+    output->SetTrue();
     return true;
   }
 
@@ -383,12 +385,14 @@ inline bool BuiltinPush( Context* ctx , const Value& obj , const Value& val ,
   return false;
 }
 
-inline bool BuiltinPop( Context* ctx , const Value& obj , std::string* error ) {
+inline bool BuiltinPop( Context* ctx , const Value& obj , Value* output ,
+                                                          std::string* error ) {
   (void)ctx;
 
   if(obj.IsList()) {
     auto list = obj.GetList();
     list->Pop();
+    output->SetTrue();
     return true;
   }
 

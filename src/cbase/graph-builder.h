@@ -1,6 +1,8 @@
 #ifndef CBASE_GRAPH_BUILDER_H_
 #define CBASE_GRAPH_BUILDER_H_
 #include "hir.h"
+#include "static-type-inference.h"
+
 #include "src/objects.h"
 #include "src/zone/zone.h"
 #include "src/interpreter/intrinsic-call.h"
@@ -99,6 +101,7 @@ class GraphBuilder {
     std::uint8_t  max_local_var_size;
     std::vector<LoopInfo> loop_info;
     std::vector<ControlFlow*> return_list;
+    std::vector<ControlFlow*> guard_list ;
     BytecodeAnalyze bc_analyze;
     const std::uint32_t* osr_start;
 
@@ -148,14 +151,7 @@ class GraphBuilder {
   };
 
  public:
-  GraphBuilder( const Handle<Script>& script , const TypeTrace& tt ):
-    zone_        (NULL),
-    script_      (script),
-    graph_       (NULL),
-    stack_       (),
-    func_info_   (),
-    type_trace_  (tt)
-  {}
+  inline GraphBuilder( const Handle<Script>& , const TypeTrace& );
 
   // Build a normal function's IR graph
   bool Build( const Handle<Prototype>& , Graph* );
@@ -229,6 +225,11 @@ class GraphBuilder {
   Expr* NewBoolean    ( bool         , const interpreter::BytecodeLocation& );
   Expr* NewBoolean    ( bool );
 
+ private: // Guard handling
+  Guard* NewGuard        ( Expr* tester , const interpreter::BytecodeLocation& );
+  Guard* NewTypeTestGuardIfNeed( ValueType , Expr* , IRInfo* ,
+                                                     const interpreter::BytecodeLocation& );
+
  private:
 
   // create unary/binary/tenrary node accordingly. it will do constant folding if
@@ -238,6 +239,19 @@ class GraphBuilder {
   Expr* NewUnary      ( Expr* , Unary::Operator , const interpreter::BytecodeLocation& );
   Expr* NewBinary     ( Expr* , Expr* , Binary::Operator , const interpreter::BytecodeLocation& );
   Expr* NewTernary    ( Expr* , Expr* , Expr* , const interpreter::BytecodeLocation& );
+
+  Expr* TrySpeculativeUnary  ( Expr*, Unary::Operator , const interpreter::BytecodeLocation& );
+
+  // speicial test binary means some expression like :
+  //
+  //  if(a == null) or if(null == a) ;
+  //  if(a == true) or if(false ==a) ;
+  //
+  // Note , ==/!= both works
+  Expr* TrySpecialTestBinary ( Expr*, Expr*, Binary::Operator, const interpreter::BytecodeLocation& );
+  Expr* TrySpeculativeBinary ( Expr*, Expr*, Binary::Operator, const interpreter::BytecodeLocation& );
+
+  Expr* TrySpeculativeTernary( Expr*, Expr*, Binary::Operator, const interpreter::BytecodeLocation& );
 
   // create a intrinsic call node
   Expr* NewICall      ( std::uint8_t a1 , std::uint8_t a2 , std::uint8_t a3 ,
@@ -340,6 +354,9 @@ class GraphBuilder {
   // Type trace for speculative operation generation
   const TypeTrace&      type_trace_;
 
+  // Static type inference
+  StaticTypeInference   static_type_infer_;
+
  private:
   class OSRScope ;
   class FuncScope;
@@ -363,6 +380,7 @@ inline GraphBuilder::FuncInfo::FuncInfo( const Handle<Prototype>& proto , Contro
   max_local_var_size(proto->max_local_var_size()),
   loop_info         (),
   return_list       (),
+  guard_list        (),
   bc_analyze        (proto),
   osr_start         (NULL)
 {}
@@ -376,6 +394,7 @@ inline GraphBuilder::FuncInfo::FuncInfo( const Handle<Prototype>& proto , Contro
   max_local_var_size(proto->max_local_var_size()),
   loop_info         (),
   return_list       (),
+  guard_list        (),
   bc_analyze        (proto),
   osr_start         (ostart)
 {}
@@ -388,8 +407,19 @@ inline GraphBuilder::FuncInfo::FuncInfo( FuncInfo&& that ):
   max_local_var_size(that.max_local_var_size),
   loop_info         (std::move(that.loop_info)),
   return_list       (std::move(that.return_list)),
+  guard_list        (std;:move(that.guard_list)),
   bc_analyze        (std::move(that.bc_analyze)),
   osr_start         (that.osr_start)
+{}
+
+inline GraphBuilder::GraphBuilder( const Handle<Script>& script , const TypeTrace& tt ):
+  zone_                (NULL),
+  script_              (script),
+  graph_               (NULL),
+  stack_               (),
+  func_info_           (),
+  type_trace_          (tt),
+  static_type_infer_   ()
 {}
 
 inline void GraphBuilder::FuncInfo::EnterLoop( const std::uint32_t* pc ) {

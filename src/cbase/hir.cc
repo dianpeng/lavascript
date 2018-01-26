@@ -21,14 +21,13 @@ void Expr::Replace( Expr* another ) {
     itr.value().id.set_value( another );
   }
 
-  // 2. check whether this operation has side effect or not and update the
-  //    side effect accordingly
-  if(HasEffect()) {
-    auto region = effect().region;
-    // remove old effect
-    region->RemoveEffectExpr(effect());
-    // add new effect
-    region->AddEffectExpr(another);
+  // 2. modify *this* if the node is a statement
+  if(IsStatement()) {
+    auto region = statement_edge().region;
+
+    region->RemoveStatement(statement_edge());
+
+    region->AddStatement(another);
   }
 }
 
@@ -186,7 +185,7 @@ void DotGraphVisualizer::RenderControlFlow( const std::string& region_name ,
       break;
   }
 
-  for( auto itr = region->effect_expr()->GetForwardIterator() ;
+  for( auto itr = region->statement_list()->GetForwardIterator() ;
             itr.HasNext() ; itr.Move() ) {
     auto expr = itr.value();
     auto name = GetNodeName(expr);
@@ -314,8 +313,6 @@ void DotGraphVisualizer::RenderExpr( const std::string& name , Expr* node ) {
         Indent(1) << name << " -> " << lhs_name << '\n';
         Indent(1) << name << " -> " << rhs_name << '\n';
 
-        RenderCheckpoint(name,binary->checkpoint());
-      }
       break;
     case IRTYPE_UNARY:
     case IRTYPE_FLOAT64_UNARY:
@@ -327,7 +324,6 @@ void DotGraphVisualizer::RenderExpr( const std::string& name , Expr* node ) {
                           << unary->op_name()
                           << ")\"]\n";
 
-        RenderCheckpoint(name,unary->checkpoint());
       }
       break;
     case IRTYPE_TERNARY:
@@ -344,7 +340,6 @@ void DotGraphVisualizer::RenderExpr( const std::string& name , Expr* node ) {
         Indent(1) << name << " -> " << lhs_name  << "[label=\"lhs\"]\n";
         Indent(1) << name << " -> " << rhs_name  << "[label=\"rhs\"]\n";
 
-        RenderCheckpoint(name,tern->checkpoint());
       }
       break;
     case IRTYPE_UVAL:
@@ -372,7 +367,6 @@ void DotGraphVisualizer::RenderExpr( const std::string& name , Expr* node ) {
         Indent(1) << name << " -> " << obj_name << "[label=\"object\"]\n";
         Indent(1) << name << " -> " << key_name << "[label=\"key\"]\n";
 
-        RenderCheckpoint(name,pget->checkpoint());
       }
       break;
     case IRTYPE_PSET:
@@ -391,7 +385,6 @@ void DotGraphVisualizer::RenderExpr( const std::string& name , Expr* node ) {
         Indent(1) << name << " -> " << key_name << "[label=\"key\"]\n";
         Indent(1) << name << " -> " << val_name << "[label=\"value\"]\n";
 
-        RenderCheckpoint(name,pset->checkpoint());
       }
       break;
     case IRTYPE_IGET:
@@ -408,7 +401,6 @@ void DotGraphVisualizer::RenderExpr( const std::string& name , Expr* node ) {
         Indent(1) << name << " -> " << obj_name << "[label=\"object\"]\n";
         Indent(1) << name << " -> " << idx_name << "[label=\"index\"]\n";
 
-        RenderCheckpoint(name,iget->checkpoint());
       }
       break;
     case IRTYPE_ISET:
@@ -428,7 +420,6 @@ void DotGraphVisualizer::RenderExpr( const std::string& name , Expr* node ) {
         Indent(1) << name << " -> " << idx_name << "[label=\"index\"]\n";
         Indent(1) << name << " -> " << val_name << "[label=\"value\"]\n";
 
-        RenderCheckpoint(name,iset->checkpoint());
       }
       break;
     case IRTYPE_GGET:
@@ -439,7 +430,6 @@ void DotGraphVisualizer::RenderExpr( const std::string& name , Expr* node ) {
         Indent(1) << name << "[label=\"" << gget->type_name() << "\"]\n";
         Indent(1) << name << " -> " << key_name << "[label=\"key\"]\n";
 
-        RenderCheckpoint(name,gget->checkpoint());
       }
       break;
     case IRTYPE_GSET:
@@ -453,7 +443,6 @@ void DotGraphVisualizer::RenderExpr( const std::string& name , Expr* node ) {
         Indent(1) << name << " -> " << key_name << "[label=\"key\"]\n";
         Indent(1) << name << " -> " << val_name << "[label=\"val\"]\n";
 
-        RenderCheckpoint(name,gset->checkpoint());
       }
       break;
     case IRTYPE_ITR_NEW:
@@ -464,7 +453,6 @@ void DotGraphVisualizer::RenderExpr( const std::string& name , Expr* node ) {
         Indent(1) << name << "[label=\"" << itr_new->type_name() << "\"]\n";
         Indent(1) << name << " -> " << opr_name << '\n';
 
-        RenderCheckpoint(name,itr_new->checkpoint());
       }
       break;
     case IRTYPE_ITR_NEXT:
@@ -475,7 +463,6 @@ void DotGraphVisualizer::RenderExpr( const std::string& name , Expr* node ) {
         Indent(1) << name << "[label=\"" << itr_next->type_name() << "\"]\n";
         Indent(1) << name << " -> " << opr_name << '\n';
 
-        RenderCheckpoint(name,itr_next->checkpoint());
       }
       break;
     case IRTYPE_ITR_TEST:
@@ -486,7 +473,6 @@ void DotGraphVisualizer::RenderExpr( const std::string& name , Expr* node ) {
         Indent(1) << name << "[label=\"" << itr_test->type_name() << "\"]\n";
         Indent(1) << name << " -> " << opr_name << '\n';
 
-        RenderCheckpoint(name,itr_test->checkpoint());
       }
       break;
     case IRTYPE_ITR_DEREF:
@@ -497,7 +483,6 @@ void DotGraphVisualizer::RenderExpr( const std::string& name , Expr* node ) {
         Indent(1) << name << "[label=\"" << itr_deref->type_name() << "\"]\n";
         Indent(1) << name << " -> " << itr_name << '\n';
 
-        RenderCheckpoint(name,itr_deref->checkpoint());
       }
       break;
     case IRTYPE_PHI:

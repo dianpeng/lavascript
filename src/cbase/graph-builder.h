@@ -207,6 +207,10 @@ class GraphBuilder {
     func_info().region = new_region;
   }
 
+ private:
+  template< typename T , typename ...ARGS >
+  Expr* NewNodeWithTypeFeedback( TypeKind tk , ARGS ...args );
+
  private: // Constant handling
   Expr* NewConstNumber( std::int32_t , const interpreter::BytecodeLocation& );
   Expr* NewConstNumber( std::int32_t );
@@ -228,6 +232,8 @@ class GraphBuilder {
  private: // Guard handling
   Guard* NewGuard        ( Expr* tester , const interpreter::BytecodeLocation& );
   Guard* NewTypeTestGuardIfNeed( ValueType , Expr* , IRInfo* ,
+                                                     const interpreter::BytecodeLocation& );
+  Guard* NewTypeTestGuardIfNeed( TypeKind  , Expr* , IRInfo* ,
                                                      const interpreter::BytecodeLocation& );
 
  private:
@@ -257,16 +263,17 @@ class GraphBuilder {
   Expr* NewICall      ( std::uint8_t a1 , std::uint8_t a2 , std::uint8_t a3 ,
                                                             bool tcall ,
                                                             const interpreter::BytecodeLocation&);
+                                                            
+  Expr* LowerICall    ( ICall* );
 
   // create node for pset/pget and iset/iget family instructions
-  Expr* NewPSet       ( Expr* , Expr* , Expr* , const interpreter::BytecodeLocation& );
-  Expr* NewPGet       ( Expr* , Expr* , const interpreter::BytecodeLocation& );
-  Expr* NewISet       ( Expr* , Expr* , Expr* , const interpreter::BytecodeLocation& );
-  Expr* NewIGet       ( Expr* , Expr* , const interpreter::BytecodeLocation& );
+  Expr* NewPSet       ( Expr* , Expr* , Expr* , IRInfo* );
+  Expr* NewPGet       ( Expr* , Expr* , IRInfo* );
+  Expr* NewISet       ( Expr* , Expr* , Expr* , IRInfo* );
+  Expr* NewIGet       ( Expr* , Expr* , IRInfo* );
   // helper functions for creating Set/Get and do local constant fold
-  Expr* FoldObjectSet ( IRObject* , const zone::String& , Expr* ,
-                                                          const interpreter::BytecodeLocation& );
-  Expr* FoldObjectGet ( IRObject* , const zone::String& , const interpreter::BytecodeLocation& );
+  Expr* FoldObjectSet ( IRObject* , const zone::String& , Expr* , IRInfo* );
+  Expr* FoldObjectGet ( IRObject* , const zone::String& , IRInfo* );
 
  private: // Checkpoint generation
   Checkpoint* BuildCheckpoint( const interpreter::BytecodeLocation& );
@@ -339,6 +346,7 @@ class GraphBuilder {
 
  private:
   IRInfo* NewIRInfo( const interpreter::BytecodeLocation& loc );
+  IRInfo* NewIRInfo( interpreter::BytecodeIterator* );
 
  private:
   zone::Zone*           zone_;
@@ -407,7 +415,7 @@ inline GraphBuilder::FuncInfo::FuncInfo( FuncInfo&& that ):
   max_local_var_size(that.max_local_var_size),
   loop_info         (std::move(that.loop_info)),
   return_list       (std::move(that.return_list)),
-  guard_list        (std;:move(that.guard_list)),
+  guard_list        (std::move(that.guard_list)),
   bc_analyze        (std::move(that.bc_analyze)),
   osr_start         (that.osr_start)
 {}

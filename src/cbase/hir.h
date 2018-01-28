@@ -125,15 +125,11 @@ struct PrototypeInfo : zone::ZoneObject {
  * helper routine but low level ir node is totally different
  */
 #define CBASE_IR_EXPRESSION_LOW(__)                                   \
-  __(Float64Unary ,FLOAT64_UNARY ,"float64_unary",false)              \
+  __(Float64Negate ,FLOAT64_NEGATE,"float64_negate",false)            \
   __(Float64Binary,FLOAT64_BINARY,"float64_binary",false)             \
   __(StringCompare,STRING_COMPARE,"string_compare",false)             \
   __(SStringEq,SSTRING_EQ,"sstring_eq",false)                         \
   __(SStringNe,SSTRING_NE,"sstring_ne",false)                         \
-  __(IsTrue,IS_TRUE,"is_true",false)                                  \
-  __(IsFalse,IS_FALSE,"is_false",false)                               \
-  __(IsNil ,IS_NIL,"is_nil",false)                                    \
-  __(IsNotNil,IS_NOT_NIL,"is_not_nil",false)                          \
   __(ExtensionLBinary,EXTENSION_LBINARY,"extension_lbinary",false)    \
   __(ExtensionRBinary,EXTENSION_RBINARY,"extension_rbinary",false)    \
   __(ObjectGet    ,OBJECT_GET    ,"object_get"   ,false)              \
@@ -806,7 +802,10 @@ class Binary : public Expr {
     AND,
     OR
   };
-  inline static Operator BytecodeToOperator( interpreter::Bytecode );
+  inline static bool        IsComparisonOperator( Operator );
+  inline static bool        IsArithmeticOperator( Operator );
+  inline static bool        IsLogicOperator     ( Operator );
+  inline static Operator    BytecodeToOperator( interpreter::Bytecode );
   inline static const char* GetOperatorName( Operator );
 
   // Create a binary node
@@ -1250,6 +1249,11 @@ class ICall : public Expr {
     AddOperand(expr);
   }
 
+  Expr* GetArgument( std::uint8_t arg ) {
+    lava_debug(NORMAL,lava_verify(arg < operand_list()->size()););
+    return operand_list()->Index(arg);
+  }
+
   // intrinsic call method index
   interpreter::IntrinsicCall ic() const { return ic_; }
 
@@ -1520,22 +1524,18 @@ class TestListOOB : public Expr {
  * Low level operations
  * ------------------------------------------------------*/
 
-class Float64Unary  : public Unary  {
+class Float64Negate  : public Expr {
  public:
-  using Unary::Operator;
+  inline static Float64Negate* New( Graph* , Expr* , IRInfo* );
 
-  inline static Float64Unary* New( Graph* , Expr* ,
-                                            Operator op,
-                                            IRInfo* );
-
-  Float64Unary( Graph* graph , std::uint32_t id , Expr* opr ,
-                                                  Operator op,
-                                                  IRInfo* info ):
-    Unary(IRTYPE_FLOAT64_UNARY,graph,id,opr,op,info)
-  {}
+  Float64Negate( Graph* graph , std::uint32_t id , Expr* opr , IRInfo* info ):
+    Expr(IRTYPE_FLOAT64_NEGATE,id,graph,info)
+  {
+    AddOperand(opr);
+  }
 
  private:
-  LAVA_DISALLOW_COPY_AND_ASSIGN(Float64Unary)
+  LAVA_DISALLOW_COPY_AND_ASSIGN(Float64Negate)
 };
 
 class Float64Binary : public Binary {
@@ -1546,7 +1546,7 @@ class Float64Binary : public Binary {
                                                     Operator,
                                                     IRInfo* );
 
-  Float64Binary( Graph* graph , std::uint32_t id , ExpNr* lhs,
+  Float64Binary( Graph* graph , std::uint32_t id , Expr* lhs,
                                                    Expr* rhs,
                                                    Operator op,
                                                    IRInfo* info ):
@@ -1586,7 +1586,6 @@ class SStringEq : public Binary {
 
   SStringEq( Graph* graph , std::uint32_t id , Expr* lhs ,
                                                Expr* rhs ,
-                                               Opereator op,
                                                IRInfo* info ):
     Binary(IRTYPE_SSTRING_EQ,graph,id,lhs,rhs,Binary::EQ,info)
   {}
@@ -1600,78 +1599,9 @@ class SStringNe : public Binary {
 
   SStringNe( Graph* graph , std::uint32_t id , Expr* lhs ,
                                                Expr* rhs ,
-                                               Opereator op,
                                                IRInfo* info ):
     Binary(IRTYPE_SSTRING_EQ,graph,id,lhs,rhs,Binary::NE,info)
   {}
-};
-
-class IsTrue : public Expr {
- public:
-  inline static IsTrue* New( Graph* , Expr* , IRinfo* );
-
-  Expr* operand() const { return operand_list()->First(); }
-
-  IsTrue( Graph* graph , std::uint32_t id , Expr* opr ,
-                                            IRInfo* info ):
-    Expr(IRTYPE_IS_TRUE,graph,id,info)
-  {
-    AddOperand(opr);
-  }
-
- private:
-  LAVA_DISALLOW_COPY_AND_ASSIGN(IsTrue)
-};
-
-class IsFalse : public Expr {
- public:
-  inline static IsFalse* New( Graph* , Expr* , IRInfo* );
-
-  Expr* operand() const { return operand_list()->First(); }
-
-  IsFalse( Graph* graph , std::uint32_t id , Expr* opr ,
-                                             IRInfo* info ):
-    Expr(IRTYPE_IS_FALSE,graph,id,info)
-  {
-    AddOperand(opr);
-  }
-
- private:
-  LAVA_DISALLOW_COPY_AND_ASSIGN(IsFalse)
-};
-
-class IsNil : public Expr {
- public:
-  inline static IsNil* New( Graph* , Expr* , IRinfo* );
-
-  Expr* operand() const { return operand_list()->First(); }
-
-  IsNil( Graph* graph , std::uint32_t id , Expr* opr ,
-                                           IRInfo* info ):
-    Expr(IRTYPE_IS_NIL,graph,id,info)
-  {
-    AddOperand(opr);
-  }
-
- private:
-  LAVA_DISALLOW_COPY_AND_ASSIGN(IsNil)
-};
-
-class IsNotNil: public Expr {
- public:
-  inline static IsNotNil* New( Graph* , Expr* , IRinfo* );
-
-  Expr* operand() const { return operand_list()->First(); }
-
-  IsNotNil( Graph* graph , std::uint32_t id , Expr* opr ,
-                                              IRInfo* info ):
-    Expr(IRTYPE_IS_NOT_NIL,graph,id,info)
-  {
-    AddOperand(opr);
-  }
-
- private:
-  LAVA_DISALLOW_COPY_AND_ASSIGN(IsNotNil)
 };
 
 class ExtensionLBinary : public Binary {
@@ -2010,7 +1940,7 @@ class Guard : public ControlFlow {
   }
 
  private:
-  LAVA_DISALLOW_COPY_AND_ASSIGN(Branch)
+  LAVA_DISALLOW_COPY_AND_ASSIGN(Guard)
 };
 
 // -----------------------------------------------------------------------
@@ -2159,9 +2089,9 @@ class End : public ControlFlow {
 
 class Trap : public ControlFlow {
  public:
-  inline static Trap* New( Graph* , Checkpoin* , ControlFlow* region );
+  inline static Trap* New( Graph* , Checkpoint* , ControlFlow* );
 
-  Checkpoint* checkpoint() const { return operand_list()->First(); }
+  Checkpoint* checkpoint() const { return operand_list()->First()->AsCheckpoint(); }
 
   Trap( Graph* graph , std::uint32_t id , Checkpoint* cp ,
                                           ControlFlow* region ):
@@ -2556,6 +2486,28 @@ inline Binary* Binary::New( Graph* graph , Expr* lhs , Expr* rhs, Operator op ,
   return graph->zone()->New<Binary>(graph,graph->AssignID(),lhs,rhs,op,info);
 }
 
+inline bool Binary::IsComparisonOperator( Operator op ) {
+  switch(op) {
+    case LT : case LE : case GT : case GE : case EQ : case NE :
+      return true;
+    default:
+      return false;
+  }
+}
+
+inline bool Binary::IsArithmeticOperator( Operator op ) {
+  switch(op) {
+    case ADD : case SUB : case MUL : case DIV : case MOD : case POW :
+      return true;
+    default:
+      return false;
+  }
+}
+
+inline bool Binary::IsLogicOperator( Operator op ) {
+  return op == AND || op == OR;
+}
+
 inline Binary::Operator Binary::BytecodeToOperator( interpreter::Bytecode op ) {
   switch(op) {
     case interpreter::BC_ADDRV: case interpreter::BC_ADDVR: case interpreter::BC_ADDVV: return ADD;
@@ -2759,9 +2711,8 @@ inline TestListOOB* TestListOOB::New( Graph* graph , Expr* object , Expr* key ,
   return graph->zone()->New<TestListOOB>(graph,graph->AssignID(),object,key,info);
 }
 
-inline Float64Unary* Float64Unary::New( Graph* graph , Expr* opr , Operator op ,
-                                                                   IRInfo* info ) {
-  return graph->zone()->New<Float64Unary>(graph,graph->AssignID(),opr,op,info);
+inline Float64Negate* Float64Negate::New( Graph* graph , Expr* opr , IRInfo* info ) {
+  return graph->zone()->New<Float64Negate>(graph,graph->AssignID(),opr,info);
 }
 
 inline Float64Binary* Float64Binary::New( Graph* graph , Expr* lhs , Expr* rhs ,
@@ -2782,22 +2733,6 @@ inline SStringEq* SStringEq::New( Graph* graph , Expr* lhs , Expr* rhs , IRInfo*
 
 inline SStringNe* SStringNe::New( Graph* graph , Expr* lhs , Expr* rhs , IRInfo* info ) {
   return graph->zone()->New<SStringNe>(graph,graph->AssignID(),lhs,rhs,info);
-}
-
-inline IsTrue* IsTrue::New( Graph* graph , Expr* opr , IRInfo* info ) {
-  return graph->zone()->New<IsTrue>(graph,graph->AssignID(),opr,info);
-}
-
-inline IsFalse* IsFalse::New( Graph* graph , Expr* opr , IRInfo* info ) {
-  return graph->zone()->New<IsFalse>(graph,graph->AssignID(),opr,info);
-}
-
-inline IsNil* IsNil::New( Graph* graph , Expr* opr , IRInfo* info ) {
-  return graph->zone()->New<IsNil>(graph,graph->AssignID(),opr,info);
-}
-
-inline IsNotNil* IsNotNil::New( Graph* graph , Expr* opr , IRInfo* info ) {
-  return graph->zone()->New<IsNotNil>(graph,graph->AssignID(),opr,info);
 }
 
 inline ExtensionLBinary* ExtensionLBinary::New( Graph* graph , Expr* lhs , Expr* rhs ,
@@ -2880,7 +2815,7 @@ inline If* If::New( Graph* graph , Expr* condition , ControlFlow* parent ) {
 }
 
 inline Guard* Guard::New( Graph* graph , Expr* test , ControlFlow* region ) {
-  return graph->zone()->New<Graph>(graph,graph->AssignID(),test,region);
+  return graph->zone()->New<Guard>(graph,graph->AssignID(),test,region);
 }
 
 inline IfTrue* IfTrue::New( Graph* graph , ControlFlow* parent ) {

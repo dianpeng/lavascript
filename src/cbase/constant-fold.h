@@ -26,7 +26,8 @@ Expr* ConstantFoldUnary  ( Graph* , Unary::Operator , Expr* ,
 
 Expr* ConstantFoldBinary ( Graph* , Binary::Operator, Expr* , Expr* , const std::function<IRInfo* ()>& );
 
-Expr* ConstantFoldTernary( Graph* , Expr* , Expr* , Expr* , const std::function<IRInfo* ()>& );
+Expr* ConstantFoldTernary( Graph* , Expr* , Expr* , Expr* , const StaticTypeInference& ,
+                                                            const std::function<IRInfo* ()>& );
 
 Expr* ConstantFoldIntrinsicCall( Graph* , ICall* );
 

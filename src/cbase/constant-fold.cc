@@ -31,24 +31,16 @@ Expr* Fold( Graph* graph , Unary::Operator op , Expr* expr ,
       case IRTYPE_NIL:
         return Boolean::New(graph,true,irinfo());
       default:
+        {
+          // fallback to use static type inference to do folding
+          auto t = infer.GetType(expr);
+          bool bv;
+          if(TPKind::ToBoolean(t,&bv)) {
+            return Boolean::New(graph,!bv,irinfo());
+          }
+        }
         break;
     }
-  }
-
-  // do constant folding based on the type inference if applicable
-  auto t = infer.ResolveUnaryOperatorType( expr, op );
-  switch(t) {
-    case TPKIND_NIL:
-      if(op == Unary::NOT)
-        return Boolean::New(graph,true,irinfo());
-      break;
-    case TPKIND_UNKNOWN:
-    case TPKIND_BOOLEAN:
-      break;
-    default:
-      if(op == Unary::NOT)
-        return Boolean::New(graph,false,irinfo());
-      break;
   }
 
   return NULL;
@@ -113,6 +105,7 @@ Expr* Fold( Graph* graph , Binary::Operator op , Expr* lhs ,
 }
 
 Expr* Fold( Graph* graph , Expr* cond , Expr* lhs , Expr* rhs ,
+                                                    const StaticTypeInference& infer ,
                                                     const std::function<IRInfo*()>& irinfo) {
   switch(cond->type()) {
     case IRTYPE_FLOAT64:
@@ -126,6 +119,14 @@ Expr* Fold( Graph* graph , Expr* cond , Expr* lhs , Expr* rhs ,
     case IRTYPE_BOOLEAN:
       return (cond->AsBoolean()->value() ? lhs : rhs);
     default:
+      {
+        // do a static type inference to check which value should return
+        bool bv;
+        auto t = infer.GetType(cond);
+        if(TPKind::ToBoolean(t,&bv)) {
+          return bv ? lhs : rhs;
+        }
+      }
       break;
   }
   return NULL;
@@ -274,6 +275,48 @@ Expr* FoldICall( Graph* graph , ICall* node ) {
         }
       }
       break;
+
+    case INTRINSIC_CALL_RRO:
+      {
+        std::uint32_t a1;
+        std::uint8_t  a2;
+        if(AsUInt32(node->operand_list()->Index(0),&a1) &&
+           AsUInt8 (node->operand_list()->Index(1),&a2)) {
+          return (Float64::New(graph,static_cast<double>(bits::BRor(a1,a2)),node->ir_info()));
+        }
+      }
+      break;
+    case INTRINSIC_CALL_BAND:
+      {
+        std::uint32_t a1;
+        std::uint32_t a2;
+        if(AsUInt32(node->operand_list()->Index(0),&a1) &&
+           AsUInt32(node->operand_list()->Index(1),&a2)) {
+          return (Float64::New(graph,static_cast<double>((a1 & a2)),node->ir_info()));
+        }
+      }
+      break;
+
+    case INTRINSIC_CALL_BOR:
+      {
+        std::uint32_t a1;
+        std::uint32_t a2;
+        if(AsUInt32(node->operand_list()->Index(0),&a1) &&
+           AsUInt32(node->operand_list()->Index(1),&a2)) {
+          return (Float64::New(graph,static_cast<double>(a1 | a2),node->ir_info()));
+        }
+      }
+      break;
+    case INTRINSIC_CALL_BXOR:
+      {
+        std::uint32_t a1;
+        std::uint32_t a2;
+        if(AsUInt32(node->operand_list()->Index(0),&a1) &&
+           AsUInt32(node->operand_list()->Index(1),&a2)) {
+          return (Float64::New(graph,static_cast<double>(a1 ^ a2),node->ir_info()));
+        }
+      }
+      break;
     default:
       break;
   }
@@ -296,8 +339,9 @@ Expr* ConstantFoldBinary ( Graph* graph , Binary::Operator op , Expr* lhs ,
 }
 
 Expr* ConstantFoldTernary( Graph* graph , Expr* cond , Expr* lhs , Expr* rhs ,
+                                                                   const StaticTypeInference& infer ,
                                                                    const std::function<IRInfo*()>& irinfo) {
-  return Fold(graph,cond,lhs,rhs,irinfo);
+  return Fold(graph,cond,lhs,rhs,infer,irinfo);
 }
 
 Expr* ConstantFoldIntrinsicCall( Graph* graph , ICall* icall ) {

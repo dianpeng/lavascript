@@ -97,53 +97,6 @@ void StaticTypeInference::AddIntrinsicCallType( ICall* node ) {
   }
 }
 
-TypeKind StaticTypeInference::ResolveUnaryOperatorType ( Expr* node , Unary::Operator op ) {
-  (void)op;
-
-  return GetType(node);
-}
-
-TypeKind StaticTypeInference::ResolveBinaryOperatorType( Expr* lhs , Expr* rhs , Binary::Operator op ) {
-  auto ltype = GetType(lhs);
-  auto rtype = GetType(rhs);
-  if( ltype == TPKIND_UNKNOWN || rtype == TPKIND_UNKNOWN )
-    return TPKIND_UNKNOWN;
-
-  switch(op) {
-    case Binary::ADD: case Binary::SUB: case Binary::MUL:
-    case Binary::DIV: case Binary::MOD: case Binary::POW:
-      if(ltype == TPKIND_FLOAT64 && rtype == TPKIND_FLOAT64)
-        return TPKIND_FLOAT64;
-      else
-        return TPKIND_UNKNOWN;
-
-    case Binary::LT: case Binary::LE: case Binary::GT:
-    case Binary::GE: case Binary::EQ: case Binary::NE:
-      if((ltype == TPKIND_FLOAT64 && rtype == TPKIND_FLOAT64) ||
-         (TPKind::IsString(ltype) && TPKind::IsString(rtype)))
-        return TPKIND_BOOLEAN;
-      else
-        return TPKIND_UNKNOWN;
-
-    case Binary::AND: case Binary::OR:
-      return TPKIND_BOOLEAN;
-    default:
-      lava_die();
-      return TPKIND_UNKNOWN;
-  }
-}
-
-TypeKind StaticTypeInference::ResolveTernaryOperatorType( Expr* cond , Expr* lhs ,
-                                                                       Expr* rhs ) {
-  auto ltype = GetType(lhs);
-  auto rtype = GetType(rhs);
-  if(ltype == TPKIND_UNKNOWN || rtype == TPKIND_UNKNOWN || (ltype != rtype))
-    return TPKIND_UNKNOWN;
-
-  lava_debug(NORMAL,lava_verify(ltype == rtype););
-  return ltype;
-}
-
 } // namespace hir
 } // namespace cbase
 } // namespace lavascript

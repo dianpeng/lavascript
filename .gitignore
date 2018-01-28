@@ -30,6 +30,7 @@
 *.exe
 *.out
 *.app
+.vscode
 
 # Generated file
 *.pp.cc

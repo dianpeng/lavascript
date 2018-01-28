@@ -232,6 +232,13 @@ Expr* GraphBuilder::NewBoolean( bool value ) {
   return Boolean::New(graph_,value,NULL);
 }
 
+template< typename T , typename ...ARGS >
+Expr* GraphBuilder::NewNodeWithTypeFeedback( TypeKind tk , ARGS ...args ) {
+  auto node = T::New(graph_,args...);
+  static_type_infer_.AddType(node->id(),tk);
+  return node;
+}
+
 Guard* GraphBuilder::NewGuard( Expr* tester , const BytecodeLocation& pc ) {
   /**
    * A guard is essentially a if else branch with following pattern :
@@ -262,22 +269,41 @@ Guard* GraphBuilder::NewTypeTestGuardIfNeed( ValueType type , Expr* node ,
                                                               IRInfo* info ,
                                                               const BytecodeLocation& pc ) {
   auto t = static_type_infer_.GetType(node);
-  if(t != TPKIND_UNKNOWN && TPKind::Contains(t,type))
+  auto tpkind = MapValueTypeToTypeKind(type);
+
+  if(t != TPKIND_UNKNOWN && t == tpkind)
     return NULL; // the static type record the node's type is
                  // compatible with the expected type here, so
                  // we don't need to generate any guard
 
-
   // generate the guard
-  return NewGuard( TestType::New(graph_,MapValueTypeToTypeKind(type),node,info) , pc );
+  auto ret = NewGuard( TestType::New(graph_,tpkind,node,info) , pc );
+  static_type_infer_.AddType(ret->id(),tpkind);
+  return ret;
+}
+
+Guard* GraphBuilder::NewTypeTestGuardIfNeed( TypeKind type , Expr* node ,
+                                                             IRInfo* info ,
+                                                             const BytecodeLocation& pc ) {
+  auto t = static_type_infer_.GetType(node);
+
+  if(t != TPKIND_UNKNOWN && t == type)
+    return NULL;
+
+  auto ret = NewGuard( TestType::New(graph_,type,node,info) , pc );
+  static_type_infer_.AddType(ret->id(),type);
+  return ret;
 }
 
 Expr* GraphBuilder::NewUnary  ( Expr* node , Unary::Operator op ,
                                              const BytecodeLocation& pc ) {
   // 1. try to do a constant folding
-  auto new_node = ConstantFoldUnary(graph_,op,node,[this,pc]() {
-      return NewIRInfo(pc);
-  });
+  auto new_node = ConstantFoldUnary(graph_,op,node,static_type_infer_,
+      [this,pc]() {
+        return NewIRInfo(pc);
+      }
+  );
+
   if(new_node) return new_node;
 
   // 2. now we know there's no way we can resolve the expression and
@@ -291,7 +317,7 @@ Expr* GraphBuilder::TrySpeculativeUnary( Expr* node , Unary::Operator op ,
   // try to get the value feedback from type trace operations
   auto tt = type_trace_.GetTrace( pc.address() );
   if(tt) {
-    auto v = t->data[1]; // unary's input argument
+    auto v = tt->data[1]; // unary's input argument
     if(op == Unary::NOT) {
       auto ir_info = NewIRInfo(pc);
       // create a guard here
@@ -302,14 +328,8 @@ Expr* GraphBuilder::TrySpeculativeUnary( Expr* node , Unary::Operator op ,
       if(v.IsReal()) {
         // generate speculative unary operation for float64 type
         auto ir_info = NewIRInfo(pc);
-
         NewTypeTestGuardIfNeed(TYPE_REAL,node,ir_info,pc);
-        auto ret = Float64Unary::New(graph_,node,op,ir_info);
-
-        // record the type to helper further type inference
-        static_type_inference_.AddType( ret->id() , TPKIND_FLOAT64 );
-
-        return ret;
+        return NewNodeWithTypeFeedback<Float64Negate>(TPKIND_FLOAT64,node,ir_info);
       }
     }
   }
@@ -337,39 +357,33 @@ Expr* GraphBuilder::NewBinary  ( Expr* lhs , Expr* rhs , Binary::Operator op ,
 }
 
 Expr* GraphBuilder::TrySpecialTestBinary( Expr* lhs , Expr* rhs , Binary::Operator op ,
-                                                                  const BytecodLocation& pc ) {
-
-  if((lhs->IsBoolean() || rhs->IsBoolean()) && (op == Binary::EQ || op == Binary::NE)) {
-    if(lhs->IsBoolean()) {
-      auto ret = lhs->AsBoolean()->value() ? IsTrue::New(graph_,rhs,NewIRInfo(pc)) :
-                                             IsFalse::New(graph_,rhs,NewIRInfo(pc));
-
-      static_type_infer_.AddType(ret->id(),TPKIND_BOOLEAN);
-      return ret;
-
-    } else {
-      auto ret = rhs->AsBoolean()->value() ? IsTrue::New(graph_,lhs,NewIRInfo(pc)) :
-                                             IsFalse::New(graph_,lhs,NewIRInfo(pc));
-
-      static_type_infer_.AddType(ret->id(),TPKIND_BOOLEAN);
-      return ret;
-    }
-  } else if((lhs->IsNil() || rhs->IsNil()) && (op == Binary::EQ || op == Binary::NE)) {
-    if(lhs->IsNil()) {
-      auto ret = (op == Binary::EQ ? IsNil::New(graph_,rhs,NewIRInfo(pc)) :
-                                     IsNotNil::New(graph_,rhs,NewIRInfo(pc)));
-
-      static_type_infer_.AddType(ret->id(),TPKIND_BOOLEAN);
-      return ret;
-    } else {
-      auto ret (op == Binary::EQ ? IsNil::New(graph_,lhs,NewIRInfo(pc)) :
-                                   IsNotNil::New(graph_,lhs,NewIRInfo(pc)));
-
-      static_type_infer_.AddType(ret->id(),TPKIND_BOOLEAN);
-      return ret;
+                                                                  const BytecodeLocation& pc ) {
+  if(op == Binary::EQ || op == Binary::NE) {
+    if((lhs->IsICall() && rhs->IsString()) ||
+       (rhs->IsICall() && lhs->IsString())) {
+      auto icall = lhs->IsICall() ? lhs->AsICall() : rhs->AsICall();
+      auto type  = lhs->IsString()? lhs->AsZoneString() : rhs->AsZoneString();
+      if(type == "real") {
+        return TestType::New(graph_,TPKIND_FLOAT64,icall->GetArgument(0),NewIRInfo(pc));
+      } else if(type == "boolean") {
+        return TestType::New(graph_,TPKIND_BOOLEAN,icall->GetArgument(0),NewIRInfo(pc));
+      } else if(type == "nil") {
+        return TestType::New(graph_,TPKIND_NIL,icall->GetArgument(0),NewIRInfo(pc));
+      } else if(type == "list") {
+        return TestType::New(graph_,TPKIND_LIST,icall->GetArgument(0),NewIRInfo(pc));
+      } else if(type == "object") {
+        return TestType::New(graph_,TPKIND_OBJECT,icall->GetArgument(0),NewIRInfo(pc));
+      } else if(type == "closure") {
+        return TestType::New(graph_,TPKIND_CLOSURE,icall->GetArgument(0),NewIRInfo(pc));
+      } else if(type == "iterator") {
+        return TestType::New(graph_,TPKIND_ITERATOR,icall->GetArgument(0),NewIRInfo(pc));
+      } else if(type == "extension") {
+        return TestType::New(graph_,TPKIND_EXTENSION,icall->GetArgument(0),NewIRInfo(pc));
+      }
     }
   }
-  return NULL; // can be specialized
+
+  return NULL; // fallback
 }
 
 Expr* GraphBuilder::TrySpeculativeBinary( Expr* lhs , Expr* rhs , Binary::Operator op,
@@ -378,8 +392,8 @@ Expr* GraphBuilder::TrySpeculativeBinary( Expr* lhs , Expr* rhs , Binary::Operat
   auto tt = type_trace_.GetTrace(pc.address());
   if(tt) {
 
-    auto lhs_val = v->data[1];
-    auto rhs_val = v->data[2];
+    auto lhs_val = tt->data[1];
+    auto rhs_val = tt->data[2];
 
     switch(op) {
       case Binary::ADD: case Binary::SUB: case Binary::MUL:
@@ -390,53 +404,32 @@ Expr* GraphBuilder::TrySpeculativeBinary( Expr* lhs , Expr* rhs , Binary::Operat
           // type test both operands, not just only one
           NewTypeTestGuardIfNeed(TYPE_REAL,lhs,ir_info,pc);
           NewTypeTestGuardIfNeed(TYPE_REAL,rhs,ir_info,pc);
-
-          // do a speculative binary operations
-          auto ret = Float64Binary::New(graph_,lhs,rhs,op,ir_info);
-
-          // record the type information
-          static_type_infer_.AddType(ret->node(),TPKIND_FLOAT64);
-
-          return ret;
+          return NewNodeWithTypeFeedback<Float64Binary>(TPKIND_FLOAT64,lhs,rhs,op,ir_info);
         }
         break;
       case Binary::LT: case Binary::LE: case Binary::GT:
       case Binary::GE: case Binary::EQ: case Binary::NE:
         if(lhs_val.IsReal() && rhs_val.IsReal()) {
           auto ir_info = NewIRInfo(pc);
-
           NewTypeTestGuardIfNeed(TYPE_REAL,lhs,ir_info,pc);
           NewTypeTestGuardIfNeed(TYPE_REAL,rhs,ir_info,pc);
-
-          auto ret = Float64Binary::New(graph_,lhs,rhs,op,ir_info);
-
-          static_type_infer_.AddType(ret->node(),TPKIND_BOOLEAN);
-          return ret;
-
+          return NewNodeWithTypeFeedback<Float64Binary>(TPKIND_BOOLEAN,lhs,rhs,op,ir_info);
         } else if(lhs_val.IsString() && rhs_val.IsString()) {
           auto ir_info = NewIRInfo(pc);
-          if((lhs_val.AsString()->IsSSO() && rhs_val.AsString()->IsSSO()) &&
-             (op == Binary::EQ || Binary::NE)) {
+          if((lhs_val.IsSSO() && rhs_val.IsSSO()) && (op == Binary::EQ || op == Binary::NE)) {
 
             // generate guard to test both are all small strings
-            NewGuard( TestType::New(graph_,TPKIND_SMALL_STRING,lhs,ir_info) , pc );
-            NewGuard( TestType::New(graph_,TPKIND_SMALL_STRING,rhs,ir_info) , pc );
+            NewTypeTestGuardIfNeed(TPKIND_SMALL_STRING,lhs,ir_info,pc);
+            NewTypeTestGuardIfNeed(TPKIND_SMALL_STRING,rhs,ir_info,pc);
 
-            auto ret = (op == Binary::EQ ? SStringEq::New(graph_,lhs,rhs,ir_info) :
-                                           SStringNe::New(graph_,lhs,rhs,ir_info));
-
-            static_type_infer_.AddType(ret->id(),TYPE_BOOLEAN);
-            return ret;
+            return op == Binary::EQ ? NewNodeWithTypeFeedback<SStringEq>(TPKIND_BOOLEAN,lhs,rhs,ir_info) :
+                                      NewNodeWithTypeFeedback<SStringNe>(TPKIND_BOOLEAN,lhs,rhs,ir_info) ;
           } else {
 
-            // just generate general string comparison
-            NewGuard( TestType::New(graph_,TPKIND_STRING,lhs,ir_info), pc );
-            NewGuard( TestType::New(graph_,TPKIND_STRING,rhs,ir_info), pc );
+            NewTypeTestGuardIfNeed(TPKIND_STRING,lhs,ir_info,pc);
+            NewTypeTestGuardIfNeed(TPKIND_STRING,rhs,ir_info,pc);
 
-            auto ret = StringCompare::New(graph_,lhs,rhs,op,ir_info);
-
-            static_type_infer_.AddType(ret->id(),TYPE_BOOLEAN);
-            return ret;
+            return NewNodeWithTypeFeedback<StringCompare>(TPKIND_BOOLEAN,lhs,rhs,op,ir_info);
           }
         }
         // rest of the test is not specialized
@@ -453,15 +446,15 @@ Expr* GraphBuilder::TrySpeculativeBinary( Expr* lhs , Expr* rhs , Binary::Operat
 
 Expr* GraphBuilder::NewTernary ( Expr* cond , Expr* lhs , Expr* rhs,
                                                           const BytecodeLocation& pc ) {
-  auto new_node = ConstantFoldTernary(graph_,cond,lhs,rhs,[this,pc]() {
-      return NewIRInfo(pc);
-  });
+  auto new_node = ConstantFoldTernary(graph_,cond,lhs,rhs,static_type_infer_,
+      [this,pc]() {
+        return NewIRInfo(pc);
+      }
+  );
   if(new_node) return new_node;
 
-  auto checkpoint = BuildCheckpoint(pc);
-  auto ternary = Ternary::New(graph_,cond,lhs,rhs,NewIRInfo(pc));
-  ternary->set_checkpoint(checkpoint);
-  return ternary;
+  // Fallback version
+  return Ternary::New(graph_,cond,lhs,rhs,NewIRInfo(pc));
 }
 
 Expr* GraphBuilder::NewICall   ( std::uint8_t a1 , std::uint8_t a2 , std::uint8_t a3 ,
@@ -477,13 +470,59 @@ Expr* GraphBuilder::NewICall   ( std::uint8_t a1 , std::uint8_t a2 , std::uint8_
 
   lava_debug(NORMAL,lava_verify(GetIntrinsicCallArgumentSize(ic) == a3););
 
-  // intrinsic call doesn't have checkpoint since it should not be bailout
-  return node;
+  // try to optimize the intrinsic call
+  auto ret = ConstantFoldIntrinsicCall(graph_,node);
+
+  if(ret) {
+    return ret;
+  } else {
+    if((ret = LowerICall(node)))
+      return ret;
+
+    return node;
+  }
+}
+
+Expr* GraphBuilder::LowerICall( ICall* node ) {
+  /**
+   * Try to represent certain intrinsic call into ir node instead of
+   * using ICall ir node to make later optimization better
+   */
+  switch(node->ic()) {
+    case INTRINSIC_CALL_UPDATE: {
+      auto k = node->GetArgument(1);
+      if(k->IsString()) {
+        return NewPSet(node->GetArgument(0),k,node->GetArgument(2),node->ir_info());
+      } else {
+        return NewISet(node->GetArgument(0),k,node->GetArgument(2),node->ir_info());
+      }
+    }
+    break;
+
+    case INTRINSIC_CALL_GET: {
+      auto k = node->GetArgument(1);
+      if(k->IsString()) {
+        return NewPGet(node->GetArgument(0),k,node->ir_info());
+      } else {
+        return NewIGet(node->GetArgument(0),k,node->ir_info());
+      }
+    }
+    break;
+
+    case INTRINSIC_CALL_ITER: {
+      return ItrNew::New(graph_,node->GetArgument(0),node->ir_info(),region());
+    }
+    break;
+
+    default: break;
+  }
+
+  return NULL;
 }
 
 Expr* GraphBuilder::FoldObjectSet( IRObject* object , const zone::String& key ,
                                                       Expr* value,
-                                                      const BytecodeLocation& pc ) {
+                                                      IRInfo* ir_info ) {
   auto itr  = object->operand_list()->FindIf(
       [key]( const OperandList::ConstForwardIterator& itr ) {
         auto v = itr.value()->AsIRObjectKV();
@@ -491,7 +530,6 @@ Expr* GraphBuilder::FoldObjectSet( IRObject* object , const zone::String& key ,
       }
     );
   if(itr.HasNext()) {
-    auto ir_info = NewIRInfo(pc);
     auto new_obj = IRObject::New(graph_,object->Size(),ir_info);
 
     for( auto i(object->operand_list()->GetForwardIterator());
@@ -509,7 +547,9 @@ Expr* GraphBuilder::FoldObjectSet( IRObject* object , const zone::String& key ,
 }
 
 Expr* GraphBuilder::FoldObjectGet( IRObject* object , const zone::String& key ,
-                                                      const BytecodeLocation& pc ) {
+                                                      IRInfo* ir_info ) {
+  (void)ir_info;
+
   auto itr = object->operand_list()->FindIf(
       [key]( const OperandList::ConstForwardIterator& itr ) {
         auto v = itr.value()->AsIRObjectKV();
@@ -523,42 +563,37 @@ Expr* GraphBuilder::FoldObjectGet( IRObject* object , const zone::String& key ,
   return NULL;
 }
 
-Expr* GraphBuilder::NewPSet( Expr* object , Expr* key , Expr* value ,
-                                                        const BytecodeLocation& pc ) {
+Expr* GraphBuilder::NewPSet( Expr* object , Expr* key , Expr* value , IRInfo* ir_info ) {
   // try to fold the object if object is a literal
   if(object->IsIRObject()) {
     auto kstr = key->AsZoneString();
     auto obj  = object->AsIRObject();
-    auto v    = FoldObjectSet(obj,kstr,value,pc);
+    auto v    = FoldObjectSet(obj,kstr,value,ir_info);
     if(v) return v;
   }
 
-  auto ir_info = NewIRInfo(pc);
   return PSet::New(graph_,object,key,value,ir_info,region());
 }
 
-Expr* GraphBuilder::NewPGet( Expr* object , Expr* key , const BytecodeLocation& pc ) {
+Expr* GraphBuilder::NewPGet( Expr* object , Expr* key , IRInfo* ir_info ) {
   // here we *do not* do any folding operations and let the later on pass handle it
   // and we just simply do a pget node test plus some guard if needed
   if(object->IsIRObject()) {
     auto kstr= key->AsZoneString();
     auto obj = object->AsIRObject();
-    auto v   = FoldObjectGet(obj,kstr,pc);
+    auto v   = FoldObjectGet(obj,kstr,ir_info);
     if(v) return v;
   }
 
   // when we reach here we needs to generate guard
-  auto ir_info = NewIRInfo(pc);
   return PGet::New(graph_,object,key,ir_info,region());
 }
 
-Expr* GraphBuilder::NewISet( Expr* object, Expr* index, Expr* value,
-                                                        const BytecodeLocation& pc ) {
+Expr* GraphBuilder::NewISet( Expr* object, Expr* index, Expr* value, IRInfo* ir_info ) {
   if(object->IsIRList() && index->IsFloat64()) {
     auto iidx = static_cast<std::uint32_t>(index->AsFloat64()->value());
     auto list = object->AsIRList();
     if(iidx < list->Size()) {
-      auto ir_info = NewIRInfo(pc);
       auto new_list = IRList::New(graph_,list->Size(),ir_info);
 
       // create a new list
@@ -579,15 +614,14 @@ Expr* GraphBuilder::NewISet( Expr* object, Expr* index, Expr* value,
   } else if(object->IsIRObject() && index->IsString()) {
     auto key = index->AsZoneString();
     auto obj = object->AsIRObject();
-    auto v   = FoldObjectSet(obj,key,value,pc);
+    auto v   = FoldObjectSet(obj,key,value,ir_info);
     if(v) return v;
   }
 
-  auto ir_info = NewIRInfo(pc);
   return ISet::New(graph_,object,index,value,ir_info,region());
 }
 
-Expr* GraphBuilder::NewIGet( Expr* object, Expr* index, const BytecodeLocation& pc ) {
+Expr* GraphBuilder::NewIGet( Expr* object, Expr* index, IRInfo* ir_info ) {
   if(object->IsIRList() && index->IsFloat64()) {
     auto iidx = static_cast<std::uint32_t>(index->AsFloat64()->value());
     auto list = object->AsIRList();
@@ -597,11 +631,10 @@ Expr* GraphBuilder::NewIGet( Expr* object, Expr* index, const BytecodeLocation& 
   } else if(object->IsIRObject() && index->IsString()) {
     auto key = index->AsZoneString();
     auto obj = object->AsIRObject();
-    auto v   = FoldObjectGet(obj,key,pc);
+    auto v   = FoldObjectGet(obj,key,ir_info);
     if(v) return v;
   }
 
-  auto ir_info = NewIRInfo(pc);
   return IGet::New(graph_,object,index,ir_info,region());
 }
 
@@ -612,6 +645,10 @@ IRInfo* GraphBuilder::NewIRInfo( const BytecodeLocation& pc ) {
     ret = ConstructFromBuffer<IRInfo> (mem,method_index(),pc);
   }
   return ret;
+}
+
+IRInfo* GraphBuilder::NewIRInfo( BytecodeIterator* itr ) {
+  return NewIRInfo(itr->bytecode_location());
 }
 
 Checkpoint* GraphBuilder::BuildCheckpoint( const BytecodeLocation& pc ) {
@@ -1343,7 +1380,7 @@ GraphBuilder::StopReason GraphBuilder::BuildBytecode( BytecodeIterator* itr ) {
         itr->GetOperand(&a1,&a2,&a3);
         Expr* key = (itr->opcode() == BC_PROPGET ? NewString(a3):
                                                    NewSSO   (a3));
-        StackSet(a1,NewPGet(StackGet(a2),key,itr->bytecode_location()));
+        StackSet(a1,NewPGet(StackGet(a2),key,NewIRInfo(itr)));
       }
       break;
     case BC_PROPSET: case BC_PROPSETSSO:
@@ -1352,7 +1389,7 @@ GraphBuilder::StopReason GraphBuilder::BuildBytecode( BytecodeIterator* itr ) {
         itr->GetOperand(&a1,&a2,&a3);
         Expr* key = (itr->opcode() == BC_PROPSET ? NewString(a2):
                                                    NewSSO   (a2));
-        StackSet(a1,NewPSet(StackGet(a1),key,StackGet(a3),itr->bytecode_location()));
+        StackSet(a1,NewPSet(StackGet(a1),key,StackGet(a3),NewIRInfo(itr)));
       }
       break;
     case BC_IDXGET: case BC_IDXGETI:
@@ -1360,7 +1397,7 @@ GraphBuilder::StopReason GraphBuilder::BuildBytecode( BytecodeIterator* itr ) {
         std::uint8_t a1,a2,a3;
         itr->GetOperand(&a1,&a2,&a3);
         Expr* key = (itr->opcode() == BC_IDXGET ? StackGet(a3) : NewConstNumber(a3));
-        StackSet(a1,NewIGet(StackGet(a2),key,itr->bytecode_location()));
+        StackSet(a1,NewIGet(StackGet(a2),key,NewIRInfo(itr)));
       }
       break;
     case BC_IDXSET: case BC_IDXSETI:
@@ -1370,7 +1407,7 @@ GraphBuilder::StopReason GraphBuilder::BuildBytecode( BytecodeIterator* itr ) {
         Expr* key = (itr->opcode() == BC_IDXSET ? StackGet(a2) :
                                                   NewConstNumber(a2));
 
-        StackSet(a1,NewISet(StackGet(a1),key,StackGet(a3),itr->bytecode_location()));
+        StackSet(a1,NewISet(StackGet(a1),key,StackGet(a3),NewIRInfo(itr)));
       }
       break;
 
@@ -1544,7 +1581,7 @@ bool GraphBuilder::Build( const Handle<Prototype>& entry , Graph* graph ) {
       return false;
 
     {
-      Phi* return_value = Phi::New(graph_,end,NULL);
+      Phi* return_value = Phi::New(graph_,succ,NULL);
       succ->set_return_value(return_value);
 
       for( auto &e : func_info().return_list ) {
@@ -1770,16 +1807,16 @@ GraphBuilder::BuildOSRStart( const Handle<Prototype>& entry ,  const std::uint32
     // create trap for current region since once we abort from the loop we should
     // fallback to interpreter
     {
-      Trap* trap = Trap::New(graph_,region());
-      succ->AddBackwardEdge(trap);
+      Trap* trap = Trap::New(graph_,BuildCheckpoint(itr.bytecode_location()),region());
+      fail->AddBackwardEdge(trap);
     }
 
-    // create trap for each return block
+    // link each return node back to the success node
     for( auto & e : func_info().return_list ) {
-      Trap* trap = Trap::New(graph_,e);
-      succ->AddBackwardEdge(trap);
+      succ->AddBackwardEdge(e);
     }
 
+    // lastly create the end node for the osr graph
     end = OSREnd::New(graph_,succ,fail);
   }
 

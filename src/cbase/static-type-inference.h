@@ -36,15 +36,6 @@ class StaticTypeInference {
   // Add intrinsic function's type
   void AddIntrinsicCallType( ICall* );
 
-  // Try to resolve unary  operation's type
-  TypeKind ResolveUnaryOperatorType ( Expr* , Unary::Operator );
-
-  // Try to resolve binary operation's type
-  TypeKind ResolveBinaryOperatorType( Expr* , Expr* , Binary::Operator );
-
-  // Try to resolve ternary operation's type
-  TypeKind ResolveTernaryOperatorType( Expr* , Expr* , Expr* );
-
   // Add a type with corresponding node
   inline void AddType( std::uint32_t id , TypeKind );
 

@@ -250,6 +250,10 @@ class Value final {
   inline bool IsExtension() const;
   inline bool IsIterator() const;
 
+  // String types
+  inline bool IsSSO() const;
+  inline bool IsLongString() const;
+
   // Getters
   inline bool GetBoolean() const;
   inline double GetReal() const;
@@ -1452,8 +1456,17 @@ inline const char* Value::type_name() const {
   return GetValueTypeName( type() );
 }
 
+
 inline bool Value::IsString() const {
   return IsHeapObject() && (*heap_object())->IsString();
+}
+
+inline bool Value::IsSSO() const {
+  return GetString()->IsSSO();
+}
+
+inline bool Value::IsLongString() const {
+  return GetString()->IsLongString();
 }
 
 inline bool Value::IsList() const {

@@ -41,6 +41,129 @@ void Graph::Initialize( OSRStart* start , OSREnd* end ) {
   end_   = end;
 }
 
+SetList::SetList( const Graph& graph ):
+  existed_(graph.MaxID()),
+  array_  ()
+{}
+
+bool SetList::Push( Node* node ) {
+  if(!existed_[node->id()]) {
+    array_.push_back(node);
+    existed_[node->id()] = true;
+    return true;
+  }
+  return false;
+}
+
+void SetList::Pop() {
+  Node* top = Top();
+  lava_debug(NORMAL,lava_verify(existed_[top->id()]););
+  existed_[top->id()] = false;
+  array_.pop_back();
+}
+
+OnceList::OnceList( const Graph& graph ):
+  existed_(graph.MaxID()),
+  array_  ()
+{}
+
+bool OnceList::Push( Node* node ) {
+  if(!existed_[node->id()]) {
+    existed_[node->id()] = true;
+    array_.push_back(node);
+    return true;
+  }
+  return false;
+}
+
+void OnceList::Pop() {
+  array_.pop_back();
+}
+
+bool ControlFlowDFSIterator::Move() {
+  while(!stack_.empty()) {
+recursion:
+    ControlFlow* top = stack_.Top()->AsControlFlow();
+
+    // iterate through all its predecessor / backward-edge
+    for( std::size_t i = 0 ; i < top->backward_edge()->size() ; ++i ) {
+      // check all its predecessor to see whether there're some not visited
+      // and then do it recursively
+      ControlFlow* pre = top->backward_edge()->Index(i);
+
+      if(stack_.Push(pre)) goto recursion;
+    }
+
+    // when we reach here it means we scan through all its predecessor nodes and
+    // don't see any one not visited , or maybe this node is a singleton/leaf.
+    next_ = top;
+    stack_.Pop();
+    return true;
+  }
+
+  next_ = NULL;
+  return false;
+}
+
+bool ControlFlowBFSIterator::Move() {
+  if(!stack_.empty()) {
+    ControlFlow* top = stack_.Top()->AsControlFlow();
+    stack_.Pop(); // pop the top element
+
+    for( auto itr = top->backward_edge()->GetBackwardIterator() ;
+              itr.HasNext() ; itr.Move() ) {
+      ControlFlow* pre = itr.value();
+      stack_.Push(pre);
+    }
+
+    next_ = top;
+    return true;
+  }
+
+  next_ = NULL;
+  return false;
+}
+
+bool ControlFlowEdgeIterator::Move() {
+  if(!stack_.empty()) {
+    ControlFlow* top = stack_.Top()->AsControlFlow();
+    stack_.Pop();
+
+    for( auto itr = top->backward_edge()->GetBackwardIterator();
+         itr.HasNext(); itr.Move() ) {
+      ControlFlow* pre = itr.value();
+      stack_.Push(pre);
+      results_.push_back(Edge(top,pre));
+    }
+  }
+
+  if(results_.empty()) {
+    next_.Clear();
+    return false;
+  } else {
+    next_ = results_.front();
+    results_.pop_front();
+    return true;
+  }
+}
+
+bool ExprDFSIterator::Move() {
+  if(!stack_.empty()) {
+recursion:
+    Expr* top = stack_.Top()->AsExpr();
+    for( std::size_t i = 0 ; i < top->operand_list()->size() ; ++i ) {
+      Expr* val = top->operand_list()->Index(i);
+      if(stack_.Push(val)) goto recursion;
+    }
+
+    next_ = top;
+    stack_.Pop();
+    return true;
+  }
+  next_ = NULL;
+  return false;
+}
+
 namespace {
 
 class DotGraphVisualizer {
@@ -93,11 +216,10 @@ std::string DotGraphVisualizer::GetNodeName( Node* node ) {
   return Format("%s_%d",node->type_name(),node->id());
 }
 
-void DotGraphVisualizer::RenderCheckpoint ( const std::string& operation,
+void DotGraphVisualizer::RenderCheckpoint ( const std::string& cp_name ,
                                             Checkpoint* checkpoint ) {
   if(!checkpoint || !opt_.checkpoint ) return;
 
-  auto cp_name = GetNodeName(checkpoint);
   Indent(1) << cp_name << "[shape=diamond style=bold color=pink label=\"" << cp_name <<"\"]\n";
 
   const std::size_t len = checkpoint->operand_list()->size();
@@ -136,9 +258,6 @@ void DotGraphVisualizer::RenderCheckpoint ( const std::string& operation,
       Indent(1) << cp_name << " -> " << us_name   <<'\n';
     }
   }
-
-  // link the checkpoint name back to the attached operation node
-  Indent(1) << operation << " -> " << cp_name << '\n';
 }
 
 void DotGraphVisualizer::RenderControlFlow( const std::string& region_name ,
@@ -148,43 +267,16 @@ void DotGraphVisualizer::RenderControlFlow( const std::string& region_name ,
                            << region->type_name()
                            << "\"]\n";
 
-  switch(region->type()) {
-    case IRTYPE_LOOP_HEADER:
-      {
-        auto node = region->AsLoopHeader();
-        auto name = GetNodeName(node->condition());
-        RenderExpr(name,node->condition());
-        Indent(1) << region_name << " -> " << name << '\n';
-      }
-      break;
-    case IRTYPE_LOOP_EXIT:
-      {
-        auto node = region->AsLoopExit();
-        auto name = GetNodeName(node->condition());
-        RenderExpr(name,node->condition());
-        Indent(1) << region_name << " -> " << name << '\n';
-      }
-      break;
-    case IRTYPE_IF:
-      {
-        auto node = region->AsIf();
-        auto name = GetNodeName(node->condition());
-        RenderExpr(name,node->condition());
-        Indent(1) << region_name << " -> " << name << '\n';
-      }
-      break;
-    case IRTYPE_RETURN:
-      {
-        auto node = region->AsReturn();
-        auto name = GetNodeName(node->value());
-        RenderExpr(name,node->value());
-        Indent(1) << region_name << " -> " << name << '\n';
-      }
-      break;
-    default:
-      break;
+  // for all the operand of each control flow node
+  for( auto itr(region->operand_list()->GetForwardIterator()) ;
+       itr.HasNext() ; itr.Move() ) {
+    auto node = itr.value();
+    auto name = GetNodeName(node);
+    RenderExpr(name,node);
+    Indent(1) << region_name << " -> " << name << '\n';
   }
 
+  // for all the statment's bounded inside of this control flow node
   for( auto itr = region->statement_list()->GetForwardIterator() ;
             itr.HasNext() ; itr.Move() ) {
     auto expr = itr.value();
@@ -312,10 +404,9 @@ void DotGraphVisualizer::RenderExpr( const std::string& name , Expr* node ) {
 
         Indent(1) << name << " -> " << lhs_name << '\n';
         Indent(1) << name << " -> " << rhs_name << '\n';
-
+      }
       break;
     case IRTYPE_UNARY:
-    case IRTYPE_FLOAT64_UNARY:
       {
         auto unary = static_cast<Unary*>(node);
         Indent(1) << name << "[label=\""
@@ -599,8 +690,27 @@ void DotGraphVisualizer::RenderExpr( const std::string& name , Expr* node ) {
         Indent(1) << name << "[label=\"osr_load(" << osr_load->index() << ")\"]\n";
       }
       break;
+    case IRTYPE_CHECKPOINT:
+      return RenderCheckpoint(name,node->AsCheckpoint());
     default:
-      lava_die();
+      {
+        Indent(1) << name << "[label=\"" << node->type_name() << "\"]\n";
+        for( auto itr(node->operand_list()->GetForwardIterator()) ;
+             itr.HasNext() ; itr.Move() ) {
+          auto opr = itr.value();
+          auto opr_name = GetNodeName(opr);
+          RenderExpr(opr_name,opr);
+          Indent(1) << name << " -> " << opr_name << '\n';
+        }
+      }
+      break;
+  }
+
+  // effect list node
+  for( auto itr(node->effect_list()->GetForwardIterator()) ;
+       itr.HasNext() ; itr.Move() ) {
+    Indent(1) << name << " -> " << GetNodeName(itr.value())
+                                << "[label=\"depend\" style=filled color=blue ]\n";
   }
 }
 
@@ -608,129 +718,6 @@ void DotGraphVisualizer::RenderExpr( const std::string& name , Expr* node ) {
 
 std::string Graph::PrintToDotFormat( const Graph& graph , const Graph::DotFormatOption& opt ) {
   return DotGraphVisualizer().Visualize(graph,opt);
-}
-
-SetList::SetList( const Graph& graph ):
-  existed_(graph.MaxID()),
-  array_  ()
-{}
-
-bool SetList::Push( Node* node ) {
-  if(!existed_[node->id()]) {
-    array_.push_back(node);
-    existed_[node->id()] = true;
-    return true;
-  }
-  return false;
-}
-
-void SetList::Pop() {
-  Node* top = Top();
-  lava_debug(NORMAL,lava_verify(existed_[top->id()]););
-  existed_[top->id()] = false;
-  array_.pop_back();
-}
-
-OnceList::OnceList( const Graph& graph ):
-  existed_(graph.MaxID()),
-  array_  ()
-{}
-
-bool OnceList::Push( Node* node ) {
-  if(!existed_[node->id()]) {
-    existed_[node->id()] = true;
-    array_.push_back(node);
-    return true;
-  }
-  return false;
-}
-
-void OnceList::Pop() {
-  array_.pop_back();
-}
-
-bool ControlFlowDFSIterator::Move() {
-  while(!stack_.empty()) {
-recursion:
-    ControlFlow* top = stack_.Top()->AsControlFlow();
-
-    // iterate through all its predecessor / backward-edge
-    for( std::size_t i = 0 ; i < top->backward_edge()->size() ; ++i ) {
-      // check all its predecessor to see whether there're some not visited
-      // and then do it recursively
-      ControlFlow* pre = top->backward_edge()->Index(i);
-
-      if(stack_.Push(pre)) goto recursion;
-    }
-
-    // when we reach here it means we scan through all its predecessor nodes and
-    // don't see any one not visited , or maybe this node is a singleton/leaf.
-    next_ = top;
-    stack_.Pop();
-    return true;
-  }
-
-  next_ = NULL;
-  return false;
-}
-
-bool ControlFlowBFSIterator::Move() {
-  if(!stack_.empty()) {
-    ControlFlow* top = stack_.Top()->AsControlFlow();
-    stack_.Pop(); // pop the top element
-
-    for( auto itr = top->backward_edge()->GetBackwardIterator() ;
-              itr.HasNext() ; itr.Move() ) {
-      ControlFlow* pre = itr.value();
-      stack_.Push(pre);
-    }
-
-    next_ = top;
-    return true;
-  }
-
-  next_ = NULL;
-  return false;
-}
-
-bool ControlFlowEdgeIterator::Move() {
-  if(!stack_.empty()) {
-    ControlFlow* top = stack_.Top()->AsControlFlow();
-    stack_.Pop();
-
-    for( auto itr = top->backward_edge()->GetBackwardIterator();
-         itr.HasNext(); itr.Move() ) {
-      ControlFlow* pre = itr.value();
-      stack_.Push(pre);
-      results_.push_back(Edge(top,pre));
-    }
-  }
-
-  if(results_.empty()) {
-    next_.Clear();
-    return false;
-  } else {
-    next_ = results_.front();
-    results_.pop_front();
-    return true;
-  }
-}
-
-bool ExprDFSIterator::Move() {
-  if(!stack_.empty()) {
-recursion:
-    Expr* top = stack_.Top()->AsExpr();
-    for( std::size_t i = 0 ; i < top->operand_list()->size() ; ++i ) {
-      Expr* val = top->operand_list()->Index(i);
-      if(stack_.Push(val)) goto recursion;
-    }
-
-    next_ = top;
-    stack_.Pop();
-    return true;
-  }
-  next_ = NULL;
-  return false;
 }
 
 } // namespace hir

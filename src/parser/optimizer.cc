@@ -108,7 +108,7 @@ inline bool Expression::AsReal( double* output ) const {
   switch(ekind) {
     case EREAL: *output = real_value; return true;
     case EBOOLEAN: *output = bool_value ? 1.0 : 0.0; return true;
-    case ESTRING: return ::lavascript::StringToReal( str_value->data() , output );
+    case ESTRING: return ::lavascript::LexicalCast( str_value->data() , output );
     default: return false;
   }
 }
@@ -117,7 +117,11 @@ inline void Expression::AsString( Zone* zone , String** output ) const {
   lava_verify( IsLiteral() );
   switch(ekind) {
     case EREAL:
-      *output = String::New(zone,PrettyPrintReal(real_value)); break;
+      {
+        std::string temp; LexicalCast(real_value,&temp);
+        *output = String::New(zone,temp);
+      }
+      break;
     case EBOOLEAN:
       *output = String::New(zone,bool_value ? "true" : "false"); break;
     case ESTRING:
@@ -130,7 +134,7 @@ inline void Expression::AsString( Zone* zone , String** output ) const {
 inline void Expression::AsString( std::string* output ) const {
   lava_verify( IsLiteral() );
   switch(ekind) {
-    case EREAL: *output = PrettyPrintReal(real_value); break;
+    case EREAL: LexicalCast(real_value,output); break;
     case EBOOLEAN: output->assign( bool_value ? "true" : "false" ); break;
     case ESTRING: output->assign( str_value->data() ); break;
     default: output->assign("null"); break;

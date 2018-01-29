@@ -1,4 +1,5 @@
 #include "type.h"
+#include "src/objects.h"
 #include "src/trace.h"
 
 namespace lavascript {
@@ -15,17 +16,32 @@ const char* GetTypeKindName( TypeKind kind ) {
 
 TypeKind MapValueTypeToTypeKind( ValueType type ) {
   switch(type) {
-    case TYPE_REAL:     return TPKIND_FLOAT64;
-    case TYPE_BOOLEAN:  return TPKIND_BOOLEAN;
-    case TYPE_NULL :    return TPKIND_NIL;
-    case TYPE_STRING:   return TPKIND_STRING;
-    case TYPE_LIST:     return TPKIND_LIST;
-    case TYPE_OBJECT:   return TPKIND_OBJECT;
-    case TYPE_ITERATOR: return TPKIND_ITERATOR;
-    case TYPE_EXTENSION:return TPKIND_EXTENSION;
-    case TYPE_CLOSURE:  return TPKIND_CLOSURE;
-    default:            return TPKIND_UNKNOWN;
+    case TYPE_REAL:      return TPKIND_FLOAT64;
+    case TYPE_BOOLEAN:   return TPKIND_BOOLEAN;
+    case TYPE_NULL :     return TPKIND_NIL;
+    case TYPE_STRING:    return TPKIND_STRING;
+    case TYPE_LIST:      return TPKIND_LIST;
+    case TYPE_OBJECT:    return TPKIND_OBJECT;
+    case TYPE_ITERATOR:  return TPKIND_ITERATOR;
+    case TYPE_EXTENSION: return TPKIND_EXTENSION;
+    case TYPE_CLOSURE:   return TPKIND_CLOSURE;
+    default:             return TPKIND_UNKNOWN;
   }
+}
+
+TypeKind MapValueToTypeKind( const Value& v ) {
+  /**
+   * The ValueType doesn't have TRUE/FALSE as type, but in our
+   * TypeKind system, we list TRUE/FALSE as type to make deeper
+   * optimization. Using this function is simply to help us map
+   * a Value object's internal tag/type to TypeKind
+   */
+  if(v.IsTrue())
+    return TPKIND_TRUE;
+  else if(v.IsFalse())
+    return TPKIND_FALSE;
+  else
+    return MapValueTypeToTypeKind(v.type());
 }
 
 class TPKind::TPKindBuilder{
@@ -51,7 +67,15 @@ TPKind::TPKindBuilder::TPKindBuilder() :
   root_(NULL),
   all_kinds_() {
 
-  root_ = all_kinds_;
+  // initialize all the type_kind_ field inside of the TPKind
+  // object
+#define __(A,B) Node(TPKIND_##B)->type_kind_ = TPKIND_##B;
+
+  LAVASCRIPT_CBASE_TYPE_KIND_LIST(__)
+
+#undef __ // __
+
+  root_ =  Node(TPKIND_ROOT);
 
   /**
    * Currently we just hard coded the whole relationship for
@@ -76,6 +100,13 @@ TPKind::TPKindBuilder::TPKindBuilder() :
         AddChildren(number,Node(TPKIND_INDEX));
       }
       AddChildren(primitive,Node(TPKIND_BOOLEAN));
+      // boolean <- true
+      //         <- false
+      {
+        auto boolean = Node(TPKIND_BOOLEAN);
+        AddChildren(boolean,Node(TPKIND_TRUE));
+        AddChildren(boolean,Node(TPKIND_FALSE));
+      }
       AddChildren(primitive,Node(TPKIND_NIL));
     }
 
@@ -104,18 +135,46 @@ TPKind::TPKindBuilder::TPKindBuilder() :
   }
 }
 
+TPKind::TPKindBuilder* TPKind::GetTPKindBuilder() {
+  static TPKindBuilder kBuilder;
+  return &kBuilder;
+}
 
+TPKind* TPKind::Node( TypeKind tk ) {
+  return TPKind::GetTPKindBuilder()->Node(tk);
+}
 
-bool TPKind::ToBoolean( TypeKind tp , bool* output ) {
-  if(tp == TPKIND_BOOLEAN || tp == TPKIND_UNKNOWN)
-    return false;
-  else {
-    if(tp == TPKIND_NIL)
-      *output = false;
-    else
-      *output = true;
-    return true;
+bool TPKind::Contain( TypeKind parent , TypeKind children ) {
+  auto pnode = Node(parent);
+  auto cnode = Node(children);
+  return pnode->IsAncestor(*cnode);
+}
+
+bool TPKind::Contain( TypeKind parent , ValueType children ) {
+  return Contain(parent,MapValueTypeToTypeKind(children));
+}
+
+bool TPKind::HasChild( const TPKind& kind ) const {
+  for( auto & e : children_ ) {
+    if( e == &kind ) return true;
   }
+  return false;
+}
+
+bool TPKind::IsAncestor( const TPKind& kind ) const {
+  for( auto & e : children_ ) {
+    if( e == &kind )
+    return true;
+    else {
+      if(e->IsAncestor(kind))
+        return true;
+    }
+  }
+  return false;
+}
+
+bool TPKind::IsDescendent( const TPKind& kind ) const {
+  return kind.IsAncestor(*this);
 }
 
 } // namespace cbase

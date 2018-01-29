@@ -125,7 +125,7 @@ struct PrototypeInfo : zone::ZoneObject {
  * helper routine but low level ir node is totally different
  */
 #define CBASE_IR_EXPRESSION_LOW(__)                                   \
-  __(Float64Negate ,FLOAT64_NEGATE,"float64_negate",false)            \
+  __(Float64Negate,FLOAT64_NEGATE,"float64_negate",false)             \
   __(Float64Binary,FLOAT64_BINARY,"float64_binary",false)             \
   __(StringCompare,STRING_COMPARE,"string_compare",false)             \
   __(SStringEq,SSTRING_EQ,"sstring_eq",false)                         \
@@ -591,6 +591,8 @@ class Boolean : public Expr {
 class LString : public Expr {
  public:
   inline static LString* New( Graph* , const LongString& , IRInfo* );
+  inline static LString* New( Graph* , const char* , IRInfo* );
+  inline static LString* New( Graph* , const zone::String* , IRInfo* );
   const zone::String* value() const { return value_; }
 
   LString( Graph* graph , std::uint32_t id , const zone::String* value ,
@@ -615,6 +617,8 @@ class LString : public Expr {
 class SString : public Expr {
  public:
   inline static SString* New( Graph* , const SSO& , IRInfo* );
+  inline static SString* New( Graph* , const char* , IRInfo* );
+  inline static SString* New( Graph* , const zone::String* , IRInfo* );
   const zone::String* value() const { return value_; }
 
   SString( Graph* graph , std::uint32_t id , const zone::String* value ,
@@ -635,6 +639,12 @@ class SString : public Expr {
   const zone::String* value_;
   LAVA_DISALLOW_COPY_AND_ASSIGN(SString)
 };
+
+// Helper function to create String node from different types of configuration
+inline Expr* NewString           ( Graph* , const char* , IRInfo* );
+inline Expr* NewString           ( Graph* , const zone::String* , IRInfo* );
+inline Expr* NewStringFromBoolean( Graph* , bool , IRInfo* );
+inline Expr* NewStringFromReal   ( Graph* , double , IRInfo* );
 
 class Nil : public Expr {
  public:
@@ -671,6 +681,11 @@ class IRList : public Expr {
   }
 
 
+ public:
+  // Helper function to clone the IRList
+  static IRList* Clone( Graph* , const IRList& );
+  static IRList* CloneExceptLastOne( Graph* , const IRList& );
+
  private:
   LAVA_DISALLOW_COPY_AND_ASSIGN(IRList)
 };
@@ -698,8 +713,8 @@ class IRObject : public Expr {
  public:
   inline static IRObject* New( Graph* , std::size_t size , IRInfo* );
 
-  void Add( Expr* key , Expr* val ) {
-    AddOperand(IRObjectKV::New(graph(),key,val,ir_info()));
+  void Add( Expr* key , Expr* val , IRInfo* info ) {
+    AddOperand(IRObjectKV::New(graph(),key,val,info));
   }
 
   std::size_t Size() const { return operand_list()->size(); }
@@ -917,6 +932,14 @@ class UVal : public Expr {
     index_(index)
   {}
 
+  virtual std::uint64_t GVNHash() const {
+    return GVNHash1(type_name(),index());
+  }
+
+  virtual bool Equal( const Expr* that ) const {
+    return that->IsUVal() && that->AsUVal()->index() == index();
+  }
+
  private:
   std::uint8_t index_;
   LAVA_DISALLOW_COPY_AND_ASSIGN(UVal)
@@ -929,6 +952,18 @@ class USet : public Expr {
 
   std::uint32_t method() const { return method_; }
   Expr* value() const { return operand_list()->First();  }
+
+  virtual std::uint64_t GVNHash() const {
+    return GVNHash2(type_name(),method(),value()->GVNHash());
+  }
+
+  virtual bool Equal( const USet* that ) const {
+    if(that->IsUSet()) {
+      auto that_uset = that->AsUSet();
+      return that_uset->method() == method() && that_uset->value()->Equal(value());
+    }
+    return false;
+  }
 
   USet( Graph* graph , std::uint8_t id , std::uint32_t method ,
                                          Expr* value,
@@ -952,6 +987,18 @@ class PGet : public Expr {
   inline static PGet* New( Graph* , Expr* , Expr* , IRInfo* , ControlFlow* );
   Expr* object() const { return operand_list()->First(); }
   Expr* key   () const { return operand_list()->Last (); }
+
+  virtual std::uint64_t GVNHash() const {
+    return GVNHash2(type_name(),object()->GVNHash(),key()->GVNHash());
+  }
+
+  virtual bool Equal( const Expr* that ) const {
+    if(that->IsPGet()) {
+      auto that_pget = that->AsPGet();
+      return object()->Equal(that_pget->object()) && key()->Equal(that_pget->key());
+    }
+    return false;
+  }
 
   PGet( Graph* graph , std::uint32_t id , Expr* object , Expr* index ,
                                                          IRInfo* info ):
@@ -982,6 +1029,22 @@ class PSet : public Expr {
   Expr* object() const { return operand_list()->First(); }
   Expr* key   () const { return operand_list()->Index(1);}
   Expr* value () const { return operand_list()->Last (); }
+
+  virtual std::uint64_t GVNHash() const {
+    return GVNHash3(type_name(),object()->GVNHash(),
+                                key()->GVNHash(),
+                                value()->GVNHash());
+  }
+
+  virtual bool Equal( const Expr* that ) const {
+    if(that->IsPSet()) {
+      auto that_pset = that->AsPSet();
+      return object()->Equal(that_pset->object()) &&
+             key   ()->Equal(that_pset->key())       &&
+             value ()->Equal(that_pset->value());
+    }
+    return false;
+  }
 
   PSet( Graph* graph , std::uint32_t id , Expr* object , Expr* index ,
                                                          Expr* value ,
@@ -1023,6 +1086,19 @@ class IGet : public Expr {
     AddOperand(index );
   }
 
+  virtual std::uint64_t GVNHash() const {
+    return GVNHash2(type_name(),object()->GVNHash(),index()->GVNHash());
+  }
+
+  virtual bool Equal( const Expr* that ) const {
+    if(that->IsIGet()) {
+      auto that_iget = that->AsIGet();
+      return object()->Equal(that_iget->object()) &&
+             index ()->Equal(that_iget->index());
+    }
+    return false;
+  }
+
  protected:
   IGet( IRType type , Graph* graph , std::uint32_t id , Expr* object ,
                                                         Expr* index ,
@@ -1045,6 +1121,22 @@ class ISet : public Expr {
   Expr* object() const { return operand_list()->First(); }
   Expr* index () const { return operand_list()->Index(1);}
   Expr* value () const { return operand_list()->Last (); }
+
+  virtual std::uint64_t GVNHash() const {
+    return GVNHash3(type_name(),object()->GVNHash(),
+                                index ()->GVNHash(),
+                                value ()->GVNHash());
+  }
+
+  virtual bool Eqaul( const Expr* that ) const {
+    if(that->IsISet()) {
+      auto that_iset = that->AsISet();
+      return object()->Equal(that_iset->object()) &&
+             index ()->Equal(that_iset->index())  &&
+             value ()->Equal(that_iset->value());
+    }
+    return false;
+  }
 
   ISet( Graph* graph , std::uint32_t id , Expr* object , Expr* index ,
                                                          Expr* value ,
@@ -1259,6 +1351,10 @@ class ICall : public Expr {
 
   // whether this call is a tail call
   bool tail_call() const { return tail_call_; }
+
+  // Global value numbering
+  virtual std::uint64_t GVNHash() const;
+  virtual bool Equal( const Expr* ) const;
 
   ICall( Graph* graph , std::uint32_t id , interpreter::IntrinsicCall ic ,
                                            bool tail ,
@@ -1527,6 +1623,20 @@ class TestListOOB : public Expr {
 class Float64Negate  : public Expr {
  public:
   inline static Float64Negate* New( Graph* , Expr* , IRInfo* );
+
+  Expr* operand() const { return operand_list()->First(); }
+
+  virtual std::uint64_t GVNHash() const {
+    return GVNHash1(type_name(),operand()->GVNHash());
+  }
+
+  virtual bool Equal( const Expr* that ) const {
+    if(that->IsFloat64Negate()) {
+      auto that_negate = that->AsFloat64Negate();
+      return operand()->Equal(that_negate->operand());
+    }
+    return false;
+  }
 
   Float64Negate( Graph* graph , std::uint32_t id , Expr* opr , IRInfo* info ):
     Expr(IRTYPE_FLOAT64_NEGATE,id,graph,info)
@@ -2178,8 +2288,6 @@ class Graph {
   const PrototypeInfo& GetProrotypeInfo( std::uint32_t index ) const {
     return prototype_info_[index];
   }
- public: // string dedup
-  zone::String* NewString( const char* data , std::size_t size );
 
  public: // static helper function
 
@@ -2460,9 +2568,55 @@ inline LString* LString::New( Graph* graph , const LongString& str , IRInfo* inf
       zone::String::New(graph->zone(),static_cast<const char*>(str.data()),str.size),info);
 }
 
+inline LString* LString::New( Graph* graph , const char* data , IRInfo* info ) {
+  auto str = zone::String::New(graph->zone(),data);
+  lava_debug(NORMAL,lava_verify(!str->IsSSO()););
+  return graph->zone()->New<LString>(graph,graph->AssignID(),str,info);
+}
+
+inline LString* LString::New( Graph* graph , const zone::String* str , IRInfo* info ) {
+  lava_debug(NORMAL,lava_verify(!str->IsSSO()););
+  return graph->zone()->New<LString>(graph,graph->AssignID(),str,info);
+}
+
 inline SString* SString::New( Graph* graph , const SSO& str , IRInfo* info ) {
   return graph->zone()->New<SString>(graph,graph->AssignID(),
       zone::String::New(graph->zone(),static_cast<const char*>(str.data()),str.size()),info);
+}
+
+inline SString* SString::New( Graph* graph , const char* data , IRInfo* info ) {
+  auto str = zone::String::New(graph->zone(),data);
+  lava_debug(NORMAL,lava_verify(str->IsSSO()););
+  return graph->zone()->New<SString>(graph,graph->AssignID(),str,info);
+}
+
+inline SString* SString::New( Graph* graph , const zone::String* str , IRInfo* info ) {
+  lava_debug(NORMAL,lava_verify(str->IsSSO()););
+  return graph->zone()->New<SString>(graph,graph->AssignID(),str,info);
+}
+
+inline Expr* NewString( Graph* graph , const zone::String* str , IRInfo* info ) {
+  return str->IsSSO() ? static_cast<Expr*>(SString::New(graph,str,info)) :
+                        static_cast<Expr*>(LString::New(graph,str,info)) ;
+}
+
+inline Expr* NewString( Graph* graph , const char* data , IRInfo* info ) {
+  auto str = zone::String::New(graph->zone(),data);
+  return NewString(graph,str,info);
+}
+
+inline Expr* NewStringFromBoolean( Graph* graph , bool value , IRInfo* info ) {
+  std::string temp;
+  LexicalCast(value,&temp);
+  auto str = zone::String::New(graph->zone(),temp.c_str(),temp.size());
+  return NewString(graph,str,info);
+}
+
+inline Expr* NewStringFromReal( Graph* graph , double value , IRInfo* info ) {
+  std::string temp;
+  LexicalCast(value,&temp);
+  auto str = zone::String::New(graph->zone(),temp.c_str(),temp.size());
+  return NewString(graph,str,info);
 }
 
 inline Nil* Nil::New( Graph* graph , IRInfo* info ) {

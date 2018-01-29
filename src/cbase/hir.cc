@@ -31,6 +31,58 @@ void Expr::Replace( Expr* another ) {
   }
 }
 
+IRList* IRList::Clone( Graph* graph , const IRList& that ) {
+  auto ret = IRList::New(graph,that.Size(),that.ir_info());
+  for( auto itr(that.operand_list()->GetForwardIterator());
+       itr.HasNext(); itr.Move() ) {
+    ret->Add(itr.value());       
+  }
+  return ret;
+}
+
+IRList* IRList::CloneExceptLastOne( Graph* graph , const IRList& that ) {
+  auto ret = IRList::New(graph,that.Size(),that.ir_info());
+  if(that.Size() == 0)
+    return ret;
+  else {
+    std::size_t count = 0;
+    std::size_t end   = that.Size() - 1;
+    for( auto itr(that.operand_list()->GetForwardIterator());
+        itr.HasNext() && (count < end); itr.Move() ) {
+      ret->Add(itr.value());       
+    }
+    return ret;
+  }
+}
+
+std::uint64_t ICall::GVNHash() const {
+  GVNHashN hasher(type_name());
+  hasher.Add(static_cast<std::uint32_t>(ic()));
+  for( auto itr(operand_list()->GetForwardIterator()); itr.HasNext(); itr.Move() ) {
+    hasher.Add(itr.value()->GVNHash());
+  }
+  return hasher.value();
+}
+
+bool ICall::Equal( const Expr* that ) const {
+  if(that->IsICall()) {
+    auto tic = that->AsICall();
+    if(ic() == tic->ic()) {
+      lava_debug(NORMAL,
+        lava_verify(operand_list()->size() == tic->operand_list()->size()););
+      auto this_itr(operand_list()->GetForwardIterator());
+      auto that_itr(that->operand_list()->GetForwardIterator());
+      for( ; this_itr.HasNext() ; this_itr.Move() , that_itr.Move() ) {
+        if(!this_itr.value()->Equal(that_itr.value())) {
+          return false;
+        }
+      }
+      return true;
+    }
+  }
+  return false;
+}
+
 void Graph::Initialize( Start* start , End* end ) {
   start_ = start;
   end_   = end;

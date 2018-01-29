@@ -287,7 +287,7 @@ inline bool BuiltinInt( Context* ctx, const Value& operand , Value* output ,
 
   switch(operand.type()) {
     case TYPE_REAL:
-        output->SetReal(static_cast<double>(static_cast<std::int32_t>(operand.GetReal())));
+        output->SetReal(CastRealAndStoreAsReal<std::int32_t>(operand.GetReal()));
       return true;
     case TYPE_BOOLEAN:
       output->SetReal( operand.GetBoolean() ? 1.0 : 0.0 );
@@ -296,7 +296,7 @@ inline bool BuiltinInt( Context* ctx, const Value& operand , Value* output ,
       {
         std::int32_t ival;
         auto str = operand.GetString()->ToStdString();
-        if(StringToInt( str.c_str() , &ival)) {
+        if(LexicalCast( str.c_str() , &ival)) {
           output->SetReal( static_cast<double>(ival) );
           return true;
         } else {
@@ -326,7 +326,7 @@ inline bool BuiltinReal( Context* ctx , const Value& operand , Value* output ,
       {
         double dval;
         auto str = operand.GetString()->ToStdString();
-        if(StringToReal( str.c_str() , &dval )) {
+        if(LexicalCast( str.c_str() , &dval )) {
           output->SetReal( dval );
           return true;
         } else {

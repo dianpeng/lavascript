@@ -5,6 +5,7 @@
 #include <vector>
 
 namespace lavascript {
+class Value;
 namespace cbase {
 
 /**
@@ -14,11 +15,14 @@ namespace cbase {
  */
 #define LAVASCRIPT_CBASE_TYPE_KIND_LIST(__) \
   __(unknown,UNKNOWN)                                   \
+  __(root,ROOT)                                         \
   __(primitive,PRIMITIVE)                               \
   __(number,NUMBER)                                     \
   __(float64,FLOAT64)                                   \
   __(index  ,INDEX  )                                   \
   __(boolean,BOOLEAN)                                   \
+  __(true,TRUE)                                         \
+  __(false,FALSE)                                       \
   __(nil,NIL)                                           \
   __(reference,REFERENCE)                               \
   __(string ,STRING )                                   \
@@ -45,6 +49,7 @@ enum TypeKind {
 const char* GetTypeKindName( TypeKind );
 
 TypeKind MapValueTypeToTypeKind( ValueType );
+TypeKind MapValueToTypeKind    ( const Value& );
 
 /**
  * A type descriptor used throughout the backend optimization
@@ -53,8 +58,6 @@ TypeKind MapValueTypeToTypeKind( ValueType );
  */
 class TPKind {
  public:
-  inline static bool IsString( TypeKind tp );
-
   // convert a TypeKind into a TPKind node object
   static TPKind* Node( TypeKind tk );
 
@@ -64,8 +67,12 @@ class TPKind {
   // check whether the *second* valuetype is included by *first* typekind
   static bool Contain( TypeKind , ValueType );
 
+ public:
   // try to convert type kind to a boolean value if we can
-  static bool ToBoolean( TypeKind , bool* );
+  inline static bool ToBoolean( TypeKind , bool* );
+
+  // check whether this TypeKind is a string type or not
+  inline static bool IsString( TypeKind tp );
 
  public:
   TypeKind type_kind() const { return type_kind_; }
@@ -86,23 +93,41 @@ class TPKind {
   // this PTKind object
   bool HasChild( const TPKind& kind ) const;
 
+  bool HasChild( TypeKind kind ) const {
+    return HasChild(*Node(kind));
+  }
+
   // Check whether this type node is a *LEAF* node
   bool IsLeaf() const { return children_.empty(); }
 
   // Check whether |this| is the ancestor of the input kind
   bool IsAncestor( const TPKind& kind ) const;
 
+  bool IsAncestor( TypeKind kind ) const {
+    return IsAncestor( *Node(kind) );
+  }
+
   // Check whether |this| is the descendent of the input *kind* 
   bool IsDescendent( const TPKind& kind ) const;
 
+  bool IsDescendent( TypeKind kind ) const {
+    return IsDescendent( *Node(kind) );
+  }
+
  private:
   TPKind(): type_kind_(), parent_(NULL),children_() {}
+
+  class TPKindBuilder;
+
+  // Get TPKindBuilder object. This object is a static variable
+  // and it is global
+  static TPKindBuilder* GetTPKindBuilder();
+
 
   TypeKind type_kind_;
   TPKind* parent_;
   std::vector<TPKind*> children_;
 
-  class TPKindBuilder;
   friend class TPKindBuilder;
 
   LAVA_DISALLOW_COPY_AND_ASSIGN(TPKind);
@@ -112,6 +137,18 @@ inline bool TPKind::IsString( TypeKind tp ) {
   return tp == TPKIND_STRING      ||
          tp == TPKIND_LONG_STRING ||
          tp == TPKIND_SMALL_STRING;
+}
+
+inline bool TPKind::ToBoolean( TypeKind tp , bool* output ) {
+  if(tp == TPKIND_BOOLEAN || tp == TPKIND_UNKNOWN)
+    return false;
+  else {
+    if(tp == TPKIND_NIL)
+      *output = false;
+    else
+      *output = true;
+    return true;
+  }
 }
 
 } // namespace cbase

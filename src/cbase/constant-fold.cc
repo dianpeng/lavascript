@@ -317,6 +317,92 @@ Expr* FoldICall( Graph* graph , ICall* node ) {
         }
       }
       break;
+
+    case INTRINSIC_CALL_INT:
+      {
+        auto n1 = node->operand_list()->Index(0);
+        switch(n1->type()) {
+          case IRTYPE_FLOAT64:
+            return Float64::New(graph,
+                                CastRealAndStoreAsReal<std::int32_t>(n1->AsFloat64()->value()),
+                                n1->ir_info());
+
+          case IRTYPE_LONG_STRING: case IRTYPE_SMALL_STRING:
+            {
+              double dv;
+              if(LexicalCast(n1->AsZoneString().data(),&dv)) {
+                return Float64::New(graph,
+                                    CastRealAndStoreAsReal<std::int32_t>(dv),
+                                    n1->ir_info());
+              }
+            }
+            break;
+          case IRTYPE_BOOLEAN:
+            return Float64::New(graph,n1->AsBoolean()->value() ? 1.0 : 0.0,n1->ir_info());
+
+          default:
+            break;
+        }
+      }
+      break;
+    case INTRINSIC_CALL_REAL:
+      {
+        auto n1 = node->operand_list()->Index(0);
+        switch(n1->type()) {
+          case IRTYPE_FLOAT64:
+            return Float64::New(graph,n1->AsFloat64()->value(),n1->ir_info());
+          case IRTYPE_LONG_STRING: case IRTYPE_SMALL_STRING:
+            {
+              double val;
+              if(LexicalCast(n1->AsZoneString().data(),&val)) {
+                return Float64::New(graph,val,n1->ir_info());
+              }
+            }
+            break;
+          case IRTYPE_BOOLEAN:
+            return Float64::New(graph,n1->AsBoolean()->value() ? 1.0 : 0.0 , n1->ir_info());
+          default:
+            break;
+        }
+      }
+      break;
+    case INTRINSIC_CALL_STRING:
+      {
+        auto n1 = node->operand_list()->Index(0);
+        switch(n1->type()) {
+          case IRTYPE_FLOAT64:
+            return NewStringFromReal( graph , n1->AsFloat64()->value() , n1->ir_info());
+          case IRTYPE_LONG_STRING:
+            return LString::New(graph,n1->AsLString()->value(),n1->ir_info());
+          case IRTYPE_SMALL_STRING:
+            return SString::New(graph,n1->AsSString()->value(),n1->ir_info());
+          case IRTYPE_BOOLEAN:
+            return NewStringFromBoolean(graph,n1->AsBoolean()->value(),n1->ir_info());
+          default:
+            break;
+        }
+      }
+      break;
+
+    case INTRINSIC_CALL_PUSH:
+      {
+        auto n1 = node->operand_list()->Index(0);
+        if(n1->IsIRList()) {
+          auto new_list = IRList::Clone(graph,*n1->AsIRList());
+          new_list->Add( node->operand_list()->Index(1) );
+          return new_list;
+        }
+      }
+      break;
+
+    case INTRINSIC_CALL_POP:
+      {
+        auto n1 = node->operand_list()->Index(0);
+        if(n1->IsIRList()) {
+          return IRList::CloneExceptLastOne(graph,*n1->AsIRList());
+        }
+      }
+      break;
     default:
       break;
   }

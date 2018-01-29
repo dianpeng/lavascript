@@ -265,11 +265,11 @@ Guard* GraphBuilder::NewGuard( Expr* tester , const BytecodeLocation& pc ) {
   return guard;
 }
 
-Guard* GraphBuilder::NewTypeTestGuardIfNeed( ValueType type , Expr* node ,
-                                                              IRInfo* info ,
-                                                              const BytecodeLocation& pc ) {
+Guard* GraphBuilder::NewTypeTestGuardIfNeed( const Value& val , Expr* node ,
+                                                                IRInfo* info ,
+                                                                const BytecodeLocation& pc ) {
   auto t = static_type_infer_.GetType(node);
-  auto tpkind = MapValueTypeToTypeKind(type);
+  auto tpkind = MapValueToTypeKind(val);
 
   if(t != TPKIND_UNKNOWN && t == tpkind)
     return NULL; // the static type record the node's type is
@@ -280,6 +280,13 @@ Guard* GraphBuilder::NewTypeTestGuardIfNeed( ValueType type , Expr* node ,
   auto ret = NewGuard( TestType::New(graph_,tpkind,node,info) , pc );
   static_type_infer_.AddType(ret->id(),tpkind);
   return ret;
+}
+
+Guard* GraphBuilder::NewBooleanTestGuardIfNeed( const Value& val ,
+                                                Expr* node ,
+                                                IRInfo* info ,
+                                                const BytecodeLocation& pc ) {
+  return NewTypeTestGuardIfNeed(val,node,info,pc);
 }
 
 Guard* GraphBuilder::NewTypeTestGuardIfNeed( TypeKind type , Expr* node ,
@@ -320,15 +327,17 @@ Expr* GraphBuilder::TrySpeculativeUnary( Expr* node , Unary::Operator op ,
     auto v = tt->data[1]; // unary's input argument
     if(op == Unary::NOT) {
       auto ir_info = NewIRInfo(pc);
-      // create a guard here
-      NewTypeTestGuardIfNeed(v.type(),node,ir_info,pc);
+
+      // create a guard for this object's boolean value under boolean context
+      NewBooleanTestGuardIfNeed(v,node,ir_info,pc);
+
       // based on the input type , we do a speculative *not* operations
       return Boolean::New(graph_,!v.AsBoolean(),ir_info);
     } else {
       if(v.IsReal()) {
         // generate speculative unary operation for float64 type
         auto ir_info = NewIRInfo(pc);
-        NewTypeTestGuardIfNeed(TYPE_REAL,node,ir_info,pc);
+        NewTypeTestGuardIfNeed(TPKIND_FLOAT64,node,ir_info,pc);
         return NewNodeWithTypeFeedback<Float64Negate>(TPKIND_FLOAT64,node,ir_info);
       }
     }
@@ -361,13 +370,17 @@ Expr* GraphBuilder::TrySpecialTestBinary( Expr* lhs , Expr* rhs , Binary::Operat
   if(op == Binary::EQ || op == Binary::NE) {
     if((lhs->IsICall() && rhs->IsString()) ||
        (rhs->IsICall() && lhs->IsString())) {
+      /**
+       * try to capture the special written code and convert it into IR node
+       * which can be optimized later on
+       */
       auto icall = lhs->IsICall() ? lhs->AsICall() : rhs->AsICall();
       auto type  = lhs->IsString()? lhs->AsZoneString() : rhs->AsZoneString();
       if(type == "real") {
         return TestType::New(graph_,TPKIND_FLOAT64,icall->GetArgument(0),NewIRInfo(pc));
       } else if(type == "boolean") {
         return TestType::New(graph_,TPKIND_BOOLEAN,icall->GetArgument(0),NewIRInfo(pc));
-      } else if(type == "nil") {
+      } else if(type == "null") {
         return TestType::New(graph_,TPKIND_NIL,icall->GetArgument(0),NewIRInfo(pc));
       } else if(type == "list") {
         return TestType::New(graph_,TPKIND_LIST,icall->GetArgument(0),NewIRInfo(pc));
@@ -400,19 +413,26 @@ Expr* GraphBuilder::TrySpeculativeBinary( Expr* lhs , Expr* rhs , Binary::Operat
       case Binary::DIV: case Binary::POW: case Binary::MOD:
         if(lhs_val.IsReal() && rhs_val.IsReal()) {
           auto ir_info = NewIRInfo(pc);
-
           // type test both operands, not just only one
-          NewTypeTestGuardIfNeed(TYPE_REAL,lhs,ir_info,pc);
-          NewTypeTestGuardIfNeed(TYPE_REAL,rhs,ir_info,pc);
+          NewTypeTestGuardIfNeed(TPKIND_FLOAT64,lhs,ir_info,pc);
+          NewTypeTestGuardIfNeed(TPKIND_FLOAT64,rhs,ir_info,pc);
           return NewNodeWithTypeFeedback<Float64Binary>(TPKIND_FLOAT64,lhs,rhs,op,ir_info);
+        } else if(lhs_val.IsExtension()) {
+          auto ir_info = NewIRInfo(pc);
+          NewTypeTestGuardIfNeed(TPKIND_EXTENSION,lhs,ir_info,pc);
+          return NewNodeWithTypeFeedback<ExtensionLBinary>(TPKIND_EXTENSION,lhs,rhs,op,ir_info);
+        } else if(rhs_val.IsExtension()) {
+          auto ir_info = NewIRInfo(pc);
+          NewTypeTestGuardIfNeed(TPKIND_EXTENSION,rhs,ir_info,pc);
+          return NewNodeWithTypeFeedback<ExtensionRBinary>(TPKIND_EXTENSION,lhs,rhs,op,ir_info);
         }
         break;
       case Binary::LT: case Binary::LE: case Binary::GT:
       case Binary::GE: case Binary::EQ: case Binary::NE:
         if(lhs_val.IsReal() && rhs_val.IsReal()) {
           auto ir_info = NewIRInfo(pc);
-          NewTypeTestGuardIfNeed(TYPE_REAL,lhs,ir_info,pc);
-          NewTypeTestGuardIfNeed(TYPE_REAL,rhs,ir_info,pc);
+          NewTypeTestGuardIfNeed(TPKIND_FLOAT64,lhs,ir_info,pc);
+          NewTypeTestGuardIfNeed(TPKIND_FLOAT64,rhs,ir_info,pc);
           return NewNodeWithTypeFeedback<Float64Binary>(TPKIND_BOOLEAN,lhs,rhs,op,ir_info);
         } else if(lhs_val.IsString() && rhs_val.IsString()) {
           auto ir_info = NewIRInfo(pc);
@@ -425,16 +445,27 @@ Expr* GraphBuilder::TrySpeculativeBinary( Expr* lhs , Expr* rhs , Binary::Operat
             return op == Binary::EQ ? NewNodeWithTypeFeedback<SStringEq>(TPKIND_BOOLEAN,lhs,rhs,ir_info) :
                                       NewNodeWithTypeFeedback<SStringNe>(TPKIND_BOOLEAN,lhs,rhs,ir_info) ;
           } else {
-
             NewTypeTestGuardIfNeed(TPKIND_STRING,lhs,ir_info,pc);
             NewTypeTestGuardIfNeed(TPKIND_STRING,rhs,ir_info,pc);
-
             return NewNodeWithTypeFeedback<StringCompare>(TPKIND_BOOLEAN,lhs,rhs,op,ir_info);
           }
+        } else if(lhs_val.IsExtension()) {
+          auto ir_info = NewIRInfo(pc);
+          NewTypeTestGuardIfNeed(TPKIND_EXTENSION,lhs,ir_info,pc);
+          return NewNodeWithTypeFeedback<ExtensionLBinary>(TPKIND_EXTENSION,lhs,rhs,op,ir_info);
+        } else if(rhs_val.IsExtension()) {
+          auto ir_info = NewIRInfo(pc);
+          NewTypeTestGuardIfNeed(TPKIND_EXTENSION,rhs,ir_info,pc);
+          return NewNodeWithTypeFeedback<ExtensionRBinary>(TPKIND_EXTENSION,lhs,rhs,op,ir_info);
         }
-        // rest of the test is not specialized
         break;
 
+      case Binary::AND:
+        NewBooleanTestGuardIfNeed(lhs_val,lhs,NewIRInfo(pc),pc);
+        return lhs_val.AsBoolean() ? rhs : lhs;
+      case Binary::OR:
+        NewBooleanTestGuardIfNeed(lhs_val,lhs,NewIRInfo(pc),pc);
+        return lhs_val.AsBoolean() ? lhs : rhs;
       default:
         break;
     }
@@ -453,7 +484,16 @@ Expr* GraphBuilder::NewTernary ( Expr* cond , Expr* lhs , Expr* rhs,
   );
   if(new_node) return new_node;
 
-  // Fallback version
+  { // do a guess based on type trace
+    auto tt = type_trace_.GetTrace(pc.address());
+    if(tt) {
+      auto a1 = tt->data[0]; // condition's value
+      NewBooleanTestGuardIfNeed(a1,cond,NewIRInfo(pc),pc);
+      return a1.AsBoolean() ? lhs : rhs;
+    }
+  }
+
+  // Fallback
   return Ternary::New(graph_,cond,lhs,rhs,NewIRInfo(pc));
 }
 
@@ -476,18 +516,11 @@ Expr* GraphBuilder::NewICall   ( std::uint8_t a1 , std::uint8_t a2 , std::uint8_
   if(ret) {
     return ret;
   } else {
-    if((ret = LowerICall(node)))
-      return ret;
-
-    return node;
+    return (ret = LowerICall(node)) ? ret : node;
   }
 }
 
 Expr* GraphBuilder::LowerICall( ICall* node ) {
-  /**
-   * Try to represent certain intrinsic call into ir node instead of
-   * using ICall ir node to make later optimization better
-   */
   switch(node->ic()) {
     case INTRINSIC_CALL_UPDATE: {
       auto k = node->GetArgument(1);
@@ -536,7 +569,7 @@ Expr* GraphBuilder::FoldObjectSet( IRObject* object , const zone::String& key ,
          i.HasNext(); i.Move() ) {
       auto kv = i.value()->AsIRObjectKV();
       if(kv == itr.value()) {
-        new_obj->Add(kv->key(),value);
+        new_obj->Add(kv->key(),value,ir_info);
       } else {
         new_obj->AddOperand(kv);
       }
@@ -785,7 +818,7 @@ GraphBuilder::StopReason GraphBuilder::BuildLogic( BytecodeIterator* itr ) {
   if(op_and)
     StackSet(rhs,NewBinary(lhs_expr,StackGet(rhs),Binary::AND,itr->bytecode_location()));
   else
-    StackSet(rhs,NewBinary(lhs_expr,StackGet(rhs),Binary::OR,itr->bytecode_location()));
+    StackSet(rhs,NewBinary(lhs_expr,StackGet(rhs),Binary::OR ,itr->bytecode_location()));
 
   return STOP_SUCCESS;
 }
@@ -1344,9 +1377,10 @@ GraphBuilder::StopReason GraphBuilder::BuildBytecode( BytecodeIterator* itr ) {
     case BC_LOADOBJ1:
       {
         std::uint8_t a1,a2,a3;
+        auto ir_info = NewIRInfo(itr->bytecode_location());
         itr->GetOperand(&a1,&a2,&a3);
-        IRObject* obj = IRObject::New(graph_,1,NewIRInfo(itr->bytecode_location()));
-        obj->Add(StackGet(a2),StackGet(a3));
+        IRObject* obj = IRObject::New(graph_,1,ir_info);
+        obj->Add(StackGet(a2),StackGet(a3),ir_info);
         StackSet(a1,obj);
       }
       break;
@@ -1362,7 +1396,7 @@ GraphBuilder::StopReason GraphBuilder::BuildBytecode( BytecodeIterator* itr ) {
         std::uint8_t a1,a2,a3;
         itr->GetOperand(&a1,&a2,&a3);
         IRObject* obj = StackGet(a1)->AsIRObject();
-        obj->Add(StackGet(a2),StackGet(a3));
+        obj->Add(StackGet(a2),StackGet(a3),NewIRInfo(itr->bytecode_location()));
       }
       break;
     case BC_LOADCLS:

@@ -20,12 +20,14 @@ Handle<String> String::New( GC* gc , const char* str , std::size_t length ) {
 }
 
 Handle<String> String::NewFromReal( GC* gc , double value ) {
-  auto str = PrettyPrintReal(value);
-  return String::New(gc,str.c_str(),str.size());
+  std::string temp;
+  LexicalCast(value,&temp);
+  return String::New(gc,temp.c_str(),temp.size());
 }
 
 Handle<String> String::NewFromBoolean( GC* gc , bool value ) {
-  return String::New(gc,value ? "true" : "false");
+  std::string temp; LexicalCast(value,&temp);
+  return String::New(gc,temp.c_str(),temp.size());
 }
 
 /* ---------------------------------------------------------------

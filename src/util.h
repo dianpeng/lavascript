@@ -75,8 +75,13 @@ inline void* BufferOffset( void* buffer , std::size_t offset ) {
       static_cast<T*>(buffer) + offset);
 }
 
-bool StringToInt    ( const char* , std::int32_t * );
-bool StringToReal   ( const char* , double* );
+inline bool LexicalCast( const char* , std::int32_t* );
+inline bool LexicalCast( const char* , std::uint32_t* );
+inline bool LexicalCast( const char* , std::int64_t* );
+inline bool LexicalCast( const char* , std::uint64_t* );
+inline bool LexicalCast( const char* , double* );
+inline bool LexicalCast( double , std::string* output );
+inline bool LexicalCast( bool   , std::string* output );
 
 // Try to narrow a real number into a 32 bits integer. It will fail
 // if the double has exponent part , and also fail if its size cannot
@@ -106,13 +111,15 @@ bool TryCastReal( double real , T* output ) {
   return false;
 }
 
-/**
- * pretty print the real number. The issue with std::to_string is that
- * the tailing zeros are gonna show up. Example: 1.234 --> "1.234000".
- * We need to remove the tailing zeros to make the return value more
- * predictable
- */
-std::string PrettyPrintReal( double );
+template< typename T >
+T CastReal( double real ) {
+  return static_cast<T>(real);
+}
+
+template< typename T >
+double CastRealAndStoreAsReal( double real ) {
+  return static_cast<double>( CastReal<T>(real) );
+}
 
 template< typename T > T Align( T value , T alignment ) {
   return (value + (alignment-1)) & ~(alignment-1);
@@ -192,5 +199,7 @@ class Optional {
 };
 
 } // namespace lavascript
+
+#include "util-inl.h"
 
 #endif // UTIL_H_

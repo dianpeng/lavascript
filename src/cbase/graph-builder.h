@@ -230,9 +230,17 @@ class GraphBuilder {
   Expr* NewBoolean    ( bool );
 
  private: // Guard handling
-  Guard* NewGuard        ( Expr* tester , const interpreter::BytecodeLocation& );
-  Guard* NewTypeTestGuardIfNeed( ValueType , Expr* , IRInfo* ,
-                                                     const interpreter::BytecodeLocation& );
+  Guard* NewGuard( Expr* tester , const interpreter::BytecodeLocation& );
+
+  Guard* NewTypeTestGuardIfNeed( const Value& , Expr* , IRInfo* ,
+                                                        const interpreter::BytecodeLocation& );
+
+  // After this function is called, the following assumption for AsBoolean() results
+  // from this Value object is valided. ie , this function let's you guess the corresponding
+  // node's evaluation results under boolean context.
+  Guard* NewBooleanTestGuardIfNeed( const Value& , Expr* , IRInfo* ,
+                                                           const interpreter::BytecodeLocation& );
+
   Guard* NewTypeTestGuardIfNeed( TypeKind  , Expr* , IRInfo* ,
                                                      const interpreter::BytecodeLocation& );
 

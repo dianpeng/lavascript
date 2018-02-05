@@ -1,5 +1,5 @@
 #include "graph-builder.h"
-#include "constant-fold.h"
+#include "fold.h"
 
 #include "src/interpreter/bytecode.h"
 #include "src/interpreter/bytecode-iterator.h"
@@ -305,7 +305,7 @@ Guard* GraphBuilder::NewTypeTestGuardIfNeed( TypeKind type , Expr* node ,
 Expr* GraphBuilder::NewUnary  ( Expr* node , Unary::Operator op ,
                                              const BytecodeLocation& pc ) {
   // 1. try to do a constant folding
-  auto new_node = ConstantFoldUnary(graph_,op,node,static_type_infer_,
+  auto new_node = FoldUnary(graph_,op,node,static_type_infer_,
       [this,pc]() {
         return NewIRInfo(pc);
       }
@@ -351,7 +351,7 @@ Expr* GraphBuilder::TrySpeculativeUnary( Expr* node , Unary::Operator op ,
 
 Expr* GraphBuilder::NewBinary  ( Expr* lhs , Expr* rhs , Binary::Operator op ,
                                                          const BytecodeLocation& pc ) {
-  auto new_node = ConstantFoldBinary(graph_,op,lhs,rhs,[this,pc]() {
+  auto new_node = FoldBinary(graph_,op,lhs,rhs,[this,pc]() {
       return NewIRInfo(pc);
   });
   if(new_node) return new_node;
@@ -477,7 +477,7 @@ Expr* GraphBuilder::TrySpeculativeBinary( Expr* lhs , Expr* rhs , Binary::Operat
 
 Expr* GraphBuilder::NewTernary ( Expr* cond , Expr* lhs , Expr* rhs,
                                                           const BytecodeLocation& pc ) {
-  auto new_node = ConstantFoldTernary(graph_,cond,lhs,rhs,static_type_infer_,
+  auto new_node = FoldTernary(graph_,cond,lhs,rhs,static_type_infer_,
       [this,pc]() {
         return NewIRInfo(pc);
       }
@@ -511,7 +511,7 @@ Expr* GraphBuilder::NewICall   ( std::uint8_t a1 , std::uint8_t a2 , std::uint8_
   lava_debug(NORMAL,lava_verify(GetIntrinsicCallArgumentSize(ic) == a3););
 
   // try to optimize the intrinsic call
-  auto ret = ConstantFoldIntrinsicCall(graph_,node);
+  auto ret = FoldIntrinsicCall(graph_,node);
 
   if(ret) {
     return ret;

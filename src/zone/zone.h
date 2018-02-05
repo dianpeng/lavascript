@@ -53,6 +53,10 @@ class Zone {
   std::size_t current_capacity() const { return allocator_.current_capacity(); }
   std::size_t total_bytes() const { return allocator_.total_bytes(); }
 
+ public:
+  // Reset the zone memory pool
+  void Reset() { allocator_.Reset(); }
+
  private:
   BumpAllocator allocator_;   // internal bump allocator
 

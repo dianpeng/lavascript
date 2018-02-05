@@ -132,48 +132,53 @@ void OnceList::Pop() {
   array_.pop_back();
 }
 
-bool ControlFlowDFSIterator::Move() {
-  while(!stack_.empty()) {
+namespace {
+
+struct ForwardEdgeGetter {
+  RegionList* Get() const { return node_->forward_edge(); }
+  ForwardEdgeGetter( ControlFlow* node ) : node_(node) {}
+ private:
+  ControlFlow* node_;
+};
+
+struct BackwardEdgeGetter {
+  RegionList* Get() const { return node_->backward_edge(); }
+  BackwardEdgeGetter( ControlFlow* node ) : node_(node) {}
+ private:
+  ControlFlow* node_;
+};
+
+// Helper function to do DFS iterator move
+template< typename GETTER >
+ControlFlow* ControlFlowDFSIterMove( OnceList* stack ) {
+  while(!stack->empty()) {
 recursion:
-    ControlFlow* top = stack_.Top()->AsControlFlow();
+    ControlFlow* top = stack->Top()->AsControlFlow();
 
-    // iterate through all its predecessor / backward-edge
-    for( std::size_t i = 0 ; i < top->backward_edge()->size() ; ++i ) {
-      // check all its predecessor to see whether there're some not visited
-      // and then do it recursively
-      ControlFlow* pre = top->backward_edge()->Index(i);
+    for( auto itr(GETTER(top).Get()->GetForwardIterator()) ;
+         itr.HasNext() ; itr.Move() ) {
 
-      if(stack_.Push(pre)) goto recursion;
+      ControlFlow* pre = itr.value();
+
+      if(stack->Push(pre)) goto recursion;
     }
 
     // when we reach here it means we scan through all its predecessor nodes and
     // don't see any one not visited , or maybe this node is a singleton/leaf.
-    next_ = top;
-    stack_.Pop();
-    return true;
+    stack->Pop();
+    return top;
   }
-
-  next_ = NULL;
-  return false;
+  return NULL;
 }
 
-bool ControlFlowBFSIterator::Move() {
-  if(!stack_.empty()) {
-    ControlFlow* top = stack_.Top()->AsControlFlow();
-    stack_.Pop(); // pop the top element
+} // namespace
 
-    for( auto itr = top->backward_edge()->GetBackwardIterator() ;
-              itr.HasNext() ; itr.Move() ) {
-      ControlFlow* pre = itr.value();
-      stack_.Push(pre);
-    }
+bool ControlFlowDFSIterator::Move() {
+  return (next_ = ControlFlowDFSIterMove<BackwardEdgeGetter>(&stack_));
+}
 
-    next_ = top;
-    return true;
-  }
-
-  next_ = NULL;
-  return false;
+bool ControlFlowPOIterator::Move() {
+  return (next_ = ControlFlowDFSIterMove<ForwardEdgeGetter>(&stack_));
 }
 
 bool ControlFlowEdgeIterator::Move() {

@@ -1,4 +1,4 @@
-#include "constant-fold.h"
+#include "fold.h"
 #include "static-type-inference.h"
 
 #include "src/bits.h"
@@ -412,25 +412,25 @@ Expr* FoldICall( Graph* graph , ICall* node ) {
 
 } // namespace
 
-Expr* ConstantFoldUnary  ( Graph* graph , Unary::Operator op , Expr* expr ,
+Expr* FoldUnary  ( Graph* graph , Unary::Operator op , Expr* expr ,
                                                                const StaticTypeInference& infer ,
                                                                const std::function<IRInfo*()>& irinfo ) {
   return Fold(graph,op,expr,infer,irinfo);
 }
 
-Expr* ConstantFoldBinary ( Graph* graph , Binary::Operator op , Expr* lhs ,
+Expr* FoldBinary ( Graph* graph , Binary::Operator op , Expr* lhs ,
                                                                 Expr* rhs ,
                                                                 const std::function<IRInfo* ()>& irinfo ) {
   return Fold(graph,op,lhs,rhs,irinfo);
 }
 
-Expr* ConstantFoldTernary( Graph* graph , Expr* cond , Expr* lhs , Expr* rhs ,
+Expr* FoldTernary( Graph* graph , Expr* cond , Expr* lhs , Expr* rhs ,
                                                                    const StaticTypeInference& infer ,
                                                                    const std::function<IRInfo*()>& irinfo) {
   return Fold(graph,cond,lhs,rhs,infer,irinfo);
 }
 
-Expr* ConstantFoldIntrinsicCall( Graph* graph , ICall* icall ) {
+Expr* FoldIntrinsicCall( Graph* graph , ICall* icall ) {
   return FoldICall(graph,icall);
 }
 

@@ -20,16 +20,16 @@ class StaticTypeInference;
  * otherwise it will return the new node
  */
 
-Expr* ConstantFoldUnary  ( Graph* , Unary::Operator , Expr* ,
+Expr* FoldUnary  ( Graph* , Unary::Operator , Expr* ,
                                                       const StaticTypeInference& ,
                                                       const std::function<IRInfo* ()>& );
 
-Expr* ConstantFoldBinary ( Graph* , Binary::Operator, Expr* , Expr* , const std::function<IRInfo* ()>& );
+Expr* FoldBinary ( Graph* , Binary::Operator, Expr* , Expr* , const std::function<IRInfo* ()>& );
 
-Expr* ConstantFoldTernary( Graph* , Expr* , Expr* , Expr* , const StaticTypeInference& ,
+Expr* FoldTernary( Graph* , Expr* , Expr* , Expr* , const StaticTypeInference& ,
                                                             const std::function<IRInfo* ()>& );
 
-Expr* ConstantFoldIntrinsicCall( Graph* , ICall* );
+Expr* FoldIntrinsicCall( Graph* , ICall* );
 
 } // namespace hir
 } // namespace cbase

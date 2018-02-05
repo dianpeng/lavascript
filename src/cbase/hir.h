@@ -284,7 +284,7 @@ struct StatementEdge {
  * that a[10] + 1 will be scheduled *after* a[10] = 10
  *
  *
- * All these 2 types of dependency are tracked by RefList, so a substituion of node by
+ * All these 2 types of dependency are tracked by OperandRefList, so a substituion of node by
  * using *Replace* function will modify all these 2 dependency list
  */
 
@@ -299,15 +299,22 @@ typedef OperandList::ForwardIterator OperandIterator;
 typedef DependencyList EffectList;
 typedef EffectList::ForwardIterator   EffectIterator;
 
+template< typename ITR >
 struct Ref {
-  OperandIterator id;  // iterator used for fast deletion of this Ref it is
-                       // modified
+  ITR     id;  // iterator used for fast deletion of this Ref it is
+               // modified
   Node* node;
-  Ref( const DependencyIterator& iter , Node* n ): id(iter),node(n) {}
+  Ref( const ITR& iter , Node* n ): id(iter),node(n) {}
   Ref(): id(), node(NULL) {}
 };
 
-typedef zone::List<Ref>          RefList;
+typedef Ref<OperandIterator>    OperandRef;
+typedef zone::List<OperandRef>  OperandRefList;
+
+typedef zone::List<ControlFlow*>      RegionList;
+typedef RegionList::ForwardIterator   RegionListIterator;
+typedef Ref<RegionListIterator>       RegionRef;
+typedef zone::List<RegionRef>         RegionRefList;
 
 // Mother of all IR node , most of the important information should be stored via ID
 // as out of line storage
@@ -479,12 +486,12 @@ class Expr : public Node {
   //   1) get a list of expression that uses this expression, ie who uses me
   //   2) get the corresponding iterator where *me* is inserted into the list
   //      so we can fast modify/remove us from its list
-  const RefList* ref_list() const { return &ref_list_; }
-  RefList* ref_list() { return &ref_list_; }
+  const OperandRefList* ref_list() const { return &ref_list_; }
+  OperandRefList* ref_list() { return &ref_list_; }
 
   // Add the referece into the reference list
   void AddRef( Node* who_uses_me , const OperandIterator& iter ) {
-    ref_list()->PushBack(zone(),Ref(iter,who_uses_me));
+    ref_list()->PushBack(zone(),OperandRef(iter,who_uses_me));
   }
 
  public:
@@ -515,7 +522,7 @@ class Expr : public Node {
  private:
   OperandList operand_list_;
   EffectList  effect_list_;
-  RefList     ref_list_;
+  OperandRefList     ref_list_;
   IRInfo*     ir_info_;
   StatementEdge  stmt_;
 };
@@ -1894,16 +1901,44 @@ class Unbox : public Expr {
 // -------------------------------------------------------------------------
 class ControlFlow : public Node {
  public:
-  const zone::Vector<ControlFlow*>* backward_edge() const {
+
+  const RegionList* backward_edge() const {
     return &backward_edge_;
   }
 
-  zone::Vector<ControlFlow*>* backedge_edge() {
+  RegionList* backward_edge() {
     return &backward_edge_;
   }
 
   void AddBackwardEdge( ControlFlow* edge ) {
-    backward_edge_.Add(zone(),edge);
+    AddBackwardEdgeImpl(edge);
+    edge->AddForwardEdgeImpl(this);
+  }
+
+  const RegionList* forward_edge() const {
+    return &forward_edge_;
+  }
+
+  RegionList* forward_edge() {
+    return &forward_edge_;
+  }
+
+  void AddForwardEdge ( ControlFlow* edge ) {
+    AddForwardEdgeImpl(edge);
+    edge->AddBackwardEdgeImpl(this);
+  }
+
+  const RegionRefList* ref_list() const {
+    return &ref_list_;
+  }
+
+  RegionRefList* ref_list() {
+    return &ref_list_;
+  }
+
+  // Add the referece into the reference list
+  void AddRef( ControlFlow* who_uses_me , const RegionListIterator& iter ) {
+    ref_list()->PushBack(zone(),RegionRef(iter,who_uses_me));
   }
 
   // Effective expression doesn't belong to certain expression chain
@@ -1953,14 +1988,29 @@ class ControlFlow : public Node {
   ControlFlow( IRType type , std::uint32_t id , Graph* graph , ControlFlow* parent = NULL ):
     Node(type,id,graph),
     backward_edge_   (),
-    stmt_expr_     (),
+    forward_edge_    (),
+    ref_list_        (),
+    stmt_expr_       (),
     operand_list_    ()
   {
-    if(parent) backward_edge_.Add(zone(),parent);
+    if(parent) AddBackwardEdge(parent);
   }
 
  private:
-  zone::Vector<ControlFlow*> backward_edge_;
+  void AddBackwardEdgeImpl ( ControlFlow* cf ) {
+    auto itr = backward_edge_.PushBack(zone(),cf);
+    cf->AddRef(this,itr);
+  }
+
+  void AddForwardEdgeImpl( ControlFlow* cf ) {
+    auto itr = forward_edge_.PushBack(zone(),cf);
+    cf->AddRef(this,itr);
+  }
+
+ private:
+  RegionList                 backward_edge_;
+  RegionList                 forward_edge_;
+  RegionRefList              ref_list_;
   StatementList              stmt_expr_;
   OperandList                operand_list_;
 
@@ -2323,7 +2373,9 @@ class SetList {
   bool Push( Node* node );
   void Pop();
   Node* Top() const { return array_.back(); }
+  bool Has( const Node* n ) const { return existed_[n->id()]; }
   bool empty() const { return array_.empty(); }
+  std::size_t size() const { return array_.size(); }
   void Clear() { array_.clear(); BitSetReset(&existed_); }
  private:
   DynamicBitSet existed_;
@@ -2339,7 +2391,9 @@ class OnceList {
   bool Push( Node* node );
   void Pop();
   Node* Top() const { return array_.back(); }
+  bool Has( const Node* n ) const { return existed_[n->id()]; }
   bool empty() const { return array_.empty(); }
+  std::size_t size() const { return array_.size(); }
   void Clear() { array_.clear(); BitSetReset(&existed_); }
  private:
   DynamicBitSet existed_;
@@ -2390,16 +2444,20 @@ class ControlFlowDFSIterator : public ControlFlowIterator {
   ControlFlow* next_;
 };
 
-// ---------------------------------------------------------------------------
-// A graph bfs iterator
-class ControlFlowBFSIterator : public ControlFlowIterator {
+// -------------------------------------------------------------------------------------
+// A graph node post order iterator. It will only visit a node once all its children
+// are visited. Basically visit as many children as possible
+//
+// This algorithm visit the graph in forward direction basically end up with a backwards
+// edge output
+class ControlFlowPOIterator : public ControlFlowIterator {
  public:
-  ControlFlowBFSIterator( const Graph& graph ):
-    stack_  (graph),
-    graph_  (&graph),
-    next_   (NULL)
+  ControlFlowPOIterator( const Graph& graph ):
+    stack_(graph),
+    graph_(&graph),
+    next_ (NULL)
   {
-    stack_.Push(graph.end());
+    stack_.Push(graph.start());
     Move();
   }
 
@@ -2414,6 +2472,7 @@ class ControlFlowBFSIterator : public ControlFlowIterator {
   const Graph* graph_;
   ControlFlow* next_;
 };
+
 
 // -------------------------------------------------------------------------------
 // A graph's edge iterator. It will not guarantee any order except visit the edge

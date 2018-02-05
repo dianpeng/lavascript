@@ -125,11 +125,10 @@ bool CheckGraphOSR( const char* source , std::size_t offset ) {
 
 TEST(GraphBuilder,Basic) {
   CASE(
-      var a = e;  // global variable
-      var b = d;  // global variable
-      var r1 = a + b;
-      var r2 = a + b;
-      return r1 + r2;
+    var sum = 0;
+    for ( var i = 0 ; 100 ; 1 ) {
+      sum = sum + i;
+    }
   );
 }
 

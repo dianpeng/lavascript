@@ -22,7 +22,7 @@ class BumpAllocator {
                         std::size_t maximum_size  ,
                         HeapAllocator* allocator = NULL );
 
-  ~BumpAllocator();
+  ~BumpAllocator() { Clear(); }
 
   // Grab memory from BumpAllocator
   void* Grab( std::size_t );
@@ -40,7 +40,11 @@ class BumpAllocator {
   std::size_t total_bytes() const { return total_bytes_; }
   HeapAllocator* allocator() const { return allocator_; }
 
+ public:
+  void Reset();
+
  private:
+  void Clear();
   void RefillPool( std::size_t );
 
   struct Segment {
@@ -49,6 +53,7 @@ class BumpAllocator {
 
   Segment* segment_;                       // First segment list
   void* pool_;                             // Starting position of the current pool
+  std::size_t init_capacity_;              // Initialized capacity
   std::size_t size_;                       // How many times the Grab has been called
   std::size_t current_capacity_;           // Current capacity
   std::size_t used_;                       // Used size for the current pool
@@ -63,14 +68,16 @@ class BumpAllocator {
 inline BumpAllocator::BumpAllocator( std::size_t init_capacity ,
                                      std::size_t maximum_size  ,
                                      HeapAllocator* allocator ):
-  segment_(NULL),
-  pool_   (NULL),
-  size_   (0),
-  current_capacity_( init_capacity ),
-  used_   (0),
+  segment_         (NULL),
+  pool_            (NULL),
+  init_capacity_   (init_capacity),
+  size_            (0),
+  current_capacity_(init_capacity),
+  used_            (0),
   segment_size_    (0),
-  maximum_size_    ( maximum_size  ),
-  allocator_       ( allocator )
+  maximum_size_    (maximum_size),
+  total_bytes_     (0),
+  allocator_       (allocator)
 {
   RefillPool(init_capacity);
 }

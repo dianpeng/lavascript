@@ -173,12 +173,33 @@ recursion:
 
 } // namespace
 
-bool ControlFlowDFSIterator::Move() {
-  return (next_ = ControlFlowDFSIterMove<BackwardEdgeGetter>(&stack_));
-}
-
 bool ControlFlowPOIterator::Move() {
   return (next_ = ControlFlowDFSIterMove<ForwardEdgeGetter>(&stack_));
+}
+
+bool ControlFlowRPOIterator::Move() {
+  while(!stack_.empty()) {
+recursion:
+    ControlFlow* top = stack_.Top()->AsControlFlow();
+    // 1. check whether all its predecessuor has been visited or not
+    for( auto itr(top->backward_edge()->GetForwardIterator());
+         itr.HasNext() ; itr.Move() ) {
+      auto value = itr.value();
+      if(!mark_[value->id()] && stack_.Push(value)) {
+        goto recursion;
+      }
+    }
+
+    // 2. visit the top node
+    lava_debug(NORMAL,lava_verify(!mark_[top->id()]););
+    mark_[top->id()] = true;
+    stack_.Pop();
+    next_ = top;
+    return true;
+  }
+
+  next_ = NULL;
+  return false;
 }
 
 bool ControlFlowEdgeIterator::Move() {

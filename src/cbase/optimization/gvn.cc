@@ -55,7 +55,7 @@ void GVNHashTable::Insert( Expr* node ) {
 bool GVN::Perform( Graph* graph , HIRPass::Flag flag ) {
   (void)flag;
 
-  ControlFlowDFSIterator itr(*graph);
+  ControlFlowPOIterator itr(*graph);
   GVNHashTable table;
   DynamicBitSet visited(graph->MaxID());
 

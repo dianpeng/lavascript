@@ -773,15 +773,6 @@ class Unary : public Expr {
   Operator op  () const { return op_;      }
   const char* op_name() const { return GetOperatorName(op()); }
 
-  virtual std::uint64_t GVNHash() const {
-    auto opr = operand()->GVNHash();
-    return GVNHash1(op_name(),opr);
-  }
-
-  virtual bool Equal( const Expr* that ) const {
-    return that->IsUnary() && (operand()->Equal(that->AsUnary()->operand()));
-  }
-
   Unary( Graph* graph , std::uint32_t id , Expr* opr , Operator op ,
                                                        IRInfo* info ):
     Expr  (IRTYPE_UNARY,id,graph,info),
@@ -839,20 +830,6 @@ class Binary : public Expr {
   Operator op() const { return op_;  }
   const char* op_name() const { return GetOperatorName(op()); }
 
-  virtual std::uint64_t GVNHash() const {
-    auto l = lhs()->GVNHash();
-    auto r = rhs()->GVNHash();
-    return GVNHash2(op_name(),l,r);
-  }
-
-  virtual bool Equal( const Expr* that ) const {
-    if(that->IsBinary()) {
-      auto bin = that->AsBinary();
-      return lhs()->Equal(bin->lhs()) && rhs()->Equal(bin->rhs());
-    }
-    return false;
-  }
-
   Binary( Graph* graph , std::uint32_t id , Expr* lhs , Expr* rhs , Operator op ,
                                                                     IRInfo* info ):
     Expr  (IRTYPE_BINARY,id,graph,info),
@@ -896,22 +873,6 @@ class Ternary: public Expr {
   Expr* lhs      () const { return operand_list()->Index(1); }
   Expr* rhs      () const { return operand_list()->Last(); }
 
-  virtual std::uint64_t GVNHash() const {
-    auto c = condition()->GVNHash();
-    auto l = lhs()->GVNHash();
-    auto r = rhs()->GVNHash();
-    return GVNHash3(type_name(),c,l,r);
-  }
-
-  virtual bool Equal( const Expr* that ) const {
-    if(that->IsTernary()) {
-      auto u = that->AsTernary();
-      return condition()->Equal(u->condition()) &&
-             lhs()->Equal(u->lhs())             &&
-             rhs()->Equal(u->rhs());
-    }
-    return false;
-  }
 
  private:
   LAVA_DISALLOW_COPY_AND_ASSIGN(Ternary)
@@ -2414,36 +2375,6 @@ constexpr bool IsExprIterator() {
   return std::is_base_of<ExprIterator,T>::value;
 }
 
-// --------------------------------------------------------------------------
-// A graph dfs iterator that iterate all control flow graph node in DFS order
-// the expression node simply ignored and left the user to use whatever method
-// they like to iterate/visit them
-class ControlFlowDFSIterator : public ControlFlowIterator {
- public:
-  ControlFlowDFSIterator( const Graph& graph ):
-    stack_  (graph),
-    graph_  (&graph),
-    next_   (NULL)
-  {
-    stack_.Push(graph.end());
-    Move();
-  }
-
-  // whether there's another control flow graph node needs to visit
-  bool HasNext() const { return next_ != NULL; }
-
-  // move the control flow graph node to next one
-  bool Move();
-
-  // get the current control flow graph node in DFS order
-  ControlFlow* value() const { lava_debug(NORMAL,lava_verify(HasNext());); return next_; }
-
- private:
-  OnceList stack_;
-  const Graph* graph_;
-  ControlFlow* next_;
-};
-
 // -------------------------------------------------------------------------------------
 // A graph node post order iterator. It will only visit a node once all its children
 // are visited. Basically visit as many children as possible
@@ -2468,7 +2399,36 @@ class ControlFlowPOIterator : public ControlFlowIterator {
   ControlFlow* value() const { lava_debug(NORMAL,lava_verify(HasNext());); return next_; }
 
  private:
-  OnceList stack_;
+  OnceList     stack_;
+  const Graph* graph_;
+  ControlFlow* next_;
+};
+
+// -------------------------------------------------------------------------------
+// A graph node RPO iterator
+//
+// This iterator will visit each node in order that all its predecessor has been visited
+// then this node will be visited. The loop's back edge is ignored
+class ControlFlowRPOIterator : public ControlFlowIterator {
+ public:
+  ControlFlowRPOIterator( const Graph& graph ):
+    mark_ (graph.MaxID()),
+    stack_(graph),
+    graph_(&graph),
+    next_ (NULL)
+  {
+    stack_.Push(graph.end());
+    Move();
+  }
+
+  bool HasNext() const { return next_ != NULL; }
+
+  bool Move();
+
+  ControlFlow* value() const { lava_debug(NORMAL,lava_verify(HasNext());); return next_; }
+ private:
+  DynamicBitSet mark_;
+  OnceList     stack_;
   const Graph* graph_;
   ControlFlow* next_;
 };

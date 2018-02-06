@@ -6,6 +6,7 @@
 #include <src/parser/ast/ast.h>
 #include <src/trace.h>
 
+#include <src/cbase/dominators.h>
 #include <src/cbase/graph-builder.h>
 #include <src/cbase/bytecode-analyze.h>
 #include <src/cbase/optimization/gvn.h>
@@ -54,6 +55,10 @@ void PrintHeap( const Graph& graph ) {
   std::cerr<<"total-bytes:"     <<graph.zone()->total_bytes()<<std::endl;
 }
 
+std::string GetNodeName( Node* node ) {
+  return ::lavascript::Format("%s_%d",node->type_name(),node->id());
+}
+
 bool CheckGraph( const char* source ) {
   Context ctx;
   std::string error;
@@ -86,6 +91,13 @@ bool CheckGraph( const char* source ) {
 
   std::cerr << Graph::PrintToDotFormat(graph) << std::endl;
   PrintHeap(graph);
+
+  for( ControlFlowRPOIterator itr(graph); itr.HasNext() ; itr.Move() ) {
+    std::cerr<<GetNodeName(itr.value()) << '\n';
+  }
+
+  Dominators dom;
+  dom.Build(graph);
 
   return true;
 }
@@ -124,12 +136,7 @@ bool CheckGraphOSR( const char* source , std::size_t offset ) {
 #define CASE_OSR(IDX,...) ASSERT_TRUE(CheckGraphOSR(#__VA_ARGS__,(IDX)))
 
 TEST(GraphBuilder,Basic) {
-  CASE(
-    var sum = 0;
-    for ( var i = 0 ; 100 ; 1 ) {
-      sum = sum + i;
-    }
-  );
+  CASE( for( var i = 1; 100; 1 ) {} );
 }
 
 } // namespace hir

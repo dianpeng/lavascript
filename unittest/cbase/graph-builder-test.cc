@@ -99,6 +99,8 @@ bool CheckGraph( const char* source ) {
   Dominators dom;
   dom.Build(graph);
 
+  std::cerr<< dom.PrintToDotFormat() << std::endl;
+
   return true;
 }
 

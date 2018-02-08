@@ -1,7 +1,10 @@
 #ifndef CBASE_DOMINATORS_H_
 #define CBASE_DOMINATORS_H_
+#include "src/util.h"
+
 #include <vector>
 #include <map>
+#include <string>
 
 namespace lavascript {
 namespace cbase      {
@@ -29,12 +32,18 @@ class Dominators {
   // Check whether the first node is dominator of the second node
   bool IsDominator( ControlFlow* , ControlFlow* ) const;
 
+ public:
+  // Print the dominator information into dot format for debugging purpose
+  std::string PrintToDotFormat() const;
+
  private: // Helper to mainpulate the std::vector
   void AddSet  ( DominatorSet* , ControlFlow* ) const;
-  void UnionSet( DominatorSet* , const DominatorSet& ) const;
-  void UnionSet( DominatorSet* , const DominatorSet& , const DominatorSet& ) const;
-
+  void IntersectSet( DominatorSet* , const DominatorSet& ) const;
+  void IntersectSet( DominatorSet* , const DominatorSet& , const DominatorSet& ) const;
   DominatorSet* GetDomSet( ControlFlow* );
+
+ private: // Helper to generate dot format representation of dominators
+  std::string GetNodeName( ControlFlow* node ) const;
 
  private:
   std::map<ControlFlow*,DominatorSet> dominators_;

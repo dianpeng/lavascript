@@ -1079,8 +1079,6 @@ GraphBuilder::StopReason
 GraphBuilder::BuildLoopBody( BytecodeIterator* itr , ControlFlow* loop_header ) {
   Loop*       body        = NULL;
   LoopExit*   exit        = NULL;
-  IfTrue*     if_true     = IfTrue::New(graph_);
-  IfFalse*    if_false    = IfFalse::New(graph_);
   Region*     after       = Region::New(graph_);
 
   BytecodeLocation cont_pc;
@@ -1116,17 +1114,15 @@ GraphBuilder::BuildLoopBody( BytecodeIterator* itr , ControlFlow* loop_header ) 
                                       //        region may changed due to new basic block creation
 
     body->AddBackwardEdge(loop_header);
-    body->AddBackwardEdge(if_true);
-    if_true->AddBackwardEdge(exit);
+    body->AddBackwardEdge(exit);
 
     // Only link the if_false edge back to loop header when it is actually a
     // loop header type. During OSR compilation , since we don't have a real
     // loop header , so we don't need to link it back
     if(loop_header->IsLoopHeader())
-      if_false->AddBackwardEdge(loop_header);
+      after->AddBackwardEdge(loop_header);
 
-    if_false->AddBackwardEdge(exit);
-    after->AddBackwardEdge(if_false);
+    after->AddBackwardEdge(exit);
 
     // skip the last end instruction
     itr->Move();

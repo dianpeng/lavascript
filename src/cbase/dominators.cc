@@ -1,6 +1,7 @@
 #include "dominators.h"
 #include "hir.h"
 
+#include <sstream>
 #include <utility>
 #include <algorithm>
 
@@ -13,14 +14,14 @@ void Dominators::AddSet( DominatorSet* set , ControlFlow* node ) const {
   set->insert(itr,node);
 }
 
-void Dominators::UnionSet( DominatorSet* set , const DominatorSet& another ) const {
+void Dominators::IntersectSet( DominatorSet* set , const DominatorSet& another ) const {
   DominatorSet temp;
   std::set_intersection(set->begin(),set->end(),another.begin(),another.end(),
                                                                 std::back_inserter(temp));
   *set = std::move(temp);
 }
 
-void Dominators::UnionSet( DominatorSet* set , const DominatorSet& l ,
+void Dominators::IntersectSet( DominatorSet* set , const DominatorSet& l ,
                                                const DominatorSet& r ) const {
   std::set_intersection(l.begin(),l.end(),r.begin(),r.end(),std::back_inserter(*set));
 }
@@ -54,13 +55,18 @@ void Dominators::Build( const Graph& graph ) {
         temp.clear();
         for( auto pitr(n->backward_edge()->GetForwardIterator());
              pitr.HasNext() ; pitr.Move() ) {
-          UnionSet(&temp,*GetDomSet(pitr.value()));
+          if(temp.empty()) {
+            temp = *GetDomSet(pitr.value());
+          } else {
+            IntersectSet(&temp,*GetDomSet(pitr.value()));
+          }
         }
         AddSet(&temp,n);
 
         // check dominator set is same or not
-        has_change = (temp != *set);
-        if(has_change) set->swap(temp);
+        bool c = (temp != *set);
+        if(c) has_change = true;
+        if(c) set->swap(temp);
       }
     }
   } while(has_change);
@@ -77,13 +83,39 @@ Dominators::DominatorSet Dominators::GetCommonDominatorSet( ControlFlow* n1 ,
   DominatorSet temp;
   auto l = GetDominatorSet(n1);
   auto r = GetDominatorSet(n2);
-  UnionSet(&temp,l,r);
+  IntersectSet(&temp,l,r);
   return std::move(temp);
 }
 
 bool Dominators::IsDominator( ControlFlow* node , ControlFlow* dom ) const {
   auto set = GetDominatorSet(node);
   return std::binary_search(set.begin(),set.end(),dom);
+}
+
+std::string Dominators::GetNodeName(ControlFlow* node) const {
+  return ::lavascript::Format("%s_%d", node->type_name(), node->id());
+}
+
+std::string Dominators::PrintToDotFormat() const {
+  std::stringstream formatter;
+
+  formatter << "digraph dom {\n";
+  // 1. this pass generate all the *node* of the graph
+  for( auto &e : dominators_ ) {
+    formatter << "  " << GetNodeName(e.first) << "[color=red]\n";
+  }
+
+  // 2. this pass generate dominator relationship
+  for( auto &e : dominators_ ) {
+    auto &dset = e.second;
+    auto name  = GetNodeName(e.first);
+
+    for( auto &dom : dset ) {
+      formatter << "  " << name << " -> " << GetNodeName(dom) << "[color=grey style=dashed label=\"dom-by\"]\n";
+    }
+  }
+  formatter << "}\n";
+  return formatter.str();
 }
 
 } // namespace hir

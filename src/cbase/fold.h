@@ -20,14 +20,13 @@ class StaticTypeInference;
  * otherwise it will return the new node
  */
 
-Expr* FoldUnary  ( Graph* , Unary::Operator , Expr* ,
-                                                      const StaticTypeInference& ,
+Expr* FoldUnary  ( Graph* , Unary::Operator , Expr* , const StaticTypeInference& ,
                                                       const std::function<IRInfo* ()>& );
 
 Expr* FoldBinary ( Graph* , Binary::Operator, Expr* , Expr* , const std::function<IRInfo* ()>& );
 
 Expr* FoldTernary( Graph* , Expr* , Expr* , Expr* , const StaticTypeInference& ,
-                                                            const std::function<IRInfo* ()>& );
+                                                    const std::function<IRInfo* ()>& );
 
 Expr* FoldIntrinsicCall( Graph* , ICall* );
 

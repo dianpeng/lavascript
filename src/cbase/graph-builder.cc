@@ -923,6 +923,8 @@ GraphBuilder::BuildIf( BytecodeIterator* itr ) {
   ControlFlow* rhs      = NULL;
   Region*  merge        = Region::New(graph_);
 
+  if_region->set_merge(merge);
+
   VMState true_stack;
 
   std::uint16_t final_cursor;
@@ -1080,11 +1082,16 @@ GraphBuilder::BuildLoopBody( BytecodeIterator* itr , ControlFlow* loop_header ) 
   Loop*       body        = NULL;
   LoopExit*   exit        = NULL;
   Region*     after       = Region::New(graph_);
+  VMState     true_stack;
+
+  if(loop_header->IsLoopHeader()) loop_header->AsLoopHeader()->set_merge(after);
 
   BytecodeLocation cont_pc;
   BytecodeLocation brk_pc ;
 
   {
+    BackupState backup(&true_stack,this);
+
     LoopScope lscope(this,itr->pc());
 
     // create new loop body node
@@ -1145,6 +1152,11 @@ GraphBuilder::BuildLoopBody( BytecodeIterator* itr , ControlFlow* loop_header ) 
   }
 
   set_region(after);
+
+  // merge the loop header
+  InsertIfPhi(*stack_ , true_stack.stack , *upvalue_ , true_stack.upvalue ,
+                                                       after,
+                                                       itr->bytecode_location());
   return STOP_SUCCESS;
 }
 
@@ -1612,7 +1624,6 @@ bool GraphBuilder::Build( const Handle<Prototype>& entry , Graph* graph ) {
 
     {
       Phi* return_value = Phi::New(graph_,succ,NULL);
-      succ->set_return_value(return_value);
 
       for( auto &e : func_info().return_list ) {
         return_value->AddOperand(e->AsReturn()->value());

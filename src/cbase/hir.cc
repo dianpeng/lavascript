@@ -83,6 +83,37 @@ bool ICall::Equal( const Expr* that ) const {
   return false;
 }
 
+void ControlFlow::Replace( ControlFlow* node ) {
+  // 1. transfer all *use* node
+  for( auto itr = ref_list_.GetForwardIterator(); itr.HasNext() ; itr.Move() ) {
+    itr.value().id.set_value(node);
+  }
+
+  // 2. transfer all the backward and forward edge to |node|
+  node->forward_edge ()->Append(forward_edge());
+  node->backward_edge()->Append(backward_edge());
+}
+
+void ControlFlow::RemoveBackwardEdge( ControlFlow* node ) {
+  auto itr = backward_edge()->Find(node);
+  lava_verify(itr.HasNext());
+  backward_edge()->Remove(itr);
+}
+
+void ControlFlow::RemoveForwardEdge( ControlFlow* node ) {
+  auto itr = forward_edge()->Find(node);
+  lava_verify(itr.HasNext());
+  forward_edge()->Remove(itr);
+}
+
+void ControlFlow::MoveStatement( ControlFlow* cf ) {
+  for( auto itr(cf->statement_list()->GetForwardIterator());
+       itr.HasNext(); itr.Move() ) {
+    auto n = itr.value();
+    AddStatement(n);
+  }
+}
+
 void Graph::Initialize( Start* start , End* end ) {
   start_ = start;
   end_   = end;
@@ -91,6 +122,13 @@ void Graph::Initialize( Start* start , End* end ) {
 void Graph::Initialize( OSRStart* start , OSREnd* end ) {
   start_ = start;
   end_   = end;
+}
+
+void Graph::GetControlFlowNode( std::vector<ControlFlow*>* output ) const {
+  output->clear();
+  for( ControlFlowBFSIterator itr(*this) ; itr.HasNext() ; itr.Move() ) {
+    output->push_back(itr.value());
+  }
 }
 
 SetList::SetList( const Graph& graph ):
@@ -130,6 +168,22 @@ bool OnceList::Push( Node* node ) {
 
 void OnceList::Pop() {
   array_.pop_back();
+}
+
+bool ControlFlowBFSIterator::Move() {
+  while(!stack_.empty()) {
+    auto top = stack_.Top()->AsControlFlow();
+    stack_.Pop();
+
+    for( auto itr(top->forward_edge()->GetForwardIterator());
+         itr.HasNext() ; itr.Move() ) {
+      stack_.Push(itr.value());
+    }
+    next_ = top;
+    return true;
+  }
+  next_ = NULL;
+  return false;
 }
 
 namespace {
@@ -666,11 +720,6 @@ void DotGraphVisualizer::RenderExpr( const std::string& name , Expr* node ) {
           Indent(1) << name << " -> " << node_name << "[label=\"" << count
                                                                   << "\" color=pink style=bold]\n";
         }
-
-        auto bounded_region = phi->region();
-        auto bounded_region_name = GetNodeName(bounded_region);
-
-        Indent(1) << bounded_region_name << " -> " << name << "[color=gray style=bold]\n";
       }
       break;
 

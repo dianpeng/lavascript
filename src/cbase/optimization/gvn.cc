@@ -55,7 +55,7 @@ void GVNHashTable::Insert( Expr* node ) {
 bool GVN::Perform( Graph* graph , HIRPass::Flag flag ) {
   (void)flag;
 
-  ControlFlowPOIterator itr(*graph);
+  ControlFlowRPOIterator itr(*graph);
   GVNHashTable table;
   DynamicBitSet visited(graph->MaxID());
 
@@ -68,17 +68,18 @@ bool GVN::Perform( Graph* graph , HIRPass::Flag flag ) {
       auto expr = opr_itr.value();
 
       if(!visited[expr->id()]) {
-        // visit this expression with GVN and do GVN simplification
-        ExprDFSIterator expr_itr(*graph,expr);
-        for( ; expr_itr.HasNext(); expr_itr.Move() ) {
+
+        // number valuing
+        for( ExprDFSIterator expr_itr(*graph,expr) ;
+             expr_itr.HasNext(); expr_itr.Move() ) {
+
           auto subexpr = expr_itr.value();
           auto tar     = table.Find(subexpr);
 
           if(tar) {
             if(tar != subexpr) {
-              subexpr->Replace(tar); // okay, find a target, just replace the old one
-              if(tar == expr)
-                expr = subexpr;      // it is replaced, so use the replaced value
+              subexpr->Replace(tar);          // okay, find a target, just replace the old one
+              if(tar == expr) expr = subexpr; // it is replaced, so use the replaced value
             }
           } else {
             table.Insert(subexpr);

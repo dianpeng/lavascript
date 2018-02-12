@@ -26,12 +26,18 @@ void Dominators::IntersectSet( DominatorSet* set , const DominatorSet& l ,
   std::set_intersection(l.begin(),l.end(),r.begin(),r.end(),std::back_inserter(*set));
 }
 
-Dominators::DominatorSet* Dominators::GetDomSet( ControlFlow* node ) {
+Dominators::DominatorSet* Dominators::GetDomSet( const Graph& graph ,
+                                                 const std::vector<ControlFlow*>& cf ,
+                                                 ControlFlow* node ) {
   auto i = dominators_.find(node);
   if(i == dominators_.end()) {
     auto ret = dominators_.insert(std::make_pair(node,DominatorSet()));
     auto set = &(ret.first->second);
-    AddSet(set,node); // add itself
+    if(node == graph.start()) {
+      AddSet(set,node);
+    } else {
+      for( auto &e : cf ) AddSet(set,e);
+    }
     return set;
   } else {
     return &(i->second);
@@ -41,14 +47,19 @@ Dominators::DominatorSet* Dominators::GetDomSet( ControlFlow* node ) {
 void Dominators::Build( const Graph& graph ) {
   dominators_.clear(); // reset the dominators
 
+  std::vector<ControlFlow*> all_cf;
   bool has_change = false;
   DominatorSet temp;
   temp.reserve(64);
+
+  all_cf.reserve(64);
+  graph.GetControlFlowNode(&all_cf);
+
   do {
     has_change = false;
     for( ControlFlowRPOIterator itr(graph) ; itr.HasNext() ; itr.Move() ) {
       ControlFlow* n = itr.value();
-      DominatorSet* set = GetDomSet(n);
+      DominatorSet* set = GetDomSet(graph,all_cf,n);
 
       // iterate against this node's predecessor's
       {
@@ -56,9 +67,9 @@ void Dominators::Build( const Graph& graph ) {
         for( auto pitr(n->backward_edge()->GetForwardIterator());
              pitr.HasNext() ; pitr.Move() ) {
           if(temp.empty()) {
-            temp = *GetDomSet(pitr.value());
+            temp = *GetDomSet(graph,all_cf,pitr.value());
           } else {
-            IntersectSet(&temp,*GetDomSet(pitr.value()));
+            IntersectSet(&temp,*GetDomSet(graph,all_cf,pitr.value()));
           }
         }
         AddSet(&temp,n);
@@ -68,6 +79,7 @@ void Dominators::Build( const Graph& graph ) {
         if(c) has_change = true;
         if(c) set->swap(temp);
       }
+
     }
   } while(has_change);
 }
@@ -111,7 +123,9 @@ std::string Dominators::PrintToDotFormat() const {
     auto name  = GetNodeName(e.first);
 
     for( auto &dom : dset ) {
-      formatter << "  " << name << " -> " << GetNodeName(dom) << "[color=grey style=dashed label=\"dom-by\"]\n";
+      formatter << "  " << name << " -> "
+                                << GetNodeName(dom)
+                                << "[color=grey style=dashed]\n";
     }
   }
   formatter << "}\n";

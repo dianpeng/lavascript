@@ -138,6 +138,10 @@ template< typename T > class List : ZoneObject {
   void Clear() { size_ = 0; end_.Reset(); }
 
  public:
+  void Append( List* , ConstForwardIterator& );
+  void Append( List* list ) { Append(list,ConstForwardIterator(end(),end())); }
+
+ public:
   // resize the linked list to hold certain size/amount of nodes
   void Resize( Zone* , std::size_t );
 
@@ -148,21 +152,24 @@ template< typename T > class List : ZoneObject {
   // set a certain value to an index
   void Set( std::size_t , const T& );
 
-  ForwardIterator      FindIf( const std::function<bool (const ConstForwardIterator&) >& );
+  ForwardIterator      FindIf( const std::function<bool (ConstForwardIterator&) >& );
 
-  ConstForwardIterator FindIf( const std::function<bool (const ConstForwardIterator&) >& ) const;
+  ConstForwardIterator FindIf( const std::function<bool (ConstForwardIterator&) >& ) const;
 
   ForwardIterator      Find( const T& value ) {
-    return FindIf([value]( const ConstForwardIterator& itr ) { return itr.value() == value; });
+    return FindIf([value]( ConstForwardIterator& itr ) { return itr.value() == value; });
   }
 
   ConstForwardIterator Find( const T& value ) const {
-    return FindIf([value]( const ConstForwardIterator& itr ) { return itr.value() == value; });
+    return FindIf([value]( ConstForwardIterator& itr ) { return itr.value() == value; });
   }
 
  public:
   std::size_t size() const { return size_; }
   bool empty() const { return size() == 0; }
+
+ private:
+  ForwardIterator InsertNode( ConstForwardIterator& , NodeType* );
 
  private:
   NodeType* end() const {
@@ -187,11 +194,8 @@ typename List<T>::ForwardIterator List<T>::PopBack() {
 }
 
 template< typename T >
-typename List<T>::ForwardIterator List<T>::Insert( Zone* zone , ConstForwardIterator& iter ,
-                                                                const T& value ) {
-  lava_debug(NORMAL,lava_verify(iter.end_ == end()););
-  NodeType* node = zone->New<NodeType>(value);
-
+typename List<T>::ForwardIterator List<T>::InsertNode( ConstForwardIterator& iter ,
+                                                       NodeType* node ) {
   NodeType* pos = iter.iter_;
   NodeType* prev= pos->prev;
   prev->next = node;
@@ -200,6 +204,14 @@ typename List<T>::ForwardIterator List<T>::Insert( Zone* zone , ConstForwardIter
   pos->prev  = node;
   ++size_;
   return ForwardIterator(node,end());
+}
+
+template< typename T >
+typename List<T>::ForwardIterator List<T>::Insert( Zone* zone , ConstForwardIterator& iter ,
+                                                                const T& value ) {
+  lava_debug(NORMAL,lava_verify(iter.end_ == end()););
+  NodeType* node = zone->New<NodeType>(value);
+  return InsertNode(iter,node);
 }
 
 template< typename T >
@@ -215,6 +227,19 @@ typename List<T>::ForwardIterator List<T>::Remove( ConstForwardIterator& iter ) 
   // Notes: We use pos node which is deleted here. This is Okay since
   //        zone allocator doesn't really deaclloate memory
   return ForwardIterator(pos->next,end());
+}
+
+template< typename T >
+void List<T>::Append( List<T>* another , ConstForwardIterator& pos ) {
+  auto p = pos;
+  auto itr(another->GetForwardIterator());
+  while( itr.HasNext() ) {
+    auto node = itr.iter_;
+    itr.Move(); // move first since node will be relinked
+
+    p = InsertNode(p,node);
+    p.Move();
+  }
 }
 
 template< typename T >

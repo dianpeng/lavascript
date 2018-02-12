@@ -40,7 +40,7 @@ class Dominators {
   void AddSet  ( DominatorSet* , ControlFlow* ) const;
   void IntersectSet( DominatorSet* , const DominatorSet& ) const;
   void IntersectSet( DominatorSet* , const DominatorSet& , const DominatorSet& ) const;
-  DominatorSet* GetDomSet( ControlFlow* );
+  DominatorSet* GetDomSet( const Graph& , const std::vector<ControlFlow*>& , ControlFlow* );
 
  private: // Helper to generate dot format representation of dominators
   std::string GetNodeName( ControlFlow* node ) const;

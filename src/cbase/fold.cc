@@ -413,20 +413,20 @@ Expr* FoldICall( Graph* graph , ICall* node ) {
 } // namespace
 
 Expr* FoldUnary  ( Graph* graph , Unary::Operator op , Expr* expr ,
-                                                               const StaticTypeInference& infer ,
-                                                               const std::function<IRInfo*()>& irinfo ) {
+                                                       const StaticTypeInference& infer ,
+                                                       const std::function<IRInfo*()>& irinfo ) {
   return Fold(graph,op,expr,infer,irinfo);
 }
 
 Expr* FoldBinary ( Graph* graph , Binary::Operator op , Expr* lhs ,
-                                                                Expr* rhs ,
-                                                                const std::function<IRInfo* ()>& irinfo ) {
+                                                        Expr* rhs ,
+                                                        const std::function<IRInfo* ()>& irinfo ) {
   return Fold(graph,op,lhs,rhs,irinfo);
 }
 
 Expr* FoldTernary( Graph* graph , Expr* cond , Expr* lhs , Expr* rhs ,
-                                                                   const StaticTypeInference& infer ,
-                                                                   const std::function<IRInfo*()>& irinfo) {
+                                                           const StaticTypeInference& infer ,
+                                                           const std::function<IRInfo*()>& irinfo) {
   return Fold(graph,cond,lhs,rhs,infer,irinfo);
 }
 

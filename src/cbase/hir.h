@@ -1264,12 +1264,7 @@ class Phi : public Expr {
   // and by this we can easily decide which region contributs
   // to a certain input node of Phi node
   ControlFlow* region() const { return region_; }
-
-  Phi( Graph* graph , std::uint32_t id , ControlFlow* region , IRInfo* info ):
-    Expr           (IRTYPE_PHI,id,graph,info),
-    region_        (region)
-  {}
-
+  inline Phi( Graph* , std::uint32_t , ControlFlow* , IRInfo* );
  private:
   ControlFlow* region_;
   LAVA_DISALLOW_COPY_AND_ASSIGN(Phi)
@@ -1862,7 +1857,6 @@ class Unbox : public Expr {
 // -------------------------------------------------------------------------
 class ControlFlow : public Node {
  public:
-
   const RegionList* backward_edge() const {
     return &backward_edge_;
   }
@@ -1871,10 +1865,20 @@ class ControlFlow : public Node {
     return &backward_edge_;
   }
 
+  // special case that only one backward edge we have
+  ControlFlow* parent() const {
+    lava_debug(NORMAL,lava_verify(backward_edge()->size() == 1););
+    return backward_edge()->First();
+  }
+
   void AddBackwardEdge( ControlFlow* edge ) {
     AddBackwardEdgeImpl(edge);
     edge->AddForwardEdgeImpl(this);
   }
+
+  void RemoveBackwardEdge( ControlFlow* );
+
+  void ClearBackwardEdge () { backward_edge()->Clear(); }
 
   const RegionList* forward_edge() const {
     return &forward_edge_;
@@ -1888,6 +1892,10 @@ class ControlFlow : public Node {
     AddForwardEdgeImpl(edge);
     edge->AddBackwardEdgeImpl(this);
   }
+
+  void RemoveForwardEdge( ControlFlow* edge );
+
+  void ClearForwardEdge () { forward_edge()->Clear(); }
 
   const RegionRefList* ref_list() const {
     return &ref_list_;
@@ -1927,6 +1935,8 @@ class ControlFlow : public Node {
     statement_list()->Remove(ee.iterator);
   }
 
+  void MoveStatement( ControlFlow* );
+
   // OperandList
   //
   // All control flow's related data input should be stored via this list
@@ -1945,6 +1955,22 @@ class ControlFlow : public Node {
     auto itr = operand_list()->PushBack(zone(),node);
     node->AddRef(this,itr);
   }
+
+ public:
+
+  /**
+   * This function will replace |this| node with another control flow
+   * node.
+   *
+   * NOTES:
+   *
+   * The replace function will only take care of the control flow edge.
+   * As with statement list and operand list , they will not be covered
+   * in this function
+   */
+  virtual void Replace( ControlFlow* );
+
+ public:
 
   ControlFlow( IRType type , std::uint32_t id , Graph* graph , ControlFlow* parent = NULL ):
     Node(type,id,graph),
@@ -1978,7 +2004,6 @@ class ControlFlow : public Node {
   LAVA_DISALLOW_COPY_AND_ASSIGN(ControlFlow)
 };
 
-
 class Region : public ControlFlow {
  public:
   inline static Region* New( Graph* );
@@ -2008,11 +2033,15 @@ class LoopHeader : public ControlFlow {
     AddOperand(condition);
   }
 
+  ControlFlow* merge() const { return merge_; }
+  void set_merge( ControlFlow* merge ) { merge_ = merge; }
+
   LoopHeader( Graph* graph , std::uint32_t id , ControlFlow* region ):
     ControlFlow(IRTYPE_LOOP_HEADER,id,graph,region)
   {}
 
  private:
+  ControlFlow* merge_;
   LAVA_DISALLOW_COPY_AND_ASSIGN(LoopHeader);
 };
 
@@ -2074,13 +2103,18 @@ class If : public ControlFlow {
   inline static If* New( Graph* , Expr* , ControlFlow* );
   Expr* condition() const { return operand_list()->First(); }
 
+  ControlFlow* merge() const { return merge_; }
+  void set_merge( ControlFlow* merge ) { merge_ = merge; }
+
   If( Graph* graph , std::uint32_t id , Expr* cond , ControlFlow* region ):
-    ControlFlow(IRTYPE_IF,id,graph,region)
+    ControlFlow(IRTYPE_IF,id,graph,region),
+    merge_(NULL)
   {
     AddOperand(cond);
   }
 
  private:
+  ControlFlow* merge_;
   LAVA_DISALLOW_COPY_AND_ASSIGN(If)
 };
 
@@ -2099,8 +2133,8 @@ class IfTrue : public ControlFlow {
 
 class IfFalse: public ControlFlow {
  public:
-  inline static IfFalse * New( Graph* , ControlFlow* );
-  inline static IfFalse * New( Graph* );
+  inline static IfFalse* New( Graph* , ControlFlow* );
+  inline static IfFalse* New( Graph* );
 
   IfFalse( Graph* graph , std::uint32_t id , ControlFlow* region ):
     ControlFlow(IRTYPE_IF_FALSE,id,graph,region)
@@ -2148,13 +2182,8 @@ class Success : public ControlFlow {
 
   Expr* return_value() const { return operand_list()->First(); }
 
-  void set_return_value( Expr* return_value ) {
-    lava_debug(NORMAL,lava_verify(operand_list()->empty()););
-    AddOperand(return_value);
-  }
-
   Success( Graph* graph , std::uint32_t id ):
-    ControlFlow  (IRTYPE_END,id,graph)
+    ControlFlow  (IRTYPE_SUCCESS,id,graph)
   {}
 
  private:
@@ -2289,6 +2318,10 @@ class Graph {
     lava_debug(NORMAL,lava_verify(start_););
     return start_->IsOSRStart();
   }
+
+  // Get all control flow nodes
+  void GetControlFlowNode( std::vector<ControlFlow*>* ) const;
+
  public:
   std::uint32_t AddPrototypeInfo( const Handle<Prototype>& proto ,
       std::uint32_t base ) {
@@ -2376,6 +2409,32 @@ constexpr bool IsExprIterator() {
 }
 
 // -------------------------------------------------------------------------------------
+// A graph node visitor.
+//
+// Just a forward BFS iterator. This is a cheap way to iterate each node and its main
+// goal is to tell which control flow nodes are inside of the graph
+class ControlFlowBFSIterator: public ControlFlowIterator {
+ public:
+  ControlFlowBFSIterator( const Graph& graph ):
+    stack_(graph),
+    graph_(&graph),
+    next_ (NULL)
+  {
+    stack_.Push(graph.start());
+    Move();
+  }
+
+  bool HasNext() const { return next_ != NULL; }
+  bool Move();
+  ControlFlow* value() const { lava_debug(NORMAL,lava_verify(HasNext());); return next_; }
+
+ private:
+  OnceList     stack_;
+  const Graph* graph_;
+  ControlFlow* next_;
+};
+
+// -------------------------------------------------------------------------------------
 // A graph node post order iterator. It will only visit a node once all its children
 // are visited. Basically visit as many children as possible
 //
@@ -2393,9 +2452,7 @@ class ControlFlowPOIterator : public ControlFlowIterator {
   }
 
   bool HasNext() const { return next_ != NULL; }
-
   bool Move();
-
   ControlFlow* value() const { lava_debug(NORMAL,lava_verify(HasNext());); return next_; }
 
  private:
@@ -2824,6 +2881,13 @@ inline ItrDeref* ItrDeref::New( Graph* graph , Expr* operand , IRInfo* info ,
                                                                ControlFlow* region ) {
   auto ret = graph->zone()->New<ItrDeref>(graph,graph->AssignID(),operand,info);
   return ret;
+}
+
+inline Phi::Phi( Graph* graph , std::uint32_t id , ControlFlow* region , IRInfo* info ):
+  Expr           (IRTYPE_PHI,id,graph,info),
+  region_        (region)
+{
+  region->AddOperand(this);
 }
 
 inline Phi* Phi::New( Graph* graph , Expr* lhs , Expr* rhs , ControlFlow* region ,

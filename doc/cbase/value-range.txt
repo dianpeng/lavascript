@@ -1,0 +1,33 @@
+Value range is a normal algebra system that is used to do simple inference against all variable
+in domain of float64. Because we are in float64 , we have several important precondition as our
+therom :
+
+  1) a > b and b > c ==> a > c
+  2) a > b and a > c ==> a > max(b,c)
+  3) a < b and a < c ==> a < min(b,c)
+
+The basic idea of this value range is to form a logical system with existed observed knowledge and
+then ask question against this logic system for inference and deduction. This system is mainly used
+inside of the DCE phase to remove potentially redundant branch and GVN to simplify expressions
+
+if((a > 10 && a < 20 &&b)) {
+  if(a > 8) { // this a > 8 --> true always due to the (10,20)
+  }
+}
+
+a > 10 : (-@,+@) ^ (10,+@) = (10,+@)
+a < 20 : (10,+@) ^ (-@,20) = (10,20)
+
+b      : b is true
+
+a > 8  : (8,+@) >= (10,20) ==> true (first order logic)
+
+
+if(a > 10 || a < -2) {
+  if(a < -4) {
+  }
+}
+
+a ==> (10,+@) , (-@,-2)
+
+a < -4 => (-@,-4) doesn't contain a's set, so the result is unknown

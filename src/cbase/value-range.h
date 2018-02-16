@@ -1,0 +1,4 @@
+#ifndef CBASE_VALUE_RANGE_H_
+#define CBASE_VALUE_RANGE_H_
+
+#endif // CBASE_VALUE_RANGE_H_

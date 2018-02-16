@@ -61,6 +61,8 @@ struct PrototypeInfo : zone::ZoneObject {
   {}
 };
 
+// High level HIR node. Used to describe unttyped polymorphic
+// operations
 #define CBASE_IR_EXPRESSION_HIGH(__)            \
   /* const    */                                \
   __(Float64,FLOAT64,"float64",true)            \
@@ -114,24 +116,25 @@ struct PrototypeInfo : zone::ZoneObject {
   __(StackSlot ,STACK_SLOT, "stackslot",false)  \
   __(UValSlot  ,UVAL_SLOT , "uvalslot" ,false)
 
+// Low level HIR node and they are fully typped or partially typped
+
 /**
- * These are low level primitives ir node. It is used when speculative
- * execution can be applied and corresponding guard node needs to be
- * added properly.
- * If we cannot use speculative execution, then the normal execution will
- * be used , which corresponds to the normal Binary/Unary or IGet/ISet
- * and PGet/PSet.
- * When doing code gen, these high level ir node corresponds to JIT code
- * helper routine but low level ir node is totally different
+ * These arithmetic and compare node are used to do typed arithmetic
+ * or compare operations. It is used after we do speculative type guess.
+ *
+ * The node takes typped input and generate typped output. The value it
+ * generates are *NOT BOXED*.
  */
-#define CBASE_IR_EXPRESSION_LOW(__)                                   \
+#define CBASE_IR_EXPRESSION_LOW_ARITHMETIC_AND_COMPARE(__)            \
   __(Float64Negate,FLOAT64_NEGATE,"float64_negate",false)             \
   __(Float64Binary,FLOAT64_BINARY,"float64_binary",false)             \
   __(StringCompare,STRING_COMPARE,"string_compare",false)             \
   __(SStringEq,SSTRING_EQ,"sstring_eq",false)                         \
   __(SStringNe,SSTRING_NE,"sstring_ne",false)                         \
   __(ExtensionLBinary,EXTENSION_LBINARY,"extension_lbinary",false)    \
-  __(ExtensionRBinary,EXTENSION_RBINARY,"extension_rbinary",false)    \
+  __(ExtensionRBinary,EXTENSION_RBINARY,"extension_rbinary",false)
+
+#define CBASE_IR_EXPRESSION_LOW_PROPERTY(__)                          \
   __(ObjectGet    ,OBJECT_GET    ,"object_get"   ,false)              \
   __(ObjectSet    ,OBJECT_SET    ,"object_set"   ,false)              \
   __(ListGet      ,LIST_GET      ,"list_get"     ,false)              \
@@ -139,9 +142,13 @@ struct PrototypeInfo : zone::ZoneObject {
   __(ExtensionGet ,EXTENSION_GET ,"extension_get",false)              \
   __(ExtensionSet ,EXTENSION_SET ,"extension_set",false)
 
+// All the low HIR nodes
+#define CBASE_IR_EXPRESSION_LOW(__)                                   \
+  CBASE_IR_EXPRESSION_LOW_ARITHMETIC_AND_COMPARE(__)                  \
+  CBASE_IR_EXPRESSION_LOW_PROPERTY(__)
 
+// Guard conditional node , used to do type guess or speculative inline
 #define CBASE_IR_EXPRESSION_TEST(__)                                  \
-  /* test , used for guarding */                                      \
   __(TestType    ,TEST_TYPE      ,"test_type"      , false)           \
   __(TestListOOB ,TEST_LISTOOB   ,"test_listobb"   , false)
 
@@ -161,12 +168,14 @@ struct PrototypeInfo : zone::ZoneObject {
   __(Box,BOX,"box",false)                       \
   __(Unbox,UNBOX,"unbox",false)
 
+// All the expression IR nodes
 #define CBASE_IR_EXPRESSION(__)                 \
   CBASE_IR_EXPRESSION_HIGH(__)                  \
   CBASE_IR_EXPRESSION_LOW (__)                  \
   CBASE_IR_EXPRESSION_TEST(__)                  \
   CBASE_IR_BOXOP(__)
 
+// All the control flow IR nodes
 #define CBASE_IR_CONTROL_FLOW(__)               \
   __(Start,START,"start",false)                 \
   __(End,END  , "end" ,false)                   \

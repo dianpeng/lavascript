@@ -211,6 +211,9 @@ class GraphBuilder {
   template< typename T , typename ...ARGS >
   Expr* NewNodeWithTypeFeedback( TypeKind tk , ARGS ...args );
 
+  template< typename T , typename ...ARGS >
+  Expr* NewBoxedNodeWithTypeFeedback( TypeKind tk , IRInfo* , ARGS ...args );
+
  private: // Constant handling
   Expr* NewConstNumber( std::int32_t , const interpreter::BytecodeLocation& );
   Expr* NewConstNumber( std::int32_t );

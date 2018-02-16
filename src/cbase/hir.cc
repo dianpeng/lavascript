@@ -517,9 +517,8 @@ void DotGraphVisualizer::RenderExpr( const std::string& name , Expr* node ) {
       }
       break;
     case IRTYPE_BINARY:
-    case IRTYPE_FLOAT64_BINARY:
-    case IRTYPE_EXTENSION_LBINARY:
-    case IRTYPE_EXTENSION_RBINARY:
+    case IRTYPE_FLOAT64_ARITHMETIC:
+    case IRTYPE_FLOAT64_COMPARE:
       {
         auto binary = static_cast<Binary*>(node);
 

@@ -33,6 +33,15 @@ class StaticTypeInference {
   StaticTypeInference() : type_vector_(kInitSize) {}
 
  public:
+  // Try to get the implicit type of this expression node. The
+  // implicit type is marked by the node type , like float64 node
+  // has type TPKIND_FLOAT64.
+  //
+  // This function should be called after we check we cannot get
+  // type inside of the type_vector_
+  static TypeKind GetImplicitType( Expr* );
+
+ public:
   // Add intrinsic function's type
   void AddIntrinsicCallType( ICall* );
 
@@ -41,16 +50,6 @@ class StaticTypeInference {
 
   // Get the type of this node
   TypeKind GetType( Expr* type ) const;
-
- private:
-
-  // Try to get the implicit type of this expression node. The
-  // implicit type is marked by the node type , like float64 node
-  // has type TPKIND_FLOAT64.
-  //
-  // This function should be called after we check we cannot get
-  // type inside of the type_vector_
-  TypeKind GetImplicitType( Expr* ) const;
 
  private:
   typedef std::vector<TypeKind> TypeVector;

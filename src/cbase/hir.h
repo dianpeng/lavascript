@@ -127,12 +127,11 @@ struct PrototypeInfo : zone::ZoneObject {
  */
 #define CBASE_IR_EXPRESSION_LOW_ARITHMETIC_AND_COMPARE(__)            \
   __(Float64Negate,FLOAT64_NEGATE,"float64_negate",false)             \
-  __(Float64Binary,FLOAT64_BINARY,"float64_binary",false)             \
+  __(Float64Arithmetic,FLOAT64_ARITHMETIC,"float64_arithmetic",false) \
+  __(Float64Compare,FLOAT64_COMPARE,"float64_compare",false)          \
   __(StringCompare,STRING_COMPARE,"string_compare",false)             \
   __(SStringEq,SSTRING_EQ,"sstring_eq",false)                         \
   __(SStringNe,SSTRING_NE,"sstring_ne",false)                         \
-  __(ExtensionLBinary,EXTENSION_LBINARY,"extension_lbinary",false)    \
-  __(ExtensionRBinary,EXTENSION_RBINARY,"extension_rbinary",false)
 
 #define CBASE_IR_EXPRESSION_LOW_PROPERTY(__)                          \
   __(ObjectGet    ,OBJECT_GET    ,"object_get"   ,false)              \
@@ -824,16 +823,17 @@ class Binary : public Expr {
     AND,
     OR
   };
+
   inline static bool        IsComparisonOperator( Operator );
   inline static bool        IsArithmeticOperator( Operator );
   inline static bool        IsLogicOperator     ( Operator );
   inline static Operator    BytecodeToOperator( interpreter::Bytecode );
   inline static const char* GetOperatorName( Operator );
 
+ public:
   // Create a binary node
   inline static Binary* New( Graph* , Expr* , Expr* , Operator , IRInfo* );
 
- public:
   Expr*   lhs() const { return operand_list()->First(); }
   Expr*   rhs() const { return operand_list()->Last (); }
   Operator op() const { return op_;  }
@@ -1620,24 +1620,47 @@ class Float64Negate  : public Expr {
   LAVA_DISALLOW_COPY_AND_ASSIGN(Float64Negate)
 };
 
-class Float64Binary : public Binary {
+class Float64Arithmetic : public Binary {
  public:
   using Binary::Operator;
 
-  inline static Float64Binary* New( Graph* , Expr*, Expr*,
-                                                    Operator,
-                                                    IRInfo* );
+  inline static Float64Arithmetic* New( Graph* , Expr*, Expr*,
+                                                        Operator,
+                                                        IRInfo* );
 
-  Float64Binary( Graph* graph , std::uint32_t id , Expr* lhs,
-                                                   Expr* rhs,
-                                                   Operator op,
-                                                   IRInfo* info ):
-    Binary(IRTYPE_FLOAT64_BINARY,graph,id,lhs,rhs,op,info)
-  {}
+  Float64Arithmetic( Graph* graph , std::uint32_t id , Expr* lhs,
+                                                       Expr* rhs,
+                                                       Operator op,
+                                                       IRInfo* info ):
+    Binary(IRTYPE_FLOAT64_ARITHMETIC,graph,id,lhs,rhs,op,info)
+  {
+    lava_debug(NORMAL,lava_verify(Binary::IsArithmeticOperator(op)););
+  }
 
  private:
 
-  LAVA_DISALLOW_COPY_AND_ASSIGN(Float64Binary)
+  LAVA_DISALLOW_COPY_AND_ASSIGN(Float64Arithmetic)
+};
+
+class Float64Compare : public Binary {
+ public:
+  using Binary::Operator;
+
+  inline static Float64Compare* New( Graph* , Expr* , Expr* ,
+                                                      Operator,
+                                                      IRInfo* );
+
+  Float64Compare( Graph* graph , std::uint32_t id , Expr* lhs ,
+                                                    Expr* rhs ,
+                                                    Operator op ,
+                                                    IRInfo* info ):
+    Binary(IRTYPE_FLOAT64_COMPARE,graph,id,lhs,rhs,op,info)
+  {
+    lava_debug(NORMAL,lava_verify(Binary::IsComparisonOperator(op)););
+  }
+
+ private:
+  LAVA_DISALLOW_COPY_AND_ASSIGN(Float64Compare)
 };
 
 class StringCompare : public Binary {
@@ -1684,44 +1707,6 @@ class SStringNe : public Binary {
                                                IRInfo* info ):
     Binary(IRTYPE_SSTRING_EQ,graph,id,lhs,rhs,Binary::NE,info)
   {}
-};
-
-class ExtensionLBinary : public Binary {
- public:
-  using Binary::Operator;
-
-  inline static ExtensionLBinary* New( Graph* , Expr* , Expr* ,
-                                                        Operator ,
-                                                        IRInfo* );
-
-  ExtensionLBinary( Graph* graph , std::uint32_t id , Expr* lhs ,
-                                                      Expr* rhs ,
-                                                      Operator op,
-                                                      IRInfo* info ):
-    Binary(IRTYPE_EXTENSION_LBINARY,graph,id,lhs,rhs,op,info)
-  {}
-
- private:
-  LAVA_DISALLOW_COPY_AND_ASSIGN(ExtensionLBinary)
-};
-
-class ExtensionRBinary : public Binary {
- public:
-  using Binary::Operator;
-
-  inline static ExtensionRBinary* New( Graph* , Expr* , Expr* ,
-                                                        Operator ,
-                                                        IRInfo* );
-
-  ExtensionRBinary( Graph* graph , std::uint32_t id , Expr* lhs ,
-                                                      Expr* rhs ,
-                                                      Operator op,
-                                                      IRInfo* info ):
-    Binary(IRTYPE_EXTENSION_RBINARY,graph,id,lhs,rhs,op,info)
-  {}
-
- private:
-  LAVA_DISALLOW_COPY_AND_ASSIGN(ExtensionRBinary)
 };
 
 class ObjectGet : public PGet {
@@ -2961,10 +2946,18 @@ inline Float64Negate* Float64Negate::New( Graph* graph , Expr* opr , IRInfo* inf
   return graph->zone()->New<Float64Negate>(graph,graph->AssignID(),opr,info);
 }
 
-inline Float64Binary* Float64Binary::New( Graph* graph , Expr* lhs , Expr* rhs ,
-                                                                     Operator op,
-                                                                     IRInfo* info ) {
-  return graph->zone()->New<Float64Binary>(graph,graph->AssignID(),lhs,rhs,op,info);
+inline Float64Arithmetic* Float64Arithmetic::New( Graph* graph , Expr* lhs ,
+                                                                 Expr* rhs ,
+                                                                 Operator op,
+                                                                 IRInfo* info ) {
+  return graph->zone()->New<Float64Arithmetic>(graph,graph->AssignID(),lhs,rhs,op,info);
+}
+
+inline Float64Compare* Float64Compare::New( Graph* graph , Expr* lhs ,
+                                                           Expr* rhs ,
+                                                           Operator op,
+                                                           IRInfo* info ) {
+  return graph->zone()->New<Float64Compare>(graph,graph->AssignID(),lhs,rhs,op,info);
 }
 
 inline StringCompare* StringCompare::New( Graph* graph , Expr* lhs , Expr* rhs ,
@@ -2979,18 +2972,6 @@ inline SStringEq* SStringEq::New( Graph* graph , Expr* lhs , Expr* rhs , IRInfo*
 
 inline SStringNe* SStringNe::New( Graph* graph , Expr* lhs , Expr* rhs , IRInfo* info ) {
   return graph->zone()->New<SStringNe>(graph,graph->AssignID(),lhs,rhs,info);
-}
-
-inline ExtensionLBinary* ExtensionLBinary::New( Graph* graph , Expr* lhs , Expr* rhs ,
-                                                                           Operator op,
-                                                                           IRInfo* info ) {
-  return graph->zone()->New<ExtensionLBinary>(graph,graph->AssignID(),lhs,rhs,op,info);
-}
-
-inline ExtensionRBinary* ExtensionRBinary::New( Graph* graph , Expr* lhs , Expr* rhs ,
-                                                                           Operator op,
-                                                                           IRInfo* info ) {
-  return graph->zone()->New<ExtensionRBinary>(graph,graph->AssignID(),lhs,rhs,op,info);
 }
 
 inline ListGet* ListGet::New( Graph* graph , Expr* obj , Expr* index , IRInfo* info ) {

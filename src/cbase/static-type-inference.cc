@@ -8,18 +8,26 @@ namespace hir        {
 using namespace ::lavascript::interpreter;
 
 // Implicit type inference
-TypeKind StaticTypeInference::GetImplicitType( Expr* node ) const {
+TypeKind StaticTypeInference::GetImplicitType( Expr* node ) {
   switch(node->type()) {
-    case IRTYPE_FLOAT64:   return TPKIND_FLOAT64;
-    case IRTYPE_LONG_STRING:    return TPKIND_LONG_STRING;
-    case IRTYPE_SMALL_STRING:   return TPKIND_SMALL_STRING;
-    case IRTYPE_BOOLEAN:   return TPKIND_BOOLEAN;
-    case IRTYPE_NIL:       return TPKIND_NIL;
-    case IRTYPE_LIST:      return TPKIND_LIST;
-    case IRTYPE_OBJECT:    return TPKIND_OBJECT;
-    case IRTYPE_ITR_NEW:   return TPKIND_ITERATOR;
-    case IRTYPE_ITR_TEST:  return TPKIND_BOOLEAN ;
-    default:               return TPKIND_UNKNOWN;
+    case IRTYPE_FLOAT64:                     return TPKIND_FLOAT64;
+    case IRTYPE_LONG_STRING:                 return TPKIND_LONG_STRING;
+    case IRTYPE_SMALL_STRING:                return TPKIND_SMALL_STRING;
+    case IRTYPE_BOOLEAN:                     return TPKIND_BOOLEAN;
+    case IRTYPE_NIL:                         return TPKIND_NIL;
+    case IRTYPE_LIST:                        return TPKIND_LIST;
+    case IRTYPE_OBJECT:                      return TPKIND_OBJECT;
+    case IRTYPE_ITR_NEW:                     return TPKIND_ITERATOR;
+    case IRTYPE_ITR_TEST:                    return TPKIND_BOOLEAN ;
+
+    // lower HIR type translation
+    case IRTYPE_FLOAT64_NEGATE:              return TPKIND_FLOAT64;
+    case IRTYPE_FLOAT64_ARITHMETIC:          return TPKIND_FLOAT64;
+    case IRTYPE_FLOAT64_COMPARE:             return TPKIND_FLOAT64;
+    case IRTYPE_STRING_COMPARE:              return TPKIND_BOOLEAN;
+    case IRTYPE_SSTRING_EQ:                  return TPKIND_BOOLEAN;
+    case IRTYPE_SSTRING_NE:                  return TPKIND_BOOLEAN;
+    default:                                 return TPKIND_UNKNOWN;
   }
 }
 

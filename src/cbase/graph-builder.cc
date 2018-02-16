@@ -239,6 +239,13 @@ Expr* GraphBuilder::NewNodeWithTypeFeedback( TypeKind tk , ARGS ...args ) {
   return node;
 }
 
+template< typename T , typename ...ARGS >
+Expr* GraphBuilder::NewBoxedNodeWithTypeFeedback( TypeKind tk , IRInfo* irinfo ,
+                                                                ARGS ...args ) {
+  auto n = NewNodeWithTypeFeedback<T>(tk,args...);
+  return Box::New(graph_,n,tk,irinfo);
+}
+
 Guard* GraphBuilder::NewGuard( Expr* tester , const BytecodeLocation& pc ) {
   /**
    * A guard is essentially a if else branch with following pattern :
@@ -338,7 +345,9 @@ Expr* GraphBuilder::TrySpeculativeUnary( Expr* node , Unary::Operator op ,
         // generate speculative unary operation for float64 type
         auto ir_info = NewIRInfo(pc);
         NewTypeTestGuardIfNeed(TPKIND_FLOAT64,node,ir_info,pc);
-        return NewNodeWithTypeFeedback<Float64Negate>(TPKIND_FLOAT64,node,ir_info);
+        return NewBoxedNodeWithTypeFeedback<Float64Negate>(TPKIND_FLOAT64,ir_info,
+                                                                          node,
+                                                                          ir_info);
       }
     }
   }
@@ -416,15 +425,11 @@ Expr* GraphBuilder::TrySpeculativeBinary( Expr* lhs , Expr* rhs , Binary::Operat
           // type test both operands, not just only one
           NewTypeTestGuardIfNeed(TPKIND_FLOAT64,lhs,ir_info,pc);
           NewTypeTestGuardIfNeed(TPKIND_FLOAT64,rhs,ir_info,pc);
-          return NewNodeWithTypeFeedback<Float64Binary>(TPKIND_FLOAT64,lhs,rhs,op,ir_info);
-        } else if(lhs_val.IsExtension()) {
-          auto ir_info = NewIRInfo(pc);
-          NewTypeTestGuardIfNeed(TPKIND_EXTENSION,lhs,ir_info,pc);
-          return NewNodeWithTypeFeedback<ExtensionLBinary>(TPKIND_EXTENSION,lhs,rhs,op,ir_info);
-        } else if(rhs_val.IsExtension()) {
-          auto ir_info = NewIRInfo(pc);
-          NewTypeTestGuardIfNeed(TPKIND_EXTENSION,rhs,ir_info,pc);
-          return NewNodeWithTypeFeedback<ExtensionRBinary>(TPKIND_EXTENSION,lhs,rhs,op,ir_info);
+          return NewBoxedNodeWithTypeFeedback<Float64Arithmetic>(TPKIND_FLOAT64,ir_info,
+                                                                                lhs,
+                                                                                rhs,
+                                                                                op,
+                                                                                ir_info);
         }
         break;
       case Binary::LT: case Binary::LE: case Binary::GT:
@@ -433,7 +438,11 @@ Expr* GraphBuilder::TrySpeculativeBinary( Expr* lhs , Expr* rhs , Binary::Operat
           auto ir_info = NewIRInfo(pc);
           NewTypeTestGuardIfNeed(TPKIND_FLOAT64,lhs,ir_info,pc);
           NewTypeTestGuardIfNeed(TPKIND_FLOAT64,rhs,ir_info,pc);
-          return NewNodeWithTypeFeedback<Float64Binary>(TPKIND_BOOLEAN,lhs,rhs,op,ir_info);
+          return NewBoxedNodeWithTypeFeedback<Float64Compare>(TPKIND_BOOLEAN,ir_info,
+                                                                             lhs,
+                                                                             rhs,
+                                                                             op,
+                                                                             ir_info);
         } else if(lhs_val.IsString() && rhs_val.IsString()) {
           auto ir_info = NewIRInfo(pc);
           if((lhs_val.IsSSO() && rhs_val.IsSSO()) && (op == Binary::EQ || op == Binary::NE)) {
@@ -449,14 +458,6 @@ Expr* GraphBuilder::TrySpeculativeBinary( Expr* lhs , Expr* rhs , Binary::Operat
             NewTypeTestGuardIfNeed(TPKIND_STRING,rhs,ir_info,pc);
             return NewNodeWithTypeFeedback<StringCompare>(TPKIND_BOOLEAN,lhs,rhs,op,ir_info);
           }
-        } else if(lhs_val.IsExtension()) {
-          auto ir_info = NewIRInfo(pc);
-          NewTypeTestGuardIfNeed(TPKIND_EXTENSION,lhs,ir_info,pc);
-          return NewNodeWithTypeFeedback<ExtensionLBinary>(TPKIND_EXTENSION,lhs,rhs,op,ir_info);
-        } else if(rhs_val.IsExtension()) {
-          auto ir_info = NewIRInfo(pc);
-          NewTypeTestGuardIfNeed(TPKIND_EXTENSION,rhs,ir_info,pc);
-          return NewNodeWithTypeFeedback<ExtensionRBinary>(TPKIND_EXTENSION,lhs,rhs,op,ir_info);
         }
         break;
 

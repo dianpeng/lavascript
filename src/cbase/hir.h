@@ -1,6 +1,7 @@
 #ifndef CBASE_HIR_H_
 #define CBASE_HIR_H_
 #include "type.h"
+#include "static-type-inference.h"
 
 #include "src/config.h"
 #include "src/util.h"
@@ -128,6 +129,7 @@ struct PrototypeInfo : zone::ZoneObject {
 #define CBASE_IR_EXPRESSION_LOW_ARITHMETIC_AND_COMPARE(__)            \
   __(Float64Negate,FLOAT64_NEGATE,"float64_negate",false)             \
   __(Float64Arithmetic,FLOAT64_ARITHMETIC,"float64_arithmetic",false) \
+  __(Float64Bitwise,FLOAT64_BITWISE,"float64_bitwise",false)          \
   __(Float64Compare,FLOAT64_COMPARE,"float64_compare",false)          \
   __(StringCompare,STRING_COMPARE,"string_compare",false)             \
   __(SStringEq,SSTRING_EQ,"sstring_eq",false)                         \
@@ -821,11 +823,21 @@ class Binary : public Expr {
     EQ ,
     NE ,
     AND,
-    OR
+    OR ,
+
+    // bitwise operators , used during the lower phase
+    BAND,
+    BOR ,
+    BXOR,
+    BSHL,
+    BSHR,
+    BROL,
+    BROR
   };
 
   inline static bool        IsComparisonOperator( Operator );
   inline static bool        IsArithmeticOperator( Operator );
+  inline static bool        IsBitwiseOperator   ( Operator );
   inline static bool        IsLogicOperator     ( Operator );
   inline static Operator    BytecodeToOperator( interpreter::Bytecode );
   inline static const char* GetOperatorName( Operator );
@@ -1642,6 +1654,28 @@ class Float64Arithmetic : public Binary {
   LAVA_DISALLOW_COPY_AND_ASSIGN(Float64Arithmetic)
 };
 
+class Float64Bitwise: public Binary {
+ public:
+  using Binary::Operator;
+
+  inline static Float64Bitwise* New( Graph* , Expr*, Expr*,
+                                                     Operator,
+                                                     IRInfo* );
+
+  Float64Bitwise( Graph* graph , std::uint32_t id , Expr* lhs,
+                                                    Expr* rhs,
+                                                    Operator op,
+                                                    IRInfo* info ):
+    Binary(IRTYPE_FLOAT64_BITWISE,graph,id,lhs,rhs,op,info)
+  {
+    lava_debug(NORMAL,lava_verify(Binary::IsBitwiseOperator(op)););
+  }
+
+ private:
+
+  LAVA_DISALLOW_COPY_AND_ASSIGN(Float64Bitwise)
+};
+
 class Float64Compare : public Binary {
  public:
   using Binary::Operator;
@@ -2285,14 +2319,7 @@ class OSREnd : public ControlFlow {
 // ========================================================
 class Graph {
  public:
-  Graph():
-    zone_          (),
-    start_         (NULL),
-    end_           (NULL),
-    prototype_info_(),
-    id_            ()
-  {}
-
+  inline Graph();
   // initialize the *graph* object with start and end
   void Initialize( Start* start    , End* end );
   void Initialize( OSRStart* start , OSREnd* end  );
@@ -2326,6 +2353,12 @@ class Graph {
   const PrototypeInfo& GetProrotypeInfo( std::uint32_t index ) const {
     return prototype_info_[index];
   }
+ public: // static type inference
+  StaticTypeInference* static_type_inference()
+  { return &static_type_inference_; }
+
+  const StaticTypeInference* static_type_inference() const
+  { return &static_type_inference_; }
 
  public: // static helper function
 
@@ -2346,6 +2379,7 @@ class Graph {
 
   zone::Vector<PrototypeInfo> prototype_info_;
   std::uint32_t               id_;
+  StaticTypeInference         static_type_inference_;
 
   friend class GraphBuilder;
   LAVA_DISALLOW_COPY_AND_ASSIGN(Graph)
@@ -2728,6 +2762,15 @@ inline bool Binary::IsArithmeticOperator( Operator op ) {
   }
 }
 
+inline bool Binary::IsBitwiseOperator( Operator op ) {
+  switch(op) {
+    case BAND: case BOR: case BXOR: case BSHL: case BSHR: case BROL: case BROR:
+      return true;
+    default:
+      return false;
+  }
+}
+
 inline bool Binary::IsLogicOperator( Operator op ) {
   return op == AND || op == OR;
 }
@@ -2759,6 +2802,7 @@ inline Binary::Operator Binary::BytecodeToOperator( interpreter::Bytecode op ) {
       lava_unreachF("unknown bytecode %s",interpreter::GetBytecodeName(op));
       break;
   }
+
   return ADD;
 }
 
@@ -2778,6 +2822,13 @@ inline const char* Binary::GetOperatorName( Operator op ) {
     case NE  :    return "ne" ;
     case AND :    return "and";
     case OR  :    return "or";
+    case BAND:    return "band";
+    case BOR :    return "bor";
+    case BXOR:    return "bxor";
+    case BSHL:    return "bshl";
+    case BSHR:    return "bshr";
+    case BROL:    return "brol";
+    case BROR:    return "bror";
     default:
       lava_die(); return NULL;
   }
@@ -2953,6 +3004,13 @@ inline Float64Arithmetic* Float64Arithmetic::New( Graph* graph , Expr* lhs ,
   return graph->zone()->New<Float64Arithmetic>(graph,graph->AssignID(),lhs,rhs,op,info);
 }
 
+inline Float64Bitwise* Float64Bitwise::New( Graph* graph , Expr* lhs ,
+                                                           Expr* rhs ,
+                                                           Operator op,
+                                                           IRInfo* info ) {
+  return graph->zone()->New<Float64Bitwise>(graph,graph->AssignID(),lhs,rhs,op,info);
+}
+
 inline Float64Compare* Float64Compare::New( Graph* graph , Expr* lhs ,
                                                            Expr* rhs ,
                                                            Operator op,
@@ -3106,6 +3164,33 @@ inline OSRStart* OSRStart::New( Graph* graph ) {
 inline OSREnd* OSREnd::New( Graph* graph , Success* s , Fail* f ) {
   return graph->zone()->New<OSREnd>(graph,graph->AssignID(),s,f);
 }
+
+inline Graph::Graph():
+  zone_                 (),
+  start_                (NULL),
+  end_                  (NULL),
+  prototype_info_       (),
+  id_                   (),
+  static_type_inference_()
+{}
+
+// ---------------------------------------------------------------------
+// Helper functions for creation of node
+// ---------------------------------------------------------------------
+template< typename T , typename ...ARGS >
+inline Expr* NewNodeWithTypeFeedback( Graph* graph , TypeKind tk , ARGS ...args ) {
+  auto node = T::New(graph,args...);
+  graph->static_type_inference()->AddType(node->id(),tk);
+  return node;
+}
+
+template< typename T , typename ...ARGS >
+inline Expr* NewBoxedNodeWithTypeFeedback( Graph* graph , TypeKind tk , IRInfo* irinfo ,
+                                                                        ARGS ...args ) {
+  auto n = NewNodeWithTypeFeedback<T>(graph,tk,args...);
+  return Box::New(graph,n,tk,irinfo);
+}
+
 
 } // namespace hir
 } // namespace cbase

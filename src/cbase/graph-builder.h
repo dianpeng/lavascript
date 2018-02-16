@@ -1,7 +1,6 @@
 #ifndef CBASE_GRAPH_BUILDER_H_
 #define CBASE_GRAPH_BUILDER_H_
 #include "hir.h"
-#include "static-type-inference.h"
 
 #include "src/objects.h"
 #include "src/zone/zone.h"
@@ -207,13 +206,6 @@ class GraphBuilder {
     func_info().region = new_region;
   }
 
- private:
-  template< typename T , typename ...ARGS >
-  Expr* NewNodeWithTypeFeedback( TypeKind tk , ARGS ...args );
-
-  template< typename T , typename ...ARGS >
-  Expr* NewBoxedNodeWithTypeFeedback( TypeKind tk , IRInfo* , ARGS ...args );
-
  private: // Constant handling
   Expr* NewConstNumber( std::int32_t , const interpreter::BytecodeLocation& );
   Expr* NewConstNumber( std::int32_t );
@@ -248,6 +240,7 @@ class GraphBuilder {
                                                      const interpreter::BytecodeLocation& );
 
  private:
+  StaticTypeInference* static_type_infer() { return graph_->static_type_inference(); }
 
   // create unary/binary/tenrary node accordingly. it will do constant folding if
   // needed , this is to avoid generate too many checkpoint node . later on the
@@ -274,7 +267,7 @@ class GraphBuilder {
   Expr* NewICall      ( std::uint8_t a1 , std::uint8_t a2 , std::uint8_t a3 ,
                                                             bool tcall ,
                                                             const interpreter::BytecodeLocation&);
-                                                            
+
   Expr* LowerICall    ( ICall* );
 
   // create node for pset/pget and iset/iget family instructions
@@ -374,7 +367,6 @@ class GraphBuilder {
   const TypeTrace&      type_trace_;
 
   // Static type inference
-  StaticTypeInference   static_type_infer_;
 
  private:
   class OSRScope ;
@@ -437,8 +429,7 @@ inline GraphBuilder::GraphBuilder( const Handle<Script>& script , const TypeTrac
   graph_               (NULL),
   stack_               (),
   func_info_           (),
-  type_trace_          (tt),
-  static_type_infer_   ()
+  type_trace_          (tt)
 {}
 
 inline void GraphBuilder::FuncInfo::EnterLoop( const std::uint32_t* pc ) {

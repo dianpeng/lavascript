@@ -8,12 +8,9 @@ namespace hir {
 
 class Graph;
 
-
 /**
- * This pass implements the basic Global Value Numbering algorithm described in
- * paper "Global Code Motion and Global Value Numbering" by Dr. Cliff Click
- *
- * Only global value numbering, global code motion is used during scheduling phase
+ *  Global Value Numbering pass. It also contains some other simplification algorithm
+ *  like value inference.
  */
 class GVN: public HIRPass {
  public:

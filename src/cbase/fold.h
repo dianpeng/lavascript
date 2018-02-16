@@ -8,9 +8,6 @@ namespace lavascript {
 namespace cbase {
 namespace hir {
 
-class StaticTypeInference;
-
-
 /**
  * Helper function to simplify some expression node. These functions
  * are used inside of GraphBuilder to do constant folding and this
@@ -20,14 +17,11 @@ class StaticTypeInference;
  * otherwise it will return the new node
  */
 
-Expr* FoldUnary  ( Graph* , Unary::Operator , Expr* , const StaticTypeInference& ,
-                                                      const std::function<IRInfo* ()>& );
+Expr* FoldUnary  ( Graph* , Unary::Operator , Expr* , const std::function<IRInfo* ()>& );
 
-Expr* FoldBinary ( Graph* , Binary::Operator, Expr* , Expr* ,
-                                                      const std::function<IRInfo* ()>& );
+Expr* FoldBinary ( Graph* , Binary::Operator, Expr* , Expr* , const std::function<IRInfo* ()>& );
 
-Expr* FoldTernary( Graph* , Expr* , Expr* , Expr* , const StaticTypeInference& ,
-                                                    const std::function<IRInfo* ()>& );
+Expr* FoldTernary( Graph* , Expr* , Expr* , Expr* , const std::function<IRInfo* ()>& );
 
 Expr* FoldIntrinsicCall( Graph* , ICall* );
 

@@ -1,4 +1,6 @@
 #include "static-type-inference.h"
+#include "hir.h"
+
 #include "src/interpreter/intrinsic-call.h"
 
 namespace lavascript {
@@ -38,8 +40,6 @@ TypeKind StaticTypeInference::GetType( Expr* node ) const {
   }
 
   auto t = GetImplicitType(node);
-  if(node->id() >= type_vector_.size())
-    type_vector_.resize(node->id()+1);
   type_vector_[node->id()] = t;
 
   return t;

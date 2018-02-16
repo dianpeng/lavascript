@@ -10,14 +10,8 @@ namespace ast { struct Node; }
 
 
 /**
- * Simple optimization pass while doing parsing , it only perform following AST
- * leve optimization:
- *
- * 1. trivial constant folding
- * 2. trivial strength reduction
- *
- * By trivial I mean is expression level , no control flow graph is built
- *
+ * Simple optimization pass while doing parsing , it only perform simple ConstantFold
+ * that doesn't need a IR consturction.
  */
 
 ast::Node* Optimize( ::lavascript::zone::Zone* , const char* source , ast::Node* ,

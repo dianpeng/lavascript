@@ -13,11 +13,51 @@ namespace {
 
 using namespace ::lavascript::interpreter;
 
+inline bool IsUnaryMinus( Expr* node ) {
+  return node->IsUnary() && node->AsUnary()->op() == Unary::MINUS;
+}
+
+inline bool IsTrue( Expr* node ) {
+  return node->IsBoolean() && node->AsBoolean()->value();
+}
+
+inline bool IsFalse( Expr* node ) {
+  return node->IsBoolean() && !node->AsBoolean()->value();
+}
+
+template< typename T >
+inline bool IsNumber( Expr* node , T value ) {
+  return node->IsFloat64() ? (static_cast<double>(value) == node->AsFloat64()->value()) : false;
+}
+
 Expr* Fold( Graph* graph , Unary::Operator op , Expr* expr ,
-                                                const StaticTypeInference& infer ,
                                                 const std::function<IRInfo*()>& irinfo ) {
-  if(op == Unary::MINUS && expr->IsFloat64()) {
-    return Float64::New(graph,-expr->AsFloat64()->value(),irinfo());
+  if(op == Unary::MINUS) {
+    if(expr->IsFloat64()) {
+      return Float64::New(graph,-expr->AsFloat64()->value(),irinfo());
+    } else {
+      // Handle cases that we have multiple nested negate operator,
+      // example like:
+      //  --a   ==> a
+      //  ---a  ==> -a
+      Expr* output = NULL;
+      auto temp = expr;
+      while(IsUnaryMinus(temp)) {
+        output = temp->AsUnary()->operand();
+        temp   = output;
+
+        // check whether temp is yet another unary operation with - operator
+        // every iteration we solve 2 leve of nested unary operation
+        if(IsUnaryMinus(temp)) {
+          temp = temp->AsUnary()->operand();
+        } else {
+          break;
+        }
+      }
+
+      return output;
+    }
+
   } else if(op == Unary::NOT) {
     switch(expr->type()) {
       case IRTYPE_FLOAT64:
@@ -33,7 +73,7 @@ Expr* Fold( Graph* graph , Unary::Operator op , Expr* expr ,
       default:
         {
           // fallback to use static type inference to do folding
-          auto t = infer.GetType(expr);
+          auto t = graph->static_type_inference()->GetType(expr);
           bool bv;
           if(TPKind::ToBoolean(t,&bv)) {
             return Boolean::New(graph,!bv,irinfo());
@@ -41,6 +81,127 @@ Expr* Fold( Graph* graph , Unary::Operator op , Expr* expr ,
         }
         break;
     }
+  }
+
+  return NULL;
+}
+
+// Doing simple algebra reassocication to enable better value inference during GVN and DCE phase
+// We can *only* do algebra reassociation when lhs and rhs are both float64 type otherwise we cannot
+// do anything due to the fact that the extension type bailout every types of optimization
+Expr* Float64Reassociate( Graph* graph , Binary::Operator op , Expr* lhs ,
+                                                               Expr* rhs ,
+                                                               const std::function<IRInfo* ()>& irinfo ) {
+  /**
+   * Due to the fact that our operands are both floating point number, not too much
+   * operation can be safely done.
+   *
+   * The following are safe :
+   *
+   * 1. -a + b    => b - a
+   * 2.  a + (-b) => a - b
+   * 3. -a - b    => -b- a
+   * 4.  a - (-b) => a + b
+   * 5.  a / 1    => a
+   * 6.  a / -1   => -a
+   * 7. -a * -b   => a * b
+   */
+
+  if(IsUnaryMinus(lhs) && op == Binary::ADD) {
+    // 1. (-a) + b  => b - a
+    auto info = irinfo();
+    return NewBoxedNodeWithTypeFeedback<Float64Arithmetic>( graph , TPKIND_FLOAT64 ,
+                                                                    info,
+                                                                    rhs,
+                                                                    lhs->AsUnary()->operand(),
+                                                                    Binary::SUB,
+                                                                    info);
+  } else if(IsUnaryMinus(rhs) && op == Binary::ADD) {
+    // 2. a + (-b) => a - b
+    auto info = irinfo();
+    return NewBoxedNodeWithTypeFeedback<Float64Arithmetic>( graph , TPKIND_FLOAT64 ,
+                                                                    info,
+                                                                    lhs ,
+                                                                    rhs->AsUnary()->operand(),
+                                                                    Binary::SUB,
+                                                                    info);
+  } else if(IsUnaryMinus(lhs) && op == Binary::SUB) {
+    // 3. -a - b => -b - a
+    auto info = irinfo();
+    auto new_lhs = NewNodeWithTypeFeedback<Float64Negate>( graph , TPKIND_FLOAT64 , rhs, info);
+
+    return NewBoxedNodeWithTypeFeedback<Float64Arithmetic>( graph , TPKIND_FLOAT64 ,
+                                                                    info,
+                                                                    new_lhs ,
+                                                                    lhs->AsUnary()->operand(),
+                                                                    Binary::SUB,
+                                                                    info);
+  } else if(IsUnaryMinus(rhs) && op == Binary::SUB) {
+    // 4. a - (-b) => a + b
+    auto info = irinfo();
+    return NewBoxedNodeWithTypeFeedback<Float64Arithmetic>( graph , TPKIND_FLOAT64 ,
+                                                                    info,
+                                                                    lhs,
+                                                                    rhs->AsUnary()->operand(),
+                                                                    Binary::ADD,
+                                                                    info);
+  } else if(op == Binary::DIV && IsNumber(rhs,1)) {
+    // 5. a / 1 => a
+    return lhs;
+  } else if(op == Binary::DIV && IsNumber(rhs,-1)) {
+    // 6. a / -1 => -a
+    auto info = irinfo();
+    return NewBoxedNodeWithTypeFeedback<Float64Negate>( graph , TPKIND_FLOAT64, info ,lhs , info );
+  } else if(IsUnaryMinus(lhs) && IsUnaryMinus(rhs) && op == Binary::MUL) {
+    // 7. -a * -b => a * b
+    auto info = irinfo();
+    return NewBoxedNodeWithTypeFeedback<Float64Arithmetic>( graph , TPKIND_FLOAT64 ,
+                                                                    info,
+                                                                    lhs->AsUnary()->operand(),
+                                                                    rhs->AsUnary()->operand(),
+                                                                    Binary::MUL,
+                                                                    info);
+  } else {
+    return NULL;
+  }
+}
+
+Expr* SimplifyLogicAnd( Graph* graph , TypeKind lhs_type , TypeKind rhs_type ,
+                                                           Expr* lhs ,
+                                                           Expr* rhs ,
+                                                           const std::function<IRInfo* ()>& irinfo ) {
+  (void)lhs_type;
+  (void)rhs_type;
+
+  if(IsFalse(lhs)) { return Boolean::New(graph,false,irinfo()); }  // false && any ==> false
+  if(IsTrue(lhs))  { return rhs; }                                 // true  && any ==> any
+
+  return NULL;
+}
+
+Expr* SimplifyLogicOr ( Graph* graph , TypeKind lhs_type , TypeKind rhs_type ,
+                                                           Expr* lhs,
+                                                           Expr* rhs,
+                                                           const std::function<IRInfo* ()>& irinfo ) {
+  if(IsTrue(lhs))  { return Boolean::New(graph,true,irinfo()); }  // true || any ==> true
+  if(IsFalse(lhs)) { return rhs; }                                // false|| any ==> any
+
+  return NULL;
+}
+
+Expr* SimplifyBinary( Graph* graph , Binary::Operator op , Expr* lhs ,
+                                                           Expr* rhs ,
+                                                           const std::function<IRInfo* ()>& irinfo ) {
+  auto typer = graph->static_type_inference();
+  auto lhs_type = typer->GetType(lhs);
+  auto rhs_type = typer->GetType(rhs);
+
+  if(lhs_type == TPKIND_FLOAT64 && rhs_type == TPKIND_FLOAT64) {
+    return Float64Reassociate(graph,op,lhs,rhs,irinfo);
+  } else if(op == Binary::AND) {
+    return SimplifyLogicAnd(graph,lhs_type,rhs_type,lhs,rhs,irinfo);
+  } else if(op == Binary::OR) {
+    return SimplifyLogicOr (graph,lhs_type,rhs_type,lhs,rhs,irinfo);
   }
 
   return NULL;
@@ -101,11 +262,10 @@ Expr* Fold( Graph* graph , Binary::Operator op , Expr* lhs ,
     }
   }
 
-  return NULL;
+  return SimplifyBinary(graph,op,lhs,rhs,irinfo);
 }
 
 Expr* Fold( Graph* graph , Expr* cond , Expr* lhs , Expr* rhs ,
-                                                    const StaticTypeInference& infer ,
                                                     const std::function<IRInfo*()>& irinfo) {
   switch(cond->type()) {
     case IRTYPE_FLOAT64:
@@ -122,7 +282,7 @@ Expr* Fold( Graph* graph , Expr* cond , Expr* lhs , Expr* rhs ,
       {
         // do a static type inference to check which value should return
         bool bv;
-        auto t = infer.GetType(cond);
+        auto t = graph->static_type_inference()->GetType(cond);
         if(TPKind::ToBoolean(t,&bv)) {
           return bv ? lhs : rhs;
         }
@@ -413,9 +573,8 @@ Expr* FoldICall( Graph* graph , ICall* node ) {
 } // namespace
 
 Expr* FoldUnary  ( Graph* graph , Unary::Operator op , Expr* expr ,
-                                                       const StaticTypeInference& infer ,
                                                        const std::function<IRInfo*()>& irinfo ) {
-  return Fold(graph,op,expr,infer,irinfo);
+  return Fold(graph,op,expr,irinfo);
 }
 
 Expr* FoldBinary ( Graph* graph , Binary::Operator op , Expr* lhs ,
@@ -425,9 +584,8 @@ Expr* FoldBinary ( Graph* graph , Binary::Operator op , Expr* lhs ,
 }
 
 Expr* FoldTernary( Graph* graph , Expr* cond , Expr* lhs , Expr* rhs ,
-                                                           const StaticTypeInference& infer ,
                                                            const std::function<IRInfo*()>& irinfo) {
-  return Fold(graph,cond,lhs,rhs,infer,irinfo);
+  return Fold(graph,cond,lhs,rhs,irinfo);
 }
 
 Expr* FoldIntrinsicCall( Graph* graph , ICall* icall ) {

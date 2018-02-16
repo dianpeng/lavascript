@@ -1,10 +1,8 @@
 #ifndef CBASE_STATIC_TYPE_INFERENCE_H_
 #define CBASE_STATIC_TYPE_INFERENCE_H_
+#include "ool-vector.h"
 
-#include "src/cbase/hir.h"
 #include "src/cbase/type.h"
-
-#include <vector>
 
 /**
  * Based on static type analyzing and also TypeTrace object
@@ -18,6 +16,9 @@
 namespace lavascript {
 namespace cbase      {
 namespace hir        {
+
+class Expr;
+class ICall;
 
 /**
  * A helper class/object to lower the type and record its current type
@@ -46,21 +47,16 @@ class StaticTypeInference {
   void AddIntrinsicCallType( ICall* );
 
   // Add a type with corresponding node
-  inline void AddType( std::uint32_t id , TypeKind );
+  void AddType( std::uint32_t id , TypeKind tk ) { type_vector_[id] = tk; }
 
   // Get the type of this node
   TypeKind GetType( Expr* type ) const;
 
  private:
-  typedef std::vector<TypeKind> TypeVector;
+  typedef OOLVector<TypeKind>   TypeVector;
   mutable TypeVector            type_vector_;
 };
 
-inline void StaticTypeInference::AddType( std::uint32_t id , TypeKind type ) {
-  if(type_vector_.size() <= id)
-    type_vector_.resize(id+1);
-  type_vector_[id] = type;
-}
 
 } // namespace hir
 } // namespace cbase

@@ -31,6 +31,7 @@ bool InferPredicate( Expr* predicate , bool* output ) {
     case IRTYPE_ITR_NEW:
     case IRTYPE_FLOAT64_NEGATE:
     case IRTYPE_FLOAT64_ARITHMETIC:
+    case IRTYPE_FLOAT64_BITWISE:
       *output = true;
       return true;
     default:

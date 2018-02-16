@@ -35,7 +35,7 @@ IRList* IRList::Clone( Graph* graph , const IRList& that ) {
   auto ret = IRList::New(graph,that.Size(),that.ir_info());
   for( auto itr(that.operand_list()->GetForwardIterator());
        itr.HasNext(); itr.Move() ) {
-    ret->Add(itr.value());       
+    ret->Add(itr.value());
   }
   return ret;
 }
@@ -49,7 +49,7 @@ IRList* IRList::CloneExceptLastOne( Graph* graph , const IRList& that ) {
     std::size_t end   = that.Size() - 1;
     for( auto itr(that.operand_list()->GetForwardIterator());
         itr.HasNext() && (count < end); itr.Move() ) {
-      ret->Add(itr.value());       
+      ret->Add(itr.value());
     }
     return ret;
   }
@@ -517,6 +517,7 @@ void DotGraphVisualizer::RenderExpr( const std::string& name , Expr* node ) {
       }
       break;
     case IRTYPE_BINARY:
+    case IRTYPE_FLOAT64_BITWISE:
     case IRTYPE_FLOAT64_ARITHMETIC:
     case IRTYPE_FLOAT64_COMPARE:
       {

@@ -85,7 +85,7 @@ class PrintFn : public ::lavascript::Extension {
 };
 
 bool Bench( const char* source ) {
-  lavascript::interpreter::AssemblyInterpreter ins;
+  lavascript::interpreter::AssemblerInterpreter ins;
 
   Context ctx;
   std::string error;
@@ -131,7 +131,7 @@ Handle<String> NewString( GC* gc , const char* str ) {
 }
 
 bool PrimitiveComp( const char* source , const Value& primitive , int op ) {
-  lavascript::interpreter::AssemblyInterpreter ins;
+  lavascript::interpreter::AssemblerInterpreter ins;
 
   Context ctx;
   std::string error;

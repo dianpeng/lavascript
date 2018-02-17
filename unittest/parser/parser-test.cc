@@ -148,13 +148,6 @@ TEST(Parser,ConstantFolding) {
   ConstExprCheck(5.0,a=2.5+2.5;);
   ConstExprCheck(4,a=2^2;);
 
-  /** Strength reduction */
-  ConstExprCheck(ID("a"),a = a*1;);
-  ConstExprCheck(ID("a"),a = 1*a;);
-  ConstExprCheck(ID("b"),a = 0+b;);
-  ConstExprCheck(ID("b"),a = b+0;);
-  ConstExprCheck(ID("b"),a = b/1;);
-
   ConstExprCheck(true,a = 1 < 2; );
   ConstExprCheck(true,a = 2 <=2; );
   ConstExprCheck(false,a= 1 > 2; );

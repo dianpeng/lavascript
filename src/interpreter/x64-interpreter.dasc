@@ -863,7 +863,7 @@ const void* JITProfileStart( Runtime* runtime , int type , const std::uint32_t* 
   (void)type;
 
   lava_debug(NORMAL,
-      lava_verify(dynamic_cast<AssemblyInterpreter*>(runtime->interp) != NULL););
+      lava_verify(dynamic_cast<AssemblerInterpreter*>(runtime->interp) != NULL););
 
   return NULL;
 }
@@ -879,7 +879,7 @@ INTERPRETER_REGISTER_EXTERN_SYMBOL(JITProfileBC)
 
 /* ---------------------------------------------------------------------
  *
- * Implementation of AssemblyInterpreterStub
+ * Implementation of AssemblerInterpreterStub
  *
  * --------------------------------------------------------------------*/
 |.arch x64
@@ -2228,7 +2228,7 @@ void GenerateHelper( BuildContext* bctx ) {
   /* -------------------------------------------------------------------------
    * InterpArithXXX
    *
-   * C++'s ABI is kind of hard to maintain correctly between Assembly
+   * C++'s ABI is kind of hard to maintain correctly between Assembler
    * code and normal function in C++. The object passing mechanism is
    * not easy if you try to use pass by *value*. So to make things
    * easir, our internal C++ function *all* use reference/pointer, which
@@ -4377,7 +4377,7 @@ int ResolveExternalAddress( void** ctx , unsigned char* addr ,
 
 } // namespace
 
-AssemblyInterpreterStub::AssemblyInterpreterStub():
+AssemblerInterpreterStub::AssemblerInterpreterStub():
   dispatch_interp_      (),
   dispatch_profile_     (),
   dispatch_jit_         (),
@@ -4388,7 +4388,7 @@ AssemblyInterpreterStub::AssemblyInterpreterStub():
   profile_code_buffer_  ()
 {}
 
-bool AssemblyInterpreterStub::GenerateDispatchInterp() {
+bool AssemblerInterpreterStub::GenerateDispatchInterp() {
   // create a build context
   BuildContext bctx;
 
@@ -4470,7 +4470,7 @@ bool AssemblyInterpreterStub::GenerateDispatchInterp() {
   return true;
 }
 
-bool AssemblyInterpreterStub::GenerateDispatchProfile() {
+bool AssemblerInterpreterStub::GenerateDispatchProfile() {
   // 1. register all BC handler into the symbol table later on for generating
   //    the profiler handler use case
   for( int i = 0 ; i < SIZE_OF_BYTECODE ; ++i ) {
@@ -4511,26 +4511,26 @@ bool AssemblyInterpreterStub::GenerateDispatchProfile() {
   return true;
 }
 
-bool AssemblyInterpreterStub::Init() {
+bool AssemblerInterpreterStub::Init() {
   return GenerateDispatchInterp() && GenerateDispatchProfile();
 }
 
-AssemblyInterpreterStub::~AssemblyInterpreterStub() {
+AssemblerInterpreterStub::~AssemblerInterpreterStub() {
   interp_code_buffer_.FreeIfNeeded();
   profile_code_buffer_.FreeIfNeeded();
 }
 
-std::shared_ptr<AssemblyInterpreterStub> AssemblyInterpreterStub::GetInstance() {
-  static std::shared_ptr<AssemblyInterpreterStub> kInterp;
+std::shared_ptr<AssemblerInterpreterStub> AssemblerInterpreterStub::GetInstance() {
+  static std::shared_ptr<AssemblerInterpreterStub> kInterp;
   if(!kInterp) {
-    kInterp.reset( new AssemblyInterpreterStub() );
+    kInterp.reset( new AssemblerInterpreterStub() );
     if(!kInterp->Init())
-      return std::shared_ptr<AssemblyInterpreterStub>();
+      return std::shared_ptr<AssemblerInterpreterStub>();
   }
   return kInterp;
 }
 
-Bytecode AssemblyInterpreterStub::CheckBytecodeRoutine( void* pc ) const {
+Bytecode AssemblerInterpreterStub::CheckBytecodeRoutine( void* pc ) const {
   for( int i = 0 ; i < SIZE_OF_BYTECODE ; ++i ) {
     void* p = reinterpret_cast<void*>(pc);
     if(p == dispatch_interp_[i]) {
@@ -4540,7 +4540,7 @@ Bytecode AssemblyInterpreterStub::CheckBytecodeRoutine( void* pc ) const {
   return SIZE_OF_BYTECODE;
 }
 
-int AssemblyInterpreterStub::CheckHelperRoutine( void* pc ) const {
+int AssemblerInterpreterStub::CheckHelperRoutine( void* pc ) const {
   std::vector<void*>::const_iterator itr =
     std::find( interp_helper_.begin() , interp_helper_.end() , pc );
   if(itr != interp_helper_.end()) {
@@ -4550,7 +4550,7 @@ int AssemblyInterpreterStub::CheckHelperRoutine( void* pc ) const {
   }
 }
 
-IntrinsicCall AssemblyInterpreterStub::CheckIntrinsicCall( void* pc ) const {
+IntrinsicCall AssemblerInterpreterStub::CheckIntrinsicCall( void* pc ) const {
   auto itr = std::find(std::begin(ic_entry_),std::end(ic_entry_),pc);
   if(itr != std::end(ic_entry_)) {
     return static_cast<IntrinsicCall>(std::distance(std::begin(ic_entry_),itr));
@@ -4558,13 +4558,13 @@ IntrinsicCall AssemblyInterpreterStub::CheckIntrinsicCall( void* pc ) const {
   return SIZE_OF_INTRINSIC_CALL;
 }
 
-void AssemblyInterpreterStub::CodeBuffer::FreeIfNeeded() {
+void AssemblerInterpreterStub::CodeBuffer::FreeIfNeeded() {
   if(entry) {
     OS::FreeCodePage(entry,buffer_size);
   }
 }
 
-void AssemblyInterpreterStub::Dump( DumpWriter* writer ) const {
+void AssemblerInterpreterStub::Dump( DumpWriter* writer ) const {
   ZydisDecoder decoder;
   ZydisDecoderInit( &decoder, ZYDIS_MACHINE_MODE_LONG_64,
                               ZYDIS_ADDRESS_WIDTH_64);
@@ -4608,14 +4608,14 @@ void AssemblyInterpreterStub::Dump( DumpWriter* writer ) const {
   }
 }
 
-AssemblyInterpreter::AssemblyInterpreter():
+AssemblerInterpreter::AssemblerInterpreter():
   dispatch_interp_ (),
   dispatch_profile_(),
   dispatch_jit_    (),
   ic_entry_        (NULL),
   interp_entry_    ()
 {
-  std::shared_ptr<AssemblyInterpreterStub> stub(AssemblyInterpreterStub::GetInstance());
+  std::shared_ptr<AssemblerInterpreterStub> stub(AssemblerInterpreterStub::GetInstance());
   lava_debug(NORMAL,lava_verify(stub););
 
   memcpy(dispatch_interp_,stub->dispatch_interp_  ,sizeof(dispatch_interp_));
@@ -4626,10 +4626,10 @@ AssemblyInterpreter::AssemblyInterpreter():
   interp_entry_ = stub->interp_entry_;
 }
 
-bool AssemblyInterpreter::Run( Context* context , const Handle<Script>& script ,
-                                                  const Handle<Object>& globals,
-                                                  Value* rval ,
-                                                  std::string* error ) {
+bool AssemblerInterpreter::Run( Context* context , const Handle<Script>& script ,
+                                                   const Handle<Object>& globals,
+                                                   Value* rval ,
+                                                   std::string* error ) {
   // Main function
   Handle<Prototype> main_proto(script->main());
 

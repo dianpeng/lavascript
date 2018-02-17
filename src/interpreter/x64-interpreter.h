@@ -14,24 +14,24 @@ class Context;
 
 namespace interpreter{
 
-class AssemblyInterpreter;
-struct AssemblyInterpreterStubLayout;
+class AssemblerInterpreter;
+struct AssemblerInterpreterStubLayout;
 
-// AssemblyInterpreterStub represents a interpreter function/routine that is generated
+// AssemblerInterpreterStub represents a interpreter function/routine that is generated
 // on the fly. It should be just generated *once* and all the created context just
 // use this one. It is a function so it doesn't contain *states*.
-class AssemblyInterpreterStub {
+class AssemblerInterpreterStub {
  public:
-  // Create an AssemblyInterpreterStub. After creation , the machine code for the
+  // Create an AssemblerInterpreterStub. After creation , the machine code for the
   // interpreter will be generated and also the dispatch table will be setup
   // correctly.
   //
   // Here we use a shared_ptr since we will use this assembly interpreter always
   // because we don't need to create a new assembly interpreter everytime. Sort
   // of like Singleton but just via a shared_ptr.
-  static std::shared_ptr<AssemblyInterpreterStub> GetInstance();
+  static std::shared_ptr<AssemblerInterpreterStub> GetInstance();
  public:
-  ~AssemblyInterpreterStub();
+  ~AssemblerInterpreterStub();
 
   // Dump the interpreter into human readable assembly into the DumpWriter
   void Dump( DumpWriter* ) const;
@@ -51,7 +51,7 @@ class AssemblyInterpreterStub {
   bool Init();
 
  private:
-  AssemblyInterpreterStub();
+  AssemblerInterpreterStub();
 
   // The following table are *not* modified and should not modified. The instance object
   // contains a mutable dispatch table instance and those are the tables that *should* be
@@ -104,26 +104,26 @@ class AssemblyInterpreterStub {
   // buffer to hold dispatch_profile_ handler
   CodeBuffer profile_code_buffer_;
 
-  friend struct AssemblyInterpreterStubLayout;
-  friend class AssemblyInterpreter;
+  friend struct AssemblerInterpreterStubLayout;
+  friend class AssemblerInterpreter;
 
-  LAVA_DISALLOW_COPY_AND_ASSIGN(AssemblyInterpreterStub)
+  LAVA_DISALLOW_COPY_AND_ASSIGN(AssemblerInterpreterStub)
 };
 
-static_assert( std::is_standard_layout<AssemblyInterpreterStub>::value );
+static_assert( std::is_standard_layout<AssemblerInterpreterStub>::value );
 
-struct AssemblyInterpreterStubLayout {
-  static const std::uint32_t kDispatchInterpOffset = offsetof(AssemblyInterpreterStub,dispatch_interp_);
-  static const std::uint32_t kDispatchRecordOffset = offsetof(AssemblyInterpreterStub,dispatch_profile_);
-  static const std::uint32_t kDispatchJitOffset    = offsetof(AssemblyInterpreterStub,dispatch_jit_   );
-  static const std::uint32_t kInterpEntryOffset    = offsetof(AssemblyInterpreterStub,interp_entry_   );
-  static const std::uint32_t kIntrinsicEntry       = offsetof(AssemblyInterpreterStub,ic_entry_);
+struct AssemblerInterpreterStubLayout {
+  static const std::uint32_t kDispatchInterpOffset = offsetof(AssemblerInterpreterStub,dispatch_interp_);
+  static const std::uint32_t kDispatchRecordOffset = offsetof(AssemblerInterpreterStub,dispatch_profile_);
+  static const std::uint32_t kDispatchJitOffset    = offsetof(AssemblerInterpreterStub,dispatch_jit_   );
+  static const std::uint32_t kInterpEntryOffset    = offsetof(AssemblerInterpreterStub,interp_entry_   );
+  static const std::uint32_t kIntrinsicEntry       = offsetof(AssemblerInterpreterStub,ic_entry_);
 };
 
 // Concret class implementation for Interpreter interface
-class AssemblyInterpreter : public Interpreter {
+class AssemblerInterpreter : public Interpreter {
  public:
-  AssemblyInterpreter();
+  AssemblerInterpreter();
 
  public:
   virtual bool Run( Context* , const Handle<Script>& , const Handle<Object>& ,
@@ -136,7 +136,7 @@ class AssemblyInterpreter : public Interpreter {
     return false;
   }
 
-  virtual ~AssemblyInterpreter() {}
+  virtual ~AssemblerInterpreter() {}
 
  public:
   const void* dispatch_interp() const { return dispatch_interp_; }
@@ -149,7 +149,7 @@ class AssemblyInterpreter : public Interpreter {
   void**ic_entry_;
   void* interp_entry_;
 
-  LAVA_DISALLOW_COPY_AND_ASSIGN(AssemblyInterpreter)
+  LAVA_DISALLOW_COPY_AND_ASSIGN(AssemblerInterpreter)
 };
 
 } // namespace interpreter

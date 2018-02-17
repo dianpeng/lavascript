@@ -11,7 +11,7 @@ OBJECT=${SOURCE:.cc=.o}
 TEST:=$(shell find unittest/ -type f -name "*-test.cc")
 TESTOBJECT:=${TEST:.cc=.t}
 CXX = g++
-#SANITIZER=-fsanitize=address,undefined
+SANITIZER=-fsanitize=address,undefined
 LUA=luajit
 
 # -------------------------------------------------------------------------------

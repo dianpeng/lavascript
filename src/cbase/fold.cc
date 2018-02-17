@@ -25,6 +25,32 @@ inline bool IsFalse( Expr* node ) {
   return node->IsBoolean() && !node->AsBoolean()->value();
 }
 
+inline bool AsUInt8( Expr* node , std::uint8_t* value ) {
+  if(node->IsFloat64()) {
+    // we don't care about the shifting overflow, the underly ISA
+    // only allows a 8bit register serve as how many bits shifted.
+    *value = static_cast<std::uint8_t>(node->AsFloat64()->value());
+    return true;
+  }
+  return false;
+}
+
+inline bool AsUInt32( Expr* node , std::uint32_t* value ) {
+  if(node->IsFloat64()) {
+    *value = static_cast<std::uint32_t>(node->AsFloat64()->value());
+    return true;
+  }
+  return false;
+}
+
+inline bool AsReal  ( Expr* node , double* real ) {
+  if(node->IsFloat64()) {
+    *real = node->AsFloat64()->value();
+    return true;
+  }
+  return false;
+}
+
 template< typename T >
 inline bool IsNumber( Expr* node , T value ) {
   return node->IsFloat64() ? (static_cast<double>(value) == node->AsFloat64()->value()) : false;
@@ -290,32 +316,6 @@ Expr* Fold( Graph* graph , Expr* cond , Expr* lhs , Expr* rhs ,
       break;
   }
   return NULL;
-}
-
-bool AsUInt8( Expr* node , std::uint8_t* value ) {
-  if(node->IsFloat64()) {
-    // we don't care about the shifting overflow, the underly ISA
-    // only allows a 8bit register serve as how many bits shifted.
-    *value = static_cast<std::uint8_t>(node->AsFloat64()->value());
-    return true;
-  }
-  return false;
-}
-
-bool AsUInt32( Expr* node , std::uint32_t* value ) {
-  if(node->IsFloat64()) {
-    *value = static_cast<std::uint32_t>(node->AsFloat64()->value());
-    return true;
-  }
-  return false;
-}
-
-bool AsReal  ( Expr* node , double* real ) {
-  if(node->IsFloat64()) {
-    *real = node->AsFloat64()->value();
-    return true;
-  }
-  return false;
 }
 
 Expr* FoldICall( Graph* graph , ICall* node ) {

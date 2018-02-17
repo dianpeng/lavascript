@@ -607,7 +607,6 @@ inline bool BuiltinIter( Context* ctx , const Value& obj , Value* output ,
 }
 
 } // namespace builtin
-#include "src/bits.h"
 } // namespace lavascript
 
 #endif // BUILTIN_FUNCTION_H_

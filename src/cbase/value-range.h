@@ -1,11 +1,13 @@
 #ifndef CBASE_VALUE_RANGE_H_
 #define CBASE_VALUE_RANGE_H_
 #include "hir.h"
-#include "src/double.h"
 
 #include <vector>
+#include <gtest/gtest_prod.h>
 
 namespace lavascript {
+class DumpWriter;
+
 namespace cbase      {
 namespace hir        {
 
@@ -16,9 +18,7 @@ namespace hir        {
 class ValueRange {
  public:
   // Test whether a range's relationship with regards to another value range
-  enum { INCLUDE , OVERLAP , EXCLUDE , SAME };
-
-  virtual int Test( const ValueRange& ) = 0;
+  enum { INCLUDE , OVERLAP , LEXCLUDE , REXCLUDE , SAME };
 
   // Union a value range
   virtual void Union( Binary::Operator , Expr* ) = 0;
@@ -32,21 +32,10 @@ class ValueRange {
   virtual ~ValueRange() {}
 };
 
+
 // Float64 value range object represents value range with type float64
 class Float64ValueRange : public ValueRange {
  public:
-  Float64ValueRange( Binary::Operator , double );
-  Float64ValueRange( const Float64ValueRange&  );
-
-  virtual void Union( Binary::Operator op , Expr* );
-  virtual void Intersect( Binary::Operator op , Expr* );
-  virtual bool Infer( Binary::Operator , Expr* );
-
- private:
-  void Union( Binary::Operator op , double );
-  void Intersect( Binary::Operator op, double );
- private:
-
   // represents a segment's end , it can be used to represent
   // upper bound or lower bound and it can be used to mark as
   // open or closed.
@@ -61,8 +50,14 @@ class Float64ValueRange : public ValueRange {
   // otherwise the value of number point is , there exists a delta T
   // that approaching 0 the value of number point is T + value
   struct NumberPoint {
+    static NumberPoint kPosInf;
+    static NumberPoint kNegInf;
+
     double value;       // value of the number point
     bool   close;       // whether this is closed number point
+
+    NumberPoint() : value() , close() {}
+    NumberPoint( double v , bool c ) : value(v), close(c) {}
 
     inline bool operator  < ( const NumberPoint& ) const;
     inline bool operator <= ( const NumberPoint& ) const;
@@ -74,25 +69,65 @@ class Float64ValueRange : public ValueRange {
 
   // represents a segment/range on a number axis
   struct Range {
-    NumberPoint upper;
+    static Range kAll;
+
     NumberPoint lower;
+    NumberPoint upper;
+
+    Range() : lower() , upper() {} // undefined
+
+    Range( double l , bool cl , double u , bool cu ):
+      lower(NumberPoint(l,cl)) , upper(NumberPoint(u,cu))
+    {}
+
+    Range( const NumberPoint& l , const NumberPoint& u ):
+      lower(l) , upper(u)
+    {}
 
     inline bool IsSingleton () const;
-
-    inline int  Test     ( const Range& ) const;
-    inline void Union    ( const Range& ) const;
-    inline void Intersect( const Range& ) const;
-
+    int  Test     ( const Range& ) const;
     bool IsInclude( const Range& range ) const { return Test(range) == ValueRange::INCLUDE; }
     bool IsOverlap( const Range& range ) const { return Test(range) == ValueRange::OVERLAP; }
     bool IsExclude( const Range& range ) const { return Test(range) == ValueRange::EXCLUDE; }
     bool IsSame   ( const Range& range ) const { return Test(range) == ValueRange::SAME;    }
   };
 
+  typedef std::vector<Range> RangeSet;
+
+ public:
+  Float64ValueRange():sets_() {}
+  Float64ValueRange( Binary::Operator op , double value ): sets_() { Union(op,value); }
+  Float64ValueRange( const Float64ValueRange& that ):sets_(that.sets_) {}
+
+  virtual void Union( Binary::Operator op , Expr* );
+  virtual void Intersect( Binary::Operator op , Expr* );
+  virtual bool Infer( Binary::Operator , Expr* );
+
+ public:
+  void Dump( DumpWriter* ) const;
+
+ private:
+  Range NewRange( Binary::Operator op , double ) const;
+
+  void Union( Binary::Operator op , double );
+  void Intersect( Binary::Operator op, double );
+
+  void Union( const Float64ValueRange& );
+
+  bool DoUnion    ( std::size_t* , const Range& );
+  bool DoIntersect( std::size_t* , const Range& );
+
+ private:
+
   // the range stored inside of the std::vector must be
   // 1) none-overlapped
   // 2) sorted
-  std::vector<Range> sets_;
+  RangeSet sets_;
+
+  FRIEND_TEST(ValueRange,F64Basic);
+  FRIEND_TEST(ValueRange,F64Infer);
+
+  void operator = ( const Float64ValueRange& ) = delete;
 };
 
 inline bool Float64ValueRange::NumberPoint::operator < ( const NumberPoint& that ) const {
@@ -137,7 +172,10 @@ inline bool Float64ValueRange::NumberPoint::operator !=( const NumberPoint& that
   return !(*this == that);
 }
 
-inline Float64ValueRange::Range::Test( const Range& range ) const {
+inline bool Float64ValueRange::Range::IsSingleton() const {
+  auto r = (upper == lower);
+  lava_debug(NORMAL,if(r) lava_verify(lower.close);); // we should not have empty set
+  return r;
 }
 
 } // namespace hir

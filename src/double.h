@@ -17,8 +17,8 @@ static_assert( std::numeric_limits<double>::is_iec559 );
 
 class Double {
  public:
-  static double PosInf() { return std::numeric_limits<double>::infinity(); }
-  static double NegInf() { return -PosInf(); }
+  static constexpr double PosInf() { return std::numeric_limits<double>::infinity(); }
+  static constexpr double NegInf() { return -PosInf(); }
 
   static bool IsPosInf( double value ) { return value == PosInf(); }
   static bool IsNegInf( double value ) { return value == NegInf(); }
@@ -26,8 +26,8 @@ class Double {
 
   // the standard's min() for double is error prone which represents the smallest
   // positive number can be represented by double precision floating point
-  static double Min()    { return std::numeric_limits<double>::lowest();  }
-  static double Max()    { return std::numeric_limits<double>::max();     }
+  static constexpr double Min()    { return std::numeric_limits<double>::lowest();  }
+  static constexpr double Max()    { return std::numeric_limits<double>::max();     }
 };
 
 } // namespace lavascript

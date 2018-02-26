@@ -18,6 +18,12 @@ namespace hir        {
 class ValueRange {
  public:
   // Test whether a range's relationship with regards to another value range
+  //
+  // INCLUDE --> the range includes the test range
+  // OVERLAP --> the range overlaps the test range
+  // LEXCLUDE--> the range left hand side exclude the test range
+  // REXCLUDE--> the range right hand side exclude the test range
+  // SAME    --> both ranges are the same
   enum { INCLUDE , OVERLAP , LEXCLUDE , REXCLUDE , SAME };
 
   // Union a value range
@@ -43,12 +49,8 @@ class Float64ValueRange : public ValueRange {
   // the NumberPoint is ordered , and its order are defined as
   // follow :
   //
-  // the value of NumberPoint represents order , when the value
-  // are the same, then we define :
+  // [C < (3 == 3) < 3]
   //
-  // for closed number point the value of number point are the value;
-  // otherwise the value of number point is , there exists a delta T
-  // that approaching 0 the value of number point is T + value
   struct NumberPoint {
     static NumberPoint kPosInf;
     static NumberPoint kNegInf;
@@ -59,10 +61,6 @@ class Float64ValueRange : public ValueRange {
     NumberPoint() : value() , close() {}
     NumberPoint( double v , bool c ) : value(v), close(c) {}
 
-    inline bool operator  < ( const NumberPoint& ) const;
-    inline bool operator <= ( const NumberPoint& ) const;
-    inline bool operator  > ( const NumberPoint& ) const;
-    inline bool operator >= ( const NumberPoint& ) const;
     inline bool operator == ( const NumberPoint& ) const;
     inline bool operator != ( const NumberPoint& ) const;
   };
@@ -85,11 +83,12 @@ class Float64ValueRange : public ValueRange {
     {}
 
     inline bool IsSingleton () const;
-    int  Test     ( const Range& ) const;
-    bool IsInclude( const Range& range ) const { return Test(range) == ValueRange::INCLUDE; }
-    bool IsOverlap( const Range& range ) const { return Test(range) == ValueRange::OVERLAP; }
-    bool IsExclude( const Range& range ) const { return Test(range) == ValueRange::EXCLUDE; }
-    bool IsSame   ( const Range& range ) const { return Test(range) == ValueRange::SAME;    }
+    int  Test       ( const Range& ) const;
+    bool IsInclude  ( const Range& range ) const { return Test(range) == ValueRange::INCLUDE; }
+    bool IsOverlap  ( const Range& range ) const { return Test(range) == ValueRange::OVERLAP; }
+    bool IsLExclude ( const Range& range ) const { return Test(range) == ValueRange::LEXCLUDE; }
+    bool IsRExclude ( const Range& range ) const { return Test(range) == ValueRange::REXCLUDE; }
+    bool IsSame     ( const Range& range ) const { return Test(range) == ValueRange::SAME;    }
   };
 
   typedef std::vector<Range> RangeSet;
@@ -107,15 +106,17 @@ class Float64ValueRange : public ValueRange {
   void Dump( DumpWriter* ) const;
 
  private:
-  Range NewRange( Binary::Operator op , double ) const;
+  Range NewRange ( Binary::Operator op , double ) const;
 
-  void Union( Binary::Operator op , double );
-  void Intersect( Binary::Operator op, double );
+  // scan the input range inside of the RangSet and find its
+  // status and lower and upper bound
+  int  Scan( const Range& , int* lower , int* upper ) const;
+
+  void Union    ( Binary::Operator op , double );
+  void Intersect( Binary::Operator op , double );
 
   void Union( const Float64ValueRange& );
-
-  bool DoUnion    ( std::size_t* , const Range& );
-  bool DoIntersect( std::size_t* , const Range& );
+  void UnionRange ( const Range& );
 
  private:
 
@@ -129,36 +130,6 @@ class Float64ValueRange : public ValueRange {
 
   void operator = ( const Float64ValueRange& ) = delete;
 };
-
-inline bool Float64ValueRange::NumberPoint::operator < ( const NumberPoint& that ) const {
-  if(value == that.value) {
-    if((close && that.close) || (!close && !that.close))
-      return false; // they are equal
-    else
-      return close ? false : true;
-  } else {
-    return value < that.value;
-  }
-}
-
-inline bool Float64ValueRange::NumberPoint::operator <=( const NumberPoint& that ) const {
-  if(value == that.value) {
-    if((close && that.close) || (!close && !that.close))
-      return true;
-    else
-      return close ? false : true;
-  } else {
-    return value < that.value;
-  }
-}
-
-inline bool Float64ValueRange::NumberPoint::operator > ( const NumberPoint& that ) const {
-  return !(*this <= that);
-}
-
-inline bool Float64ValueRange::NumberPoint::operator >=( const NumberPoint& that ) const {
-  return !(*this < that);
-}
 
 inline bool Float64ValueRange::NumberPoint::operator ==( const NumberPoint& that ) const {
   if(value == that.value) {

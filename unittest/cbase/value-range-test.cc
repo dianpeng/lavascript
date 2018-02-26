@@ -12,15 +12,14 @@ namespace cbase      {
 namespace hir        {
 
 TEST(ValueRange,F64Basic) {
-  Float64ValueRange range;
-  range.Union(Binary::GT,3);
-  range.Union(Binary::GE,2);
-  range.Union(Binary::GE,5);
-  range.Union(Binary::LT,1);
-  range.Union(Binary::LE,1);
   {
-    DumpWriter wr;
-    range.Dump(&wr);
+    Float64ValueRange range;
+    range.Union(Binary::LT,-100);
+    range.Union(Binary::LT,1);
+    {
+      DumpWriter writer;
+      range.Dump(&writer);
+    }
   }
 }
 

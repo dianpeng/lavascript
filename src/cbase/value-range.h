@@ -33,7 +33,7 @@ class ValueRange {
   virtual void Intersect( Binary::Operator , Expr* ) = 0;
 
   // Do a inference of a predicate
-  virtual bool Infer( Binary::Operator , Expr* ) = 0;
+  virtual bool Infer( Binary::Operator , Expr* , bool* ) = 0;
 
   virtual ~ValueRange() {}
 };
@@ -100,7 +100,7 @@ class Float64ValueRange : public ValueRange {
 
   virtual void Union( Binary::Operator op , Expr* );
   virtual void Intersect( Binary::Operator op , Expr* );
-  virtual bool Infer( Binary::Operator , Expr* );
+  virtual bool Infer( Binary::Operator , Expr* , bool* );
 
  public:
   void Dump( DumpWriter* ) const;
@@ -110,13 +110,18 @@ class Float64ValueRange : public ValueRange {
 
   // scan the input range inside of the RangSet and find its
   // status and lower and upper bound
-  int  Scan( const Range& , int* lower , int* upper ) const;
+  int  Scan ( const Range& , int* lower , int* upper ) const;
+
+  // this function do a merge with adjuscent range if needed
+  void Merge( const RangeSet::iterator& );
 
   void Union    ( Binary::Operator op , double );
   void Intersect( Binary::Operator op , double );
 
   void Union( const Float64ValueRange& );
   void UnionRange ( const Range& );
+
+  bool Infer( Binary::Operator , double , bool* );
 
  private:
 

@@ -89,7 +89,7 @@ int Float64ValueRange::Range::Test( const Range& range ) const {
 int Float64ValueRange::Scan( const Range& range , int* lower , int* upper ) const {
   auto start = -1;
   auto end   = -1;
-  int  rcode = ValueRange::OVERLAP;
+  int  rcode = -1;
 
   lava_debug(NORMAL,lava_verify(!sets_.empty()););
 
@@ -100,35 +100,32 @@ int Float64ValueRange::Scan( const Range& range , int* lower , int* upper ) cons
 
     switch(ret) {
       case ValueRange::INCLUDE:
-        start  = i; end = i + 1;
-
-        rcode = ValueRange::INCLUDE;
+        if(start == -1) {
+          start = i;
+          end = i + 1;
+          rcode = ValueRange::INCLUDE;
+        }
         goto done;
       case ValueRange::OVERLAP:
-        if(start == -1)
+        if(start == -1) {
           start = i;
-        break;
+          rcode = ValueRange::OVERLAP;
+        }
 
+        break;
       case ValueRange::REXCLUDE:
         if(start == -1) {
           start = i;
           rcode = ValueRange::REXCLUDE;
-        } else {
-          rcode = ValueRange::OVERLAP;
         }
-        end = i;
 
+        end = i;
         goto done;
       case ValueRange::LEXCLUDE:
-        if(start != -1) {
-          end = i;
-          rcode = ValueRange::OVERLAP;
-          goto done;
-        }
+        lava_debug(NORMAL,lava_verify(start == -1););
         break; // continue search
       case ValueRange::SAME:
         start = i; end = i + 1;
-
         rcode = ValueRange::SAME;
         goto done;
       default: lava_die(); break;
@@ -137,17 +134,63 @@ int Float64ValueRange::Scan( const Range& range , int* lower , int* upper ) cons
   }
 
 done:
-  if(end == -1) {
+  if(start == -1 && end == -1) {
+    lava_debug(NORMAL,lava_verify(rcode == -1););
+    // When we reach here it means the whole range is LEXCLUDE from
+    // the input range, so we just need to set where to insert the
+    // range
+    start = end = sets_.size();
+    rcode = ValueRange::LEXCLUDE;
+
+  } else if(end == -1) {
     end = sets_.size();
   }
 
   if(start != -1) {
     lava_debug(NORMAL,lava_verify(end !=-1););
+    lava_debug(NORMAL,lava_verify(rcode != -1););
 
     *lower = start;
     *upper = end;
   }
+
   return rcode;
+}
+
+void Float64ValueRange::Merge( const Float64ValueRange::RangeSet::iterator& itr ) {
+  RangeSet::iterator pitr,nitr;
+  bool has_pitr = false;
+  bool has_nitr = false;
+
+  auto &rng= *itr;
+
+  // check left hand side range
+  if(sets_.begin() != itr) {
+    auto prev(itr); --prev;
+    auto &lhs = *prev;
+    if(lhs.upper.value == rng.lower.value &&
+      (lhs.upper.close || rng.lower.close)) {
+      pitr = prev; has_pitr = true;
+      itr->lower = lhs.lower;
+    }
+  }
+
+  // check right hand side range
+  {
+    auto next(itr); ++next;
+    auto &rhs = *next;
+
+    if(next != sets_.end()) {
+      if(rhs.lower.value == rng.upper.value &&
+        (rhs.lower.close || rng.upper.close)) {
+        nitr = next; has_nitr = true;
+        itr->upper = rhs.upper;
+      }
+    }
+  }
+
+  if(has_pitr) sets_.erase(pitr);
+  if(has_nitr) sets_.erase(nitr);
 }
 
 Float64ValueRange::Range Float64ValueRange::NewRange( Binary::Operator op ,
@@ -173,18 +216,24 @@ void Float64ValueRange::UnionRange( const Range& range ) {
   } else {
     int lower, upper;
     auto ret = Scan(range,&lower,&upper);
+    RangeSet::iterator modify_pos;
 
     switch(ret) {
-      case ValueRange::INCLUDE:
       case ValueRange::SAME:
+      case ValueRange::INCLUDE:
         lava_debug(NORMAL,lava_verify(lower == upper-1););
         break;
 
       case ValueRange::REXCLUDE:
         lava_debug(NORMAL,lava_verify(lower == upper););
-        sets_.insert(IteratorAt(sets_,lower),range);
+        modify_pos = sets_.insert(IteratorAt(sets_,lower),range);
         break;
 
+      case ValueRange::LEXCLUDE:
+        lava_debug(NORMAL,lava_verify(lower == upper););
+        lava_debug(NORMAL,lava_verify(lower == static_cast<int>(sets_.size())););
+        modify_pos = sets_.insert(sets_.end(),range);
+        break;
       case ValueRange::OVERLAP:
         {
           lava_debug(NORMAL,lava_verify(upper-lower >=1););
@@ -195,12 +244,17 @@ void Float64ValueRange::UnionRange( const Range& range ) {
           auto itr_start = IteratorAt(sets_,lower);
           auto itr_end   = IteratorAt(sets_,upper);
           auto pos       = sets_.erase (itr_start,itr_end);
-
-          sets_.insert(pos,Range(rng_lower,rng_upper));
+          modify_pos     = sets_.insert(pos,Range(rng_lower,rng_upper));
         }
         break;
 
       default: lava_die(); break;
+    }
+
+    if(ret == ValueRange::REXCLUDE ||
+       ret == ValueRange::LEXCLUDE ||
+       ret == ValueRange::OVERLAP) {
+      Merge(modify_pos);
     }
   }
 }
@@ -231,6 +285,7 @@ void Float64ValueRange::Intersect( Binary::Operator op , double value ) {
       auto range = NewRange(op,value);
       int  lower , upper;
       auto ret = Scan(range,&lower,&upper);
+      RangeSet::iterator modify_pos;
 
       switch(ret) {
         case ValueRange::INCLUDE:
@@ -240,7 +295,8 @@ void Float64ValueRange::Intersect( Binary::Operator op , double value ) {
         case ValueRange::SAME:
           lava_debug(NORMAL,lava_verify(lower == upper-1););
           break;
-        case ValueRange::REXCLUDE: // empty set
+        case ValueRange::LEXCLUDE: // empty set
+        case ValueRange::REXCLUDE:
           sets_.clear();
           break;
         case ValueRange::OVERLAP:
@@ -253,10 +309,14 @@ void Float64ValueRange::Intersect( Binary::Operator op , double value ) {
             auto itr_start = IteratorAt(sets_,lower);
             auto itr_end   = IteratorAt(sets_,upper);
             auto pos       = sets_.erase(itr_start,itr_end);
-            sets_.insert(pos,Range(rng_lower,rng_upper));
+            modify_pos = sets_.insert(pos,Range(rng_lower,rng_upper));
           }
           break;
         default: lava_die(); break;
+      }
+
+      if(ret == ValueRange::OVERLAP) {
+        Merge(modify_pos);
       }
     }
   } else {
@@ -277,8 +337,34 @@ void Float64ValueRange::Intersect( Binary::Operator op , double value ) {
   }
 }
 
-bool Float64ValueRange::Infer( Binary::Operator op , Expr* node ) {
-  return false;
+bool Float64ValueRange::Infer( Binary::Operator op , Expr* value ,
+                                                     bool* output ) {
+  lava_debug(NORMAL,lava_verify(value->IsFloat64()););
+
+  return Infer(op,value->AsFloat64()->value(),output);
+}
+
+bool Float64ValueRange::Infer( Binary::Operator op , double value ,
+                                                     bool* output ) {
+  if(op != Binary::NE) {
+    auto range = NewRange(op,value);
+    int lower,upper;
+    int ret = Scan(range,&lower,&upper);
+    if(ret == ValueRange::INCLUDE || ret == ValueRange::SAME) {
+      *output = true;
+      return true;
+    } else if(ret == ValueRange::LEXCLUDE || ret == ValueRange::REXCLUDE) {
+      *output = false;
+      return true;
+    } else {
+      return false;
+    }
+  } else {
+    bool ret   = Infer(Binary::EQ,value,output); // infer for == C range
+    if(!ret) return ret;                         // undecidable
+    *output = !*output;                          // negate the result
+    return true;
+  }
 }
 
 void Float64ValueRange::Dump( DumpWriter* writer ) const {

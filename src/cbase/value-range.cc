@@ -106,6 +106,7 @@ int Float64ValueRange::Scan( const Range& range , int* lower , int* upper ) cons
           rcode = ValueRange::INCLUDE;
         }
         goto done;
+
       case ValueRange::OVERLAP:
         if(start == -1) {
           start = i;
@@ -113,6 +114,7 @@ int Float64ValueRange::Scan( const Range& range , int* lower , int* upper ) cons
         }
 
         break;
+
       case ValueRange::REXCLUDE:
         if(start == -1) {
           start = i;
@@ -121,13 +123,16 @@ int Float64ValueRange::Scan( const Range& range , int* lower , int* upper ) cons
 
         end = i;
         goto done;
+
       case ValueRange::LEXCLUDE:
         lava_debug(NORMAL,lava_verify(start == -1););
         break; // continue search
+
       case ValueRange::SAME:
         start = i; end = i + 1;
         rcode = ValueRange::SAME;
         goto done;
+
       default: lava_die(); break;
     }
 
@@ -309,7 +314,7 @@ void Float64ValueRange::Intersect( Binary::Operator op , double value ) {
             auto itr_start = IteratorAt(sets_,lower);
             auto itr_end   = IteratorAt(sets_,upper);
             auto pos       = sets_.erase(itr_start,itr_end);
-            modify_pos = sets_.insert(pos,Range(rng_lower,rng_upper));
+            modify_pos     = sets_.insert(pos,Range(rng_lower,rng_upper));
           }
           break;
         default: lava_die(); break;
@@ -321,7 +326,9 @@ void Float64ValueRange::Intersect( Binary::Operator op , double value ) {
     }
   } else {
 
-    // We convert intersection of a != C to be a set operation as following:
+    // We convert intersection of a != C to be a set operation
+    // as following:
+    //
     // a != C -> (-@,C) U (C,+@)
     //
     // Which is:
@@ -337,34 +344,72 @@ void Float64ValueRange::Intersect( Binary::Operator op , double value ) {
   }
 }
 
-bool Float64ValueRange::Infer( Binary::Operator op , Expr* value ,
-                                                     bool* output ) {
+int Float64ValueRange::Infer( Binary::Operator op , Expr* value ) const {
   lava_debug(NORMAL,lava_verify(value->IsFloat64()););
-
-  return Infer(op,value->AsFloat64()->value(),output);
+  return Infer(op,value->AsFloat64()->value());
 }
 
-bool Float64ValueRange::Infer( Binary::Operator op , double value ,
-                                                     bool* output ) {
+int Float64ValueRange::Infer( Binary::Operator op , double value ) const {
   if(op != Binary::NE) {
+    if(sets_.empty()) return ValueRange::ALWAYS_FALSE; // empty set
+
     auto range = NewRange(op,value);
-    int lower,upper;
-    int ret = Scan(range,&lower,&upper);
-    if(ret == ValueRange::INCLUDE || ret == ValueRange::SAME) {
-      *output = true;
-      return true;
-    } else if(ret == ValueRange::LEXCLUDE || ret == ValueRange::REXCLUDE) {
-      *output = false;
-      return true;
-    } else {
-      return false;
+    auto r     = range.Test(sets_.front());
+
+    for( std::size_t i = 0 ; i < sets_.size() ; ++i ) {
+      auto ret = range.Test(sets_[i]);
+      switch(ret) {
+        case ValueRange::INCLUDE:
+        case ValueRange::SAME:
+          if(r == ValueRange::INCLUDE || r == ValueRange::SAME)
+            continue;
+          else
+            return ValueRange::UNKNOWN;
+        case ValueRange::LEXCLUDE:
+        case ValueRange::REXCLUDE:
+          if(r == ValueRange::LEXCLUDE || r == ValueRange::REXCLUDE)
+            continue;
+          else
+            return ValueRange::UNKNOWN;
+        default:
+          return ValueRange::UNKNOWN;
+      }
     }
+
+    if(r == ValueRange::INCLUDE || r == ValueRange::SAME)
+      return ValueRange::ALWAYS_TRUE;
+    else
+      return ValueRange::ALWAYS_FALSE;
   } else {
-    bool ret   = Infer(Binary::EQ,value,output); // infer for == C range
-    if(!ret) return ret;                         // undecidable
-    *output = !*output;                          // negate the result
-    return true;
+    auto r = Infer( Binary::EQ , value );
+    switch(r) {
+      case ValueRange::ALWAYS_TRUE:
+        return ValueRange::ALWAYS_FALSE;
+      case ValueRange::ALWAYS_FALSE:
+        return ValueRange::ALWAYS_TRUE;
+      default:
+        return ValueRange::UNKNOWN;
+    }
   }
+}
+
+bool  Float64ValueRange::Collapse( double* output ) const {
+  if(sets_.size() == 1 ) {
+    auto &r = sets_.front();
+    if(r.IsSingleton()) {
+      *output = r.lower.value;
+      return true;
+    }
+  }
+  return false;
+}
+
+Expr* Float64ValueRange::Collapse( Graph* graph , IRInfo* info ) const {
+  double v;
+  if(Collapse(&v)) {
+    return Float64::New(graph,v,info);
+  }
+  return NULL;
 }
 
 void Float64ValueRange::Dump( DumpWriter* writer ) const {

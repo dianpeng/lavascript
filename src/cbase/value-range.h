@@ -32,8 +32,29 @@ class ValueRange {
   // Intersect a value into the range
   virtual void Intersect( Binary::Operator , Expr* ) = 0;
 
-  // Do a inference of a predicate
-  virtual bool Infer( Binary::Operator , Expr* , bool* ) = 0;
+  enum { ALWAYS_TRUE , ALWAYS_FALSE , UNKNOWN };
+
+  // Infer an expression based on the ValueRange existed. The return
+  // value are :
+  // 1) Always true, basically means the input range is the super set
+  //    of the ValueRange's internal set ; or if ValueRange is true, the
+  //    input range is always true
+  //
+  // 2) Always false, basically means the input range shares nothing with
+  //    the ValueRange's internal set ; or it means the input range cannot
+  //    be true. In DCE, it means this branch needs to be removed
+  //
+  // 3) Unknown , just means don't need to do anything the relationship
+  //    between the input and existed ValueRange cannot be decided
+  //
+  virtual int Infer( Binary::Operator , Expr* ) const = 0;
+
+
+  // Check whether we can collapse the set into a value , or simply puts
+  // it does this value range represents a fixed number or boolean value ?
+  //
+  // It is used during GVN for inference
+  virtual Expr* Collapse( Graph* , IRInfo* ) const = 0;
 
   virtual ~ValueRange() {}
 };
@@ -98,9 +119,10 @@ class Float64ValueRange : public ValueRange {
   Float64ValueRange( Binary::Operator op , double value ): sets_() { Union(op,value); }
   Float64ValueRange( const Float64ValueRange& that ):sets_(that.sets_) {}
 
-  virtual void Union( Binary::Operator op , Expr* );
-  virtual void Intersect( Binary::Operator op , Expr* );
-  virtual bool Infer( Binary::Operator , Expr* , bool* );
+  virtual void  Union( Binary::Operator op , Expr* );
+  virtual void  Intersect( Binary::Operator op , Expr* );
+  virtual int   Infer( Binary::Operator , Expr* ) const;
+  virtual Expr* Collapse( Graph* , IRInfo* ) const;
 
  public:
   void Dump( DumpWriter* ) const;
@@ -121,7 +143,8 @@ class Float64ValueRange : public ValueRange {
   void Union( const Float64ValueRange& );
   void UnionRange ( const Range& );
 
-  bool Infer( Binary::Operator , double , bool* );
+  int  Infer( Binary::Operator , double ) const;
+  bool Collapse( double* ) const;
 
  private:
 
@@ -130,13 +153,15 @@ class Float64ValueRange : public ValueRange {
   // 2) sorted
   RangeSet sets_;
 
-  FRIEND_TEST(ValueRange,F64Basic);
-  FRIEND_TEST(ValueRange,F64Infer);
+  FRIEND_TEST(ValueRange,F64Union);
+  FRIEND_TEST(ValueRange,F64Intersect);
+  FRIEND_TEST(ValueRange,F64All);
 
   void operator = ( const Float64ValueRange& ) = delete;
 };
 
-inline bool Float64ValueRange::NumberPoint::operator ==( const NumberPoint& that ) const {
+inline bool
+Float64ValueRange::NumberPoint::operator ==( const NumberPoint& that ) const {
   if(value == that.value) {
     if((close && that.close) || (!close && !that.close))
       return true;
@@ -144,11 +169,13 @@ inline bool Float64ValueRange::NumberPoint::operator ==( const NumberPoint& that
   return false;
 }
 
-inline bool Float64ValueRange::NumberPoint::operator !=( const NumberPoint& that ) const {
+inline bool
+Float64ValueRange::NumberPoint::operator !=( const NumberPoint& that ) const {
   return !(*this == that);
 }
 
-inline bool Float64ValueRange::Range::IsSingleton() const {
+inline bool
+Float64ValueRange::Range::IsSingleton() const {
   auto r = (upper == lower);
   lava_debug(NORMAL,if(r) lava_verify(lower.close);); // we should not have empty set
   return r;

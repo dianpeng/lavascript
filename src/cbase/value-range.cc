@@ -7,6 +7,12 @@ namespace lavascript {
 namespace cbase      {
 namespace hir        {
 
+/* --------------------------------------------------------------------------
+ *
+ * Float64ValueRange Implementation
+ *
+ * -------------------------------------------------------------------------*/
+
 Float64ValueRange::NumberPoint Float64ValueRange::NumberPoint::kPosInf(Double::PosInf(),false);
 Float64ValueRange::NumberPoint Float64ValueRange::NumberPoint::kNegInf(Double::NegInf(),false);
 
@@ -351,7 +357,7 @@ int Float64ValueRange::Infer( Binary::Operator op , Expr* value ) const {
 
 int Float64ValueRange::Infer( Binary::Operator op , double value ) const {
   if(op != Binary::NE) {
-    if(sets_.empty()) return ValueRange::ALWAYS_FALSE; // empty set
+    if(sets_.empty()) return ValueRange::UNKNOWN; // empty set is included by any set
 
     auto range = NewRange(op,value);
     auto r     = range.Test(sets_.front());
@@ -419,6 +425,148 @@ void Float64ValueRange::Dump( DumpWriter* writer ) const {
                                r.lower.value ,
                                r.upper.value ,
                                r.upper.close ? "]" : ")" );
+  }
+  writer->WriteL("-----------------------------------------------");
+}
+
+/* --------------------------------------------------------------------------
+ *
+ * UnknownValueRange Implementation
+ *
+ * -------------------------------------------------------------------------*/
+
+void UnknownValueRange::Union( Binary::Operator op , Expr* value ) {
+  (void)op;
+  (void)value;
+  return;
+}
+
+void UnknownValueRange::Intersect( Binary::Operator op, Expr* value ) {
+  (void)op;
+  (void)value;
+  return;
+}
+
+int UnknownValueRange::Infer( Binary::Operator op , Expr* value ) const {
+  (void)op;
+  (void)value;
+  return ValueRange::UNKNOWN;
+}
+
+Expr* UnknownValueRange::Collapse( Graph* graph , IRInfo* info ) const {
+  (void)graph;
+  (void)info;
+  return NULL;
+}
+
+void UnknownValueRange::Dump( DumpWriter* writer ) const {
+  writer->WriteL("-----------------------------------------------");
+  writer->WriteL("empty");
+  writer->WriteL("-----------------------------------------------");
+}
+
+
+/* --------------------------------------------------------------------------
+ *
+ * BooleanValueRange Implementation
+ *
+ * -------------------------------------------------------------------------*/
+
+void BooleanValueRange::Union( bool value ) {
+  switch(state_) {
+    case INIT:  state_ = value ? TRUE : FALSE; break;
+    case TRUE:  state_ = value ? TRUE : ANY  ; break;
+    case FALSE: state_ = value ? ANY  : FALSE; break;
+    case EMPTY: state_ = value ? TRUE : FALSE; break;
+    case ANY:   break;
+    default: lava_die(); break;
+  }
+}
+
+void BooleanValueRange::Union( Binary::Operator op , bool value ) {
+  lava_debug(NORMAL,lava_verify(op == Binary::EQ || op == Binary::NE););
+  if(op == Binary::EQ)
+    Union(value);
+  else
+    Union(!value);
+}
+
+void BooleanValueRange::Union( Binary::Operator op , Expr* value ) {
+  lava_debug(NORMAL,lava_verify(value->IsBoolean()););
+  Union(op,value->AsBoolean()->value());
+}
+
+void BooleanValueRange::Intersect( bool value ) {
+  switch(state_) {
+    case INIT:  state_ = value ? TRUE : FALSE; break;
+    case TRUE:  state_ = value ? TRUE : EMPTY; break;
+    case FALSE: state_ = value ? EMPTY: FALSE; break;
+    case EMPTY: break;
+    case ANY:   state_ = value ? TRUE : FALSE; break;
+    default: lava_die(); break;
+  }
+}
+
+void BooleanValueRange::Intersect( Binary::Operator op , bool value ) {
+  lava_debug(NORMAL,lava_verify(op == Binary::EQ || op == Binary::NE););
+  if(op == Binary::EQ)
+    Intersect(value);
+  else
+    Intersect(!value);
+}
+
+void BooleanValueRange::Intersect( Binary::Operator op , Expr* value ) {
+  lava_debug(NORMAL,lava_verify(value->IsBoolean()););
+  Intersect(op,value->AsBoolean()->value());
+}
+
+int BooleanValueRange::Infer( Binary::Operator op , bool value ) const {
+  lava_debug(NORMAL,lava_verify(op == Binary::EQ || op == Binary::NE););
+  value = (op == Binary::EQ) ? value : !value;
+
+  switch(state_) {
+    case INIT:  return ValueRange::UNKNOWN;
+
+    case TRUE:  return value ? ValueRange::ALWAYS_TRUE :
+                               ValueRange::ALWAYS_FALSE;
+
+    case FALSE: return value ? ValueRange::ALWAYS_FALSE :
+                               ValueRange::ALWAYS_TRUE;
+
+    case EMPTY: return ValueRange::ALWAYS_FALSE;
+    case ANY:   return ValueRange::UNKNOWN;
+    default: lava_die(); return ValueRange::UNKNOWN;
+  }
+}
+
+int BooleanValueRange::Infer( Binary::Operator op , Expr* value ) const {
+  lava_debug(NORMAL,lava_verify(value->IsBoolean()););
+  return Infer(op,value->AsBoolean()->value());
+}
+
+bool BooleanValueRange::Collapse( bool* output ) const {
+  switch(state_) {
+    case TRUE: *output = true; return true;
+    case FALSE:*output = false;return true;
+    default: return false;
+  }
+}
+
+Expr* BooleanValueRange::Collapse( Graph* graph , IRInfo* info ) const {
+  bool v;
+  if(Collapse(&v)) return Boolean::New(graph,v,info);
+  return NULL;
+}
+
+void BooleanValueRange::Dump( DumpWriter* writer ) const {
+  writer->WriteL("-----------------------------------------------");
+  switch(state_) {
+    case INIT: writer->WriteL("init"); break;
+    case TRUE: writer->WriteL("true"); break;
+    case FALSE:writer->WriteL("false");break;
+    case EMPTY:writer->WriteL("empty");break;
+    case ANY:  writer->WriteL("any");  break;
+    default: lava_die(); break;
   }
   writer->WriteL("-----------------------------------------------");
 }

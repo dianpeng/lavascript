@@ -7,10 +7,8 @@
 
 namespace lavascript {
 class DumpWriter;
-
 namespace cbase      {
 namespace hir        {
-
 
 // ValueRange object represents a set of values and it supports set operations like
 // Union and Intersect. Also user can use ValueRange as a way to infer whether a
@@ -27,7 +25,7 @@ class ValueRange {
   enum { INCLUDE , OVERLAP , LEXCLUDE , REXCLUDE , SAME };
 
   // Union a value range
-  virtual void Union( Binary::Operator , Expr* ) = 0;
+  virtual void Union    ( Binary::Operator , Expr* ) = 0;
 
   // Intersect a value into the range
   virtual void Intersect( Binary::Operator , Expr* ) = 0;
@@ -56,7 +54,22 @@ class ValueRange {
   // It is used during GVN for inference
   virtual Expr* Collapse( Graph* , IRInfo* ) const = 0;
 
+  // Debug purpose
+  virtual void Dump( DumpWriter* ) const = 0;
+
   virtual ~ValueRange() {}
+};
+
+// Unknown ValueRange. Used to mark we cannot do anything with this constraint/
+// It is a placeholder when the conditionaly constraint tries to cover multiple
+// different types , eg: if(a > 3 || a == "string")
+class UnknownValueRange : public ValueRange {
+ public:
+  virtual void  Union    ( Binary::Operator , Expr* );
+  virtual void  Intersect( Binary::Operator , Expr* );
+  virtual int   Infer    ( Binary::Operator , Expr* ) const;
+  virtual Expr* Collapse ( Graph* , IRInfo*         ) const;
+  virtual void  Dump     ( DumpWriter* ) const;
 };
 
 
@@ -88,8 +101,6 @@ class Float64ValueRange : public ValueRange {
 
   // represents a segment/range on a number axis
   struct Range {
-    static Range kAll;
-
     NumberPoint lower;
     NumberPoint upper;
 
@@ -104,18 +115,20 @@ class Float64ValueRange : public ValueRange {
     {}
 
     inline bool IsSingleton () const;
-    int  Test       ( const Range& ) const;
-    bool IsInclude  ( const Range& range ) const { return Test(range) == ValueRange::INCLUDE; }
-    bool IsOverlap  ( const Range& range ) const { return Test(range) == ValueRange::OVERLAP; }
+
+    int  Test       ( const Range&       ) const;
+    bool IsInclude  ( const Range& range ) const { return Test(range) == ValueRange::INCLUDE;  }
+    bool IsOverlap  ( const Range& range ) const { return Test(range) == ValueRange::OVERLAP;  }
     bool IsLExclude ( const Range& range ) const { return Test(range) == ValueRange::LEXCLUDE; }
     bool IsRExclude ( const Range& range ) const { return Test(range) == ValueRange::REXCLUDE; }
-    bool IsSame     ( const Range& range ) const { return Test(range) == ValueRange::SAME;    }
+    bool IsSame     ( const Range& range ) const { return Test(range) == ValueRange::SAME;     }
   };
 
   typedef std::vector<Range> RangeSet;
 
  public:
   Float64ValueRange():sets_() {}
+  Float64ValueRange( Binary::Operator op , Expr*  value ): sets_() { Union(op,value); }
   Float64ValueRange( Binary::Operator op , double value ): sets_() { Union(op,value); }
   Float64ValueRange( const Float64ValueRange& that ):sets_(that.sets_) {}
 
@@ -125,7 +138,7 @@ class Float64ValueRange : public ValueRange {
   virtual Expr* Collapse( Graph* , IRInfo* ) const;
 
  public:
-  void Dump( DumpWriter* ) const;
+  virtual void Dump( DumpWriter* ) const;
 
  private:
   Range NewRange ( Binary::Operator op , double ) const;
@@ -160,8 +173,45 @@ class Float64ValueRange : public ValueRange {
   void operator = ( const Float64ValueRange& ) = delete;
 };
 
-inline bool
-Float64ValueRange::NumberPoint::operator ==( const NumberPoint& that ) const {
+// Boolean value's ValueRange implementation
+class BooleanValueRange : public ValueRange {
+ private:
+  enum State { INIT , EMPTY , ANY , TRUE , FALSE };
+ public:
+  BooleanValueRange() : state_(INIT) {}
+
+  virtual void  Union    ( Binary::Operator , Expr* );
+  virtual void  Intersect( Binary::Operator , Expr* );
+  virtual int   Infer    ( Binary::Operator , Expr* ) const;
+  virtual Expr* Collapse ( Graph* , IRInfo*         ) const;
+  virtual void  Dump     ( DumpWriter* ) const;
+
+ private:
+  void  Union    ( bool );
+  void  Union    ( Binary::Operator , bool );
+
+  void  Intersect( bool );
+  void  Intersect( Binary::Operator , bool );
+  int   Infer    ( Binary::Operator , bool ) const;
+  bool  Collapse ( bool* ) const;
+
+ private:
+  /**
+   * The boolean value actually is just a simple state machine
+   *
+   * [INIT] ---> U true  --> [true]  --> U false --> [ANY]
+   *      |
+   *      |----> U false --> [false] --> U true  --> [ANY]
+   *      |
+   *      |----> ^ true  --> [true]  --> ^ false --> [EMPTY]
+   *      |
+   *      |----> ^ false --> [false] --> ^ true  --> [EMPTY]
+   */
+  State state_;
+};
+
+inline
+bool Float64ValueRange::NumberPoint::operator ==( const NumberPoint& that ) const {
   if(value == that.value) {
     if((close && that.close) || (!close && !that.close))
       return true;
@@ -169,13 +219,13 @@ Float64ValueRange::NumberPoint::operator ==( const NumberPoint& that ) const {
   return false;
 }
 
-inline bool
-Float64ValueRange::NumberPoint::operator !=( const NumberPoint& that ) const {
+inline
+bool Float64ValueRange::NumberPoint::operator !=( const NumberPoint& that ) const {
   return !(*this == that);
 }
 
-inline bool
-Float64ValueRange::Range::IsSingleton() const {
+inline
+bool Float64ValueRange::Range::IsSingleton() const {
   auto r = (upper == lower);
   lava_debug(NORMAL,if(r) lava_verify(lower.close);); // we should not have empty set
   return r;

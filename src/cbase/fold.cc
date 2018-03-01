@@ -17,6 +17,10 @@ inline bool IsUnaryMinus( Expr* node ) {
   return node->IsUnary() && node->AsUnary()->op() == Unary::MINUS;
 }
 
+inline bool IsUnaryNot  ( Expr* node ) {
+  return node->IsUnary() && node->AsUnary()->op() == Unary::NOT;
+}
+
 inline bool IsTrue( Expr* node ) {
   return node->IsBoolean() && node->AsBoolean()->value();
 }
@@ -202,6 +206,18 @@ Expr* SimplifyLogicAnd( Graph* graph , TypeKind lhs_type , TypeKind rhs_type ,
   if(IsFalse(lhs)) { return Boolean::New(graph,false,irinfo()); }  // false && any ==> false
   if(IsTrue(lhs))  { return rhs; }                                 // true  && any ==> any
 
+  if(lhs == rhs) return lhs; // a && a ==> a
+
+  if(IsUnaryNot(lhs) && lhs->AsUnary()->operand() == rhs) {
+    // !a && a ==> false
+    return Boolean::New(graph,false,irinfo());
+  }
+
+  if(IsUnaryNot(rhs) && rhs->AsUnary()->operand() == lhs) {
+    // a && !a ==> false
+    return Boolean::New(graph,false,irinfo());
+  }
+
   return NULL;
 }
 
@@ -211,6 +227,18 @@ Expr* SimplifyLogicOr ( Graph* graph , TypeKind lhs_type , TypeKind rhs_type ,
                                                            const std::function<IRInfo* ()>& irinfo ) {
   if(IsTrue(lhs))  { return Boolean::New(graph,true,irinfo()); }  // true || any ==> true
   if(IsFalse(lhs)) { return rhs; }                                // false|| any ==> any
+
+  if(lhs == rhs) return lhs; // a || a ==> a
+
+  if(IsUnaryNot(lhs) && lhs->AsUnary()->operand() == rhs) {
+    // !a || a ==> true
+    return Boolean::New(graph,true,irinfo());
+  }
+
+  if(IsUnaryNot(rhs) && rhs->AsUnary()->operand() == lhs) {
+    // a || !a ==> true
+    return Boolean::New(graph,true,irinfo());
+  }
 
   return NULL;
 }

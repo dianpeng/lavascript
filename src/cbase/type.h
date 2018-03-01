@@ -53,7 +53,7 @@ TypeKind MapValueToTypeKind    ( const Value& );
 
 /**
  * A type descriptor used throughout the backend optimization
- * 
+ *
  * It conatins all the parental type system information
  */
 class TPKind {
@@ -107,7 +107,7 @@ class TPKind {
     return IsAncestor( *Node(kind) );
   }
 
-  // Check whether |this| is the descendent of the input *kind* 
+  // Check whether |this| is the descendent of the input *kind*
   bool IsDescendent( const TPKind& kind ) const;
 
   bool IsDescendent( TypeKind kind ) const {

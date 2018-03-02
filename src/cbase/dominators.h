@@ -26,6 +26,9 @@ class Dominators {
   // returned by this function will contain the node itself
   const DominatorSet& GetDominatorSet( ControlFlow* ) const;
 
+  // Get the immediate dominator for the input control flow node
+  ControlFlow* GetImmDominator( ControlFlow* ) const;
+
   // Get common dominator set for 2 nodes
   DominatorSet GetCommonDominatorSet ( ControlFlow* , ControlFlow* ) const;
 

@@ -314,20 +314,26 @@ void Float64ValueRange::IntersectRange( const Range& range ) {
         {
           lava_debug(NORMAL,lava_verify(upper - lower >=1););
 
-          auto rng_lower = LowerMax( range.lower , sets_[lower  ].lower );
-          auto rng_upper = UpperMin( range.upper , sets_[upper-1].upper );
-
+          /**
+           * This part for intersection is relatively hard since we need to
+           * find out all the overlapped section and modify accordingly
+           */
           auto itr_start = IteratorAt(sets_,lower);
           auto itr_end   = IteratorAt(sets_,upper);
-          auto pos       = sets_.erase(itr_start,itr_end);
-          modify_pos     = sets_.insert(pos,Range(rng_lower,rng_upper));
+
+          for( ; itr_start != itr_end ; ++itr_start ) {
+            auto &existed = *itr_start;  // existed range
+            existed.lower = LowerMax(existed.lower,range.lower);
+            existed.upper = UpperMin(existed.upper,range.upper);
+          }
+
+          // for intersection we don't need to do merge since the opereation
+          // is more constraint in a monolithic way. basically if we don't
+          // have overlap before intersection, we will not have overlap after
+          // intersection
         }
         break;
       default: lava_die(); break;
-    }
-
-    if(ret == ValueRange::OVERLAP) {
-      Merge(modify_pos);
     }
   }
 }
@@ -411,8 +417,10 @@ int Float64ValueRange::Infer( Binary::Operator op , double value ) const {
 }
 
 int Float64ValueRange::Infer( Binary::Operator op , Expr* value ) const {
-  lava_debug(NORMAL,lava_verify(value->IsFloat64()););
-  return Infer(op,value->AsFloat64()->value());
+  if(value->IsFloat64()) {
+    return Infer(op,value->AsFloat64()->value());
+  }
+  return ValueRange::UNKNOWN;
 }
 
 int Float64ValueRange::Contain( const Range& range ) const {
@@ -437,27 +445,28 @@ int Float64ValueRange::Contain( const Range& range ) const {
 }
 
 int Float64ValueRange::Infer( const ValueRange& range ) const {
-  lava_debug(NORMAL,lava_verify(range.IsFloat64ValueRange()););
+  if(range.IsFloat64ValueRange()) {
+    // TODO:: This is a O(n^2) algorithm , if performance is a
+    //        problem we may need to optimize it
+    auto &r = static_cast<const Float64ValueRange&>(range);
 
-  // TODO:: This is a O(n^2) algorithm , if performance is a
-  //        problem we may need to optimize it
-  auto &r = static_cast<const Float64ValueRange&>(range);
+    // Handle empty set properly
+    if(sets_.empty())   return ValueRange::UNKNOWN;
+    if(r.sets_.empty()) return ValueRange::UNKNOWN;
 
-  // Handle empty set properly
-  if(sets_.empty())   return ValueRange::UNKNOWN;
-  if(r.sets_.empty()) return ValueRange::UNKNOWN;
+    auto rcode = r.Contain(sets_.front());
 
-  auto rcode = r.Contain(sets_.front());
+    if(rcode == ValueRange::UNKNOWN)
+      return ValueRange::UNKNOWN;
 
-  if(rcode == ValueRange::UNKNOWN)
-    return ValueRange::UNKNOWN;
+    for( std::size_t i = 1 ; i < sets_.size(); ++i ) {
+      auto ret = r.Contain(sets_[i]);
+      if(ret != rcode) return ValueRange::UNKNOWN;
+    }
 
-  for( std::size_t i = 1 ; i < sets_.size(); ++i ) {
-    auto ret = r.Contain(sets_[i]);
-    if(ret != rcode) return ValueRange::UNKNOWN;
+    return rcode;
   }
-
-  return rcode;
+  return ValueRange::UNKNOWN;
 }
 
 bool  Float64ValueRange::Collapse( double* output ) const {
@@ -643,26 +652,31 @@ int BooleanValueRange::Infer( Binary::Operator op , bool value ) const {
 }
 
 int BooleanValueRange::Infer( const ValueRange& range ) const {
-  lava_debug(NORMAL,lava_verify(range.IsBooleanValueRange()););
+  if(range.IsBooleanValueRange()) {
+    auto &r = static_cast<const BooleanValueRange&>(range);
+    switch(state_) {
+      case ANY:
+      case EMPTY:
+        return ValueRange::UNKNOWN;
 
-  auto &r = static_cast<const BooleanValueRange&>(range);
-  switch(state_) {
-    case ANY:
-    case EMPTY:
-      return ValueRange::UNKNOWN;
-    case TRUE:
-    case FALSE:
-      return (state_ == r.state_) ? ValueRange::ALWAYS_TRUE :
-                                    ValueRange::ALWAYS_FALSE;
-    default:
-      lava_die();
-      return ValueRange::UNKNOWN;
+      case TRUE:
+      case FALSE:
+        return (state_ == r.state_ || r.state_ == ANY ) ?
+          ValueRange::ALWAYS_TRUE : ValueRange::ALWAYS_FALSE;
+
+      default:
+        lava_die();
+        return ValueRange::UNKNOWN;
+    }
   }
+  return ValueRange::UNKNOWN;
 }
 
 int BooleanValueRange::Infer( Binary::Operator op , Expr* value ) const {
-  lava_debug(NORMAL,lava_verify(value->IsBoolean()););
-  return Infer(op,value->AsBoolean()->value());
+  if(value->IsBoolean()) {
+    return Infer(op,value->AsBoolean()->value());
+  }
+  return ValueRange::UNKNOWN;
 }
 
 bool BooleanValueRange::Collapse( bool* output ) const {

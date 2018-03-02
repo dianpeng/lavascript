@@ -252,6 +252,21 @@ TEST(ValueRange,F64Union) {
       ASSERT_EQ(ValueRange::ALWAYS_FALSE,range.Infer(r));
     }
   }
+
+
+  // multiple range represents single number
+  {
+    static const int kSize = 100;
+    Float64ValueRange range;
+
+    for( int i = 0 ; i < kSize ; ++i ) {
+      range.Union(Binary::EQ,static_cast<double>(i));
+    }
+
+    for( int i = 0 ; i < kSize ; ++i ) {
+      CHECK_UNKNOWN(Binary::EQ,static_cast<double>(i));
+    }
+  }
 }
 
 TEST(ValueRange,F64Intersect) {
@@ -312,6 +327,190 @@ TEST(ValueRange,F64Intersect) {
       DumpWriter writer;
       range.Dump(&writer);
     }
+
+    // An empty set is the subset of any set
+    // so we infer any value range to be unknown if the constraint
+    // set is an empty set
+    CHECK_UNKNOWN (Binary::EQ,10);
+    CHECK_UNKNOWN (Binary::EQ,-1000000);
+  }
+
+  // multiple range representation
+  {
+    static const int kSize = 100;
+    Float64ValueRange range;
+    for( int i = kSize - 1 ; i >= 0 ; --i ) {
+      range.Union    (Binary::LE,i);
+      range.Intersect(Binary::GE,i);
+    }
+
+    for( int i = kSize - 1 ; i >= 0 ; --i ) {
+      CHECK_UNKNOWN(Binary::EQ,i);
+    }
+
+    range.Intersect(Binary::LE,100);
+    range.Intersect(Binary::GE,0.0);
+
+    for( int i = kSize - 1 ; i >= 0 ; --i ) {
+      CHECK_UNKNOWN(Binary::EQ,i);
+    }
+
+  }
+
+  {
+    // range [1,10] , [20,30], [40,50]
+    Float64ValueRange range;
+    {
+      range.Union(Binary::LE,10);
+      range.Intersect(Binary::GE,1);
+    }
+
+    {
+      range.Union(Binary::GE,20);
+      range.Intersect(Binary::LE,30);
+    }
+
+    {
+      range.Union(Binary::GE,40);
+      range.Intersect(Binary::LE,50);
+    }
+
+    {
+      Float64ValueRange r;
+
+      r.Union(Binary::GE,40);
+      r.Intersect(Binary::LE,50);
+
+      r.Intersect(Binary::GE,20);
+      r.Union(Binary::LE,30);
+
+      r.Intersect(Binary::GE,1);
+      r.Union(Binary::LE,10);
+
+      ASSERT_EQ(ValueRange::ALWAYS_TRUE,range.Infer(r));
+    }
+  }
+
+}
+
+TEST(ValueRange,BoolUnion) {
+  {
+    BooleanValueRange range; // empty set
+    range.Union(true);       // true
+    CHECK_TRUE (Binary::EQ,true);
+    CHECK_FALSE(Binary::EQ,false);
+
+    range.Union(false);      // true and false
+    CHECK_UNKNOWN (Binary::EQ,true);
+    CHECK_UNKNOWN (Binary::EQ,false);
+
+    CHECK_UNKNOWN (Binary::NE,true);
+    CHECK_UNKNOWN (Binary::NE,false);
+  }
+
+  {
+    BooleanValueRange range;
+    range.Union(false);
+    CHECK_TRUE (Binary::EQ,false);
+    CHECK_FALSE(Binary::EQ,true);
+
+    range.Union(true);
+    CHECK_UNKNOWN (Binary::EQ,true);
+    CHECK_UNKNOWN (Binary::EQ,false);
+
+    CHECK_UNKNOWN (Binary::NE,true);
+    CHECK_UNKNOWN (Binary::NE,false);
+  }
+
+  {
+    BooleanValueRange range;
+    range.Union(true); // true
+    ASSERT_EQ(ValueRange::ALWAYS_FALSE,range.Infer(BooleanValueRange(false)));
+    ASSERT_EQ(ValueRange::ALWAYS_TRUE ,range.Infer(BooleanValueRange(true )));
+  }
+
+  {
+    BooleanValueRange range;
+    range.Union(false); // true
+    ASSERT_EQ(ValueRange::ALWAYS_FALSE,range.Infer(BooleanValueRange(true)));
+    ASSERT_EQ(ValueRange::ALWAYS_TRUE ,range.Infer(BooleanValueRange(false)));
+  }
+
+  {
+    BooleanValueRange range;
+    range.Union(false); // true
+    range.Union(true ); // true,false
+
+    ASSERT_EQ(ValueRange::UNKNOWN,range.Infer(BooleanValueRange(true)));
+    ASSERT_EQ(ValueRange::UNKNOWN,range.Infer(BooleanValueRange(false)));
+  }
+
+  {
+    BooleanValueRange range(true);
+    {
+      BooleanValueRange r(true); r.Union(false);
+      ASSERT_EQ(ValueRange::ALWAYS_TRUE,range.Infer(r));
+    }
+  }
+
+  {
+    BooleanValueRange range(false);
+    {
+      BooleanValueRange r(false); r.Union(true);
+      ASSERT_EQ(ValueRange::ALWAYS_TRUE,range.Infer(r));
+    }
+  }
+}
+
+TEST(ValueRange,BoolIntersect) {
+  {
+    BooleanValueRange range(true);
+    range.Intersect(false);
+    {
+      DumpWriter writer;
+      range.Dump(&writer);
+    }
+    CHECK_UNKNOWN  (Binary::EQ,true);
+    CHECK_UNKNOWN  (Binary::EQ,false);
+    CHECK_UNKNOWN  (Binary::NE,true);
+    CHECK_UNKNOWN  (Binary::NE,false);
+  }
+
+  {
+    BooleanValueRange range(false);
+    range.Intersect(true);
+    {
+      DumpWriter writer;
+      range.Dump(&writer);
+    }
+    CHECK_UNKNOWN  (Binary::EQ,true);
+    CHECK_UNKNOWN  (Binary::EQ,false);
+    CHECK_UNKNOWN  (Binary::NE,true);
+    CHECK_UNKNOWN  (Binary::NE,false);
+  }
+
+  {
+    BooleanValueRange range(true); range.Intersect(true);
+    {
+      DumpWriter writer;
+      range.Dump(&writer);
+    }
+    CHECK_TRUE(Binary::EQ,true);
+    CHECK_FALSE(Binary::EQ,false);
+    CHECK_TRUE (Binary::NE,false);
+    CHECK_FALSE(Binary::NE,true);
+  }
+
+  {
+    BooleanValueRange range(false); range.Intersect(false);
+    {
+      DumpWriter writer;
+      range.Dump(&writer);
+    }
+    CHECK_TRUE(Binary::EQ,false);
+    CHECK_FALSE(Binary::EQ,true);
+    CHECK_TRUE (Binary::NE,true);
+    CHECK_FALSE(Binary::NE,false);
   }
 }
 

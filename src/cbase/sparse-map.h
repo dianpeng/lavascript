@@ -233,6 +233,15 @@ bool SparseMap<K,T>::Insert( K&& key , T&& value ) {
   return std::get<C2>(map_).Insert(std::move(key),std::move(value));
 }
 
+template< typename K , typename T >
+void SparseMap<K,T>::Clear() {
+  if(map_.index() == 0) {
+    std::get<C1>(map_).Clear();
+  } else {
+    map_ = C1(); // the old value gone
+  }
+}
+
 } // namespace cbase
 } // namespace lavascript
 

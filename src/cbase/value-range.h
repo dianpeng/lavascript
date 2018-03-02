@@ -119,6 +119,8 @@ class UnknownValueRange : public ValueRange {
 
 // Float64 value range object represents value range with type float64
 class Float64ValueRange : public ValueRange {
+ static const std::size_t kInitSize = 8;
+
  public:
   // represents a segment's end , it can be used to represent
   // upper bound or lower bound and it can be used to mark as
@@ -168,17 +170,17 @@ class Float64ValueRange : public ValueRange {
   Float64ValueRange():
     ValueRange(FLOAT64_VALUE_RANGE),
     sets_()
-  {}
+  { sets_.reserve(kInitSize); }
 
   Float64ValueRange( Binary::Operator op , Expr*  value ):
     ValueRange(FLOAT64_VALUE_RANGE),
     sets_()
-  { Union(op,value); }
+  { sets_.reserve(kInitSize); Union(op,value); }
 
   Float64ValueRange( Binary::Operator op , double value ):
     ValueRange(FLOAT64_VALUE_RANGE),
     sets_()
-  { Union(op,value); }
+  { sets_.reserve(kInitSize); Union(op,value); }
 
   Float64ValueRange( const Float64ValueRange& that ):
     ValueRange(FLOAT64_VALUE_RANGE),

@@ -1,4 +1,5 @@
 #include "hir.h"
+#include "value-range.h"
 #include <sstream>
 
 namespace lavascript {
@@ -114,14 +115,35 @@ void ControlFlow::MoveStatement( ControlFlow* cf ) {
   }
 }
 
+Graph::Graph():
+  zone_                 (),
+  start_                (NULL),
+  end_                  (NULL),
+  prototype_info_       (),
+  id_                   (),
+  static_type_inference_(),
+  value_range_          ()
+{}
+
+Graph::~Graph() {}
+
 void Graph::Initialize( Start* start , End* end ) {
   start_ = start;
   end_   = end;
+
+  value_range_.resize(MaxID());
 }
 
 void Graph::Initialize( OSRStart* start , OSREnd* end ) {
   start_ = start;
   end_   = end;
+
+  value_range_.resize(MaxID());
+}
+
+void Graph::SetValueRange( std::uint32_t id ,
+                           std::unique_ptr<ValueRange>&& ptr ) {
+  value_range_[id] = std::move(ptr);
 }
 
 void Graph::GetControlFlowNode( std::vector<ControlFlow*>* output ) const {

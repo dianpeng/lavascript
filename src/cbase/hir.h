@@ -13,6 +13,7 @@
 #include "src/cbase/bytecode-analyze.h"
 #include "src/interpreter/intrinsic-call.h"
 
+#include <memory>
 #include <type_traits>
 #include <map>
 #include <vector>
@@ -26,6 +27,7 @@ using namespace ::lavascript;
 
 class Graph;
 class GraphBuilder;
+class ValueRange;
 
 /**
  * This is a separate information maintained for each IR node. It contains
@@ -2319,7 +2321,8 @@ class OSREnd : public ControlFlow {
 // ========================================================
 class Graph {
  public:
-  inline Graph();
+  Graph();
+  ~Graph();
   // initialize the *graph* object with start and end
   void Initialize( Start* start    , End* end );
   void Initialize( OSRStart* start , OSREnd* end  );
@@ -2353,12 +2356,20 @@ class Graph {
   const PrototypeInfo& GetProrotypeInfo( std::uint32_t index ) const {
     return prototype_info_[index];
   }
+
  public: // static type inference
   StaticTypeInference* static_type_inference()
   { return &static_type_inference_; }
 
   const StaticTypeInference* static_type_inference() const
   { return &static_type_inference_; }
+
+ public: // value range
+  ValueRange* GetValueRange( std::uint32_t id ) const {
+    return value_range_[id].get();
+  }
+
+  void SetValueRange( std::uint32_t , std::unique_ptr<ValueRange>&& );
 
  public: // static helper function
 
@@ -2380,6 +2391,8 @@ class Graph {
   zone::Vector<PrototypeInfo> prototype_info_;
   std::uint32_t               id_;
   StaticTypeInference         static_type_inference_;
+
+  std::vector<std::unique_ptr<ValueRange>> value_range_;
 
   friend class GraphBuilder;
   LAVA_DISALLOW_COPY_AND_ASSIGN(Graph)
@@ -3164,15 +3177,6 @@ inline OSRStart* OSRStart::New( Graph* graph ) {
 inline OSREnd* OSREnd::New( Graph* graph , Success* s , Fail* f ) {
   return graph->zone()->New<OSREnd>(graph,graph->AssignID(),s,f);
 }
-
-inline Graph::Graph():
-  zone_                 (),
-  start_                (NULL),
-  end_                  (NULL),
-  prototype_info_       (),
-  id_                   (),
-  static_type_inference_()
-{}
 
 // ---------------------------------------------------------------------
 // Helper functions for creation of node

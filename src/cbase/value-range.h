@@ -28,6 +28,10 @@ class ValueRange {
  public:
   ValueRangeType type() const { return type_; }
 
+  bool IsUnknownValueRange() const { return type() == UNKNOWN_VALUE_RANGE; }
+  bool IsFloat64ValueRange() const { return type() == FLOAT64_VALUE_RANGE; }
+  bool IsBooleanValueRange() const { return type() == BOOLEAN_VALUE_RANGE; }
+
   // Test whether a range's relationship with regards to another value range
   //
   // INCLUDE --> the range includes the test range
@@ -37,13 +41,20 @@ class ValueRange {
   // SAME    --> both ranges are the same
   enum { INCLUDE , OVERLAP , LEXCLUDE , REXCLUDE , SAME };
 
-  // Union a value range
+  // Inference result
+  enum { ALWAYS_TRUE , ALWAYS_FALSE , UNKNOWN };
+
+  // Union a comparison/binary operation
   virtual void Union    ( Binary::Operator , Expr* ) = 0;
 
-  // Intersect a value into the range
+  // Union a value range object
+  virtual void Union    ( const ValueRange& )        = 0;
+
+  // Intersect a comparison/binary operation
   virtual void Intersect( Binary::Operator , Expr* ) = 0;
 
-  enum { ALWAYS_TRUE , ALWAYS_FALSE , UNKNOWN };
+  // Intersect a value range object
+  virtual void Intersect( const ValueRange& )        = 0;
 
   // Infer an expression based on the ValueRange existed. The return
   // value are :
@@ -59,6 +70,9 @@ class ValueRange {
   //    between the input and existed ValueRange cannot be decided
   //
   virtual int Infer( Binary::Operator , Expr* ) const = 0;
+
+  // Infer a ValueRange with |this| value range
+  virtual int Infer( const ValueRange& ) const = 0;
 
 
   // Check whether we can collapse the set into a value , or simply puts
@@ -84,8 +98,13 @@ class ValueRange {
 class UnknownValueRange : public ValueRange {
  public:
   virtual void  Union    ( Binary::Operator , Expr* );
+  virtual void  Union    ( const ValueRange& );
   virtual void  Intersect( Binary::Operator , Expr* );
+  virtual void  Intersect( const ValueRange& );
+
   virtual int   Infer    ( Binary::Operator , Expr* ) const;
+  virtual int   Infer    ( const ValueRange& ) const;
+
   virtual Expr* Collapse ( Graph* , IRInfo*         ) const;
 
   virtual std::unique_ptr<ValueRange> Clone() const {
@@ -161,14 +180,19 @@ class Float64ValueRange : public ValueRange {
     sets_()
   { Union(op,value); }
 
-  Float64ValueRange( const Float64ValueRange& that ): 
+  Float64ValueRange( const Float64ValueRange& that ):
     ValueRange(FLOAT64_VALUE_RANGE),
     sets_(that.sets_)
   {}
 
   virtual void  Union    ( Binary::Operator op , Expr* );
+  virtual void  Union    ( const ValueRange& );
   virtual void  Intersect( Binary::Operator op , Expr* );
+  virtual void  Intersect( const ValueRange& );
+
   virtual int   Infer    ( Binary::Operator , Expr* ) const;
+  virtual int   Infer    ( const ValueRange&  ) const;
+
   virtual Expr* Collapse ( Graph* , IRInfo* ) const;
   virtual void  Dump     ( DumpWriter* ) const;
 
@@ -185,8 +209,14 @@ class Float64ValueRange : public ValueRange {
   void Merge      ( const RangeSet::iterator& );
   void Union      ( Binary::Operator op , double );
   void Intersect  ( Binary::Operator op , double );
-  void Union      ( const Float64ValueRange& );
-  void UnionRange ( const Range& );
+
+  void UnionRange    ( const Range& );
+  void IntersectRange( const Range& );
+
+  // check whether the input Range is contained inside of the ValueRange
+  int  Contain    ( const Range& ) const;
+
+  int  InferRange ( const Range& ) const;
   int  Infer      ( Binary::Operator , double ) const;
   bool Collapse   ( double* ) const;
 
@@ -207,12 +237,22 @@ class Float64ValueRange : public ValueRange {
 // Boolean value's ValueRange implementation
 class BooleanValueRange : public ValueRange {
  private:
-  enum State { INIT , EMPTY , ANY , TRUE , FALSE };
+  enum State { EMPTY , ANY , TRUE , FALSE };
  public:
   BooleanValueRange():
     ValueRange(BOOLEAN_VALUE_RANGE),
-    state_(INIT)
+    state_(EMPTY)
   {}
+
+  BooleanValueRange( bool value ):
+    ValueRange(BOOLEAN_VALUE_RANGE),
+    state_(EMPTY)
+  { Union(value); }
+
+  BooleanValueRange( Binary::Operator op, Expr* value ):
+    ValueRange(BOOLEAN_VALUE_RANGE),
+    state_(EMPTY)
+  { Union(op,value); }
 
   BooleanValueRange( const BooleanValueRange& that ):
     ValueRange(BOOLEAN_VALUE_RANGE),
@@ -220,8 +260,14 @@ class BooleanValueRange : public ValueRange {
   {}
 
   virtual void  Union    ( Binary::Operator , Expr* );
+  virtual void  Union    ( const ValueRange& );
+
   virtual void  Intersect( Binary::Operator , Expr* );
+  virtual void  Intersect( const ValueRange& );
+
   virtual int   Infer    ( Binary::Operator , Expr* ) const;
+  virtual int   Infer    ( const ValueRange& ) const;
+
   virtual Expr* Collapse ( Graph* , IRInfo*         ) const;
   virtual void  Dump     ( DumpWriter* ) const;
 
@@ -239,17 +285,6 @@ class BooleanValueRange : public ValueRange {
   bool  Collapse ( bool* ) const;
 
  private:
-  /**
-   * The boolean value actually is just a simple state machine
-   *
-   * [INIT] ---> U true  --> [true]  --> U false --> [ANY]
-   *      |
-   *      |----> U false --> [false] --> U true  --> [ANY]
-   *      |
-   *      |----> ^ true  --> [true]  --> ^ false --> [EMPTY]
-   *      |
-   *      |----> ^ false --> [false] --> ^ true  --> [EMPTY]
-   */
   State state_;
 
   FRIEND_TEST(ValueRange,BoolUnion);

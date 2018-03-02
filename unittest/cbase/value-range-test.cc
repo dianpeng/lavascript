@@ -101,6 +101,7 @@ TEST(ValueRange,Range) {
               range.Infer(OP,V));           \
   } while(false)
 
+
 #define CHECK_F64(V)                        \
   do {                                      \
     double v;                               \
@@ -172,6 +173,84 @@ TEST(ValueRange,F64Union) {
       range.Dump(&writer);
     }
     CHECK_UNKNOWN(Binary::NE,3);
+  }
+
+  {
+    Float64ValueRange range;
+    range.Union(Binary::GT,10);
+
+    // overlap with just one value 10
+    range.Union(Binary::GE,10);
+
+    // fully include in the range should have no impact at all
+    range.Union(Binary::GE,20);
+
+    {
+      DumpWriter writer;
+      range.Dump(&writer);
+    }
+
+    CHECK_UNKNOWN(Binary::EQ,10);
+    CHECK_TRUE   (Binary::GT,9);
+    CHECK_FALSE  (Binary::LT,10);
+
+    // now do a left exclude union
+    range.Union(Binary::LE,-100);
+
+    {
+      DumpWriter writer;
+      range.Dump(&writer);
+    }
+
+    CHECK_UNKNOWN(Binary::LE,-99 );
+    CHECK_UNKNOWN(Binary::NE,-101);
+    CHECK_UNKNOWN(Binary::EQ,-100);
+  }
+
+  {
+    // Multiple ranges
+    Float64ValueRange range;
+    range.Union(Binary::GT,10); // > 10
+    range.Union(Binary::LT,1 ); // < 1
+    {
+      DumpWriter writer;
+      range.Dump(&writer);
+    }
+
+    { // range: (-@,2) (9,+@)
+      Float64ValueRange r;
+      r.Union(Binary::GT,9);
+      r.Union(Binary::LT,2);
+      ASSERT_EQ(ValueRange::ALWAYS_TRUE,range.Infer(r));
+    }
+
+    { // range: (-@,0) (100,+@)
+      Float64ValueRange r;
+      r.Union(Binary::GT,100);
+      r.Union(Binary::LT,0.0);
+      ASSERT_EQ(ValueRange::UNKNOWN,range.Infer(r));
+    }
+
+    { // range: (2,3)
+      Float64ValueRange r;
+      r.Union(Binary::LT,3);
+      r.Intersect(Binary::GT,2);
+      ASSERT_EQ(ValueRange::ALWAYS_FALSE,range.Infer(r));
+    }
+
+    { // range: (0,10)
+      Float64ValueRange r;
+      r.Union(Binary::LT,10);
+      r.Intersect(Binary::GT,0.0);
+      ASSERT_EQ(ValueRange::UNKNOWN,range.Infer(r));
+    }
+
+    { // range :[1,10]
+      Float64ValueRange r;
+      r.Union(Binary::LE,10);
+      r.Intersect(Binary::GE,1);
+      ASSERT_EQ(ValueRange::ALWAYS_FALSE,range.Infer(r));
+    }
   }
 }
 

@@ -279,8 +279,10 @@ void Float64ValueRange::Union( Binary::Operator op , double value ) {
   }
 }
 
-void Float64ValueRange::Union( const Float64ValueRange& range ) {
-  for( auto &r : range.sets_ ) {
+void Float64ValueRange::Union( const ValueRange& range ) {
+  lava_debug(NORMAL,lava_verify(range.IsFloat64ValueRange()););
+  auto &r = static_cast<const Float64ValueRange&>(range);
+  for( auto &r : r.sets_ ) {
     UnionRange(r);
   }
 }
@@ -290,48 +292,50 @@ void Float64ValueRange::Intersect( Binary::Operator op , Expr* value ) {
   Intersect(op,value->AsFloat64()->value());
 }
 
+void Float64ValueRange::IntersectRange( const Range& range ) {
+  if(!sets_.empty()) {
+    int  lower , upper;
+    auto ret = Scan(range,&lower,&upper);
+    RangeSet::iterator modify_pos;
+
+    switch(ret) {
+      case ValueRange::INCLUDE:
+        lava_debug(NORMAL,lava_verify(lower == upper-1););
+        sets_[lower] = range;
+        break;
+      case ValueRange::SAME:
+        lava_debug(NORMAL,lava_verify(lower == upper-1););
+        break;
+      case ValueRange::LEXCLUDE: // empty set
+      case ValueRange::REXCLUDE:
+        sets_.clear();
+        break;
+      case ValueRange::OVERLAP:
+        {
+          lava_debug(NORMAL,lava_verify(upper - lower >=1););
+
+          auto rng_lower = LowerMax( range.lower , sets_[lower  ].lower );
+          auto rng_upper = UpperMin( range.upper , sets_[upper-1].upper );
+
+          auto itr_start = IteratorAt(sets_,lower);
+          auto itr_end   = IteratorAt(sets_,upper);
+          auto pos       = sets_.erase(itr_start,itr_end);
+          modify_pos     = sets_.insert(pos,Range(rng_lower,rng_upper));
+        }
+        break;
+      default: lava_die(); break;
+    }
+
+    if(ret == ValueRange::OVERLAP) {
+      Merge(modify_pos);
+    }
+  }
+}
+
 void Float64ValueRange::Intersect( Binary::Operator op , double value ) {
   if(op != Binary::NE) {
-    if(!sets_.empty()) {
-      auto range = NewRange(op,value);
-      int  lower , upper;
-      auto ret = Scan(range,&lower,&upper);
-      RangeSet::iterator modify_pos;
-
-      switch(ret) {
-        case ValueRange::INCLUDE:
-          lava_debug(NORMAL,lava_verify(lower == upper-1););
-          sets_[lower] = range;
-          break;
-        case ValueRange::SAME:
-          lava_debug(NORMAL,lava_verify(lower == upper-1););
-          break;
-        case ValueRange::LEXCLUDE: // empty set
-        case ValueRange::REXCLUDE:
-          sets_.clear();
-          break;
-        case ValueRange::OVERLAP:
-          {
-            lava_debug(NORMAL,lava_verify(upper - lower >=1););
-
-            auto rng_lower = LowerMax( range.lower , sets_[lower  ].lower );
-            auto rng_upper = UpperMin( range.upper , sets_[upper-1].upper );
-
-            auto itr_start = IteratorAt(sets_,lower);
-            auto itr_end   = IteratorAt(sets_,upper);
-            auto pos       = sets_.erase(itr_start,itr_end);
-            modify_pos     = sets_.insert(pos,Range(rng_lower,rng_upper));
-          }
-          break;
-        default: lava_die(); break;
-      }
-
-      if(ret == ValueRange::OVERLAP) {
-        Merge(modify_pos);
-      }
-    }
+    IntersectRange( NewRange(op,value) );
   } else {
-
     // We convert intersection of a != C to be a set operation
     // as following:
     //
@@ -350,42 +354,49 @@ void Float64ValueRange::Intersect( Binary::Operator op , double value ) {
   }
 }
 
-int Float64ValueRange::Infer( Binary::Operator op , Expr* value ) const {
-  lava_debug(NORMAL,lava_verify(value->IsFloat64()););
-  return Infer(op,value->AsFloat64()->value());
+void Float64ValueRange::Intersect( const ValueRange& range ) {
+  lava_debug(NORMAL,lava_verify(range.IsFloat64ValueRange()););
+  auto &r = static_cast<const Float64ValueRange&>(range);
+  for( auto &r : r.sets_ ) {
+    IntersectRange(r);
+  }
+}
+
+int Float64ValueRange::InferRange( const Range& range ) const {
+  if(sets_.empty()) return ValueRange::UNKNOWN; // empty set is included by any set
+
+  auto r = range.Test(sets_.front());
+
+  for( std::size_t i = 0 ; i < sets_.size() ; ++i ) {
+    auto ret = range.Test(sets_[i]);
+    switch(ret) {
+      case ValueRange::INCLUDE:
+      case ValueRange::SAME:
+        if(r == ValueRange::INCLUDE || r == ValueRange::SAME)
+          continue;
+        else
+          return ValueRange::UNKNOWN;
+      case ValueRange::LEXCLUDE:
+      case ValueRange::REXCLUDE:
+        if(r == ValueRange::LEXCLUDE || r == ValueRange::REXCLUDE)
+          continue;
+        else
+          return ValueRange::UNKNOWN;
+      default:
+        return ValueRange::UNKNOWN;
+    }
+  }
+
+  if(r == ValueRange::INCLUDE || r == ValueRange::SAME)
+    return ValueRange::ALWAYS_TRUE;
+  else
+    return ValueRange::ALWAYS_FALSE;
 }
 
 int Float64ValueRange::Infer( Binary::Operator op , double value ) const {
   if(op != Binary::NE) {
-    if(sets_.empty()) return ValueRange::UNKNOWN; // empty set is included by any set
-
     auto range = NewRange(op,value);
-    auto r     = range.Test(sets_.front());
-
-    for( std::size_t i = 0 ; i < sets_.size() ; ++i ) {
-      auto ret = range.Test(sets_[i]);
-      switch(ret) {
-        case ValueRange::INCLUDE:
-        case ValueRange::SAME:
-          if(r == ValueRange::INCLUDE || r == ValueRange::SAME)
-            continue;
-          else
-            return ValueRange::UNKNOWN;
-        case ValueRange::LEXCLUDE:
-        case ValueRange::REXCLUDE:
-          if(r == ValueRange::LEXCLUDE || r == ValueRange::REXCLUDE)
-            continue;
-          else
-            return ValueRange::UNKNOWN;
-        default:
-          return ValueRange::UNKNOWN;
-      }
-    }
-
-    if(r == ValueRange::INCLUDE || r == ValueRange::SAME)
-      return ValueRange::ALWAYS_TRUE;
-    else
-      return ValueRange::ALWAYS_FALSE;
+    return InferRange(range);
   } else {
     auto r = Infer( Binary::EQ , value );
     switch(r) {
@@ -397,6 +408,56 @@ int Float64ValueRange::Infer( Binary::Operator op , double value ) const {
         return ValueRange::UNKNOWN;
     }
   }
+}
+
+int Float64ValueRange::Infer( Binary::Operator op , Expr* value ) const {
+  lava_debug(NORMAL,lava_verify(value->IsFloat64()););
+  return Infer(op,value->AsFloat64()->value());
+}
+
+int Float64ValueRange::Contain( const Range& range ) const {
+  for( auto &e : sets_ ) {
+    auto r = e.Test(range);
+    switch(r) {
+      case ValueRange::SAME:
+      case ValueRange::INCLUDE:
+        return ValueRange::ALWAYS_TRUE;
+      case ValueRange::LEXCLUDE:
+        continue;
+      case ValueRange::REXCLUDE:
+        return ValueRange::ALWAYS_FALSE;
+      case ValueRange::OVERLAP:
+        return ValueRange::UNKNOWN;
+      default:
+        lava_die();
+        return ValueRange::UNKNOWN;
+    }
+  }
+  return ValueRange::ALWAYS_FALSE;
+}
+
+int Float64ValueRange::Infer( const ValueRange& range ) const {
+  lava_debug(NORMAL,lava_verify(range.IsFloat64ValueRange()););
+
+  // TODO:: This is a O(n^2) algorithm , if performance is a
+  //        problem we may need to optimize it
+  auto &r = static_cast<const Float64ValueRange&>(range);
+
+  // Handle empty set properly
+  if(sets_.empty())   return ValueRange::UNKNOWN;
+  if(r.sets_.empty()) return ValueRange::UNKNOWN;
+
+  auto rcode = r.Contain(sets_.front());
+
+  if(rcode == ValueRange::UNKNOWN)
+    return ValueRange::UNKNOWN;
+
+  for( std::size_t i = 1 ; i < sets_.size(); ++i ) {
+    auto ret = r.Contain(sets_[i]);
+    if(ret != rcode) return ValueRange::UNKNOWN;
+  }
+
+  return rcode;
 }
 
 bool  Float64ValueRange::Collapse( double* output ) const {
@@ -445,15 +506,30 @@ void UnknownValueRange::Union( Binary::Operator op , Expr* value ) {
   return;
 }
 
+void UnknownValueRange::Union( const ValueRange& v ) {
+  (void)v;
+  return;
+}
+
 void UnknownValueRange::Intersect( Binary::Operator op, Expr* value ) {
   (void)op;
   (void)value;
   return;
 }
 
+void UnknownValueRange::Intersect( const ValueRange& r ) {
+  (void)r;
+  return;
+}
+
 int UnknownValueRange::Infer( Binary::Operator op , Expr* value ) const {
   (void)op;
   (void)value;
+  return ValueRange::UNKNOWN;
+}
+
+int UnknownValueRange::Infer( const ValueRange& r ) const {
+  (void)r;
   return ValueRange::UNKNOWN;
 }
 
@@ -478,11 +554,23 @@ void UnknownValueRange::Dump( DumpWriter* writer ) const {
 
 void BooleanValueRange::Union( bool value ) {
   switch(state_) {
-    case INIT:  state_ = value ? TRUE : FALSE; break;
     case TRUE:  state_ = value ? TRUE : ANY  ; break;
     case FALSE: state_ = value ? ANY  : FALSE; break;
     case EMPTY: state_ = value ? TRUE : FALSE; break;
     case ANY:   break;
+    default: lava_die(); break;
+  }
+}
+
+void BooleanValueRange::Union( const ValueRange& range ) {
+  lava_debug(NORMAL,lava_verify(range.IsBooleanValueRange()););
+
+  auto &r = static_cast<const BooleanValueRange&>(range);
+  switch(state_) {
+    case TRUE: state_ = (r.state_ == FALSE || r.state_ == ANY) ? ANY : TRUE; break;
+    case FALSE:state_ = (r.state_ == TRUE  || r.state_ == ANY) ? ANY : FALSE;break;
+    case EMPTY:state_ =  r.state_; break;
+    case ANY:  break;
     default: lava_die(); break;
   }
 }
@@ -502,7 +590,6 @@ void BooleanValueRange::Union( Binary::Operator op , Expr* value ) {
 
 void BooleanValueRange::Intersect( bool value ) {
   switch(state_) {
-    case INIT:  state_ = value ? TRUE : FALSE; break;
     case TRUE:  state_ = value ? TRUE : EMPTY; break;
     case FALSE: state_ = value ? EMPTY: FALSE; break;
     case EMPTY: break;
@@ -524,22 +611,52 @@ void BooleanValueRange::Intersect( Binary::Operator op , Expr* value ) {
   Intersect(op,value->AsBoolean()->value());
 }
 
+void BooleanValueRange::Intersect( const ValueRange& range ) {
+  lava_debug(NORMAL,lava_verify(range.IsBooleanValueRange()););
+
+  auto &r = static_cast<const BooleanValueRange&>(range);
+  switch(state_) {
+    case TRUE: state_ = (r.state_ == TRUE || r.state_ == ANY) ? TRUE : EMPTY; break;
+    case FALSE:state_ = (r.state_ == FALSE|| r.state_ == ANY) ? FALSE: EMPTY; break;
+    case EMPTY:break;
+    case ANY:  state_ = r.state_; break;
+    default: lava_die(); break;
+  }
+}
+
 int BooleanValueRange::Infer( Binary::Operator op , bool value ) const {
   lava_debug(NORMAL,lava_verify(op == Binary::EQ || op == Binary::NE););
   value = (op == Binary::EQ) ? value : !value;
 
   switch(state_) {
-    case INIT:  return ValueRange::UNKNOWN;
-
     case TRUE:  return value ? ValueRange::ALWAYS_TRUE :
                                ValueRange::ALWAYS_FALSE;
 
     case FALSE: return value ? ValueRange::ALWAYS_FALSE :
                                ValueRange::ALWAYS_TRUE;
 
-    case EMPTY: return ValueRange::ALWAYS_FALSE;
+    case EMPTY: return ValueRange::UNKNOWN;
     case ANY:   return ValueRange::UNKNOWN;
+
     default: lava_die(); return ValueRange::UNKNOWN;
+  }
+}
+
+int BooleanValueRange::Infer( const ValueRange& range ) const {
+  lava_debug(NORMAL,lava_verify(range.IsBooleanValueRange()););
+
+  auto &r = static_cast<const BooleanValueRange&>(range);
+  switch(state_) {
+    case ANY:
+    case EMPTY:
+      return ValueRange::UNKNOWN;
+    case TRUE:
+    case FALSE:
+      return (state_ == r.state_) ? ValueRange::ALWAYS_TRUE :
+                                    ValueRange::ALWAYS_FALSE;
+    default:
+      lava_die();
+      return ValueRange::UNKNOWN;
   }
 }
 
@@ -565,7 +682,6 @@ Expr* BooleanValueRange::Collapse( Graph* graph , IRInfo* info ) const {
 void BooleanValueRange::Dump( DumpWriter* writer ) const {
   writer->WriteL("-----------------------------------------------");
   switch(state_) {
-    case INIT: writer->WriteL("init"); break;
     case TRUE: writer->WriteL("true"); break;
     case FALSE:writer->WriteL("false");break;
     case EMPTY:writer->WriteL("empty");break;

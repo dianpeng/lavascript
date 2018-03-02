@@ -13,6 +13,8 @@ CXX = g++
 SANITIZER=-fsanitize=address,undefined
 LUA=luajit
 
+CXXFLAGS += -std=c++17
+
 # -------------------------------------------------------------------------------
 #
 # Dependency flags

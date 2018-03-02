@@ -6,6 +6,7 @@
 #include <algorithm>
 #include <map>
 #include <vector>
+#include <variant>
 
 namespace lavascript {
 namespace cbase      {
@@ -77,7 +78,7 @@ class BalanceTree {
 
 // A sparse map impelementation. It uses C1 container , linear list , at
 // first when small amount of data is inserted. Once the data inserted
-// bypass the threshold set , it will start to use C2 container which is
+// bypass the specified threshold, it will start to use C2 container which is
 // better than C1 for large amount of inserted element.
 // The C1 is default to LinearList, and the C2 is default to BalanceTree
 template< typename K , typename T >
@@ -86,7 +87,7 @@ class SparseMap {
   typedef LinearList<K,T>  C1;
   typedef BalanceTree<K,T> C2;
 
-  SparseMap( std::size_t threshold ) : map_ , threshold_(threshold_) {}
+  SparseMap( std::size_t threshold ) : map_() , threshold_(threshold_) {}
 
   bool     size  () const;
   bool     empty () const { return size() == 0; }

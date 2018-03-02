@@ -39,3 +39,6 @@
 *.t
 *.swp
 double2hex
+
+# CMake generated file
+dep/*/build/*

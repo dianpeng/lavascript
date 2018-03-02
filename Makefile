@@ -3,7 +3,6 @@
 # Building Script for LavaScript
 #
 # -------------------------------------------------------------------------------
-
 PWD:=$(shell pwd)
 SOURCE=$(shell find src/ -type f -name "*.cc")
 INCLUDE:=$(shell find src/ -type f -name "*.h")
@@ -16,16 +15,10 @@ LUA=luajit
 
 # -------------------------------------------------------------------------------
 #
-# Zydis
+# Dependency flags
 #
 # -------------------------------------------------------------------------------
-ZYDIS:=zydis-2.0.0-beta1
-ZYDIS_LIB:=$(PWD)/dep/$(ZYDIS)/build/
-ZYDIS_INC:=$(PWD)/dep/$(ZYDIS)/include/
-ZYDIS_GEN:=$(PWD)/dep/$(ZYDIS)/build/
-
-CXXFLAGS += -I$(ZYDIS_INC) -I$(ZYDIS_GEN)
-LDFLAGS  += -L$(ZYDIS_LIB) -lZydis
+include dep/*.mk
 
 # -------------------------------------------------------------------------------
 #
@@ -36,9 +29,10 @@ all: release
 
 release : dep
 
-dep:
+build_dep:
 	./build-dep.sh
-.PHONY: dep
+
+.PHONY: build_dep
 
 # ------------------------------------------------------------------------------
 #
@@ -84,7 +78,8 @@ unittest/%.t : unittest/%.cc  $(INTERP_OBJECT) $(OBJECT) $(INCLUDE) $(SOURCE)
 
 test: CXXFLAGS += $(TEST_FLAGS)
 test: LDFLAGS  += $(TEST_LIBS)
-test: $(TESTOBJECT)
+
+test: build_dep $(TESTOBJECT)
 
 # -------------------------------------------------------------------------------
 #
@@ -93,7 +88,8 @@ test: $(TESTOBJECT)
 # -------------------------------------------------------------------------------
 release: CXXFLAGS += $(RELEASE_FLAGS)
 release: LDFLAGS += $(RELEASE_LIBS)
-release: $(OBJECT) $(INTERP_OBJECT)
+
+release: build_dep $(OBJECT) $(INTERP_OBJECT)
 	ar rcs liblavascript.a $(OBJECT) $(INTERP_OBJECT)
 
 .PHONY:clean

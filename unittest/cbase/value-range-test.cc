@@ -149,6 +149,91 @@ TEST(ValueRange,F64Union) {
     CHECK_TRUE (Binary::NE,2.1);
     CHECK_FALSE(Binary::EQ,3);
   }
+
+  {
+    Float64ValueRange range;
+    range.Union(Binary::LT,2);  // < 2
+    range.Union(Binary::GT,3);  // > 3
+    range.Union(Binary::LE,3);
+    {
+      DumpWriter writer;
+      range.Dump(&writer);
+    }
+    CHECK_UNKNOWN(Binary::NE,3);
+  }
+
+  {
+    Float64ValueRange range;
+    range.Union(Binary::LT,1);
+    range.Union(Binary::GE,3);
+    range.Union(Binary::GE,1);
+    {
+      DumpWriter writer;
+      range.Dump(&writer);
+    }
+    CHECK_UNKNOWN(Binary::NE,3);
+  }
+}
+
+TEST(ValueRange,F64Intersect) {
+  {
+    Float64ValueRange range;
+    range.Union(Binary::LE,10);
+    range.Intersect(Binary::LT,10);
+    {
+      DumpWriter writer;
+      range.Dump(&writer);
+    }
+    CHECK_FALSE  (Binary::EQ,10);
+    CHECK_UNKNOWN(Binary::EQ, 9);
+    CHECK_TRUE   (Binary::LT,10);
+    CHECK_TRUE   (Binary::LT,11);
+
+    CHECK_FALSE  (Binary::GE,10);
+    CHECK_FALSE  (Binary::GT,10.1);
+  }
+
+  {
+    Float64ValueRange range;
+    range.Union(Binary::GE,10);
+    range.Intersect(Binary::GT,10);
+    {
+      DumpWriter writer;
+      range.Dump(&writer);
+    }
+
+    CHECK_FALSE (Binary::EQ,10);
+    CHECK_TRUE  (Binary::GT,10);
+    CHECK_TRUE  (Binary::GT,9 );
+
+    CHECK_FALSE (Binary::LE,10);
+    CHECK_FALSE (Binary::LT,9 );
+  }
+
+  {
+    Float64ValueRange range;
+    range.Union(Binary::LE,10);    // <= 10
+    range.Intersect(Binary::GT,4); // > 4
+    {
+      DumpWriter writer;
+      range.Dump(&writer);
+    }
+
+    CHECK_FALSE   (Binary::EQ,4);
+    CHECK_UNKNOWN (Binary::NE,10);
+    CHECK_TRUE    (Binary::LE,10);
+    CHECK_TRUE    (Binary::GT,4 );
+  }
+
+  {
+    Float64ValueRange range;
+    range.Union(Binary::LE,10);
+    range.Intersect(Binary::GT,10);
+    {
+      DumpWriter writer;
+      range.Dump(&writer);
+    }
+  }
 }
 
 } // namespace hir

@@ -2,6 +2,7 @@
 #define CBASE_VALUE_RANGE_H_
 #include "hir.h"
 
+#include <memory>
 #include <vector>
 #include <gtest/gtest_prod.h>
 
@@ -10,11 +11,23 @@ class DumpWriter;
 namespace cbase      {
 namespace hir        {
 
+enum ValueRangeType {
+  UNKNOWN_VALUE_RANGE,
+  FLOAT64_VALUE_RANGE,
+  BOOLEAN_VALUE_RANGE
+};
+
 // ValueRange object represents a set of values and it supports set operations like
 // Union and Intersect. Also user can use ValueRange as a way to infer whether a
 // certain predicate's true false value.
 class ValueRange {
  public:
+  ValueRange( ValueRangeType type ) : type_(type) {}
+
+  virtual ~ValueRange() {}
+ public:
+  ValueRangeType type() const { return type_; }
+
   // Test whether a range's relationship with regards to another value range
   //
   // INCLUDE --> the range includes the test range
@@ -54,10 +67,15 @@ class ValueRange {
   // It is used during GVN for inference
   virtual Expr* Collapse( Graph* , IRInfo* ) const = 0;
 
-  // Debug purpose
+  // Clone another ValueRange from this ValueRange object. Used to do
+  // constraint predication
+  virtual std::unique_ptr<ValueRange> Clone() const = 0;
+
+  // debug purpose
   virtual void Dump( DumpWriter* ) const = 0;
 
-  virtual ~ValueRange() {}
+ private:
+  ValueRangeType type_;
 };
 
 // Unknown ValueRange. Used to mark we cannot do anything with this constraint/
@@ -69,7 +87,14 @@ class UnknownValueRange : public ValueRange {
   virtual void  Intersect( Binary::Operator , Expr* );
   virtual int   Infer    ( Binary::Operator , Expr* ) const;
   virtual Expr* Collapse ( Graph* , IRInfo*         ) const;
+
+  virtual std::unique_ptr<ValueRange> Clone() const {
+    return std::unique_ptr<ValueRange>( new UnknownValueRange() );
+  }
+
   virtual void  Dump     ( DumpWriter* ) const;
+
+  UnknownValueRange(): ValueRange( UNKNOWN_VALUE_RANGE ) {}
 };
 
 
@@ -79,12 +104,6 @@ class Float64ValueRange : public ValueRange {
   // represents a segment's end , it can be used to represent
   // upper bound or lower bound and it can be used to mark as
   // open or closed.
-  //
-  // the NumberPoint is ordered , and its order are defined as
-  // follow :
-  //
-  // [C < (3 == 3) < 3]
-  //
   struct NumberPoint {
     static NumberPoint kPosInf;
     static NumberPoint kNegInf;
@@ -127,37 +146,49 @@ class Float64ValueRange : public ValueRange {
   typedef std::vector<Range> RangeSet;
 
  public:
-  Float64ValueRange():sets_() {}
-  Float64ValueRange( Binary::Operator op , Expr*  value ): sets_() { Union(op,value); }
-  Float64ValueRange( Binary::Operator op , double value ): sets_() { Union(op,value); }
-  Float64ValueRange( const Float64ValueRange& that ):sets_(that.sets_) {}
+  Float64ValueRange():
+    ValueRange(FLOAT64_VALUE_RANGE),
+    sets_()
+  {}
 
-  virtual void  Union( Binary::Operator op , Expr* );
+  Float64ValueRange( Binary::Operator op , Expr*  value ):
+    ValueRange(FLOAT64_VALUE_RANGE),
+    sets_()
+  { Union(op,value); }
+
+  Float64ValueRange( Binary::Operator op , double value ):
+    ValueRange(FLOAT64_VALUE_RANGE),
+    sets_()
+  { Union(op,value); }
+
+  Float64ValueRange( const Float64ValueRange& that ): 
+    ValueRange(FLOAT64_VALUE_RANGE),
+    sets_(that.sets_)
+  {}
+
+  virtual void  Union    ( Binary::Operator op , Expr* );
   virtual void  Intersect( Binary::Operator op , Expr* );
-  virtual int   Infer( Binary::Operator , Expr* ) const;
-  virtual Expr* Collapse( Graph* , IRInfo* ) const;
+  virtual int   Infer    ( Binary::Operator , Expr* ) const;
+  virtual Expr* Collapse ( Graph* , IRInfo* ) const;
+  virtual void  Dump     ( DumpWriter* ) const;
 
- public:
-  virtual void Dump( DumpWriter* ) const;
+  virtual std::unique_ptr<ValueRange> Clone() const {
+    return std::unique_ptr<ValueRange>( new Float64ValueRange(*this) );
+  }
 
  private:
-  Range NewRange ( Binary::Operator op , double ) const;
-
+  Range NewRange  ( Binary::Operator op , double ) const;
   // scan the input range inside of the RangSet and find its
   // status and lower and upper bound
-  int  Scan ( const Range& , int* lower , int* upper ) const;
-
+  int  Scan       ( const Range& , int* lower , int* upper ) const;
   // this function do a merge with adjuscent range if needed
-  void Merge( const RangeSet::iterator& );
-
-  void Union    ( Binary::Operator op , double );
-  void Intersect( Binary::Operator op , double );
-
-  void Union( const Float64ValueRange& );
+  void Merge      ( const RangeSet::iterator& );
+  void Union      ( Binary::Operator op , double );
+  void Intersect  ( Binary::Operator op , double );
+  void Union      ( const Float64ValueRange& );
   void UnionRange ( const Range& );
-
-  int  Infer( Binary::Operator , double ) const;
-  bool Collapse( double* ) const;
+  int  Infer      ( Binary::Operator , double ) const;
+  bool Collapse   ( double* ) const;
 
  private:
 
@@ -178,13 +209,25 @@ class BooleanValueRange : public ValueRange {
  private:
   enum State { INIT , EMPTY , ANY , TRUE , FALSE };
  public:
-  BooleanValueRange() : state_(INIT) {}
+  BooleanValueRange():
+    ValueRange(BOOLEAN_VALUE_RANGE),
+    state_(INIT)
+  {}
+
+  BooleanValueRange( const BooleanValueRange& that ):
+    ValueRange(BOOLEAN_VALUE_RANGE),
+    state_    (that.state_)
+  {}
 
   virtual void  Union    ( Binary::Operator , Expr* );
   virtual void  Intersect( Binary::Operator , Expr* );
   virtual int   Infer    ( Binary::Operator , Expr* ) const;
   virtual Expr* Collapse ( Graph* , IRInfo*         ) const;
   virtual void  Dump     ( DumpWriter* ) const;
+
+  virtual std::unique_ptr<ValueRange> Clone() const {
+    return std::unique_ptr<ValueRange>( new BooleanValueRange(*this) );
+  }
 
  private:
   void  Union    ( bool );
@@ -208,6 +251,10 @@ class BooleanValueRange : public ValueRange {
    *      |----> ^ false --> [false] --> ^ true  --> [EMPTY]
    */
   State state_;
+
+  FRIEND_TEST(ValueRange,BoolUnion);
+  FRIEND_TEST(ValueRange,BoolIntersect);
+  FRIEND_TEST(ValueRange,BoolAll);
 };
 
 inline

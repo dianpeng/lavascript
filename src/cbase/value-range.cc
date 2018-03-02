@@ -420,11 +420,15 @@ Expr* Float64ValueRange::Collapse( Graph* graph , IRInfo* info ) const {
 
 void Float64ValueRange::Dump( DumpWriter* writer ) const {
   writer->WriteL("-----------------------------------------------");
-  for( auto &r : sets_ ) {
-    writer->WriteL("%s%f,%f%s",r.lower.close ? "[" : "(" ,
-                               r.lower.value ,
-                               r.upper.value ,
-                               r.upper.close ? "]" : ")" );
+  if(sets_.empty()) {
+    writer->WriteL("empty");
+  } else {
+    for( auto &r : sets_ ) {
+      writer->WriteL("%s%f,%f%s",r.lower.close ? "[" : "(" ,
+                                 r.lower.value ,
+                                 r.upper.value ,
+                                 r.upper.close ? "]" : ")" );
+    }
   }
   writer->WriteL("-----------------------------------------------");
 }

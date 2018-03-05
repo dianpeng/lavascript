@@ -20,12 +20,17 @@ class IteratorBase {
  public:
   bool HasNext() const { return Traits::HasNext(vec_,cursor_); }
   bool Move   ()       { return Traits::Move(vec_,&cursor_);   }
+  void Advance( std::size_t offset ) { Traits::Advance(offset,&cursor_); }
   inline const T& value() const;
   inline T& value();
   inline void set_value( const T& value );
  private:
   IteratorBase( typename Traits::VectorType* vec ):
     vec_(vec), cursor_(Traits::InitCursor(vec))
+  {}
+
+  IteratorBase( typename Traits::VectorType* vec , std::int64_t cursor ):
+    vec_(vec), cursor_(cursor)
   {}
 
   typename Traits::VectorType* vec_;
@@ -39,6 +44,7 @@ template< typename T > struct VectorForwardTraits {
   inline static std::int64_t InitCursor( VectorType* vec );
   inline static bool HasNext( VectorType* vec , std::int64_t cursor );
   inline static bool Move   ( VectorType* vec , std::int64_t* cursor );
+  inline static void Advance( std::size_t     , std::int64_t* cursor );
 };
 
 template< typename T > struct VectorBackwardTraits {
@@ -47,6 +53,7 @@ template< typename T > struct VectorBackwardTraits {
   inline static std::int64_t InitCursor( VectorType* vec );
   inline static bool HasNext( VectorType* vec , std::int64_t cursor );
   inline static bool Move   ( VectorType* vec , std::int64_t* cursor );
+  inline static void Advance( std::size_t     , std::int64_t* cursor );
 };
 
 } // namespace detail
@@ -83,6 +90,8 @@ class Vector : ZoneObject {
   }
   void Del() { lava_assert(!empty(),"Del() on empty vector!"); --size_; }
   void Clear() { size_ = 0; }
+
+ public:
   T& First() { lava_assert(!empty(),"First() on empty vector!"); return ptr_[0]; }
   const T& First() const { return const_cast<Vector*>(this)->First(); }
   T& Last() { lava_assert(!empty(),"Last() on empty vector!"); return ptr_[size_-1]; }
@@ -96,7 +105,6 @@ class Vector : ZoneObject {
   T& operator [] ( int index ) { return Index(index); }
   const T& operator [] ( int index ) const { return Index(index); }
   void Swap( Vector* );
-
  public:
   typedef detail::IteratorBase<T,detail::VectorForwardTraits<T>> ForwardIterator;
   typedef const ForwardIterator ConstForwardIterator;
@@ -109,10 +117,23 @@ class Vector : ZoneObject {
   ConstForwardIterator  GetForwardIterator()  const { return ConstForwardIterator(this); }
   ConstBackwardIterator GetBackwardIterator() const { return ConstBackwardIterator(this); }
 
+ public: // Remove or Insert
+  // Insert an element *before* this iterator
+  ConstForwardIterator Insert( Zone* , ConstForwardIterator& pos , const T& );
+  ConstForwardIterator Remove( ConstForwardIterator& start , ConstForwardIterator& end );
+  ConstForwardIterator Remove( ConstForwardIterator& pos ) {
+    auto n(pos); n.Next();
+    return Remove(pos,n);
+  }
+
  private:
+  std::int64_t IterToCursor( ConstForwardIterator& itr ) {
+    return itr.cursor_ > size_ ? size_ : itr.cursor_;
+  }
+
   T* ptr_;                    // Pointer to the start of the memory
-  std::size_t size_;               // Size of the current vector
-  std::size_t capacity_;           // Capacity of the current vector
+  std::size_t size_;          // Size of the current vector
+  std::size_t capacity_;      // Capacity of the current vector
 
   LAVA_DISALLOW_COPY_AND_ASSIGN(Vector);
 };
@@ -135,7 +156,7 @@ template< typename T > Vector<T>::Vector( Zone* zone , const Vector& that ):
   capacity_(0)
 {
   Reserve(zone,that.size());
-  memcpy(ptr_,that.ptr_,that.size() * sizeof(T));
+  std::memcpy(ptr_,that.ptr_,that.size() * sizeof(T));
   size_ = that.size();
 }
 
@@ -147,7 +168,7 @@ template< typename T > void Vector<T>::Add( Zone* zone , const T& value ) {
 template< typename T > void Vector<T>::Reserve( Zone* zone , std::size_t length ) {
   if(length > capacity_) {
     void* new_buffer = zone->Malloc( length * sizeof(T) );
-    if(ptr_) memcpy(new_buffer,ptr_,sizeof(T)*size_);
+    if(ptr_) std::memcpy(new_buffer,ptr_,sizeof(T)*size_);
     ptr_ = static_cast<T*>(new_buffer);
     capacity_ = length;
   }
@@ -175,6 +196,38 @@ template< typename T > void Vector<T>::Swap( Vector* that ) {
   std::swap(capacity_,that->capacity_);
 }
 
+template< typename T > typename Vector<T>::ConstForwardIterator
+Vector<T>::Insert( Zone* zone , ConstForwardIterator& pos , const T& value ) {
+  auto cursor = IterToCursor(pos);
+
+  // 1. ensure the memory or capacity
+  if(size_ + 1 == capacity_) Reserve(zone,capacity_*2);
+
+  // 2. move the element from cursor position
+  if(cursor < size_)
+    std::memmove(ptr_+cursor+1,(ptr_+cursor),(size_-cursor)*sizeof(T));
+
+  // 3. place the element at the cursor position
+  ConstructFromBuffer<T>(ptr_+cursor,value);
+
+  ++size_;
+  return ConstForwardIterator(this,cursor);
+}
+
+template< typename T > typename Vector<T>::ConstForwardIterator
+Vector<T>::Remove( ConstForwardIterator& start , ConstForwardIterator& end ) {
+  auto pos_start = IterToCursor(start);
+  auto pos_end   = IterToCursor(end);
+
+  // move the element starting from pos_end until the real end to
+  // position pointed by the pos_start
+  if(pos_end < size_)
+    std::memmove(ptr_+pos_start,ptr_+pos_end,(size-pos_end)*sizeof(T));
+
+  size -= (pos_end - pos_start);
+  return ConstForwardIterator(this,pos_start);
+}
+
 namespace detail {
 
 template< typename T >
@@ -195,6 +248,11 @@ inline bool VectorForwardTraits<T>::Move( VectorType* vec , std::int64_t* cursor
 }
 
 template< typename T >
+inline void VectorForwardTraits<T>::Advance( std::size_t offset , std::int64_t* cursor ) {
+  *cursor += offset;
+}
+
+template< typename T >
 inline std::int64_t VectorBackwardTraits<T>::InitCursor( VectorType* vec ) {
   std::int64_t sz = static_cast<std::int64_t>(vec->size());
   return (sz - 1);
@@ -209,6 +267,11 @@ template< typename T >
 inline bool VectorBackwardTraits<T>::Move( VectorType* vec , std::int64_t* cursor ) {
   *cursor = *cursor - 1;
   return HasNext(vec,*cursor);
+}
+
+template< typename T >
+inline void VectorBackwardTraits<T>::Advance( std::size_t offset , std::int64_t* cursor ) {
+  *cursor -= offset;
 }
 
 template< typename T , typename Traits >

@@ -28,6 +28,7 @@ class ValueRange;
  *
  * 3) Any other types of expression will be marked to use *UnknownValueRange* which simply
  *    doesn't know anything at all
+ *
  */
 
 class ConditionGroup {

@@ -1,13 +1,14 @@
 #ifndef CBASE_VALUE_RANGE_H_
 #define CBASE_VALUE_RANGE_H_
 #include "hir.h"
+#include "src/zone/zone.h"
+#include "src/zone/vector.h"
 
-#include <memory>
-#include <vector>
 #include <gtest/gtest_prod.h>
 
 namespace lavascript {
 class DumpWriter;
+
 namespace cbase      {
 namespace hir        {
 
@@ -20,7 +21,7 @@ enum ValueRangeType {
 // ValueRange object represents a set of values and it supports set operations like
 // Union and Intersect. Also user can use ValueRange as a way to infer whether a
 // certain predicate's true false value.
-class ValueRange {
+class ValueRange : public zone::ZoneObject {
  public:
   ValueRange( ValueRangeType type ) : type_(type) {}
 
@@ -81,10 +82,6 @@ class ValueRange {
   // It is used during GVN for inference
   virtual Expr* Collapse( Graph* , IRInfo* ) const = 0;
 
-  // Clone another ValueRange from this ValueRange object. Used to do
-  // constraint predication
-  virtual std::unique_ptr<ValueRange> Clone() const = 0;
-
   // debug purpose
   virtual void Dump( DumpWriter* ) const = 0;
 
@@ -97,6 +94,10 @@ class ValueRange {
 // different types , eg: if(a > 3 || a == "string")
 class UnknownValueRange : public ValueRange {
  public:
+  // Use this function to get a unknown value range object's pointer
+  // Since it is a singleton , we can save some memory
+  static UnknownValueRange* Get();
+
   virtual void  Union    ( Binary::Operator , Expr* );
   virtual void  Union    ( const ValueRange& );
   virtual void  Intersect( Binary::Operator , Expr* );
@@ -107,12 +108,9 @@ class UnknownValueRange : public ValueRange {
 
   virtual Expr* Collapse ( Graph* , IRInfo*         ) const;
 
-  virtual std::unique_ptr<ValueRange> Clone() const {
-    return std::unique_ptr<ValueRange>( new UnknownValueRange() );
-  }
-
   virtual void  Dump     ( DumpWriter* ) const;
 
+ private:
   UnknownValueRange(): ValueRange( UNKNOWN_VALUE_RANGE ) {}
 };
 
@@ -140,7 +138,7 @@ class Float64ValueRange : public ValueRange {
   };
 
   // represents a segment/range on a number axis
-  struct Range {
+  struct Range : zone::ZoneObject {
     NumberPoint lower;
     NumberPoint upper;
 
@@ -164,51 +162,49 @@ class Float64ValueRange : public ValueRange {
     bool IsSame     ( const Range& range ) const { return Test(range) == ValueRange::SAME;     }
   };
 
-  typedef std::vector<Range> RangeSet;
+  typedef zone::Vector<Range> RangeSet;
 
  public:
-  Float64ValueRange():
+  Float64ValueRange( zone::Zone* zone ):
     ValueRange(FLOAT64_VALUE_RANGE),
-    sets_()
-  { sets_.reserve(kInitSize); }
+    sets_(zone,kInitSize),
+    zone_(zone)
+  {}
 
-  Float64ValueRange( Binary::Operator op , Expr*  value ):
+  Float64ValueRange( zone::Zone* zone , Binary::Operator op , Expr*  value ):
     ValueRange(FLOAT64_VALUE_RANGE),
-    sets_()
-  { sets_.reserve(kInitSize); Union(op,value); }
+    sets_(zone,kInitSize),
+    zone_(zone)
+  { Union(op,value); }
 
-  Float64ValueRange( Binary::Operator op , double value ):
+  Float64ValueRange( zone::Zone* zone , Binary::Operator op , double value ):
     ValueRange(FLOAT64_VALUE_RANGE),
-    sets_()
-  { sets_.reserve(kInitSize); Union(op,value); }
+    sets_(zone,kInitSize),
+    zone_(zone)
+  { Union(op,value); }
 
   Float64ValueRange( const Float64ValueRange& that ):
     ValueRange(FLOAT64_VALUE_RANGE),
-    sets_(that.sets_)
+    sets_(that.zone_,that.sets_),
+    zone_(that.zone_)
   {}
 
   virtual void  Union    ( Binary::Operator op , Expr* );
   virtual void  Union    ( const ValueRange& );
   virtual void  Intersect( Binary::Operator op , Expr* );
   virtual void  Intersect( const ValueRange& );
-
   virtual int   Infer    ( Binary::Operator , Expr* ) const;
   virtual int   Infer    ( const ValueRange&  ) const;
-
   virtual Expr* Collapse ( Graph* , IRInfo* ) const;
   virtual void  Dump     ( DumpWriter* ) const;
-
-  virtual std::unique_ptr<ValueRange> Clone() const {
-    return std::unique_ptr<ValueRange>( new Float64ValueRange(*this) );
-  }
 
  private:
   Range NewRange  ( Binary::Operator op , double ) const;
   // scan the input range inside of the RangSet and find its
   // status and lower and upper bound
-  int  Scan       ( const Range& , int* lower , int* upper ) const;
+  int  Scan       ( const Range& , std::int64_t* lower , std::int64_t* upper ) const;
   // this function do a merge with adjuscent range if needed
-  void Merge      ( const RangeSet::iterator& );
+  void Merge      ( std::int64_t index );
   void Union      ( Binary::Operator op , double );
   void Intersect  ( Binary::Operator op , double );
 
@@ -227,7 +223,8 @@ class Float64ValueRange : public ValueRange {
   // the range stored inside of the std::vector must be
   // 1) none-overlapped
   // 2) sorted
-  RangeSet sets_;
+  RangeSet    sets_;
+  zone::Zone* zone_;
 
   FRIEND_TEST(ValueRange,F64Union);
   FRIEND_TEST(ValueRange,F64Intersect);
@@ -272,10 +269,6 @@ class BooleanValueRange : public ValueRange {
 
   virtual Expr* Collapse ( Graph* , IRInfo*         ) const;
   virtual void  Dump     ( DumpWriter* ) const;
-
-  virtual std::unique_ptr<ValueRange> Clone() const {
-    return std::unique_ptr<ValueRange>( new BooleanValueRange(*this) );
-  }
 
  private:
   void  Union    ( bool );

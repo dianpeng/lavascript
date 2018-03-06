@@ -9,7 +9,7 @@
 #include <cstdarg>
 #include <cstddef>
 #include <string>
-#include <string.h>
+#include <cstring>
 #include <vector>
 #include <new>
 #include <cmath>
@@ -61,12 +61,17 @@ inline const T* AsBuffer( const std::vector<T>* output , std::size_t off ) {
 
 template< typename T >
 inline T* MemCopy( T* dest , const T* from , std::size_t size ) {
-  return static_cast<T*>(memcpy(dest,from,size*sizeof(T)));
+  return static_cast<T*>(std::memcpy(dest,from,size*sizeof(T)));
 }
 
 template< typename T >
 inline T* MemCopy( T* dest, const std::vector<T>& from ) {
-  return static_cast<T*>(memcpy(dest,AsBuffer(&from,0),from.size()*sizeof(T)));
+  return static_cast<T*>(std::memcpy(dest,AsBuffer(&from,0),from.size()*sizeof(T)));
+}
+
+template< typename T >
+inline T* MemMove( T* dest , const T* source , std::size_t size ) {
+  return static_cast<T*>(std::memmove(dest,source,size*sizeof(T)));
 }
 
 template< typename T >

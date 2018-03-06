@@ -98,13 +98,35 @@ void ControlFlow::Replace( ControlFlow* node ) {
 void ControlFlow::RemoveBackwardEdge( ControlFlow* node ) {
   auto itr = backward_edge()->Find(node);
   lava_verify(itr.HasNext());
+
+  {
+    auto i = node->forward_edge()->Find(this);
+    lava_verify(i.HasNext());
+    node->forward_edge()->Remove(i);
+  }
+
   backward_edge()->Remove(itr);
+}
+
+void ControlFlow::RemoveBackwardEdge( std::size_t index ) {
+  return RemoveBackwardEdge(backward_edge()->Index(index));
 }
 
 void ControlFlow::RemoveForwardEdge( ControlFlow* node ) {
   auto itr = forward_edge()->Find(node);
   lava_verify(itr.HasNext());
+
+  {
+    auto i = node->backward_edge()->Find(this);
+    lava_verify(i.HasNext());
+    node->backward_edge()->Remove(i);
+  }
+
   forward_edge()->Remove(itr);
+}
+
+void ControlFlow::RemoveForwardEdge( std::size_t index ) {
+  return RemoveForwardEdge(forward_edge()->Index(index));
 }
 
 void ControlFlow::MoveStatement( ControlFlow* cf ) {

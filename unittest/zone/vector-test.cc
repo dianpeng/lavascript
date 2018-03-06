@@ -28,6 +28,66 @@ TEST(Vector,Vector) {
   }
 }
 
+TEST(Vector,InsertRemove) {
+  Zone zone(4,4);
+  {
+    Vector<int> vec;
+    vec.Add(&zone,1);
+    vec.Add(&zone,2);
+    ASSERT_TRUE(vec.size() == 2);
+    ASSERT_EQ(1,vec[0]);
+    ASSERT_EQ(2,vec[1]);
+
+    // insert the value at front
+    vec.Insert( &zone , vec.GetForwardIterator() , 0 );
+    ASSERT_EQ(0,vec[0]);
+    ASSERT_EQ(1,vec[1]);
+    ASSERT_EQ(2,vec[2]);
+
+    ASSERT_EQ(3,vec.size());
+
+    auto itr = vec.GetForwardIterator();
+    itr.Advance(1);
+
+    vec.Insert( &zone , itr , 100 );
+    ASSERT_EQ(0,vec[0]);
+    ASSERT_EQ(100,vec[1]);
+    ASSERT_EQ(1,vec[2]);
+    ASSERT_EQ(2,vec[3]);
+    ASSERT_EQ(4,vec.size());
+
+    // remove the iterator out
+    {
+      auto itr = vec.GetForwardIterator();
+      auto end = vec.GetForwardIterator();
+      end.Advance(2);
+      vec.Remove(itr,end);
+      ASSERT_EQ(1,vec[0]);
+      ASSERT_EQ(2,vec[1]);
+      ASSERT_EQ(2,vec.size());
+
+    }
+
+    {
+      auto itr = vec.GetForwardIterator();
+      auto end = vec.GetForwardIterator();
+      end.Advance(2);
+      auto res = vec.Remove(itr,end);
+      ASSERT_TRUE(!res.HasNext());
+      ASSERT_TRUE(vec.empty());
+      ASSERT_EQ(0,vec.size());
+    }
+
+    {
+      auto itr = vec.GetForwardIterator();
+      auto res = vec.Insert(&zone,itr,100);
+      ASSERT_EQ(100,res.value());
+      ASSERT_EQ(100,vec[0]);
+      ASSERT_EQ(1,vec.size());
+    }
+  }
+}
+
 } // namespace zone
 } // namespace lavascript
 

@@ -1,4 +1,5 @@
 #include <src/trace.h>
+#include <src/zone/zone.h>
 #include <src/cbase/value-range.h>
 
 #include <gtest/gtest.h>
@@ -112,8 +113,10 @@ TEST(ValueRange,Range) {
 
 
 TEST(ValueRange,F64Union) {
+  zone::Zone zone(4,4);
+
   {
-    Float64ValueRange range;
+    Float64ValueRange range(&zone);
     range.Union(Binary::EQ,5); // == 5
     range.Union(Binary::GT,5); // > 5
     range.Union(Binary::GE,5); // >= 5
@@ -132,7 +135,7 @@ TEST(ValueRange,F64Union) {
   }
 
   {
-    Float64ValueRange range;
+    Float64ValueRange range(&zone);
     range.Union(Binary::LT,2); // < 2
     range.Union(Binary::EQ,2); // == 2
     range.Union(Binary::EQ,2);
@@ -152,7 +155,7 @@ TEST(ValueRange,F64Union) {
   }
 
   {
-    Float64ValueRange range;
+    Float64ValueRange range(&zone);
     range.Union(Binary::LT,2);  // < 2
     range.Union(Binary::GT,3);  // > 3
     range.Union(Binary::LE,3);
@@ -164,7 +167,7 @@ TEST(ValueRange,F64Union) {
   }
 
   {
-    Float64ValueRange range;
+    Float64ValueRange range(&zone);
     range.Union(Binary::LT,1);
     range.Union(Binary::GE,3);
     range.Union(Binary::GE,1);
@@ -176,7 +179,7 @@ TEST(ValueRange,F64Union) {
   }
 
   {
-    Float64ValueRange range;
+    Float64ValueRange range(&zone);
     range.Union(Binary::GT,10);
 
     // overlap with just one value 10
@@ -209,7 +212,7 @@ TEST(ValueRange,F64Union) {
 
   {
     // Multiple ranges
-    Float64ValueRange range;
+    Float64ValueRange range(&zone);
     range.Union(Binary::GT,10); // > 10
     range.Union(Binary::LT,1 ); // < 1
     {
@@ -218,35 +221,35 @@ TEST(ValueRange,F64Union) {
     }
 
     { // range: (-@,2) (9,+@)
-      Float64ValueRange r;
+      Float64ValueRange r(&zone);
       r.Union(Binary::GT,9);
       r.Union(Binary::LT,2);
       ASSERT_EQ(ValueRange::ALWAYS_TRUE,range.Infer(r));
     }
 
     { // range: (-@,0) (100,+@)
-      Float64ValueRange r;
+      Float64ValueRange r(&zone);
       r.Union(Binary::GT,100);
       r.Union(Binary::LT,0.0);
       ASSERT_EQ(ValueRange::UNKNOWN,range.Infer(r));
     }
 
     { // range: (2,3)
-      Float64ValueRange r;
+      Float64ValueRange r(&zone);
       r.Union(Binary::LT,3);
       r.Intersect(Binary::GT,2);
       ASSERT_EQ(ValueRange::ALWAYS_FALSE,range.Infer(r));
     }
 
     { // range: (0,10)
-      Float64ValueRange r;
+      Float64ValueRange r(&zone);
       r.Union(Binary::LT,10);
       r.Intersect(Binary::GT,0.0);
       ASSERT_EQ(ValueRange::UNKNOWN,range.Infer(r));
     }
 
     { // range :[1,10]
-      Float64ValueRange r;
+      Float64ValueRange r(&zone);
       r.Union(Binary::LE,10);
       r.Intersect(Binary::GE,1);
       ASSERT_EQ(ValueRange::ALWAYS_FALSE,range.Infer(r));
@@ -257,7 +260,7 @@ TEST(ValueRange,F64Union) {
   // multiple range represents single number
   {
     static const int kSize = 100;
-    Float64ValueRange range;
+    Float64ValueRange range(&zone);
 
     for( int i = 0 ; i < kSize ; ++i ) {
       range.Union(Binary::EQ,static_cast<double>(i));
@@ -270,8 +273,9 @@ TEST(ValueRange,F64Union) {
 }
 
 TEST(ValueRange,F64Intersect) {
+  zone::Zone zone(4,4);
   {
-    Float64ValueRange range;
+    Float64ValueRange range(&zone);
     range.Union(Binary::LE,10);
     range.Intersect(Binary::LT,10);
     {
@@ -288,7 +292,7 @@ TEST(ValueRange,F64Intersect) {
   }
 
   {
-    Float64ValueRange range;
+    Float64ValueRange range(&zone);
     range.Union(Binary::GE,10);
     range.Intersect(Binary::GT,10);
     {
@@ -305,7 +309,7 @@ TEST(ValueRange,F64Intersect) {
   }
 
   {
-    Float64ValueRange range;
+    Float64ValueRange range(&zone);
     range.Union(Binary::LE,10);    // <= 10
     range.Intersect(Binary::GT,4); // > 4
     {
@@ -320,7 +324,7 @@ TEST(ValueRange,F64Intersect) {
   }
 
   {
-    Float64ValueRange range;
+    Float64ValueRange range(&zone);
     range.Union(Binary::LE,10);
     range.Intersect(Binary::GT,10);
     {
@@ -338,7 +342,7 @@ TEST(ValueRange,F64Intersect) {
   // multiple range representation
   {
     static const int kSize = 100;
-    Float64ValueRange range;
+    Float64ValueRange range(&zone);
     for( int i = kSize - 1 ; i >= 0 ; --i ) {
       range.Union    (Binary::LE,i);
       range.Intersect(Binary::GE,i);
@@ -359,7 +363,7 @@ TEST(ValueRange,F64Intersect) {
 
   {
     // range [1,10] , [20,30], [40,50]
-    Float64ValueRange range;
+    Float64ValueRange range(&zone);
     {
       range.Union(Binary::LE,10);
       range.Intersect(Binary::GE,1);
@@ -376,7 +380,7 @@ TEST(ValueRange,F64Intersect) {
     }
 
     {
-      Float64ValueRange r;
+      Float64ValueRange r(&zone);
 
       r.Union(Binary::GE,40);
       r.Intersect(Binary::LE,50);

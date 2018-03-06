@@ -716,10 +716,11 @@ void GraphBuilder::GeneratePhi( ValueStack* dest , const ValueStack& lhs ,
      * need to skip these type of variable entirely
      */
     if(l && r) {
-      if(l != r)
+      if(l != r) {
         dest->at(i) = Phi::New(graph_,l,r,region,NewIRInfo(pc));
-      else
+      } else {
         dest->at(i) = l;
+      }
     }
   }
 }
@@ -743,25 +744,11 @@ void GraphBuilder::InsertUnconditionalJumpPhi( const ValueStack& stk , ControlFl
     Expr* rhs = stk[i];
 
     if(lhs && rhs) {
-      /**
-       * We try to reuse the PHI node at current region if possible.
-       * Our IR's PHI node can accept multiple inputs not just 2.
-       * Nested PHI node are essentially the same as multiple-input PHI
-       * but mutiple-input PHI is just more clean
-       */
-      if(lhs->IsPhi() && lhs->AsPhi()->region() == region) {
-        lhs->AsPhi()->AddOperand( rhs );
-        lava_debug(NORMAL,
-            lava_verify(lhs->AsPhi()->operand_list()->size() == region->backward_edge()->size()););
-        stack_->at(i) = lhs;
-      } else if(rhs->IsPhi() && rhs->AsPhi()->region() == region) {
-        rhs->AsPhi()->AddOperand( lhs );
-        lava_debug(NORMAL,
-            lava_verify(rhs->AsPhi()->operand_list()->size() == region->backward_edge()->size()););
-        stack_->at(i) = rhs;
-      } else {
+      if(lhs != rhs) {
         stack_->at(i) = Phi::New(graph_,lhs,rhs,region,NewIRInfo(pc));
         lava_debug(NORMAL,lava_verify(region->backward_edge()->size() == 2););
+      } else {
+        stack_->at(i) = lhs;
       }
     }
   }
@@ -1072,7 +1059,13 @@ GraphBuilder::BuildLoopBody( BytecodeIterator* itr , ControlFlow* loop_header ) 
   Region*     after       = Region::New(graph_);
   VMState     true_stack;
 
-  if(loop_header->IsLoopHeader()) loop_header->AsLoopHeader()->set_merge(after);
+  if(loop_header->IsLoopHeader()) {
+    loop_header->AsLoopHeader()->set_merge(after);
+    // Only link the if_false edge back to loop header when it is actually a
+    // loop header type. During OSR compilation , since we don't have a real
+    // loop header , so we don't need to link it back
+    after->AddBackwardEdge(loop_header);
+  }
 
   BytecodeLocation cont_pc;
   BytecodeLocation brk_pc ;
@@ -1110,12 +1103,6 @@ GraphBuilder::BuildLoopBody( BytecodeIterator* itr , ControlFlow* loop_header ) 
 
     body->AddBackwardEdge(loop_header);
     body->AddBackwardEdge(exit);
-
-    // Only link the if_false edge back to loop header when it is actually a
-    // loop header type. During OSR compilation , since we don't have a real
-    // loop header , so we don't need to link it back
-    if(loop_header->IsLoopHeader())
-      after->AddBackwardEdge(loop_header);
 
     after->AddBackwardEdge(exit);
 

@@ -140,7 +140,7 @@ bool CheckGraphOSR( const char* source , std::size_t offset ) {
 TEST(GraphBuilder,Basic) {
   CASE(
       var b = 0;
-      for( var a = 10; 1 ; 2 ) {
+      for( var a = 1; 10 ; 1 ) {
         b = b + 1;
       }
 

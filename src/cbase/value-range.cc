@@ -92,9 +92,10 @@ int Float64ValueRange::Range::Test( const Range& range ) const {
   }
 }
 
-int Float64ValueRange::Scan( const Range& range , int* lower , int* upper ) const {
-  auto start = -1;
-  auto end   = -1;
+int Float64ValueRange::Scan( const Range& range , std::int64_t* lower ,
+                                                  std::int64_t* upper ) const {
+  std::int64_t start = -1;
+  std::int64_t end   = -1;
   int  rcode = -1;
 
   lava_debug(NORMAL,lava_verify(!sets_.empty()););
@@ -168,40 +169,42 @@ done:
   return rcode;
 }
 
-void Float64ValueRange::Merge( const Float64ValueRange::RangeSet::iterator& itr ) {
-  RangeSet::iterator pitr,nitr;
+void Float64ValueRange::Merge( std::int64_t index ) {
+  std::int64_t pitr = 0 , nitr = 0;
+
   bool has_pitr = false;
   bool has_nitr = false;
 
-  auto &rng= *itr;
+  auto &rng= sets_[index];
 
   // check left hand side range
-  if(sets_.begin() != itr) {
-    auto prev(itr); --prev;
-    auto &lhs = *prev;
+  if(index >0) {
+    auto prev = index - 1;
+    auto &lhs = sets_[prev];
+
     if(lhs.upper.value == rng.lower.value &&
       (lhs.upper.close || rng.lower.close)) {
       pitr = prev; has_pitr = true;
-      itr->lower = lhs.lower;
+      rng.lower  = lhs.lower;
     }
   }
 
   // check right hand side range
   {
-    auto next(itr); ++next;
-    auto &rhs = *next;
+    auto next = index + 1;
+    if(static_cast<std::size_t>(next) < sets_.size()) {
+      auto &rhs = sets_[next];
 
-    if(next != sets_.end()) {
       if(rhs.lower.value == rng.upper.value &&
         (rhs.lower.close || rng.upper.close)) {
         nitr = next; has_nitr = true;
-        itr->upper = rhs.upper;
+        rng.upper = rhs.upper;
       }
     }
   }
 
-  if(has_pitr) sets_.erase(pitr);
-  if(has_nitr) sets_.erase(nitr);
+  if(has_pitr) sets_.Remove(pitr);
+  if(has_nitr) sets_.Remove(nitr);
 }
 
 Float64ValueRange::Range Float64ValueRange::NewRange( Binary::Operator op ,
@@ -223,11 +226,11 @@ void Float64ValueRange::Union( Binary::Operator op , Expr* value ) {
 
 void Float64ValueRange::UnionRange( const Range& range ) {
   if(sets_.empty()) {
-    sets_.push_back(range);
+    sets_.Add(zone_,range);
   } else {
-    int lower, upper;
+    std::int64_t lower, upper;
     auto ret = Scan(range,&lower,&upper);
-    RangeSet::iterator modify_pos;
+    std::int64_t modify_pos;
 
     switch(ret) {
       case ValueRange::SAME:
@@ -237,13 +240,14 @@ void Float64ValueRange::UnionRange( const Range& range ) {
 
       case ValueRange::REXCLUDE:
         lava_debug(NORMAL,lava_verify(lower == upper););
-        modify_pos = sets_.insert(IteratorAt(sets_,lower),range);
+        modify_pos = sets_.Insert(zone_,lower,range).cursor();
         break;
 
       case ValueRange::LEXCLUDE:
         lava_debug(NORMAL,lava_verify(lower == upper););
         lava_debug(NORMAL,lava_verify(lower == static_cast<int>(sets_.size())););
-        modify_pos = sets_.insert(sets_.end(),range);
+        sets_.Add(zone_,range);
+        modify_pos = (sets_.size() - 1);
         break;
       case ValueRange::OVERLAP:
         {
@@ -251,11 +255,8 @@ void Float64ValueRange::UnionRange( const Range& range ) {
 
           auto rng_lower = LowerMin( range.lower , sets_[lower  ].lower );
           auto rng_upper = UpperMax( range.upper , sets_[upper-1].upper );
-
-          auto itr_start = IteratorAt(sets_,lower);
-          auto itr_end   = IteratorAt(sets_,upper);
-          auto pos       = sets_.erase (itr_start,itr_end);
-          modify_pos     = sets_.insert(pos,Range(rng_lower,rng_upper));
+          auto pos       = sets_.Remove(lower,upper);
+          modify_pos     = sets_.Insert(zone_,pos,Range(rng_lower,rng_upper)).cursor();
         }
         break;
 
@@ -282,8 +283,8 @@ void Float64ValueRange::Union( Binary::Operator op , double value ) {
 void Float64ValueRange::Union( const ValueRange& range ) {
   lava_debug(NORMAL,lava_verify(range.IsFloat64ValueRange()););
   auto &r = static_cast<const Float64ValueRange&>(range);
-  for( auto &r : r.sets_ ) {
-    UnionRange(r);
+  for( std::size_t i = 0 ; i < r.sets_.size() ; ++i ) {
+    UnionRange(r.sets_[i]);
   }
 }
 
@@ -294,9 +295,8 @@ void Float64ValueRange::Intersect( Binary::Operator op , Expr* value ) {
 
 void Float64ValueRange::IntersectRange( const Range& range ) {
   if(!sets_.empty()) {
-    int  lower , upper;
+    std::int64_t lower , upper;
     auto ret = Scan(range,&lower,&upper);
-    RangeSet::iterator modify_pos;
 
     switch(ret) {
       case ValueRange::INCLUDE:
@@ -308,7 +308,7 @@ void Float64ValueRange::IntersectRange( const Range& range ) {
         break;
       case ValueRange::LEXCLUDE: // empty set
       case ValueRange::REXCLUDE:
-        sets_.clear();
+        sets_.Clear();
         break;
       case ValueRange::OVERLAP:
         {
@@ -318,11 +318,8 @@ void Float64ValueRange::IntersectRange( const Range& range ) {
            * This part for intersection is relatively hard since we need to
            * find out all the overlapped section and modify accordingly
            */
-          auto itr_start = IteratorAt(sets_,lower);
-          auto itr_end   = IteratorAt(sets_,upper);
-
-          for( ; itr_start != itr_end ; ++itr_start ) {
-            auto &existed = *itr_start;  // existed range
+          for( ; lower != upper ; ++lower ) {
+            auto &existed = sets_[lower];
             existed.lower = LowerMax(existed.lower,range.lower);
             existed.upper = UpperMin(existed.upper,range.upper);
           }
@@ -363,15 +360,15 @@ void Float64ValueRange::Intersect( Binary::Operator op , double value ) {
 void Float64ValueRange::Intersect( const ValueRange& range ) {
   lava_debug(NORMAL,lava_verify(range.IsFloat64ValueRange()););
   auto &r = static_cast<const Float64ValueRange&>(range);
-  for( auto &r : r.sets_ ) {
-    IntersectRange(r);
+  for( std::size_t i = 0 ; i < r.sets_.size() ; ++i ) {
+    IntersectRange(r.sets_[i]);
   }
 }
 
 int Float64ValueRange::InferRange( const Range& range ) const {
   if(sets_.empty()) return ValueRange::UNKNOWN; // empty set is included by any set
 
-  auto r = range.Test(sets_.front());
+  auto r = range.Test(sets_.First());
 
   for( std::size_t i = 0 ; i < sets_.size() ; ++i ) {
     auto ret = range.Test(sets_[i]);
@@ -424,7 +421,9 @@ int Float64ValueRange::Infer( Binary::Operator op , Expr* value ) const {
 }
 
 int Float64ValueRange::Contain( const Range& range ) const {
-  for( auto &e : sets_ ) {
+  for( std::size_t i = 0 ; i < sets_.size() ; ++i ) {
+    auto &e= sets_[i];
+
     auto r = e.Test(range);
     switch(r) {
       case ValueRange::SAME:
@@ -454,7 +453,7 @@ int Float64ValueRange::Infer( const ValueRange& range ) const {
     if(sets_.empty())   return ValueRange::UNKNOWN;
     if(r.sets_.empty()) return ValueRange::UNKNOWN;
 
-    auto rcode = r.Contain(sets_.front());
+    auto rcode = r.Contain(sets_.First());
 
     if(rcode == ValueRange::UNKNOWN)
       return ValueRange::UNKNOWN;
@@ -471,7 +470,7 @@ int Float64ValueRange::Infer( const ValueRange& range ) const {
 
 bool  Float64ValueRange::Collapse( double* output ) const {
   if(sets_.size() == 1 ) {
-    auto &r = sets_.front();
+    auto &r = sets_.First();
     if(r.IsSingleton()) {
       *output = r.lower.value;
       return true;
@@ -493,7 +492,8 @@ void Float64ValueRange::Dump( DumpWriter* writer ) const {
   if(sets_.empty()) {
     writer->WriteL("empty");
   } else {
-    for( auto &r : sets_ ) {
+    for( std::size_t i = 0 ; i < sets_.size() ; ++i ) {
+      auto &r = sets_[i];
       writer->WriteL("%s%f,%f%s",r.lower.close ? "[" : "(" ,
                                  r.lower.value ,
                                  r.upper.value ,
@@ -508,6 +508,10 @@ void Float64ValueRange::Dump( DumpWriter* writer ) const {
  * UnknownValueRange Implementation
  *
  * -------------------------------------------------------------------------*/
+UnknownValueRange* UnknownValueRange::Get() {
+  static UnknownValueRange kRange;
+  return &kRange;
+}
 
 void UnknownValueRange::Union( Binary::Operator op , Expr* value ) {
   (void)op;

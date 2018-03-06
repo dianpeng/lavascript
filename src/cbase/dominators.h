@@ -50,6 +50,7 @@ class Dominators {
 
  private:
   std::map<ControlFlow*,DominatorSet> dominators_;
+  std::map<ControlFlow*,ControlFlow*> imm_dominators_;
 };
 
 } // namespace hir

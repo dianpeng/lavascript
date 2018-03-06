@@ -43,7 +43,7 @@ class ConditionGroup {
   std::size_t size() const { return range_.size(); }
 
  private:
-  SparseMap<Expr*,std::unique_ptr<ValueRange>> range_;
+  SparseMap<Expr*,ValueRange*> range_;
 };
 
 } // namespace hir

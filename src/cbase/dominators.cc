@@ -45,13 +45,25 @@ Dominators::DominatorSet* Dominators::GetDomSet( const Graph& graph ,
 }
 
 void Dominators::Build( const Graph& graph ) {
-  dominators_.clear(); // reset the dominators
+  dominators_.clear();
+  imm_dominators_.clear();
 
+  OOLVector<std::int32_t>   ts(graph.MaxID());
+  std::int32_t cur_ts = 0;
+
+  // do a timestamp mark using a DFS iteration algorithm
+  for( ControlFlowPOIterator itr(graph); itr.HasNext() ; itr.Move() ) {
+    auto n = itr.value();
+    lava_debug(NORMAL,lava_verify(ts[n->id()] == 0););
+    ts[n->id()] = ++cur_ts;
+  }
+
+
+  // do a dominator set generation using data flow algorithm
   std::vector<ControlFlow*> all_cf;
   bool has_change = false;
   DominatorSet temp;
   temp.reserve(64);
-
   all_cf.reserve(64);
   graph.GetControlFlowNode(&all_cf);
 
@@ -82,6 +94,24 @@ void Dominators::Build( const Graph& graph ) {
 
     }
   } while(has_change);
+
+  // mark the immediate dominator
+  for( auto &e : dominators_ ) {
+    auto n = e.first;
+    auto&s = e.second;
+    if(n == graph.start()) continue;
+
+    ControlFlow* imm = NULL;
+    for( auto &dom : s ) {
+      if(dom == n) continue;
+      if(imm == NULL) imm = dom;
+      else if(ts[dom->id()] < ts[imm->id()]) {
+        imm = dom;
+      }
+    }
+
+    if(imm) imm_dominators_[n] = imm;
+  }
 }
 
 const Dominators::DominatorSet& Dominators::GetDominatorSet( ControlFlow* node ) const {
@@ -99,6 +129,11 @@ Dominators::DominatorSet Dominators::GetCommonDominatorSet( ControlFlow* n1 ,
   return std::move(temp);
 }
 
+ControlFlow* Dominators::GetImmDominator( ControlFlow* node ) const {
+  auto n = imm_dominators_.find(node);
+  return n == imm_dominators_.end() ? NULL : n->second;
+}
+
 bool Dominators::IsDominator( ControlFlow* node , ControlFlow* dom ) const {
   auto set = GetDominatorSet(node);
   return std::binary_search(set.begin(),set.end(),dom);
@@ -112,22 +147,42 @@ std::string Dominators::PrintToDotFormat() const {
   std::stringstream formatter;
 
   formatter << "digraph dom {\n";
-  // 1. this pass generate all the *node* of the graph
-  for( auto &e : dominators_ ) {
-    formatter << "  " << GetNodeName(e.first) << "[color=red]\n";
-  }
 
-  // 2. this pass generate dominator relationship
-  for( auto &e : dominators_ ) {
-    auto &dset = e.second;
-    auto name  = GetNodeName(e.first);
-
-    for( auto &dom : dset ) {
-      formatter << "  " << name << " -> "
-                                << GetNodeName(dom)
-                                << "[color=grey style=dashed]\n";
+  {
+    formatter << "subgraph domset {\n";
+    // 1. this pass generate all the *node* of the graph
+    for( auto &e : dominators_ ) {
+      formatter << "  " << GetNodeName(e.first) << "[color=red]\n";
     }
+
+    // 2. this pass generate dominator relationship
+    for( auto &e : dominators_ ) {
+      auto &dset = e.second;
+      auto name  = GetNodeName(e.first);
+
+      for( auto &dom : dset ) {
+        formatter << "  " << name << " -> "
+                                  << GetNodeName(dom)
+                                  << "[color=grey style=dashed]\n";
+      }
+    }
+    formatter << "}\n";
   }
+
+  {
+    formatter << "subgraph idom {\n";
+
+    for( auto &e : imm_dominators_ ) {
+      auto fn = GetNodeName(e.first);
+      auto sn = GetNodeName(e.second);
+
+      formatter << "  " << GetNodeName(e.first) << "[color=red]\n";
+      formatter << "  " << fn << " -> " << sn <<"[color=grey style=dashed]\n";
+    }
+
+    formatter << "}\n";
+  }
+
   formatter << "}\n";
   return formatter.str();
 }

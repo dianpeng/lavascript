@@ -424,12 +424,13 @@ inline GraphBuilder::FuncInfo::FuncInfo( FuncInfo&& that ):
 {}
 
 inline GraphBuilder::GraphBuilder( const Handle<Script>& script , const TypeTrace& tt ):
-  zone_                (NULL),
-  script_              (script),
-  graph_               (NULL),
-  stack_               (),
-  func_info_           (),
-  type_trace_          (tt)
+  zone_             (NULL),
+  script_           (script),
+  graph_            (NULL),
+  stack_            (),
+  upvalue_          (),
+  func_info_        (),
+  type_trace_       (tt)
 {}
 
 inline void GraphBuilder::FuncInfo::EnterLoop( const std::uint32_t* pc ) {

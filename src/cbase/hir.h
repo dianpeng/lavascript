@@ -1286,7 +1286,6 @@ class Phi : public Expr {
   // Each phi node is bounded to a control flow regional node
   // and by this we can easily decide which region contributs
   // to a certain input node of Phi node
-  ControlFlow* region() const { return region_; }
   inline Phi( Graph* , std::uint32_t , ControlFlow* , IRInfo* );
  private:
   ControlFlow* region_;
@@ -1907,6 +1906,7 @@ class ControlFlow : public Node {
   }
 
   void RemoveBackwardEdge( ControlFlow* );
+  void RemoveBackwardEdge( std::size_t index );
 
   void ClearBackwardEdge () { backward_edge()->Clear(); }
 
@@ -1924,6 +1924,7 @@ class ControlFlow : public Node {
   }
 
   void RemoveForwardEdge( ControlFlow* edge );
+  void RemoveForwardEdge( std::size_t index );
 
   void ClearForwardEdge () { forward_edge()->Clear(); }
 
@@ -2150,6 +2151,8 @@ class If : public ControlFlow {
 
 class IfTrue : public ControlFlow {
  public:
+  static const std::size_t kIndex = 1;
+
   inline static IfTrue* New( Graph* , ControlFlow* );
   inline static IfTrue* New( Graph* );
 
@@ -2163,6 +2166,8 @@ class IfTrue : public ControlFlow {
 
 class IfFalse: public ControlFlow {
  public:
+  static const std::size_t kIndex = 0;
+
   inline static IfFalse* New( Graph* , ControlFlow* );
   inline static IfFalse* New( Graph* );
 
@@ -3117,6 +3122,9 @@ inline Guard* Guard::New( Graph* graph , Expr* test , ControlFlow* region ) {
 }
 
 inline IfTrue* IfTrue::New( Graph* graph , ControlFlow* parent ) {
+  lava_debug(NORMAL,lava_verify(
+        parent->IsIf() && parent->forward_edge()->size() == 1););
+
   return graph->zone()->New<IfTrue>(graph,graph->AssignID(),parent);
 }
 
@@ -3125,6 +3133,9 @@ inline IfTrue* IfTrue::New( Graph* graph ) {
 }
 
 inline IfFalse* IfFalse::New( Graph* graph , ControlFlow* parent ) {
+  lava_debug(NORMAL,lava_verify(
+        parent->IsIf() && parent->forward_edge()->size() == 0););
+
   return graph->zone()->New<IfFalse>(graph,graph->AssignID(),parent);
 }
 

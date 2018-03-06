@@ -1,6 +1,7 @@
 #ifndef ZONE_VECTOR_H_
 #define ZONE_VECTOR_H_
 #include "zone.h"
+#include "src/util.h"
 
 #include <cstdint>
 #include <algorithm>
@@ -20,10 +21,17 @@ class IteratorBase {
  public:
   bool HasNext() const { return Traits::HasNext(vec_,cursor_); }
   bool Move   ()       { return Traits::Move(vec_,&cursor_);   }
-  void Advance( std::size_t offset ) { Traits::Advance(offset,&cursor_); }
+  void Advance( std::size_t offset ) { Traits::Advance(vec_,offset,&cursor_); }
+  std::int64_t cursor() const { return cursor_; }
   inline const T& value() const;
   inline T& value();
   inline void set_value( const T& value );
+  inline bool operator == ( const IteratorBase& that ) const {
+    return vec_ == that.vec_ && cursor_ == that.cursor_;
+  }
+  inline bool operator != ( const IteratorBase& that ) const {
+    return !(*this == that);
+  }
  private:
   IteratorBase( typename Traits::VectorType* vec ):
     vec_(vec), cursor_(Traits::InitCursor(vec))
@@ -44,7 +52,7 @@ template< typename T > struct VectorForwardTraits {
   inline static std::int64_t InitCursor( VectorType* vec );
   inline static bool HasNext( VectorType* vec , std::int64_t cursor );
   inline static bool Move   ( VectorType* vec , std::int64_t* cursor );
-  inline static void Advance( std::size_t     , std::int64_t* cursor );
+  inline static void Advance( VectorType* vec , std::size_t     , std::int64_t* cursor );
 };
 
 template< typename T > struct VectorBackwardTraits {
@@ -53,7 +61,7 @@ template< typename T > struct VectorBackwardTraits {
   inline static std::int64_t InitCursor( VectorType* vec );
   inline static bool HasNext( VectorType* vec , std::int64_t cursor );
   inline static bool Move   ( VectorType* vec , std::int64_t* cursor );
-  inline static void Advance( std::size_t     , std::int64_t* cursor );
+  inline static void Advance( VectorType* vec , std::size_t, std::int64_t* cursor );
 };
 
 } // namespace detail
@@ -120,15 +128,29 @@ class Vector : ZoneObject {
  public: // Remove or Insert
   // Insert an element *before* this iterator
   ConstForwardIterator Insert( Zone* , ConstForwardIterator& pos , const T& );
+  ConstForwardIterator Insert( Zone* zone , std::int64_t index , const T& value ) {
+    auto n(GetForwardIterator()); n.Advance(index);
+    return Insert(zone,n,value);
+  }
   ConstForwardIterator Remove( ConstForwardIterator& start , ConstForwardIterator& end );
   ConstForwardIterator Remove( ConstForwardIterator& pos ) {
-    auto n(pos); n.Next();
+    auto n(pos); n.Move();
     return Remove(pos,n);
+  }
+  ConstForwardIterator Remove( std::int64_t index ) {
+    auto itr(GetForwardIterator()); itr.Advance(index);
+    return Remove(itr);
+  }
+  ConstForwardIterator Remove( std::int64_t start , std::int64_t end ) {
+    auto itr (GetForwardIterator()); itr.Advance(start);
+    auto iend(GetForwardIterator()); iend.Advance(end);
+    return Remove(itr,iend);
   }
 
  private:
   std::int64_t IterToCursor( ConstForwardIterator& itr ) {
-    return itr.cursor_ > size_ ? size_ : itr.cursor_;
+    auto cursor = static_cast<std::size_t>(itr.cursor_);
+    return static_cast<std::int64_t>(cursor > size_ ? size_ : cursor);
   }
 
   T* ptr_;                    // Pointer to the start of the memory
@@ -156,7 +178,7 @@ template< typename T > Vector<T>::Vector( Zone* zone , const Vector& that ):
   capacity_(0)
 {
   Reserve(zone,that.size());
-  std::memcpy(ptr_,that.ptr_,that.size() * sizeof(T));
+  MemCopy<T>(ptr_,that.ptr_,that.size());
   size_ = that.size();
 }
 
@@ -168,7 +190,7 @@ template< typename T > void Vector<T>::Add( Zone* zone , const T& value ) {
 template< typename T > void Vector<T>::Reserve( Zone* zone , std::size_t length ) {
   if(length > capacity_) {
     void* new_buffer = zone->Malloc( length * sizeof(T) );
-    if(ptr_) std::memcpy(new_buffer,ptr_,sizeof(T)*size_);
+    if(ptr_) MemCopy<T>(static_cast<T*>(new_buffer),ptr_,size_);
     ptr_ = static_cast<T*>(new_buffer);
     capacity_ = length;
   }
@@ -201,11 +223,12 @@ Vector<T>::Insert( Zone* zone , ConstForwardIterator& pos , const T& value ) {
   auto cursor = IterToCursor(pos);
 
   // 1. ensure the memory or capacity
-  if(size_ + 1 == capacity_) Reserve(zone,capacity_*2);
+  if(size_ == capacity_) Reserve(zone,capacity_*2);
 
   // 2. move the element from cursor position
-  if(cursor < size_)
-    std::memmove(ptr_+cursor+1,(ptr_+cursor),(size_-cursor)*sizeof(T));
+  if(static_cast<std::size_t>(cursor) < size_)
+    MemMove<T>(static_cast<T*>(BufferOffset<T>(ptr_,cursor+1)),
+               static_cast<T*>(BufferOffset<T>(ptr_,cursor)),(size_-cursor));
 
   // 3. place the element at the cursor position
   ConstructFromBuffer<T>(ptr_+cursor,value);
@@ -221,10 +244,11 @@ Vector<T>::Remove( ConstForwardIterator& start , ConstForwardIterator& end ) {
 
   // move the element starting from pos_end until the real end to
   // position pointed by the pos_start
-  if(pos_end < size_)
-    std::memmove(ptr_+pos_start,ptr_+pos_end,(size-pos_end)*sizeof(T));
+  if(static_cast<std::size_t>(pos_end) < size_)
+    MemMove(static_cast<T*>(BufferOffset<T>(ptr_,pos_start)),
+            static_cast<T*>(BufferOffset<T>(ptr_,pos_end)),(size_-pos_end));
 
-  size -= (pos_end - pos_start);
+  size_ -= (pos_end - pos_start);
   return ConstForwardIterator(this,pos_start);
 }
 
@@ -238,7 +262,7 @@ inline std::int64_t VectorForwardTraits<T>::InitCursor( VectorType* vec ) {
 
 template< typename T >
 inline bool VectorForwardTraits<T>::HasNext( VectorType* vec , std::int64_t cursor ) {
-  return cursor < vec->size();
+  return static_cast<std::size_t>(cursor) < vec->size();
 }
 
 template< typename T >
@@ -248,8 +272,11 @@ inline bool VectorForwardTraits<T>::Move( VectorType* vec , std::int64_t* cursor
 }
 
 template< typename T >
-inline void VectorForwardTraits<T>::Advance( std::size_t offset , std::int64_t* cursor ) {
+inline void VectorForwardTraits<T>::Advance( VectorType* vec , std::size_t offset ,
+                                                               std::int64_t* cursor ) {
   *cursor += offset;
+  if(static_cast<std::size_t>(*cursor) > vec->size())
+    *cursor = static_cast<std::int64_t>(vec->size());
 }
 
 template< typename T >
@@ -270,8 +297,12 @@ inline bool VectorBackwardTraits<T>::Move( VectorType* vec , std::int64_t* curso
 }
 
 template< typename T >
-inline void VectorBackwardTraits<T>::Advance( std::size_t offset , std::int64_t* cursor ) {
+inline void VectorBackwardTraits<T>::Advance( VectorType* vec , std::size_t offset ,
+                                                                std::int64_t* cursor ) {
+  (void)vec;
+
   *cursor -= offset;
+  if(*cursor < 0) *cursor = -1;
 }
 
 template< typename T , typename Traits >

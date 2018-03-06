@@ -75,16 +75,13 @@ void DCEImpl::Visit( Graph* graph ) {
     else if(cf->IsLoopHeader()) VisitIf(cf);
   }
 
-  // path all blocks that needs to be removed
+  // patch all blocks that needs to be removed
   for( auto &e : blocks_ ) {
     auto node = e.block;
     auto bval = e.cond;
     auto if_parent = node->parent();
 
-    // need to add all statement with side effect to its parental node
-    // since the *if* node will be removed entirely
-    if_parent->MoveStatement(node);
-    // 2. link the merged region back to the if_parent node
+    // link the merged region back to the if_parent node
     auto merge = node->IsIf() ? node->AsIf()->merge() :
                                 node->AsLoopHeader()->merge();
 
@@ -95,26 +92,39 @@ void DCEImpl::Visit( Graph* graph ) {
       if(n->IsPhi()) {
         auto phi = n->AsPhi();
         lava_debug(NORMAL,lava_verify(phi->operand_list()->size() == 2););
-        auto v = bval ? phi->operand_list()->Index(1) : // true
-                        phi->operand_list()->Index(0) ; // false
+        auto v = bval ? phi->operand_list()->Index(IfTrue::kIndex) :  // true
+                        phi->operand_list()->Index(IfFalse::kIndex) ; // false
+
         // use v to replace all the phi uses
         phi->Replace(v);
-
-        // we should not/never expect another PHI node
-        break;
       }
     }
-    // remove node from if_parent node
-    if_parent->RemoveForwardEdge(node);
 
-    // clear all merge's backwards edge
-    merge->ClearBackwardEdge();
+    // do the block deletion here
+    auto true_block = merge->backward_edge()->Index(IfTrue::kIndex);
+    auto false_block= merge->backward_edge()->Index(IfFalse::kIndex);
 
-    // get all statement from merge nod
-    if_parent->MoveStatement(merge);
+    if(bval) {
+      merge->RemoveBackwardEdge(false_block);
+      if(false_block != node) {
+        node->RemoveForwardEdge(IfFalse::kIndex);
+      }
+    } else {
+      merge->RemoveBackwardEdge(true_block);
+      if(true_block != node) {
+        node->RemoveForwardEdge(IfTrue::kIndex);
+      }
+    }
 
-    // replace merge to be if_parent
-    merge->Replace(if_parent);
+    // get all the statement from if_parent node
+    node->MoveStatement(if_parent);
+
+    // remove all its backwards edge since it will be replaced
+    // by its parental node
+    node->ClearBackwardEdge();
+
+    // replace if_parent with node itself
+    node->Replace(if_parent);
   }
 }
 

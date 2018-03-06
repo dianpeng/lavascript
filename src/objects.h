@@ -41,11 +41,6 @@ class Script;
 class ScriptBuilder;
 class CallFrame;
 
-namespace interpreter {
-void SetValueFlag( Value* v , std::uint32_t );
-std::uint32_t GetValueFlag( const Value& );
-} // namespace interpreter
-
 // Used in Assembly to modify field in an object. Based on C++ standard, offsetof
 // must be used in class that is standard_layout due to sick C++ object modle. We
 // must be sure that we can maintain this shitty concept. Another thing is the offset
@@ -131,8 +126,6 @@ class Value final {
     double        real_;
   };
 
-  friend void interpreter::SetValueFlag( Value*, std::uint32_t );
-  friend std::uint32_t interpreter::GetValueFlag( const Value& );
  public:
   // For primitive type , we can tell it directly from *raw* value due to the
   // double never use the lower 53 bits.

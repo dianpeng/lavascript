@@ -36,10 +36,10 @@ class ConditionGroup {
   ConditionGroup();
   ~ConditionGroup();
 
-  // Indicate that this condition group object is not initialized yet
+  // indicate that this condition group object is not initialized yet
   bool IsEmpty() const { return range_.empty(); }
 
-  // Size of the sub expression pair inside of this group
+  // size of the sub expression pair inside of this group
   std::size_t size() const { return range_.size(); }
 
  private:

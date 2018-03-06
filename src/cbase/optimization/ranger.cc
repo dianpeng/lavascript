@@ -1,12 +1,20 @@
 #include "ranger.h"
+#include "src/cbase/dominators.h"
+#include "src/cbase/value-range.h"
 
 namespace lavascript {
 namespace cbase      {
 namespace hir        {
+namespace {
 
-/**
- * The ranger will establish range value to each *branch* node's conditional value
- */
+class Impl {
+ public:
+   
+
+};
+
+} // namespace
+
 
 } // namespace hir
 } // namespace cbase

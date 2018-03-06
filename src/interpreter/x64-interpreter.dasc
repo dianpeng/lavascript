@@ -4052,6 +4052,7 @@ void GenBytecode( BuildContext* bctx, Bytecode bc ) {
       break;
 
     case BC_ICALL:
+    // TODO:: Implement TICALL instruction correctly with tail call optimization
     case BC_TICALL:
       |=>bc:
       |  instr_D

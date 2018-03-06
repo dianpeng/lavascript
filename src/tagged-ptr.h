@@ -11,9 +11,14 @@ namespace lavascript {
 // ----------------------------------------------------------------------
 // Tagged pointer.
 //
-// This is just a normal tagged pointer which gonan steal some
+// This is just a normal tagged pointer which gonna steal some
 // bits from its ptr and be able to allow you to set some
 // states there.
+//
+// The implementation only take advantage of the pointer that is aligned
+// on heap or on stack. It doesn't take advantage the fact that system V
+// ABI will only use the 48 bits on 64 bits machine. This make code simpler
+// to be port to other 32 bits machine in the future if applicable
 // ----------------------------------------------------------------------
 template< typename T > class TaggedPtr {
 

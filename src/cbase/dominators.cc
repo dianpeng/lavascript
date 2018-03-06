@@ -58,7 +58,6 @@ void Dominators::Build( const Graph& graph ) {
     ts[n->id()] = ++cur_ts;
   }
 
-
   // do a dominator set generation using data flow algorithm
   std::vector<ControlFlow*> all_cf;
   bool has_change = false;
@@ -104,6 +103,9 @@ void Dominators::Build( const Graph& graph ) {
     ControlFlow* imm = NULL;
     for( auto &dom : s ) {
       if(dom == n) continue;
+
+      // mark immediate dominator to be dominator node that has smallest
+      // timestamp number , ie it is the closest node to the dominated node
       if(imm == NULL) imm = dom;
       else if(ts[dom->id()] < ts[imm->id()]) {
         imm = dom;
@@ -145,11 +147,8 @@ std::string Dominators::GetNodeName(ControlFlow* node) const {
 
 std::string Dominators::PrintToDotFormat() const {
   std::stringstream formatter;
-
-  formatter << "digraph dom {\n";
-
   {
-    formatter << "subgraph domset {\n";
+    formatter << "digraph domset {\n";
     // 1. this pass generate all the *node* of the graph
     for( auto &e : dominators_ ) {
       formatter << "  " << GetNodeName(e.first) << "[color=red]\n";
@@ -170,7 +169,7 @@ std::string Dominators::PrintToDotFormat() const {
   }
 
   {
-    formatter << "subgraph idom {\n";
+    formatter << "digraph idom {\n";
 
     for( auto &e : imm_dominators_ ) {
       auto fn = GetNodeName(e.first);
@@ -183,7 +182,6 @@ std::string Dominators::PrintToDotFormat() const {
     formatter << "}\n";
   }
 
-  formatter << "}\n";
   return formatter.str();
 }
 

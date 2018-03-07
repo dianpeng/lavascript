@@ -19,26 +19,14 @@ template< typename K , typename T > class BalanceTree;
 template< typename K , typename T >
 class LinearList {
  public:
-  struct KeyValue {
-    K key;
-    T val;
+  typedef std::pair<K,T> ValueType;
+  typedef std::vector<ValueType> Container;
 
-    KeyValue() : key(), val() {}
-    KeyValue( const K& k , const T& v ) : key(k) , val(v) {}
-    KeyValue( K&& k , T&& v ) : key(std::move(k)), val(std::move(v)) {}
-    KeyValue( const KeyValue& kv ) : key(kv.key) , val(kv.val) {}
-    KeyValue( KeyValue&& kv      ) : key(std::move(kv.key)) , val(std::move(kv.val)) {}
-
-    bool operator < ( const KeyValue& kv ) const { return key < kv.key; }
-  };
-  typedef std::vector<KeyValue> Container;
-
- public:
   LinearList() : vec_() {}
-  LinearList( std::size_t reserve ) : vec_(reserve)  {}
+  explicit LinearList( std::size_t reserve ) : vec_(reserve)  {}
 
  public:
-  bool size () const { return vec_.size();  }
+  std::size_t size () const { return vec_.size();  }
   bool empty() const { return vec_.empty(); }
   const T* Find( const K& value ) const;
   bool Has( const K& value ) const { return Find(value) != NULL; }
@@ -47,6 +35,7 @@ class LinearList {
   bool Insert( K&& key      , T&& value      );
 
   void Clear() { vec_.clear(); }
+  void Swap( LinearList* that ) { that->vec_.swap(vec_); }
 
  public:
   typedef STLForwardIteratorAdapter<Container>  ForwardIterator;
@@ -75,14 +64,16 @@ class LinearList {
 // A balance tree is just a std::map wrapper to provide certain functions
 template< typename K , typename T >
 class BalanceTree {
-  typedef std::map<K,T> Container;
  public:
+  typedef std::map<K,T> Container;
+  typedef typename Container::value_type ValueType;
+
   BalanceTree() : map_() {}
 
   // Helper function to migrate from old LinearList to BalanceTree
   void Insert( LinearList<K,T>&& ll );
 
-  bool size() const { return map_.size() ; }
+  std::size_t size() const { return map_.size() ; }
   bool empty()const { return map_.empty(); }
 
   const T* Find( const K& value ) const;
@@ -92,6 +83,7 @@ class BalanceTree {
   bool     Insert( K&&, T&& );
 
   void     Clear() { map_.clear(); }
+  void     Swap( BalanceTree* bt ) { bt->map_.swap(map_); }
 
  public:
   typedef STLForwardIteratorAdapter<Container>  ForwardIterator;
@@ -122,8 +114,10 @@ template< typename I1, typename I2 , typename KeyType ,
                                      typename ValueType >
 class SparseMapIterator {
  public:
-  SparseMapIterator( const I1& i1 ) : iter_(i1) {}
-  SparseMapIterator( const I2& i2 ) : iter_(i2) {}
+  typedef std::pair<KeyType,ValueType> KeyValueType;
+
+  explicit SparseMapIterator( const I1& i1 ) : iter_(i1) {}
+  explicit SparseMapIterator( const I2& i2 ) : iter_(i2) {}
 
   bool IsC1() const { return iter_.index() == 0; }
   bool IsC2() const { return iter_.index() == 1; }
@@ -131,6 +125,9 @@ class SparseMapIterator {
   bool HasNext() const;
   bool Move   () const;
 
+  // This interface is different than most of the iterator due to the
+  // fact that we cannot store std::pair<const T,V> into std::vector
+  // since it doesn't support copy assignable trait
   const KeyType&   key  () const;
   const ValueType& value() const;
 
@@ -164,7 +161,7 @@ template< typename I1 , typename I2 , typename KT , typename VT >
 const KT& SparseMapIterator<I1,I2,KT,VT>::key() const {
   if(IsC1()) {
     auto &i1 = std::get<I1>(iter_);
-    return i1.value().key;
+    return i1.value().first;
   } else {
     auto &i2 = std::get<I2>(iter_);
     return i2.value().first;
@@ -175,7 +172,7 @@ template< typename I1 , typename I2 , typename KT , typename VT >
 const VT& SparseMapIterator<I1,I2,KT,VT>::value() const {
   if(IsC1()) {
     auto &i1 = std::get<I1>(iter_);
-    return i1.value().val;
+    return i1.value().second;
   } else {
     auto &i2 = std::get<I2>(iter_);
     return i2.value().second;
@@ -192,12 +189,17 @@ const VT& SparseMapIterator<I1,I2,KT,VT>::value() const {
 template< typename K , typename T >
 class SparseMap {
  public:
+  static const std::size_t kDefaultThreshold = 16;
+
   typedef LinearList<K,T>  C1;
   typedef BalanceTree<K,T> C2;
 
-  SparseMap( std::size_t threshold ) : map_() , threshold_(threshold_) {}
+  explicit SparseMap( std::size_t threshold = kDefaultThreshold ) :
+    map_() , threshold_(threshold) {}
 
   std::size_t size  () const;
+  std::size_t threshold() const { return threshold_; }
+
   bool     empty () const { return size() == 0; }
   void     Clear ();
   const T* Find  ( const K& value ) const;
@@ -212,6 +214,30 @@ class SparseMap {
   C1* c1() const { lava_debug(NORMAL,lava_verify(IsC1());); return &std::get<C1>(map_); }
   C2* c2() const { lava_debug(NORMAL,lava_verify(IsC2());); return &std::get<C2>(map_); }
 
+ public:
+
+  typedef detail::SparseMapIterator<typename C1::ForwardIterator,
+                                    typename C2::ForwardIterator,
+                                    K, T> ForwardIterator;
+
+  typedef detail::SparseMapIterator<typename C1::ConstForwardIterator,
+                                    typename C2::ConstForwardIterator,
+                                    K, T> ConstForwardIterator;
+
+  typedef detail::SparseMapIterator<typename C1::BackwardIterator,
+                                    typename C2::BackwardIterator,
+                                    K, T> BackwardIterator;
+
+  typedef detail::SparseMapIterator<typename C1::ConstBackwardIterator,
+                                    typename C2::ConstBackwardIterator,
+                                    K, T> ConstBackwardIterator;
+
+  ForwardIterator GetForwardIterator();
+  ConstForwardIterator GetForwardIterator() const;
+
+  BackwardIterator GetBackwardIterator();
+  ConstBackwardIterator GetBackwardIterator() const;
+
  private:
   bool Upgrade();
 
@@ -222,7 +248,7 @@ class SparseMap {
 template< typename K , typename T >
 const T* LinearList<K,T>::Find( const K& value ) const {
   auto itr = std::find(vec_.begin(),vec_.end(),value);
-  return itr == vec_.end() ? NULL : &(itr->val);
+  return itr == vec_.end() ? NULL : &(itr->second);
 }
 
 template< typename K , typename T >
@@ -236,23 +262,59 @@ bool LinearList<K,T>::Remove( const K& value ) {
 }
 
 template< typename K , typename T >
+typename SparseMap<K,T>::ForwardIterator
+SparseMap<K,T>::GetForwardIterator() {
+  if(IsC1())
+    return ForwardIterator( std::get<C1>(map_).GetForwardIterator() );
+  else
+    return ForwardIterator( std::get<C2>(map_).GetForwardIterator() );
+}
+
+template< typename K , typename T >
+typename SparseMap<K,T>::ConstForwardIterator
+SparseMap<K,T>::GetForwardIterator() const {
+  if(IsC1())
+    return ConstForwardIterator( std::get<C1>(map_).GetForwardIterator() );
+  else
+    return ConstForwardIterator( std::get<C2>(map_).GetForwardIterator() );
+}
+
+template< typename K , typename T >
+typename SparseMap<K,T>::BackwardIterator
+SparseMap<K,T>::GetBackwardIterator() {
+  if(IsC1())
+    return BackwardIterator( std::get<C1>(map_).GetBackwardIterator() );
+  else
+    return BackwardIterator( std::get<C2>(map_).GetBackwardIterator() );
+}
+
+template< typename K , typename T >
+typename SparseMap<K,T>::ConstBackwardIterator
+SparseMap<K,T>::GetBackwardIterator() const {
+  if(IsC1())
+    return ConstBackwardIterator( std::get<C1>(map_).GetBackwardIterator() );
+  else
+    return ConstBackwardIterator( std::get<C2>(map_).GetBackwardIterator() );
+}
+
+template< typename K , typename T >
 bool LinearList<K,T>::Insert( const K& key , const T& value ) {
   if(Has(key)) return false;
-  vec_.push_back(KeyValue(key,value));
+  vec_.push_back(std::make_pair(key,value));
   return true;
 }
 
 template< typename K , typename T >
 bool LinearList<K,T>::Insert( K&& key , T&& value ) {
   if(Has(key)) return false;
-  vec_.push_back(KeyValue(std::move(key),std::move(value)));
+  vec_.push_back(std::make_pair(std::move(key),std::move(value)));
   return true;
 }
 
 template< typename K, typename T >
 void BalanceTree<K,T>::Insert( LinearList<K,T>&& ll ) {
   for( auto &e : ll.vec_ ) {
-    map_.insert(std::make_pair(std::move(e.key),std::move(e.val)));
+    map_.insert(std::make_pair(std::move(e.first),std::move(e.second)));
   }
 }
 
@@ -307,7 +369,6 @@ const T* SparseMap<K,T>::Find( const K& value ) const {
 
 template< typename K , typename T >
 bool SparseMap<K,T>::Remove( const K& value ) {
-  bool ret;
   if(map_.index() == 0) {
     return std::get<C1>(map_).Remove(value);
   } else {
@@ -320,10 +381,10 @@ bool SparseMap<K,T>::Upgrade() {
   if(map_.index() == 0) {
     auto &c1 = std::get<C1>(map_);
     if(c1.size() == threshold_) {
-      auto old = std::move(c1);
+      C1 old; old.Swap(&c1);
       map_ = C2();
       auto &c2 = std::get<C2>(map_);
-      c2.Insert(std::move(c1));
+      c2.Insert(std::move(old));
       return true;
     }
   }

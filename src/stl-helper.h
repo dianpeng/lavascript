@@ -3,6 +3,30 @@
 #include <vector>
 #include <algorithm>
 
+namespace std {
+
+template< typename K , typename T >
+bool operator == ( const pair<K,T>& p , const K& k ) {
+  return p.first == k;
+}
+
+template< typename K , typename T >
+bool operator <  ( const pair<K,T>& p , const K& k ) {
+  return p.first < k;
+}
+
+template< typename K , typename T >
+bool operator == ( const pair<const K,T>& p , const K& k ) {
+  return p.first == k;
+}
+
+template< typename K , typename T >
+bool operator <  ( const pair<const K,T>& p , const K& k ) {
+  return p.first < k;
+}
+
+} // namespace std
+
 namespace lavascript {
 
 // Use DynamicBitSet to represent the dynamic bitset and underly implementation should
@@ -26,9 +50,10 @@ typename T::const_iterator IteratorAt( const T& container , std::size_t pos ) {
 }
 
 template< typename C , typename ITER > class STLConstIteratorAdapter {
+ public:
   typedef typename C::value_type ValueType;
   typedef ITER IterType;
- public:
+
   STLConstIteratorAdapter( const IterType& start , const IterType& end ):
     start_(start),
     end_  (end)
@@ -45,10 +70,11 @@ template< typename C , typename ITER > class STLConstIteratorAdapter {
 
 template< typename C , typename ITER >
 class STLIteratorAdapter : public STLConstIteratorAdapter<C,ITER> {
+ public:
   typedef STLConstIteratorAdapter<C,ITER> Base;
   typedef typename Base::ValueType ValueType;
   typedef typename Base::IterType IterType;
- public:
+
   STLIteratorAdapter( const IterType& start ,  const IterType& end ):
     Base(start,end)
   {}
@@ -58,36 +84,40 @@ class STLIteratorAdapter : public STLConstIteratorAdapter<C,ITER> {
 
 template< typename C > class STLForwardIteratorAdapter :
   public STLIteratorAdapter<C,typename C::iterator> {
+ public:
   typedef typename C::iterator IterType;
   typedef STLIteratorAdapter<C,typename C::iterator> Base;
- public:
+
   STLForwardIteratorAdapter( const IterType& start , const IterType& end ):
     Base(start,end) {}
 };
 
 template< typename C > class STLBackwardIteratorAdapter :
   public STLIteratorAdapter<C,typename C::reverse_iterator> {
+ public:
   typedef typename C::reverse_iterator IterType;
   typedef STLIteratorAdapter<C,typename C::reverse_iterator> Base;
- public:
+
   STLBackwardIteratorAdapter( const IterType& start , const IterType& end ):
     Base(start,end) {}
 };
 
 template< typename C > class STLConstForwardIteratorAdapter :
   public STLConstIteratorAdapter<C,typename C::const_iterator> {
+ public:
   typedef typename C::const_iterator IterType;
   typedef STLConstIteratorAdapter<C,typename C::const_iterator> Base;
- public:
+
   STLConstForwardIteratorAdapter( const IterType& start , const IterType& end ):
     Base(start,end) {}
 };
 
 template< typename C > class STLConstBackwardIteratorAdapter :
   public STLConstIteratorAdapter<C,typename C::const_reverse_iterator> {
+ public:
   typedef typename C::const_reverse_iterator IterType;
   typedef STLConstIteratorAdapter<C,typename C::const_reverse_iterator> Base;
- public:
+
   STLConstBackwardIteratorAdapter( const IterType& start , const IterType& end ):
     Base(start,end) {}
 };

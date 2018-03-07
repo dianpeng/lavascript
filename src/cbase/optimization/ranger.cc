@@ -9,7 +9,7 @@ namespace {
 
 class Impl {
  public:
-   
+
 
 };
 

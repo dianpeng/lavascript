@@ -1,8 +1,6 @@
 #ifndef CBASE_HIR_H_
 #define CBASE_HIR_H_
 #include "type.h"
-#include "static-type-inference.h"
-
 #include "src/config.h"
 #include "src/util.h"
 #include "src/stl-helper.h"
@@ -125,8 +123,11 @@ struct PrototypeInfo : zone::ZoneObject {
  * These arithmetic and compare node are used to do typed arithmetic
  * or compare operations. It is used after we do speculative type guess.
  *
- * The node takes typped input and generate typped output. The value it
- * generates are *NOT BOXED*.
+ * The node accepts unboxed value for specific type indicated by the node
+ * name and output unboxed value. So in general, we should mark the output
+ * with a box node. The input should be marked with unbox node or the node
+ * itself is a typped node which produce unbox value.
+ *
  */
 #define CBASE_IR_EXPRESSION_LOW_ARITHMETIC_AND_COMPARE(__)            \
   __(Float64Negate,FLOAT64_NEGATE,"float64_negate",false)             \
@@ -154,6 +155,39 @@ struct PrototypeInfo : zone::ZoneObject {
 #define CBASE_IR_EXPRESSION_TEST(__)                                  \
   __(TestType    ,TEST_TYPE      ,"test_type"      , false)           \
   __(TestListOOB ,TEST_LISTOOB   ,"test_listobb"   , false)
+
+/**
+ * Guard
+ *
+ * I don't remember how many times I have refactoried this piece of code.
+ *
+ * The initial guard design is make guard as a control flow node and then
+ * later on it is easy for us to do control flow optimizaiton like DCE on
+ * it but this ends up with many guards when the graph is generated because
+ * the type information is propoagted along with control flow as well.
+ * However we don't really have a clear picture of control flow graph when
+ * we do graph generation.
+ *
+ * Finally I decide to make guard as an expression . As an expression, it
+ * means the node can be used in any expression optimization and it is flowed
+ * inside of the bytecode register simulation which implicitly propogate along
+ * the control flow. So we could end up saving many guard node generation.
+ *
+ * Another thing is GVN can help to elminiate redundancy. Only one thing is
+ * hard to achieve is this :
+ *
+ * if( type(a) == "string" ) guard(a,"string")
+ *
+ * This sort of redundancy needs an extra pass to solve because in general,
+ * expression node doesn't participate in control flow node optimization.
+ *
+ *
+ * A Unbox operation/node should always follow a guard node since it doesn't
+ * expect an type mismatch happened. This means a crash during execution.
+ */
+
+#define CBASE_IR_GUARD(__)                       \
+  __(TypeGuard,TYPE_GUARD,"type_guard",false)
 
 
 /**
@@ -185,7 +219,6 @@ struct PrototypeInfo : zone::ZoneObject {
   __(LoopHeader,LOOP_HEADER,"loop_header",false)\
   __(Loop,LOOP ,"loop",false)                   \
   __(LoopExit,LOOP_EXIT,"loop_exit",false)      \
-  __(Guard,GUARD,"guard",false)                 \
   __(If,IF,"if",false)                          \
   __(IfTrue,IF_TRUE,"if_true",false)            \
   __(IfFalse,IF_FALSE,"if_false",false)         \
@@ -1876,6 +1909,34 @@ class Unbox : public Expr {
   LAVA_DISALLOW_COPY_AND_ASSIGN(Unbox)
 };
 
+// -----------------------------------------------------------------------
+//
+// Guard
+//
+// -----------------------------------------------------------------------
+class TypeGuard : public Expr {
+ public:
+  inline static TypeGuard* New( Graph* , Expr* , TypeKind , Checkpoint* , IRInfo* );
+
+  Expr*       node      () const { return operand_list()->First(); }
+  Checkpoint* checkpoint() const { return operand_list()->Last()->AsCheckpoint(); }
+
+  Guard( Graph* graph , std::uint32_t id , Expr* node , TypeKind type,
+                                                        Checkpoint* checkpoint ,
+                                                        IRInfo* info ):
+    Expr (IRTYPE_GUARD,id,graph,info),
+    type_(type)
+  {
+    AddOperand(node);
+    AddOperand(checkpoint);
+  }
+
+ private:
+  TypeKind type_;
+  LAVA_DISALLOW_COPY_AND_ASSIGN(Guard)
+};
+
+
 // -------------------------------------------------------------------------
 // Control Flow
 //
@@ -2101,27 +2162,6 @@ class LoopExit : public ControlFlow {
 
  private:
   LAVA_DISALLOW_COPY_AND_ASSIGN(LoopExit)
-};
-
-// -----------------------------------------------------------------------
-//
-// Guard
-//
-// -----------------------------------------------------------------------
-class Guard : public ControlFlow {
- public:
-  inline static Guard* New( Graph* , Expr* , ControlFlow* );
-
-  Expr* condition() const { return operand_list()->First(); }
-
-  Guard( Graph* graph , std::uint32_t id , Expr* cond , ControlFlow* region ):
-    ControlFlow(IRTYPE_GUARD,id,graph,region)
-  {
-    AddOperand(cond);
-  }
-
- private:
-  LAVA_DISALLOW_COPY_AND_ASSIGN(Guard)
 };
 
 // -----------------------------------------------------------------------
@@ -2362,13 +2402,6 @@ class Graph {
     return prototype_info_[index];
   }
 
- public: // static type inference
-  StaticTypeInference* static_type_inference()
-  { return &static_type_inference_; }
-
-  const StaticTypeInference* static_type_inference() const
-  { return &static_type_inference_; }
-
  public: // value range
   ValueRange* GetValueRange( std::uint32_t id ) const {
     return value_range_[id].get();
@@ -2395,7 +2428,6 @@ class Graph {
 
   zone::Vector<PrototypeInfo> prototype_info_;
   std::uint32_t               id_;
-  StaticTypeInference         static_type_inference_;
 
   std::vector<std::unique_ptr<ValueRange>> value_range_;
 
@@ -3117,8 +3149,10 @@ inline If* If::New( Graph* graph , Expr* condition , ControlFlow* parent ) {
   return graph->zone()->New<If>(graph,graph->AssignID(),condition,parent);
 }
 
-inline Guard* Guard::New( Graph* graph , Expr* test , ControlFlow* region ) {
-  return graph->zone()->New<Guard>(graph,graph->AssignID(),test,region);
+inline TypeGuard* TypeGuard::New( Graph* graph , Expr* node , TypeKind type ,
+                                                              Checkpoint* cp,
+                                                              IRInfo*  info ) {
+  return graph->zone()->New<TypeGuard>(graph,graph->AssignID(),node,type,cp,info);
 }
 
 inline IfTrue* IfTrue::New( Graph* graph , ControlFlow* parent ) {

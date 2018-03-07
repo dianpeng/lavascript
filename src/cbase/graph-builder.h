@@ -139,6 +139,7 @@ class GraphBuilder {
     void LeaveLoop() { loop_info.pop_back(); }
   };
 
+
  public:
   // Build routine's return status code
   enum StopReason {
@@ -225,32 +226,26 @@ class GraphBuilder {
   Expr* NewBoolean    ( bool );
 
  private: // Guard handling
-  Guard* NewGuard( Expr* tester , const interpreter::BytecodeLocation& );
-
-  Guard* NewTypeTestGuardIfNeed( const Value& , Expr* , IRInfo* ,
-                                                        const interpreter::BytecodeLocation& );
+  Guard* NewGuard                 ( Expr* tester , const interpreter::BytecodeLocation& );
+  Guard* NewTypeTestGuardIfNeed   ( const Value& , Expr* , IRInfo* ,
+                                                           const interpreter::BytecodeLocation& );
 
   // After this function is called, the following assumption for AsBoolean() results
   // from this Value object is valided. ie , this function let's you guess the corresponding
   // node's evaluation results under boolean context.
   Guard* NewBooleanTestGuardIfNeed( const Value& , Expr* , IRInfo* ,
                                                            const interpreter::BytecodeLocation& );
-
-  Guard* NewTypeTestGuardIfNeed( TypeKind  , Expr* , IRInfo* ,
-                                                     const interpreter::BytecodeLocation& );
+  Guard* NewTypeTestGuardIfNeed   ( TypeKind  , Expr* , IRInfo* ,
+                                                        const interpreter::BytecodeLocation& );
 
  private:
-  StaticTypeInference* static_type_infer() { return graph_->static_type_inference(); }
-
   // create unary/binary/tenrary node accordingly. it will do constant folding if
   // needed , this is to avoid generate too many checkpoint node . later on the
   // type inference phase will kick in and mark each node with type and some of the
   // checkpoint node will be enimilated since type is known
-  Expr* NewUnary      ( Expr* , Unary::Operator , const interpreter::BytecodeLocation& );
-  Expr* NewBinary     ( Expr* , Expr* , Binary::Operator , const interpreter::BytecodeLocation& );
-  Expr* NewTernary    ( Expr* , Expr* , Expr* , const interpreter::BytecodeLocation& );
-
-  Expr* TrySpeculativeUnary  ( Expr*, Unary::Operator , const interpreter::BytecodeLocation& );
+  Expr* NewUnary            ( std::uint32_t , Unary::Operator , const interpreter::BytecodeLocation& );
+  Expr* TrySpeculativeUnary ( std::uint32_t , Unary::Operator , const interpreter::BytecodeLocation& );
+  Expr* NewUnaryFallback    ( std::uint32_t , Unary::Operator , const interpreter::BytecodeLocation& );
 
   // speicial test binary means some expression like :
   //
@@ -258,10 +253,16 @@ class GraphBuilder {
   //  if(a == true) or if(false ==a) ;
   //
   // Note , ==/!= both works
+
+  Expr* NewBinary     ( std::uint32_t , std::uint32_t, Binary::Operator ,
+                                                       const interpreter::BytecodeLocation& );
   Expr* TrySpecialTestBinary ( Expr*, Expr*, Binary::Operator, const interpreter::BytecodeLocation& );
   Expr* TrySpeculativeBinary ( Expr*, Expr*, Binary::Operator, const interpreter::BytecodeLocation& );
 
+  Expr* NewTernary    ( std::uint32_t , std::uint32_t, std::uint32_t ,
+                                                       const interpreter::BytecodeLocation& );
   Expr* TrySpeculativeTernary( Expr*, Expr*, Binary::Operator, const interpreter::BytecodeLocation& );
+
 
   // create a intrinsic call node
   Expr* NewICall      ( std::uint8_t a1 , std::uint8_t a2 , std::uint8_t a3 ,
@@ -288,8 +289,8 @@ class GraphBuilder {
   void BuildOSRLocalVariable();
 
   void SetupOSRLoopCondition( interpreter::BytecodeIterator* );
-  StopReason BuildOSRLoop( interpreter::BytecodeIterator* );
-  StopReason PeelOSRLoop ( interpreter::BytecodeIterator* );
+  StopReason BuildOSRLoop   ( interpreter::BytecodeIterator* );
+  StopReason PeelOSRLoop    ( interpreter::BytecodeIterator* );
 
   // Build a block as OSR loop body
   StopReason GotoOSRBlockEnd( interpreter::BytecodeIterator* ,
@@ -297,7 +298,7 @@ class GraphBuilder {
 
   // Just build *one* BC isntruction , this will not build certain type of BCs
   // since it is expected other routine to consume those BCs
-  StopReason BuildBytecode( interpreter::BytecodeIterator* itr );
+  StopReason BuildBytecode  ( interpreter::BytecodeIterator* itr );
 
   StopReason BuildBasicBlock( interpreter::BytecodeIterator* itr ,
                               const std::uint32_t* end_pc = NULL );
@@ -313,12 +314,12 @@ class GraphBuilder {
                                                                ControlFlow* region ,
                                                                const interpreter::BytecodeLocation& );
 
-  StopReason GotoIfEnd( interpreter::BytecodeIterator* , const std::uint32_t* );
-  StopReason BuildIf( interpreter::BytecodeIterator* itr );
+  StopReason GotoIfEnd   ( interpreter::BytecodeIterator* , const std::uint32_t* );
+  StopReason BuildIf     ( interpreter::BytecodeIterator* itr );
   StopReason BuildIfBlock( interpreter::BytecodeIterator* , const std::uint32_t* );
 
   // Build logical IR graph
-  StopReason BuildLogic ( interpreter::BytecodeIterator* itr );
+  StopReason BuildLogic  ( interpreter::BytecodeIterator* itr );
 
   // Build ternary IR graph
   StopReason BuildTernary( interpreter::BytecodeIterator* itr );
@@ -338,8 +339,9 @@ class GraphBuilder {
   StopReason BuildForeverLoop( interpreter::BytecodeIterator* itr );
   void GenerateLoopPhi       ( const interpreter::BytecodeLocation& );
   void PatchLoopPhi          ();
+
   // Iterate until we see FEEND/FEND1/FEND2/FEVREND
-  StopReason BuildLoopBlock( interpreter::BytecodeIterator* itr );
+  StopReason BuildLoopBlock  ( interpreter::BytecodeIterator* itr );
 
   void InsertUnconditionalJumpPhi( const ValueStack& , ControlFlow* ,
       const interpreter::BytecodeLocation& );

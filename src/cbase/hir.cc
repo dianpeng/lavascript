@@ -143,7 +143,6 @@ Graph::Graph():
   end_                  (NULL),
   prototype_info_       (),
   id_                   (),
-  static_type_inference_(),
   value_range_          ()
 {}
 

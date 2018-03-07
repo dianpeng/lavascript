@@ -20,42 +20,12 @@ namespace hir        {
 class Expr;
 class ICall;
 
+
 /**
- * A helper class/object to lower the type and record its current type
- * internally.
- *
- * This class is used to do static type inference. If it failed, the
- * IR graph builder will emit speculative execution with guard.
+ * Do a static type inference according to the node type and its implicit
+ * indication. This is used to help us do speculative type assertion
  */
-class StaticTypeInference {
- public:
-  static const std::size_t kInitSize = 256;
-
-  StaticTypeInference() : type_vector_(kInitSize) {}
-
- public:
-  // Try to get the implicit type of this expression node. The
-  // implicit type is marked by the node type , like float64 node
-  // has type TPKIND_FLOAT64.
-  //
-  // This function should be called after we check we cannot get
-  // type inside of the type_vector_
-  static TypeKind GetImplicitType( Expr* );
-
- public:
-  // Add intrinsic function's type
-  void AddIntrinsicCallType( ICall* );
-
-  // Add a type with corresponding node
-  void AddType( std::uint32_t id , TypeKind tk ) { type_vector_[id] = tk; }
-
-  // Get the type of this node
-  TypeKind GetType( Expr* type ) const;
-
- private:
-  typedef OOLVector<TypeKind>   TypeVector;
-  mutable TypeVector            type_vector_;
-};
+TypeKind GetStaticTypeInference( Expr* );
 
 
 } // namespace hir

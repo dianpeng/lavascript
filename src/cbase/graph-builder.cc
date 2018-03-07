@@ -1,5 +1,6 @@
 #include "graph-builder.h"
 #include "fold.h"
+#include "static-type-inference.h"
 
 #include "src/interpreter/bytecode.h"
 #include "src/interpreter/bytecode-iterator.h"
@@ -295,10 +296,10 @@ Guard* GraphBuilder::NewTypeTestGuardIfNeed( TypeKind type , Expr* node ,
   return ret;
 }
 
-Expr* GraphBuilder::NewUnary  ( Expr* node , Unary::Operator op ,
-                                             const BytecodeLocation& pc ) {
+Expr* GraphBuilder::NewUnary( std::uint32_t index , Unary::Operator op ,
+                                                    const BytecodeLocation& pc ) {
   // 1. try to do a constant folding
-  auto new_node = FoldUnary(graph_,op,node,[this,pc]() {
+  auto new_node = FoldUnary(graph_,op,StackGet(index),[this,pc]() {
         return NewIRInfo(pc);
       }
   );
@@ -308,14 +309,20 @@ Expr* GraphBuilder::NewUnary  ( Expr* node , Unary::Operator op ,
   // 2. now we know there's no way we can resolve the expression and
   //    we don't have any type information from static type inference.
   //    fallback to do speculative unary or dynamic dispatch if needed
-  return TrySpeculativeUnary(node,op,pc);
+  return TrySpeculativeUnary(index,op,pc);
 }
 
-Expr* GraphBuilder::TrySpeculativeUnary( Expr* node , Unary::Operator op ,
-                                                      const BytecodeLocation& pc ) {
+Expr* GraphBuilder::TrySpeculativeUnary( std::uint32_t index , Unary::Operator op ,
+                                                               const BytecodeLocation& pc ) {
+  auto node = StackGet(index);
+
   // try to get the value feedback from type trace operations
   auto tt = type_trace_.GetTrace( pc.address() );
+
   if(tt) {
+    // get the static type inference from the node
+    auto static_type = GetStaticTypeInference(node);
+
     auto v = tt->data[1]; // unary's input argument
     if(op == Unary::NOT) {
       auto ir_info = NewIRInfo(pc);

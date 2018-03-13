@@ -36,12 +36,7 @@ TypeKind MapValueToTypeKind( const Value& v ) {
    * optimization. Using this function is simply to help us map
    * a Value object's internal tag/type to TypeKind
    */
-  if(v.IsTrue())
-    return TPKIND_TRUE;
-  else if(v.IsFalse())
-    return TPKIND_FALSE;
-  else
-    return MapValueTypeToTypeKind(v.type());
+  return MapValueTypeToTypeKind(v.type());
 }
 
 class TPKind::TPKindBuilder{
@@ -100,13 +95,6 @@ TPKind::TPKindBuilder::TPKindBuilder() :
         AddChildren(number,Node(TPKIND_INDEX));
       }
       AddChildren(primitive,Node(TPKIND_BOOLEAN));
-      // boolean <- true
-      //         <- false
-      {
-        auto boolean = Node(TPKIND_BOOLEAN);
-        AddChildren(boolean,Node(TPKIND_TRUE));
-        AddChildren(boolean,Node(TPKIND_FALSE));
-      }
       AddChildren(primitive,Node(TPKIND_NIL));
     }
 

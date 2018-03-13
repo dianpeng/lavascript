@@ -1,5 +1,5 @@
-#ifndef CBASE_STATIC_TYPE_INFERENCE_H_
-#define CBASE_STATIC_TYPE_INFERENCE_H_
+#ifndef CBASE_TYPE_INFERENCE_H_
+#define CBASE_TYPE_INFERENCE_H_
 #include "ool-vector.h"
 
 #include "src/cbase/type.h"
@@ -25,11 +25,11 @@ class ICall;
  * Do a static type inference according to the node type and its implicit
  * indication. This is used to help us do speculative type assertion
  */
-TypeKind GetStaticTypeInference( Expr* );
+TypeKind GetTypeInference( Expr* );
 
 
 } // namespace hir
 } // namespace cbase
 } // namespace lavascript
 
-#endif // CBASE_STATIC_TYPE_INFERENCE_H_
+#endif // CBASE_TYPE_INFERENCE_H_

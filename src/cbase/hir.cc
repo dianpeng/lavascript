@@ -1,5 +1,6 @@
 #include "hir.h"
 #include "value-range.h"
+#include "type-inference.h"
 #include <sstream>
 
 namespace lavascript {
@@ -888,6 +889,38 @@ void DotGraphVisualizer::RenderExpr( const std::string& name , Expr* node ) {
 
 std::string Graph::PrintToDotFormat( const Graph& graph , const Graph::DotFormatOption& opt ) {
   return DotGraphVisualizer().Visualize(graph,opt);
+}
+
+Expr* NewUnboxNode( Graph* graph , Expr* node , TypeKind tk , IRInfo* info ) {
+  // we can only unbox a node when we know the type
+  lava_debug(NORMAL,lava_verify(tk != TPKIND_UNKNOWN && tk == GetTypeInference(node)););
+
+  // 1. check if the node is already unboxed , if so just return the node itself
+  switch(node->type()) {
+    case IRTYPE_UNBOX:
+
+    case IRTYPE_FLOAT64_NEGATE:
+    case IRTYPE_FLOAT64_ARITHMETIC:
+    case IRTYPE_FLOAT64_BITWISE:
+    case IRTYPE_FLOAT64_COMPARE:
+    case IRTYPE_STRING_COMPARE:
+    case IRTYPE_SSTRING_EQ:
+    case IRTYPE_SSTRING_NE:
+      return node;
+
+    case IRTYPE_BOX:
+      {
+        // if a node is just boxed, then we can just remove the previous box
+        auto bvalue = node->AsBox()->value();
+        lava_debug(NORMAL,lava_verify(GetTypeInference(bvalue) == tk););
+        return bvalue;
+      }
+
+    default: break;
+  }
+
+  // 2. do a real unbox here
+  return Unbox::New(graph,node,tk,info);
 }
 
 } // namespace hir

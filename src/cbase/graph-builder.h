@@ -160,6 +160,15 @@ class GraphBuilder {
   bool BuildOSR( const Handle<Prototype>& , const std::uint32_t* , Graph* );
 
  private: // Stack accessing
+  struct StackSlot {
+    static const std::uint32_t kMax = std::numeric_limits<std::uint32_t>::max();
+    Expr* node;
+    std::uint32_t index;
+
+    StackSlot( Expr* n , std::uint32_t i = kMax ): node(n),index(i) {}
+    bool HasIndex() const { return index != kMax; }
+  };
+
   std::uint32_t StackIndex( std::uint32_t index ) const {
     return func_info().base+index;
   }
@@ -178,6 +187,10 @@ class GraphBuilder {
 
   Expr* StackGet( std::uint32_t index , std::uint32_t base ) {
     return stack_->at(base+index);
+  }
+
+  StackSlot StackGetSlot( std::uint32_t index ) {
+    return StackSlot(StackGet(index),index);
   }
 
  private: // Current FuncInfo
@@ -226,26 +239,20 @@ class GraphBuilder {
   Expr* NewBoolean    ( bool );
 
  private: // Guard handling
-  Guard* NewGuard                 ( Expr* tester , const interpreter::BytecodeLocation& );
-  Guard* NewTypeTestGuardIfNeed   ( const Value& , Expr* , IRInfo* ,
-                                                           const interpreter::BytecodeLocation& );
-
-  // After this function is called, the following assumption for AsBoolean() results
-  // from this Value object is valided. ie , this function let's you guess the corresponding
-  // node's evaluation results under boolean context.
-  Guard* NewBooleanTestGuardIfNeed( const Value& , Expr* , IRInfo* ,
-                                                           const interpreter::BytecodeLocation& );
-  Guard* NewTypeTestGuardIfNeed   ( TypeKind  , Expr* , IRInfo* ,
-                                                        const interpreter::BytecodeLocation& );
+  // Add a type feedback with TypeKind into the stack slot pointed by index
+  Expr* AddTypeFeedbackIfNeed( const StackSlot& , TypeKind     , const interpreter::BytecodeLocation& );
+  Expr* AddTypeFeedbackIfNeed( const StackSlot& , const Value& , const interpreter::BytecodeLocation& );
+  Expr* AddTypeFeedbackIfNeed( const StackSlot& , TypeKind     , IRInfo* );
+  Expr* AddTypeFeedbackIfNeed( const StackSlot& , const Value& , IRInfo* );
 
  private:
   // create unary/binary/tenrary node accordingly. it will do constant folding if
   // needed , this is to avoid generate too many checkpoint node . later on the
   // type inference phase will kick in and mark each node with type and some of the
   // checkpoint node will be enimilated since type is known
-  Expr* NewUnary            ( std::uint32_t , Unary::Operator , const interpreter::BytecodeLocation& );
-  Expr* TrySpeculativeUnary ( std::uint32_t , Unary::Operator , const interpreter::BytecodeLocation& );
-  Expr* NewUnaryFallback    ( std::uint32_t , Unary::Operator , const interpreter::BytecodeLocation& );
+  Expr* NewUnary            ( const StackSlot& , Unary::Operator , const interpreter::BytecodeLocation& );
+  Expr* TrySpeculativeUnary ( const StackSlot& , Unary::Operator , const interpreter::BytecodeLocation& );
+  Expr* NewUnaryFallback    ( const StackSlot& , Unary::Operator , const interpreter::BytecodeLocation& );
 
   // speicial test binary means some expression like :
   //
@@ -253,16 +260,17 @@ class GraphBuilder {
   //  if(a == true) or if(false ==a) ;
   //
   // Note , ==/!= both works
+  Expr* NewBinary            ( const StackSlot& , const StackSlot& , Binary::Operator ,
+                                                                     const interpreter::BytecodeLocation& );
+  Expr* TrySpecialTestBinary ( const StackSlot& , const StackSlot& , Binary::Operator ,
+                                                                     const interpreter::BytecodeLocation& );
+  Expr* TrySpeculativeBinary ( const StackSlot& , const StackSlot& , Binary::Operator ,
+                                                                     const interpreter::BytecodeLocation& );
+  Expr* NewBinaryFallback    ( const StackSlot& , const StackSlot& , Binary::Operator ,
+                                                                     const interpreter::BytecodeLocation& );
 
-  Expr* NewBinary     ( std::uint32_t , std::uint32_t, Binary::Operator ,
-                                                       const interpreter::BytecodeLocation& );
-  Expr* TrySpecialTestBinary ( Expr*, Expr*, Binary::Operator, const interpreter::BytecodeLocation& );
-  Expr* TrySpeculativeBinary ( Expr*, Expr*, Binary::Operator, const interpreter::BytecodeLocation& );
-
-  Expr* NewTernary    ( std::uint32_t , std::uint32_t, std::uint32_t ,
-                                                       const interpreter::BytecodeLocation& );
-  Expr* TrySpeculativeTernary( Expr*, Expr*, Binary::Operator, const interpreter::BytecodeLocation& );
-
+  // ternary node
+  Expr* NewTernary           ( const StackSlot& , Expr* , Expr* , const interpreter::BytecodeLocation& );
 
   // create a intrinsic call node
   Expr* NewICall      ( std::uint8_t a1 , std::uint8_t a2 , std::uint8_t a3 ,

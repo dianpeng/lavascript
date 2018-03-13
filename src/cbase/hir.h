@@ -210,7 +210,8 @@ struct PrototypeInfo : zone::ZoneObject {
   CBASE_IR_EXPRESSION_HIGH(__)                  \
   CBASE_IR_EXPRESSION_LOW (__)                  \
   CBASE_IR_EXPRESSION_TEST(__)                  \
-  CBASE_IR_BOXOP(__)
+  CBASE_IR_BOXOP(__)                            \
+  CBASE_IR_GUARD(__)
 
 // All the control flow IR nodes
 #define CBASE_IR_CONTROL_FLOW(__)               \
@@ -1920,20 +1921,21 @@ class TypeGuard : public Expr {
 
   Expr*       node      () const { return operand_list()->First(); }
   Checkpoint* checkpoint() const { return operand_list()->Last()->AsCheckpoint(); }
+  TypeKind    type_kind () const { return type_kind_; }
 
-  Guard( Graph* graph , std::uint32_t id , Expr* node , TypeKind type,
-                                                        Checkpoint* checkpoint ,
-                                                        IRInfo* info ):
-    Expr (IRTYPE_GUARD,id,graph,info),
-    type_(type)
+  TypeGuard( Graph* graph , std::uint32_t id , Expr* node , TypeKind type,
+                                                            Checkpoint* checkpoint ,
+                                                            IRInfo* info ):
+    Expr      (IRTYPE_TYPE_GUARD,id,graph,info),
+    type_kind_(type)
   {
     AddOperand(node);
     AddOperand(checkpoint);
   }
 
  private:
-  TypeKind type_;
-  LAVA_DISALLOW_COPY_AND_ASSIGN(Guard)
+  TypeKind type_kind_;
+  LAVA_DISALLOW_COPY_AND_ASSIGN(TypeGuard)
 };
 
 
@@ -3227,18 +3229,13 @@ inline OSREnd* OSREnd::New( Graph* graph , Success* s , Fail* f ) {
 // Helper functions for creation of node
 // ---------------------------------------------------------------------
 template< typename T , typename ...ARGS >
-inline Expr* NewNodeWithTypeFeedback( Graph* graph , TypeKind tk , ARGS ...args ) {
-  auto node = T::New(graph,args...);
-  graph->static_type_inference()->AddType(node->id(),tk);
-  return node;
-}
-
-template< typename T , typename ...ARGS >
-inline Expr* NewBoxedNodeWithTypeFeedback( Graph* graph , TypeKind tk , IRInfo* irinfo ,
-                                                                        ARGS ...args ) {
-  auto n = NewNodeWithTypeFeedback<T>(graph,tk,args...);
+inline Box* NewBoxNode( Graph* graph , TypeKind tk , IRInfo* irinfo , ARGS ...args ) {
+  auto n = T::New(graph,args...);
   return Box::New(graph,n,tk,irinfo);
 }
+
+// Create a unbox value from a node that has type inference.
+Expr* NewUnboxNode( Graph* , Expr* node , TypeKind tk , IRInfo* );
 
 
 } // namespace hir

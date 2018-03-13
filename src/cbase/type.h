@@ -21,8 +21,6 @@ namespace cbase {
   __(float64,FLOAT64)                                   \
   __(index  ,INDEX  )                                   \
   __(boolean,BOOLEAN)                                   \
-  __(true,TRUE)                                         \
-  __(false,FALSE)                                       \
   __(nil,NIL)                                           \
   __(reference,REFERENCE)                               \
   __(string ,STRING )                                   \

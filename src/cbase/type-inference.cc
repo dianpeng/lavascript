@@ -1,4 +1,4 @@
-#include "static-type-inference.h"
+#include "type-inference.h"
 #include "hir.h"
 
 #include "src/interpreter/intrinsic-call.h"
@@ -9,7 +9,7 @@ namespace hir        {
 
 using namespace ::lavascript::interpreter;
 
-TypeKind GetStaticTypeInference( Expr* node ) {
+TypeKind GetTypeInference( Expr* node ) {
 
   switch(node->type()) {
     // normal high ir node which has implicit type
@@ -24,10 +24,11 @@ TypeKind GetStaticTypeInference( Expr* node ) {
     case IRTYPE_ITR_TEST:                    return TPKIND_BOOLEAN ;
 
     // type mark
-    case IRTYPE_TYPE_GUARD:                  return node->AsTypeGuard()->type();
+    case IRTYPE_TYPE_GUARD:                  return node->AsTypeGuard()->type_kind();
 
-    // unbox node
-    case IRTPYE_UNBOX:                       return node->AsUnbox()->type();
+    // box/unbox node
+    case IRTYPE_UNBOX:                       return node->AsUnbox()->type_kind();
+    case IRTYPE_BOX:                         return node->AsBox()->type_kind();
 
     // lower HIR type translation
     case IRTYPE_FLOAT64_NEGATE:              return TPKIND_FLOAT64;
@@ -38,7 +39,7 @@ TypeKind GetStaticTypeInference( Expr* node ) {
     case IRTYPE_SSTRING_NE:                  return TPKIND_BOOLEAN;
 
 
-    case IRTPYE_ICALL:
+    case IRTYPE_ICALL:
     {
       auto icall = node->AsICall();
       switch(icall->ic()) {

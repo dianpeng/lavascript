@@ -258,8 +258,16 @@ Expr* GraphBuilder::AddTypeFeedbackIfNeed( const StackSlot& idx ,
   auto n   = idx.node;
   auto stp = GetTypeInference(n);
 
-  if(stp != TPKIND_UNKNOWN && stp == tp) {
-    return n; // the type is already there marked
+  if(stp != TPKIND_UNKNOWN) {
+    /**
+     * This check means our static type inference should match the traced
+     * type value here. If not match basically means our IR graph is wrong
+     * fundementally so it is a *BUG* actually
+     */
+    lava_assertF(stp == tp,"This is a *SERIOUS BUG*, we get type inference of value %s but "
+                           "the traced type is actually %s!",
+                           GetTypeKindName(stp), GetTypeKindName(tp));
+    return n;
   }
 
   lava_debug(NORMAL,lava_verify(tp != TPKIND_UNKNOWN););

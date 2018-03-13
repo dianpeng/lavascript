@@ -166,7 +166,7 @@ class GraphBuilder {
     std::uint32_t index;
 
     StackSlot( Expr* n , std::uint32_t i = kMax ): node(n),index(i) {}
-    bool HasIndex() const { return index != kMax; }
+    bool HasIndex() const { return index < kMax; }
   };
 
   std::uint32_t StackIndex( std::uint32_t index ) const {

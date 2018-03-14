@@ -62,7 +62,7 @@ class GraphBuilder::OSRScope {
     {
       FuncInfo &ctx = gb->func_info_.back();
       for( std::size_t i = 0 ; i < ctx.upvalue.size(); ++i ) {
-        ctx.upvalue[i] = UVal::New(gb->graph_,static_cast<std::uint8_t>(i));
+        ctx.upvalue[i] = UGet::New(gb->graph_,static_cast<std::uint8_t>(i));
       }
       gb->upvalue_ = &(ctx.upvalue);
     }
@@ -105,7 +105,7 @@ class GraphBuilder::FuncScope {
     {
       FuncInfo &ctx = gb->func_info_.back();
       for( std::size_t i = 0 ; i < ctx.upvalue.size(); ++i ) {
-        ctx.upvalue[i] = UVal::New(gb->graph_,static_cast<std::uint8_t>(i));
+        ctx.upvalue[i] = UGet::New(gb->graph_,static_cast<std::uint8_t>(i));
       }
       gb->upvalue_ = &(ctx.upvalue);
     }
@@ -761,7 +761,7 @@ Checkpoint* GraphBuilder::BuildCheckpoint( const BytecodeLocation& pc ) {
     std::uint8_t index = 0;
 
     for( auto & e : *upvalue_ ) {
-      cp->AddUValSlot(e,index);
+      cp->AddUGetSlot(e,index);
       ++index;
     }
   }

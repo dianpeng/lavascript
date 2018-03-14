@@ -143,8 +143,7 @@ Graph::Graph():
   start_                (NULL),
   end_                  (NULL),
   prototype_info_       (),
-  id_                   (),
-  value_range_          ()
+  id_                   ()
 {}
 
 Graph::~Graph() {}
@@ -152,20 +151,11 @@ Graph::~Graph() {}
 void Graph::Initialize( Start* start , End* end ) {
   start_ = start;
   end_   = end;
-
-  value_range_.resize(MaxID());
 }
 
 void Graph::Initialize( OSRStart* start , OSREnd* end ) {
   start_ = start;
   end_   = end;
-
-  value_range_.resize(MaxID());
-}
-
-void Graph::SetValueRange( std::uint32_t id ,
-                           std::unique_ptr<ValueRange>&& ptr ) {
-  value_range_[id] = std::move(ptr);
 }
 
 void Graph::GetControlFlowNode( std::vector<ControlFlow*>* output ) const {
@@ -417,9 +407,9 @@ void DotGraphVisualizer::RenderCheckpoint ( const std::string& cp_name ,
       Indent(1) << ss_name << " -> " << expr_name <<'\n';
       Indent(1) << cp_name << " -> " << ss_name   <<'\n';
     } else {
-      lava_debug(NORMAL,lava_verify(n->IsUValSlot()););
+      lava_debug(NORMAL,lava_verify(n->IsUGetSlot()););
 
-      auto us      = n->AsUValSlot();
+      auto us      = n->AsUGetSlot();
       auto us_name = GetNodeName(us);
 
       Indent(1) << us_name << "[shape=doublecircle style=bold color=cyan label=\"[uval_slot("
@@ -609,8 +599,8 @@ void DotGraphVisualizer::RenderExpr( const std::string& name , Expr* node ) {
 
       }
       break;
-    case IRTYPE_UVAL:
-      Indent(1) << name << "[label=\"uval(" << node->AsUVal()->index() << ")\"]\n";
+    case IRTYPE_UGET:
+      Indent(1) << name << "[label=\"uget(" << node->AsUGet()->index() << ")\"]\n";
       break;
     case IRTYPE_USET:
       {

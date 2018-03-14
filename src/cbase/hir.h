@@ -46,7 +46,7 @@ using namespace ::lavascript;
   __(Binary,BINARY,"binary",false)              \
   __(Ternary,TERNARY,"ternary",false)           \
   /* upvalue */                                 \
-  __(UVal,UVAL,"uval",true)                     \
+  __(UGet,UGET,"uval",true)                     \
   __(USet,USET  ,"uset",true)                   \
   /* property/idx */                            \
   __(PGet,PGET  ,"pget",false)                  \
@@ -77,7 +77,7 @@ using namespace ::lavascript;
   /* checkpoints */                             \
   __(Checkpoint,CHECKPOINT,"checkpoint",false)  \
   __(StackSlot ,STACK_SLOT, "stackslot",false)  \
-  __(UValSlot  ,UVAL_SLOT , "uvalslot" ,false)
+  __(UGetSlot  ,UGET_SLOT , "uvalslot" ,false)
 
 // Low level HIR node and they are fully typped or partially typped
 
@@ -960,14 +960,14 @@ class Ternary: public Expr {
 // -------------------------------------------------------------------------
 // upvalue get/set
 // -------------------------------------------------------------------------
-class UVal : public Expr {
+class UGet : public Expr {
  public:
-  inline static UVal* New( Graph* , std::uint8_t );
+  inline static UGet* New( Graph* , std::uint8_t );
 
   std::uint8_t index() const { return index_; }
 
-  UVal( Graph* graph , std::uint32_t id , std::uint8_t index ):
-    Expr  (IRTYPE_UVAL,id,graph,NULL),
+  UGet( Graph* graph , std::uint32_t id , std::uint8_t index ):
+    Expr  (IRTYPE_UGET,id,graph,NULL),
     index_(index)
   {}
 
@@ -976,12 +976,12 @@ class UVal : public Expr {
   }
 
   virtual bool Equal( const Expr* that ) const {
-    return that->IsUVal() && that->AsUVal()->index() == index();
+    return that->IsUGet() && that->AsUGet()->index() == index();
   }
 
  private:
   std::uint8_t index_;
-  LAVA_DISALLOW_COPY_AND_ASSIGN(UVal)
+  LAVA_DISALLOW_COPY_AND_ASSIGN(UGet)
 };
 
 class USet : public Expr {
@@ -1505,16 +1505,16 @@ class Alias : public Expr {
  public:
   inline static Alias* New( Graph* , Expr* , Expr* , IRInfo* );
 
-  Expr* receiver() const { return operand_list()->First(); }
-  Expr* applier () const { return operand_list()->Last (); }
+  Expr* alias() const { return operand_list()->First(); }
+  Expr* value() const { return operand_list()->Last (); }
 
-  Alias ( Graph* graph , std::uint32_t id , Expr* receiver ,
-                                            Expr* applier  ,
+  Alias ( Graph* graph , std::uint32_t id , Expr* alias,
+                                            Expr* value,
                                             IRInfo* info ):
     Expr(IRTYPE_ALIAS,id,graph,info)
   {
-    AddOperand(receiver);
-    AddOperand(applier);
+    AddOperand(alias);
+    AddOperand(value);
   }
 
  private:
@@ -1533,7 +1533,7 @@ class Alias : public Expr {
 // For VM/Interpreter state , there're only 3 types of states
 //
 // 1) a register stack state , represented by StackSlot node
-// 2) a upvalue state , represented by UValSlot node
+// 2) a upvalue state , represented by UGetSlot node
 // 3) a global value state , currently we don't have any optimization against
 //    global values, so they are not needed to be captured in the checkpoint
 //    they are more like volatile in C/C++ , always read from its memory and
@@ -1547,7 +1547,7 @@ class Checkpoint : public Expr {
   inline void AddStackSlot( Expr* , std::uint32_t );
 
   // add a upvalue slot
-  inline void AddUValSlot ( Expr* , std::uint32_t );
+  inline void AddUGetSlot ( Expr* , std::uint32_t );
 
   Checkpoint( Graph* graph , std::uint32_t id ):
     Expr(IRTYPE_CHECKPOINT,id,graph,NULL)
@@ -1580,25 +1580,25 @@ class StackSlot : public Expr {
   LAVA_DISALLOW_COPY_AND_ASSIGN(StackSlot)
 };
 
-// UValSlot node
+// UGetSlot node
 //
 // Represent a value must be flushed back to the upvalue array of the
 // calling closure
-class UValSlot : public Expr {
+class UGetSlot : public Expr {
  public:
-  inline static UValSlot* New( Graph* , Expr* , std::uint32_t );
+  inline static UGetSlot* New( Graph* , Expr* , std::uint32_t );
   std::uint32_t index() const { return index_; }
   Expr* expr() const { return operand_list()->First(); }
 
-  UValSlot( Graph* graph , std::uint32_t id , Expr* expr , std::uint32_t index ):
-    Expr(IRTYPE_UVAL_SLOT,id,graph,NULL),
+  UGetSlot( Graph* graph , std::uint32_t id , Expr* expr , std::uint32_t index ):
+    Expr(IRTYPE_UGET_SLOT,id,graph,NULL),
     index_(index)
   {
     AddOperand(expr);
   }
  private:
   std::uint32_t index_;
-  LAVA_DISALLOW_COPY_AND_ASSIGN(UValSlot)
+  LAVA_DISALLOW_COPY_AND_ASSIGN(UGetSlot)
 };
 
 /* -------------------------------------------------------
@@ -2492,13 +2492,6 @@ class Graph {
     return prototype_info_[index];
   }
 
- public: // value range
-  ValueRange* GetValueRange( std::uint32_t id ) const {
-    return value_range_[id].get();
-  }
-
-  void SetValueRange( std::uint32_t , std::unique_ptr<ValueRange>&& );
-
  public: // static helper function
 
   struct DotFormatOption {
@@ -2518,8 +2511,6 @@ class Graph {
 
   zone::Vector<PrototypeInfo> prototype_info_;
   std::uint32_t               id_;
-
-  std::vector<std::unique_ptr<ValueRange>> value_range_;
 
   friend class GraphBuilder;
   LAVA_DISALLOW_COPY_AND_ASSIGN(Graph)
@@ -3030,8 +3021,8 @@ inline Ternary* Ternary::New( Graph* graph , Expr* cond , Expr* lhs , Expr* rhs 
   return graph->zone()->New<Ternary>(graph,graph->AssignID(),cond,lhs,rhs,info);
 }
 
-inline UVal* UVal::New( Graph* graph , std::uint8_t index ) {
-  return graph->zone()->New<UVal>(graph,graph->AssignID(),index);
+inline UGet* UGet::New( Graph* graph , std::uint8_t index ) {
+  return graph->zone()->New<UGet>(graph,graph->AssignID(),index);
 }
 
 inline USet* USet::New( Graph* graph , std::uint32_t method , Expr* opr , IRInfo* info ,
@@ -3152,8 +3143,8 @@ inline void Checkpoint::AddStackSlot( Expr* val , std::uint32_t index ) {
   AddOperand(StackSlot::New(graph(),val,index));
 }
 
-inline void Checkpoint::AddUValSlot ( Expr* val , std::uint32_t index ) {
-  AddOperand(UValSlot::New(graph(),val,index));
+inline void Checkpoint::AddUGetSlot ( Expr* val , std::uint32_t index ) {
+  AddOperand(UGetSlot::New(graph(),val,index));
 }
 
 inline TestType* TestType::New( Graph* graph , TypeKind tc , Expr* object ,
@@ -3244,8 +3235,8 @@ inline StackSlot* StackSlot::New( Graph* graph , Expr* expr , std::uint32_t inde
   return graph->zone()->New<StackSlot>(graph,graph->AssignID(),expr,index);
 }
 
-inline UValSlot* UValSlot::New( Graph* graph , Expr* expr , std::uint32_t index ) {
-  return graph->zone()->New<UValSlot>(graph,graph->AssignID(),expr,index);
+inline UGetSlot* UGetSlot::New( Graph* graph , Expr* expr , std::uint32_t index ) {
+  return graph->zone()->New<UGetSlot>(graph,graph->AssignID(),expr,index);
 }
 
 inline Region* Region::New( Graph* graph ) {

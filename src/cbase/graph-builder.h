@@ -9,6 +9,8 @@
 
 #include <cstdint>
 #include <vector>
+#include <map>
+#include <string>
 
 namespace lavascript {
 namespace cbase {
@@ -193,6 +195,15 @@ class GraphBuilder {
     return StackSlot(StackGet(index),index);
   }
 
+ private: // Globals
+  /**
+   * all globals will be accessed via GGET/GSET bytecode and they are
+   * also recoreded in a simulated global tables, then when a function
+   * is invoked all the entries inside of global table will be invalidated
+   * due to the side effect lead by function call
+   */
+
+
  private: // Current FuncInfo
   std::uint32_t method_index() const {
     return static_cast<std::uint32_t>(func_info_.size());
@@ -376,13 +387,17 @@ class GraphBuilder {
   // Type trace for speculative operation generation
   const TypeTrace&      type_trace_;
 
-  // Static type inference
+  // Global variable table
+  //
+  // For simplicity we just use std::map, we can use Object/Map but it lives
+  // on internal managed heap which we want to separate memory use during compilation
+  // from program execution memory
+  std::map<std::string,Expr*> globals_;
 
  private:
   class OSRScope ;
   class FuncScope;
   class LoopScope;
-
   struct VMState;
   class BackupState;
 
@@ -440,7 +455,8 @@ inline GraphBuilder::GraphBuilder( const Handle<Script>& script , const TypeTrac
   stack_            (),
   upvalue_          (),
   func_info_        (),
-  type_trace_       (tt)
+  type_trace_       (tt),
+  globals_          ()
 {}
 
 inline void GraphBuilder::FuncInfo::EnterLoop( const std::uint32_t* pc ) {

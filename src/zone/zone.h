@@ -5,6 +5,7 @@
 #include "src/trace.h"
 #include "src/bump-allocator.h"
 
+#include <type_traits>
 #include <cstddef>
 
 namespace lavascript {
@@ -47,11 +48,11 @@ class Zone {
   }
 
  public:
-  std::size_t size() const { return allocator_.size(); }
-  std::size_t maximum_size() const { return allocator_.maximum_size(); }
-  std::size_t segment_size() const { return allocator_.segment_size(); }
+  std::size_t size()             const { return allocator_.size(); }
+  std::size_t maximum_size()     const { return allocator_.maximum_size(); }
+  std::size_t segment_size()     const { return allocator_.segment_size(); }
   std::size_t current_capacity() const { return allocator_.current_capacity(); }
-  std::size_t total_bytes() const { return allocator_.total_bytes(); }
+  std::size_t total_bytes()      const { return allocator_.total_bytes(); }
 
  public:
   // Reset the zone memory pool
@@ -64,7 +65,7 @@ class Zone {
 };
 
 inline Zone::Zone( std::size_t minimum , std::size_t maximum ,
-                                    HeapAllocator* allocator ):
+                                         HeapAllocator* allocator ):
   allocator_(minimum,maximum,allocator)
 {}
 
@@ -82,6 +83,12 @@ class ZoneObject {
   static void  operator delete( void* ) { lava_die(); }
   static void  operator delete[](void*) { lava_die(); }
 };
+
+// Helper to check whether the type meets zone object's requirements
+#define LAVASCRIPT_ZONE_CHECK_TYPE(T)                         \
+  static_assert( std::is_pod<T>::value                    ||  \
+                 std::is_base_of<ZoneObject,T>::value     ||  \
+                 std::is_trivially_destructible<T>::value )
 
 } // namespace zone
 } // namespace lavascript

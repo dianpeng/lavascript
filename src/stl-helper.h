@@ -122,6 +122,30 @@ template< typename C > class STLConstBackwardIteratorAdapter :
     Base(start,end) {}
 };
 
+// A function that does update semantic for STL map like container.
+// It tries to stay effcient and also doesn't require the value to
+// have a default constructor which is different from the default
+// operator [] provided by STL map container
+template< typename T , typename K , typename V >
+bool UpdateMap( T* map , const K& key , const V& v ) {
+  auto itr = map->insert(std::make_pair(key,v));
+  if(itr.second) {
+    itr.first->second = v;
+  }
+  return itr.second;
+}
+
+template< typename T , typename K , typename V >
+bool UpdateMap( T* map , K&& key , V&& v ) {
+  auto itr = map->find(key);
+  if(itr == map->end()) {
+    map->insert(std::make_pair(std::move(key),std::move(v)));
+    return true;
+  }
+  itr->second = std::move(v);
+  return false;
+}
+
 } // namespace lavascript
 
 #endif // STL_HELPER_H_

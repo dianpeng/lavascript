@@ -27,6 +27,23 @@ typedef std::vector<Expr*> ValueStack;
 // The builder can build 1) normal function call 2) OSR style function IR
 class GraphBuilder {
  private:
+
+  // Used to track a value inside of the ValueStack
+  struct StackSlot {
+    static const std::uint32_t kMax = std::numeric_limits<std::uint32_t>::max();
+    Expr* node;
+    std::uint32_t index;
+
+    bool HasIndex() const { return index < kMax; }
+
+    explicit StackSlot( Expr* n , std::uint32_t i = kMax ): node(n),index(i) {}
+
+    StackSlot( StackSlot&& ss ) : node(ss.node), index(ss.index) {}
+    StackSlot& operator = ( StackSlot&& that ) {
+      node = that.node; index = that.index; return *this;
+    }
+  };
+
   // Data structure record the pending jump that happened inside of the loop
   // body. It is typically break and continue keyword , since they cause a
   // unconditional jump happened
@@ -102,7 +119,6 @@ class GraphBuilder {
     std::uint8_t  max_local_var_size;
     std::vector<LoopInfo> loop_info;
     std::vector<ControlFlow*> return_list;
-    std::vector<ControlFlow*> guard_list ;
     BytecodeAnalyze bc_analyze;
     const std::uint32_t* osr_start;
 
@@ -162,14 +178,6 @@ class GraphBuilder {
   bool BuildOSR( const Handle<Prototype>& , const std::uint32_t* , Graph* );
 
  private: // Stack accessing
-  struct StackSlot {
-    static const std::uint32_t kMax = std::numeric_limits<std::uint32_t>::max();
-    Expr* node;
-    std::uint32_t index;
-
-    StackSlot( Expr* n , std::uint32_t i = kMax ): node(n),index(i) {}
-    bool HasIndex() const { return index < kMax; }
-  };
 
   std::uint32_t StackIndex( std::uint32_t index ) const {
     return func_info().base+index;
@@ -194,15 +202,6 @@ class GraphBuilder {
   StackSlot StackGetSlot( std::uint32_t index ) {
     return StackSlot(StackGet(index),index);
   }
-
- private: // Globals
-  /**
-   * all globals will be accessed via GGET/GSET bytecode and they are
-   * also recoreded in a simulated global tables, then when a function
-   * is invoked all the entries inside of global table will be invalidated
-   * due to the side effect lead by function call
-   */
-
 
  private: // Current FuncInfo
   std::uint32_t method_index() const {
@@ -243,6 +242,7 @@ class GraphBuilder {
   Expr* NewString     ( std::uint8_t , const interpreter::BytecodeLocation& );
   Expr* NewString     ( std::uint8_t );
 
+  Expr* NewSSO        ( std::uint8_t , IRInfo* );
   Expr* NewSSO        ( std::uint8_t , const interpreter::BytecodeLocation& );
   Expr* NewSSO        ( std::uint8_t );
 
@@ -298,6 +298,10 @@ class GraphBuilder {
   // helper functions for creating Set/Get and do local constant fold
   Expr* FoldObjectSet ( IRObject* , const zone::String& , Expr* , IRInfo* );
   Expr* FoldObjectGet ( IRObject* , const zone::String& , IRInfo* );
+
+ private: // Global variables
+  void NewGGet( std::uint8_t , std::uint8_t , const interpreter::BytecodeLocation& , bool sso = false );
+  void NewGSet( std::uint8_t , std::uint8_t , const interpreter::BytecodeLocation& , bool sso = false );
 
  private: // Checkpoint generation
   Checkpoint* BuildCheckpoint( const interpreter::BytecodeLocation& );
@@ -392,7 +396,11 @@ class GraphBuilder {
   // For simplicity we just use std::map, we can use Object/Map but it lives
   // on internal managed heap which we want to separate memory use during compilation
   // from program execution memory
-  std::map<std::string,Expr*> globals_;
+  //
+  // We need to track the stack slot for a specific expression as well since these are
+  // also the places that future expression gonna use that expression which alias inside
+  // of a global variable.
+  std::map<std::string,StackSlot> globals_;
 
  private:
   class OSRScope ;
@@ -416,7 +424,6 @@ inline GraphBuilder::FuncInfo::FuncInfo( const Handle<Prototype>& proto , Contro
   max_local_var_size(proto->max_local_var_size()),
   loop_info         (),
   return_list       (),
-  guard_list        (),
   bc_analyze        (proto),
   osr_start         (NULL)
 {}
@@ -430,7 +437,6 @@ inline GraphBuilder::FuncInfo::FuncInfo( const Handle<Prototype>& proto , Contro
   max_local_var_size(proto->max_local_var_size()),
   loop_info         (),
   return_list       (),
-  guard_list        (),
   bc_analyze        (proto),
   osr_start         (ostart)
 {}
@@ -443,7 +449,6 @@ inline GraphBuilder::FuncInfo::FuncInfo( FuncInfo&& that ):
   max_local_var_size(that.max_local_var_size),
   loop_info         (std::move(that.loop_info)),
   return_list       (std::move(that.return_list)),
-  guard_list        (std::move(that.guard_list)),
   bc_analyze        (std::move(that.bc_analyze)),
   osr_start         (that.osr_start)
 {}

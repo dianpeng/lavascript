@@ -22,51 +22,9 @@ using namespace ::lavascript::interpreter;
  * -----------------------------------------------------------*/
 class GraphBuilder::OSRScope {
  public:
-  OSRScope( GraphBuilder* gb , const Handle<Prototype>& proto ,
-                               ControlFlow* region ,
-                               const std::uint32_t* osr_start ):
-    gb_(gb) ,
-    old_upvalue_(gb->upvalue_) {
-
-    FuncInfo temp(proto,region,osr_start); // initialize a FuncInfo as OSR entry
-
-    // get the loop header information and recursively register all its needed
-    // loop info object inside of the FuncInfo object
-    auto loop_header = temp.bc_analyze.LookUpLoopHeader(osr_start);
-    lava_debug(NORMAL,lava_verify(loop_header););
-
-    /**
-     * We need to iterate the loop one by one from the top most loop
-     * inside of the nested loop cluster so we need to use a queue to
-     * help us
-     */
-    {
-      std::vector<const BytecodeAnalyze::LoopHeaderInfo*> queue;
-      auto cur_header = loop_header->prev; // skip the OSR loop
-      while(cur_header) {
-        queue.push_back(cur_header);
-        cur_header = cur_header->prev;
-      }
-
-      for( auto ritr = queue.rbegin() ; ritr != queue.rend(); ++ritr ) {
-        temp.loop_info.push_back(LoopInfo(*ritr));
-      }
-
-    }
-
-    gb->graph_->AddPrototypeInfo(proto,0);
-    gb->func_info_.push_back(FuncInfo(std::move(temp)));
-    gb->stack_->resize(interpreter::kRegisterSize);
-
-    // populate upvalue array for this function
-    {
-      FuncInfo &ctx = gb->func_info_.back();
-      for( std::size_t i = 0 ; i < ctx.upvalue.size(); ++i ) {
-        ctx.upvalue[i] = UGet::New(gb->graph_,static_cast<std::uint8_t>(i));
-      }
-      gb->upvalue_ = &(ctx.upvalue);
-    }
-  }
+  OSRScope( GraphBuilder* gb , const Handle<Prototype>& ,
+                               ControlFlow* ,
+                               const std::uint32_t* );
 
   ~OSRScope() {
     gb_->func_info_.pop_back();
@@ -76,40 +34,11 @@ class GraphBuilder::OSRScope {
   GraphBuilder* gb_;
   ValueStack* old_upvalue_;
 };
-
 class GraphBuilder::FuncScope {
  public:
   FuncScope( GraphBuilder* gb , const Handle<Prototype>& proto ,
                                 ControlFlow* region ,
-                                std::uint32_t base ):
-    gb_(gb),
-    old_upvalue_(gb->upvalue_) {
-
-    gb->graph_->AddPrototypeInfo(proto,base);
-    gb->func_info_.push_back(FuncInfo(proto,region,base));
-    gb->stack_->resize(base+interpreter::kRegisterSize);
-
-    if(gb->func_info_.size() == 1) {
-      /**
-       * Initialize function argument for entry function. When we hit
-       * inline frame, we dont need to populate its argument since they
-       * will be taken care of by the graph builder
-       */
-      auto arg_size = proto->argument_size();
-      for( std::size_t i = 0 ; i < arg_size ; ++i ) {
-        gb->stack_->at(i) = Arg::New(gb->graph_,static_cast<std::uint32_t>(i));
-      }
-    }
-
-    // populate upvalue array for this function
-    {
-      FuncInfo &ctx = gb->func_info_.back();
-      for( std::size_t i = 0 ; i < ctx.upvalue.size(); ++i ) {
-        ctx.upvalue[i] = UGet::New(gb->graph_,static_cast<std::uint8_t>(i));
-      }
-      gb->upvalue_ = &(ctx.upvalue);
-    }
-  }
+                                std::uint32_t base );
 
   ~FuncScope() {
     gb_->func_info_.pop_back();
@@ -177,6 +106,84 @@ class GraphBuilder::BackupState {
   LAVA_DISALLOW_COPY_AND_ASSIGN(BackupState);
 };
 
+GraphBuilder::OSRScope::OSRScope( GraphBuilder* gb , const Handle<Prototype>& proto ,
+                                                     ControlFlow* region ,
+                                                     const std::uint32_t* osr_start ):
+  gb_(gb) ,
+  old_upvalue_(gb->upvalue_) {
+
+  FuncInfo temp(proto,region,osr_start); // initialize a FuncInfo as OSR entry
+
+  // get the loop header information and recursively register all its needed
+  // loop info object inside of the FuncInfo object
+  auto loop_header = temp.bc_analyze.LookUpLoopHeader(osr_start);
+  lava_debug(NORMAL,lava_verify(loop_header););
+
+  /**
+   * We need to iterate the loop one by one from the top most loop
+   * inside of the nested loop cluster so we need to use a queue to
+   * help us
+   */
+  {
+    std::vector<const BytecodeAnalyze::LoopHeaderInfo*> queue;
+    auto cur_header = loop_header->prev; // skip the OSR loop
+    while(cur_header) {
+      queue.push_back(cur_header);
+      cur_header = cur_header->prev;
+    }
+
+    for( auto ritr = queue.rbegin() ; ritr != queue.rend(); ++ritr ) {
+      temp.loop_info.push_back(LoopInfo(*ritr));
+    }
+
+  }
+
+  gb->graph_->AddPrototypeInfo(proto,0);
+  gb->func_info_.push_back(FuncInfo(std::move(temp)));
+  gb->stack_->resize(interpreter::kRegisterSize);
+
+  // populate upvalue array for this function
+  {
+    FuncInfo &ctx = gb->func_info_.back();
+    for( std::size_t i = 0 ; i < ctx.upvalue.size(); ++i ) {
+      ctx.upvalue[i] = UGet::New(gb->graph_,static_cast<std::uint8_t>(i));
+    }
+    gb->upvalue_ = &(ctx.upvalue);
+  }
+}
+
+GraphBuilder::FuncScope::FuncScope( GraphBuilder* gb , const Handle<Prototype>& proto ,
+                                                       ControlFlow* region ,
+                                                       std::uint32_t base ):
+  gb_(gb),
+  old_upvalue_(gb->upvalue_) {
+
+  gb->graph_->AddPrototypeInfo(proto,base);
+  gb->func_info_.push_back(FuncInfo(proto,region,base));
+  gb->stack_->resize(base+interpreter::kRegisterSize);
+
+  if(gb->func_info_.size() == 1) {
+    /**
+     * Initialize function argument for entry function. When we hit
+     * inline frame, we dont need to populate its argument since they
+     * will be taken care of by the graph builder
+     */
+    auto arg_size = proto->argument_size();
+    for( std::size_t i = 0 ; i < arg_size ; ++i ) {
+      gb->stack_->at(i) = Arg::New(gb->graph_,static_cast<std::uint32_t>(i));
+    }
+  }
+
+  // populate upvalue array for this function
+  {
+    FuncInfo &ctx = gb->func_info_.back();
+    for( std::size_t i = 0 ; i < ctx.upvalue.size(); ++i ) {
+      ctx.upvalue[i] = UGet::New(gb->graph_,static_cast<std::uint8_t>(i));
+    }
+    gb->upvalue_ = &(ctx.upvalue);
+  }
+}
+
 Expr* GraphBuilder::NewConstNumber( std::int32_t ivalue , const BytecodeLocation& pc ) {
   return Float64::New(graph_,static_cast<double>(ivalue),NewIRInfo(pc));
 }
@@ -215,9 +222,13 @@ Expr* GraphBuilder::NewString( std::uint8_t ref ) {
   return NewString(ref,NULL);
 }
 
-Expr* GraphBuilder::NewSSO( std::uint8_t ref , const BytecodeLocation& pc ) {
+Expr* GraphBuilder::NewSSO( std::uint8_t ref , IRInfo* info ) {
   const SSO& sso = *(func_info().prototype->GetSSO(ref)->sso);
-  return SString::New(graph_,sso,NewIRInfo(pc));
+  return SString::New(graph_,sso,info);
+}
+
+Expr* GraphBuilder::NewSSO( std::uint8_t ref , const BytecodeLocation& pc ) {
+  return NewSSO(ref,NewIRInfo(pc));
 }
 
 Expr* GraphBuilder::NewSSO( std::uint8_t ref ) {
@@ -726,6 +737,66 @@ Expr* GraphBuilder::NewIGet( Expr* object, Expr* index, IRInfo* ir_info ) {
   return IGet::New(graph_,object,index,ir_info,region());
 }
 
+// ========================================================================
+//
+// Global Variable
+//
+// ========================================================================
+void GraphBuilder::NewGGet( std::uint8_t a1 , std::uint8_t a2 ,
+                                              const BytecodeLocation& loc ,
+                                              bool sso ) {
+  std::string key;
+
+  if(sso) {
+    const SSO& sso = *(func_info().prototype->GetSSO(a2)->sso);
+    key = sso.ToStdString();
+  } else {
+    Handle<String> str(func_info().prototype->GetString(a2));
+    key = str->ToStdString();
+  }
+
+  // 1. do a global variable lookup in the global table
+  {
+    auto itr = globals_.find(key);
+    if(itr != globals_.end()) {
+      StackSet(a1,itr->second.node);
+      return;
+    }
+  }
+
+  auto info = NewIRInfo(loc);
+
+  // 2. fallback to create a GGet node and attach it to corresponding places
+  auto gget = GGet::New(graph_, (sso ? NewSSO(a2,info) : NewString(a2,info)) ,
+                                info , region() );
+
+  // 3. write the node back
+  StackSet(a1,gget);
+
+  // record it inside of the global table , this basically records there's a alias
+  // here inside of the table , later on when a function call is issued which cannot
+  // be inlined , then it will cast a alias node on all the global variables which
+  // prevents the optimizer to optimize those alias
+  globals_.insert(std::make_pair(std::move(key),StackSlot(gget,a1)));
+}
+
+void GraphBuilder::NewGSet( std::uint8_t a1 , std::uint8_t a2 ,
+                                              const BytecodeLocation& loc ,
+                                              bool sso ) {
+  std::string key;
+
+  if(sso) {
+    const SSO& sso = *(func_info().prototype->GetSSO(a1)->sso);
+    key = sso.ToStdString();
+  } else {
+    Handle<String> str(func_info().prototype->GetString(a1));
+    key = str->ToStdString();
+  }
+
+  // do a update to the table
+  UpdateMap(&globals_,std::move(key),StackGetSlot(a2));
+}
+
 IRInfo* GraphBuilder::NewIRInfo( const BytecodeLocation& pc ) {
   IRInfo* ret;
   {
@@ -758,11 +829,10 @@ Checkpoint* GraphBuilder::BuildCheckpoint( const BytecodeLocation& pc ) {
 
   // 2. generate upvalue states
   {
-    std::uint8_t index = 0;
-
-    for( auto & e : *upvalue_ ) {
-      cp->AddUGetSlot(e,index);
-      ++index;
+    lava_debug(NORMAL,lava_verify(upvalue_->size() < 256););
+    auto len = static_cast<std::uint8_t>(upvalue_->size());
+    for( std::uint8_t i = 0 ; i < len ; ++i ) {
+      cp->AddUGetSlot(upvalue_->at(i),i);
     }
   }
   return cp;
@@ -1103,12 +1173,16 @@ Expr* GraphBuilder::BuildLoopEndCondition( BytecodeIterator* itr , ControlFlow* 
     lava_debug(NORMAL,lava_verify(induct->IsPhi()););
 
     // the addition node will use the PHI node as its left hand side
-    auto addition = NewBinary(StackGet(a1),StackGet(a3),Binary::ADD,itr->bytecode_location());
+    auto addition = NewBinary(StackGetSlot(a1),StackGetSlot(a3),
+                                               Binary::ADD,
+                                               itr->bytecode_location());
     // store the PHI node back to the slot
     StackSet(a1,addition);
 
     // construct comparison node
-    return NewBinary(StackGet(a1),StackGet(a2),Binary::LT,itr->bytecode_location());
+    return NewBinary(StackGetSlot(a1),StackGetSlot(a2),
+                                      Binary::LT,
+                                      itr->bytecode_location());
   } else if(itr->opcode() == BC_FEEND) {
     std::uint8_t a1;
     std::uint16_t pc;
@@ -1518,18 +1592,14 @@ GraphBuilder::StopReason GraphBuilder::BuildBytecode( BytecodeIterator* itr ) {
       {
         std::uint8_t a1,a2;
         itr->GetOperand(&a1,&a2);
-        Expr* key = (itr->opcode() == BC_GGET ? NewString(a2) :
-                                                NewSSO   (a2));
-        StackSet(a1,GGet::New(graph_,key,NewIRInfo(itr->bytecode_location()),region()));
+        NewGGet(a1,a2,itr->bytecode_location(),itr->opcode() == BC_GGETSSO);
       }
       break;
     case BC_GSET: case BC_GSETSSO:
       {
         std::uint8_t a1,a2;
         itr->GetOperand(&a1,&a2);
-        Expr* key = (itr->opcode() == BC_GSET ? NewString(a1) :
-                                                NewSSO   (a1));
-        GSet::New(graph_,key,StackGet(a2),NewIRInfo(itr->bytecode_location()),region());
+        NewGSet(a1,a2,itr->bytecode_location(),itr->opcode() == BC_GSETSSO);
       }
       break;
 

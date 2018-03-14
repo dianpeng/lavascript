@@ -75,6 +75,12 @@ inline T* MemMove( T* dest , const T* source , std::size_t size ) {
 }
 
 template< typename T >
+inline T* ZeroOut( T* dest , std::size_t size ) {
+  memset(dest,0,sizeof(T)*size);
+  return dest;
+}
+
+template< typename T >
 inline void* BufferOffset( void* buffer , std::size_t offset ) {
   return reinterpret_cast<void*>(
       static_cast<T*>(buffer) + offset);

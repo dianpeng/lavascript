@@ -34,6 +34,7 @@ class HIRPass {
   std::string name_; // name of this pass
 };
 
+
 } // namespace hir
 } // namespace cbase
 } // namespace lavascript

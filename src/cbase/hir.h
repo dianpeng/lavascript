@@ -23,44 +23,6 @@ namespace cbase {
 namespace hir {
 using namespace ::lavascript;
 
-class Graph;
-class GraphBuilder;
-class ValueRange;
-
-/**
- * This is a separate information maintained for each IR node. It contains
- * information needed for (1)GC (2)OSRExit. This information is always kept
- * and carry on to code generation.
- *
- * Some IR may have exactly same IRInfo object since one bytecode can be mapped
- * to multiple IR node in some cases.
- */
-
-class IRInfo {
- public:
-  IRInfo( std::uint32_t method , const interpreter::BytecodeLocation& bc ):
-    bc_     (bc),
-    method_ (method)
-  {}
- public:
-  std::uint32_t method() const { return method_; }
-  const interpreter::BytecodeLocation& bc() const { return bc_; }
- private:
-  interpreter::BytecodeLocation bc_;  // Encoded bytecode
-  std::uint32_t method_;              // Index for method information
-};
-
-/**
- * Used to record each IR's corresponding prototype information
- */
-struct PrototypeInfo : zone::ZoneObject {
-  std::uint32_t base;
-  Handle<Prototype> prototype;
-  PrototypeInfo( std::uint32_t b , const Handle<Prototype>& proto ):
-    base(b),
-    prototype(proto)
-  {}
-};
 
 // High level HIR node. Used to describe unttyped polymorphic
 // operations
@@ -253,8 +215,19 @@ enum IRType {
 #undef __ // __
 };
 
-// TODO:: modify this if new section of IR is added , eg OSR
 #define SIZE_OF_IR (CBASE_IR_STMT_END-6)
+
+// IR classes forward declaration
+#define __(A,...) class A;
+CBASE_IR_LIST(__)
+#undef __ // __
+
+// IRType value static mapping
+template< typename T > struct MapIRClassToIRType {};
+
+#define __(A,B,...) template<> struct MapIRClassToIRType<A> { static const IRType value = IRTYPE_##B; };
+CBASE_IR_LIST(__)
+#undef __ // __
 
 const char* IRTypeGetName( IRType );
 
@@ -271,11 +244,49 @@ inline bool IRTypeIsControlFlow( IRType type ) {
 CBASE_IR_LIST(__)
 #undef __ // __
 
-// Base class for each node type
+class Graph;
+class GraphBuilder;
+class ValueRange;
 class Node;
 class Expr;
 class ControlFlow;
-class Stmt;
+
+
+/**
+ * This is a separate information maintained for each IR node. It contains
+ * information needed for (1)GC (2)OSRExit. This information is always kept
+ * and carry on to code generation.
+ *
+ * Some IR may have exactly same IRInfo object since one bytecode can be mapped
+ * to multiple IR node in some cases.
+ */
+
+class IRInfo {
+ public:
+  IRInfo( std::uint32_t method , const interpreter::BytecodeLocation& bc ):
+    bc_     (bc),
+    method_ (method)
+  {}
+ public:
+  std::uint32_t method() const { return method_; }
+  const interpreter::BytecodeLocation& bc() const { return bc_; }
+ private:
+  interpreter::BytecodeLocation bc_;  // Encoded bytecode
+  std::uint32_t method_;              // Index for method information
+};
+
+/**
+ * Used to record each IR's corresponding prototype information
+ */
+struct PrototypeInfo : zone::ZoneObject {
+  std::uint32_t base;
+  Handle<Prototype> prototype;
+  PrototypeInfo( std::uint32_t b , const Handle<Prototype>& proto ):
+    base(b),
+    prototype(proto)
+  {}
+};
+
 
 // ----------------------------------------------------------------------------
 // Statement list
@@ -382,6 +393,9 @@ class Node : public zone::ZoneObject {
   inline zone::Zone* zone() const;
 
  public: // type check and cast
+  template< typename T > bool Is() const { return type() == MapIRClassToIRType<T>::value; }
+  template< typename T > inline T* As();
+  template< typename T > inline const T* As() const;
 
 #define __(A,B,...) bool Is##A() const { return type() == IRTYPE_##B; }
   CBASE_IR_LIST(__)
@@ -1645,6 +1659,13 @@ class Float64Negate  : public Expr {
 
   Expr* operand() const { return operand_list()->First(); }
 
+  Float64Negate( Graph* graph , std::uint32_t id , Expr* opr , IRInfo* info ):
+    Expr(IRTYPE_FLOAT64_NEGATE,id,graph,info)
+  {
+    AddOperand(opr);
+  }
+
+ public:
   virtual std::uint64_t GVNHash() const {
     return GVNHash1(type_name(),operand()->GVNHash());
   }
@@ -1657,17 +1678,21 @@ class Float64Negate  : public Expr {
     return false;
   }
 
-  Float64Negate( Graph* graph , std::uint32_t id , Expr* opr , IRInfo* info ):
-    Expr(IRTYPE_FLOAT64_NEGATE,id,graph,info)
-  {
-    AddOperand(opr);
-  }
-
  private:
   LAVA_DISALLOW_COPY_AND_ASSIGN(Float64Negate)
 };
 
-class Float64Arithmetic : public Binary {
+namespace detail {
+
+template< typename T > struct Float64BinaryGVNImpl {
+ protected:
+  std::uint64_t GVNHashImpl() const;
+  bool EqualImpl( const Expr* that ) const;
+};
+
+} // namespace detail
+
+class Float64Arithmetic : public Binary , public detail::Float64BinaryGVNImpl<Float64Arithmetic> {
  public:
   using Binary::Operator;
 
@@ -1684,12 +1709,16 @@ class Float64Arithmetic : public Binary {
     lava_debug(NORMAL,lava_verify(Binary::IsArithmeticOperator(op)););
   }
 
+ public:
+  virtual std::uint64_t GVNHash()        const { return GVNHashImpl(); }
+  virtual bool Equal( const Expr* that ) const { return EqualImpl(that); }
+
  private:
 
   LAVA_DISALLOW_COPY_AND_ASSIGN(Float64Arithmetic)
 };
 
-class Float64Bitwise: public Binary {
+class Float64Bitwise: public Binary , public detail::Float64BinaryGVNImpl<Float64Bitwise> {
  public:
   using Binary::Operator;
 
@@ -1706,12 +1735,16 @@ class Float64Bitwise: public Binary {
     lava_debug(NORMAL,lava_verify(Binary::IsBitwiseOperator(op)););
   }
 
+ public:
+  virtual std::uint64_t GVNHash()        const { return GVNHashImpl(); }
+  virtual bool Equal( const Expr* that ) const { return EqualImpl(that); }
+
  private:
 
   LAVA_DISALLOW_COPY_AND_ASSIGN(Float64Bitwise)
 };
 
-class Float64Compare : public Binary {
+class Float64Compare : public Binary , public detail::Float64BinaryGVNImpl<Float64Compare> {
  public:
   using Binary::Operator;
 
@@ -1728,11 +1761,15 @@ class Float64Compare : public Binary {
     lava_debug(NORMAL,lava_verify(Binary::IsComparisonOperator(op)););
   }
 
+ public:
+  virtual std::uint64_t GVNHash()        const { return GVNHashImpl(); }
+  virtual bool Equal( const Expr* that ) const { return EqualImpl(that); }
+
  private:
   LAVA_DISALLOW_COPY_AND_ASSIGN(Float64Compare)
 };
 
-class StringCompare : public Binary {
+class StringCompare : public Binary , public detail::Float64BinaryGVNImpl<StringCompare> {
  public:
   using Binary::Operator;
 
@@ -1748,11 +1785,15 @@ class StringCompare : public Binary {
   {
     lava_debug(NORMAL,lava_verify(Binary::IsComparisonOperator(op)););
   }
+ public:
+  virtual std::uint64_t GVNHash()        const { return GVNHashImpl(); }
+  virtual bool Equal( const Expr* that ) const { return EqualImpl(that); }
+
  private:
   LAVA_DISALLOW_COPY_AND_ASSIGN(StringCompare);
 };
 
-class SStringEq : public Binary {
+class SStringEq : public Binary , public detail::Float64BinaryGVNImpl<SStringEq> {
  public:
 
   inline static SStringEq* New( Graph* , Expr* , Expr* ,
@@ -1763,9 +1804,13 @@ class SStringEq : public Binary {
                                                IRInfo* info ):
     Binary(IRTYPE_SSTRING_EQ,graph,id,lhs,rhs,Binary::EQ,info)
   {}
+
+ public:
+  virtual std::uint64_t GVNHash()        const { return GVNHashImpl(); }
+  virtual bool Equal( const Expr* that ) const { return EqualImpl(that); }
 };
 
-class SStringNe : public Binary {
+class SStringNe : public Binary , public detail::Float64BinaryGVNImpl<SStringNe> {
  public:
 
   inline static SStringNe* New( Graph* , Expr* , Expr* ,
@@ -1776,6 +1821,10 @@ class SStringNe : public Binary {
                                                IRInfo* info ):
     Binary(IRTYPE_SSTRING_EQ,graph,id,lhs,rhs,Binary::NE,info)
   {}
+
+ public:
+  virtual std::uint64_t GVNHash()        const { return GVNHashImpl(); }
+  virtual bool Equal( const Expr* that ) const { return EqualImpl(that); }
 };
 
 class ObjectGet : public PGet {
@@ -1884,6 +1933,19 @@ class Box : public Expr {
     AddOperand(object);
   }
 
+ public:
+  virtual std::uint64_t GVNHash() const {
+    return GVNHash1(type_name(),value()->GVNHash());
+  }
+
+  virtual bool Equal( const Expr* that ) const {
+    if(that->IsBox()) {
+      auto that_box = that->AsBox();
+      return value()->Equal(that_box->value());
+    }
+    return false;
+  }
+
  private:
   TypeKind type_kind_;
   LAVA_DISALLOW_COPY_AND_ASSIGN(Box)
@@ -1903,6 +1965,19 @@ class Unbox : public Expr {
     type_kind_(tk)
   {
     AddOperand(object);
+  }
+
+ public:
+  virtual std::uint64_t GVNHash() const {
+    return GVNHash1(type_name(),value()->GVNHash());
+  }
+
+  virtual bool Equal( const Expr* that ) const {
+    if(that->IsUnbox()) {
+      auto that_unbox = that->AsUnbox();
+      return value()->Equal(that_unbox->value());
+    }
+    return false;
   }
 
  private:
@@ -1931,6 +2006,19 @@ class TypeGuard : public Expr {
   {
     AddOperand(node);
     AddOperand(checkpoint);
+  }
+
+ public:
+  virtual std::uint64_t GVNHash() const {
+    return GVNHash2(type_name(),type_kind(),node()->GVNHash());
+  }
+
+  virtual bool Equal( const Expr* that ) const {
+    if(that->IsTypeGuard()) {
+      auto n = that->AsTypeGuard();
+      return type_kind() == n->type_kind() && node()->Equal(n->node());
+    }
+    return false;
   }
 
  private:
@@ -2652,6 +2740,30 @@ class ExprDFSIterator : public ExprIterator {
 // Inline Functions
 //
 // =========================================================================
+//
+namespace detail {
+
+template< typename T >
+std::uint64_t Float64BinaryGVNImpl<T>::GVNHashImpl() const {
+  auto self = static_cast<const T*>(this);
+  return GVNHash3(self->type_name(),self->op(),
+                                    self->lhs()->GVNHash(),
+                                    self->rhs()->GVNHash());
+}
+
+template< typename T >
+bool Float64BinaryGVNImpl<T>::EqualImpl( const Expr* that ) const {
+  auto self = static_cast<const T*>(this);
+  if(that->Is<T>()) {
+    auto n = that->As<T>();
+    return self->op() == n->op() && self->lhs()->Equal(n->lhs()) &&
+                                    self->rhs()->Equal(n->rhs());
+  }
+  return false;
+}
+
+
+} // namespace detail
 
 #define __(A,B,...)                           \
   inline A* Node::As##A() {                   \
@@ -2666,6 +2778,15 @@ class ExprDFSIterator : public ExprIterator {
 CBASE_IR_LIST(__)
 
 #undef __ // __
+
+template< typename T >
+inline T* Node::As() { lava_debug(NORMAL,lava_verify(Is<T>());); return static_cast<T*>(this); }
+
+template< typename T >
+inline const T* Node::As() const {
+  lava_debug(NORMAL,lava_verify(Is<T>()););
+  return static_cast<const T*>(this);
+}
 
 inline const zone::String& Node::AsZoneString() const {
   lava_debug(NORMAL,lava_verify(IsString()););

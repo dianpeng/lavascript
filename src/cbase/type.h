@@ -44,9 +44,8 @@ enum TypeKind {
   SIZE_OF_TYPE_KIND
 };
 
-const char* GetTypeKindName( TypeKind );
-
-TypeKind MapValueTypeToTypeKind( ValueType );
+const char* GetTypeKindName    ( TypeKind     );
+TypeKind MapValueTypeToTypeKind( ValueType    );
 TypeKind MapValueToTypeKind    ( const Value& );
 
 /**
@@ -132,9 +131,7 @@ class TPKind {
 };
 
 inline bool TPKind::IsString( TypeKind tp ) {
-  return tp == TPKIND_STRING      ||
-         tp == TPKIND_LONG_STRING ||
-         tp == TPKIND_SMALL_STRING;
+  return tp == TPKIND_STRING      || tp == TPKIND_LONG_STRING || tp == TPKIND_SMALL_STRING;
 }
 
 inline bool TPKind::ToBoolean( TypeKind tp , bool* output ) {

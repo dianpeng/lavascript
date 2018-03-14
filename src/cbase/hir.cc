@@ -898,14 +898,20 @@ Expr* NewUnboxNode( Graph* graph , Expr* node , TypeKind tk , IRInfo* info ) {
   // 1. check if the node is already unboxed , if so just return the node itself
   switch(node->type()) {
     case IRTYPE_UNBOX:
+      lava_debug(NORMAL,lava_verify(node->AsUnbox()->type_kind() == tk););
+      return node;
 
     case IRTYPE_FLOAT64_NEGATE:
     case IRTYPE_FLOAT64_ARITHMETIC:
     case IRTYPE_FLOAT64_BITWISE:
+      lava_debug(NORMAL,lava_verify(tk == TPKIND_FLOAT64););
+      return node;
+
     case IRTYPE_FLOAT64_COMPARE:
     case IRTYPE_STRING_COMPARE:
     case IRTYPE_SSTRING_EQ:
     case IRTYPE_SSTRING_NE:
+      lava_debug(NORMAL,lava_verify(tk == TPKIND_BOOLEAN););
       return node;
 
     case IRTYPE_BOX:

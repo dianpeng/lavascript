@@ -36,6 +36,35 @@ template< typename T > class TableIterator {
   mutable std::size_t cursor_;
 };
 
+// =====================================================================
+// Default builtin traits
+// =====================================================================
+template < typename T >struct DefaultTrait {
+};
+
+template<> struct DefaultTrait<String*> {
+  static std::uint32_t Hash( const String* str ) {
+    return Hasher::Hash(str->data(),str->size());
+  }
+
+  static bool Equal( const String* left , const String* right ) {
+    return *left == *right;
+  }
+};
+
+template< typename T > struct DefaultTrait<T*> {
+  static std::uint32_t Hash( const void* ptr ) {
+    static const std::uint64_t kMagic = 2654435761U;
+    std::uint64_t pval = reinterpret_cast<std::uint64_t>(ptr);
+    auto res = pval * kMagic;
+    return static_cast<std::uint32_t>(res);
+  }
+
+  static bool Equal( const void* lhs , const void* rhs ) {
+    return lhs == rhs;
+  }
+};
+
 } // namespace detail
 
 
@@ -46,7 +75,7 @@ template< typename T > class TableIterator {
 // Internally it uses open addressing + linear probing method to resolve chaining
 // resolution which essentially means it is memory efficient.
 
-template< typename K , typename V , typename Trait >
+template< typename K , typename V , typename Trait = detail::DefaultTrait<K> >
 class Table {
  public:
   static const std::size_t kDefaultCap = 4;
@@ -398,8 +427,8 @@ Table<K,V,Trait>::FindSlot( const K& key , std::uint32_t hash , int option ) {
       pos = entry_ + ((++h) & (cap_ -1));
     while(!pos->IsEmpty());
 
-    e->next = pos;
-    e->hash = hash;
+    e->next   = pos;
+    pos->hash = hash;
     ++slot_size_;
 
     // we set nothing to the new entry just bump the slot_size since
@@ -408,22 +437,6 @@ Table<K,V,Trait>::FindSlot( const K& key , std::uint32_t hash , int option ) {
     return pos;
   }
 }
-
-// =====================================================================
-//
-// Builtin traits for String
-//
-// =====================================================================
-
-struct StringTrait {
-  static std::uint32_t Hash( String* str ) {
-    return Hasher::Hash(str->data(),str->size());
-  }
-  static bool Equal( String* left , String* right ) {
-    return *left == *right;
-  }
-};
-
 
 } // namespace zone
 } // namespace lavascript

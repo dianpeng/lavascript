@@ -132,14 +132,26 @@ TPKind* TPKind::Node( TypeKind tk ) {
   return TPKind::GetTPKindBuilder()->Node(tk);
 }
 
-bool TPKind::Contain( TypeKind parent , TypeKind children ) {
+bool TPKind::Contain( TypeKind parent , TypeKind children , bool* output ) {
+  if(parent == TPKIND_UNKNOWN || children == TPKIND_UNKNOWN) {
+    return false;
+  }
+
   auto pnode = Node(parent);
   auto cnode = Node(children);
-  return pnode->IsAncestor(*cnode);
+  *output = pnode->IsAncestor(*cnode);
+  return true;
 }
 
-bool TPKind::Contain( TypeKind parent , ValueType children ) {
-  return Contain(parent,MapValueTypeToTypeKind(children));
+bool TPKind::Contain( TypeKind parent , ValueType children , bool* output ) {
+  return Contain(parent,MapValueTypeToTypeKind(children),output);
+}
+
+bool TPKind::Equal( TypeKind lhs , TypeKind rhs , bool* output ) {
+  if(lhs == TPKIND_UNKNOWN || rhs == TPKIND_UNKNOWN)
+    return false;
+  *output = (lhs == rhs);
+  return true;
 }
 
 bool TPKind::HasChild( const TPKind& kind ) const {

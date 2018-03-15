@@ -21,12 +21,27 @@ inline bool IsUnaryNot  ( Expr* node ) {
   return node->IsUnary() && node->AsUnary()->op() == Unary::NOT;
 }
 
-inline bool IsTrue( Expr* node ) {
-  return node->IsBoolean() && node->AsBoolean()->value();
+inline bool IsTrue( Expr* node , TypeKind tp ) {
+  if(node->IsBoolean() && node->AsBoolean()->value())
+    return true;
+  else {
+    bool bval;
+    if(TPKind::ToBoolean(tp,&bval)) {
+      return bval;
+    }
+    return false;
+  }
 }
 
-inline bool IsFalse( Expr* node ) {
-  return node->IsBoolean() && !node->AsBoolean()->value();
+inline bool IsFalse( Expr* node , TypeKind tp ) {
+  if(node->IsBoolean() && !node->AsBoolean()->value())
+    return true;
+  else {
+    bool bval;
+    if(TPKind::ToBoolean(tp,&bval))
+      return !bval;
+  }
+  return false;
 }
 
 inline bool AsUInt8( Expr* node , std::uint8_t* value ) {
@@ -57,7 +72,8 @@ inline bool AsReal  ( Expr* node , double* real ) {
 
 template< typename T >
 inline bool IsNumber( Expr* node , T value ) {
-  return node->IsFloat64() ? (static_cast<double>(value) == node->AsFloat64()->value()) : false;
+  return node->IsFloat64() ?
+         (static_cast<double>(value) == node->AsFloat64()->value()) : false;
 }
 
 Expr* Fold( Graph* graph , Unary::Operator op , Expr* expr ,
@@ -225,8 +241,8 @@ Expr* SimplifyLogicAnd( Graph* graph , TypeKind lhs_type ,
   (void)lhs_type;
   (void)rhs_type;
 
-  if(IsFalse(lhs)) { return Boolean::New(graph,false,irinfo()); }  // false && any ==> false
-  if(IsTrue(lhs))  { return rhs; }                                 // true  && any ==> any
+  if(IsFalse(lhs,lhs_type)) { return Boolean::New(graph,false,irinfo()); }  // false && any ==> false
+  if(IsTrue (lhs,lhs_type)) { return rhs; }                                 // true  && any ==> any
 
   if(lhs == rhs) return lhs; // a && a ==> a
 
@@ -247,8 +263,8 @@ Expr* SimplifyLogicOr ( Graph* graph , TypeKind lhs_type , TypeKind rhs_type ,
                                                            Expr* lhs,
                                                            Expr* rhs,
                                                            const std::function<IRInfo* ()>& irinfo ) {
-  if(IsTrue(lhs))  { return Boolean::New(graph,true,irinfo()); }  // true || any ==> true
-  if(IsFalse(lhs)) { return rhs; }                                // false|| any ==> any
+  if(IsTrue (lhs,lhs_type)) { return Boolean::New(graph,true,irinfo()); }  // true || any ==> true
+  if(IsFalse(lhs,lhs_type)) { return rhs; }                                // false|| any ==> any
 
   if(lhs == rhs) return lhs; // a || a ==> a
 

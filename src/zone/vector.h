@@ -68,8 +68,7 @@ template< typename T > struct VectorBackwardTraits {
 
 template< typename T >
 class Vector : ZoneObject {
-  static_assert( std::is_pod<T>::value || std::is_base_of<ZoneObject,T>::value );
-  static_assert( std::is_pod<T>::value || std::is_trivially_destructible<T>::value );
+  LAVASCRIPT_ZONE_CHECK_TYPE(T);
  public:
   Vector();
   Vector( Zone* , std::size_t size );

@@ -59,10 +59,13 @@ class TPKind {
   static TPKind* Node( TypeKind tk );
 
   // check whether the *second* typekind is included by *first* typekind
-  static bool Contain( TypeKind , TypeKind );
+  static bool Contain( TypeKind , TypeKind , bool* );
 
   // check whether the *second* valuetype is included by *first* typekind
-  static bool Contain( TypeKind , ValueType );
+  static bool Contain( TypeKind , ValueType, bool* );
+
+  // check whether we can compare both types
+  static bool Equal  ( TypeKind , TypeKind , bool* );
 
  public:
   // try to convert type kind to a boolean value if we can

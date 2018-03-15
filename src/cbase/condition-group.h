@@ -1,12 +1,14 @@
 #ifndef CBASE_CONDITION_GROUP_H_
 #define CBASE_CONDITION_GROUP_H_
-#include "sparse-map.h"
+#include "src/zone/table.h"
+
 #include <memory>
 
 namespace lavascript {
 namespace cbase      {
 namespace hir        {
 
+class Graph;
 class Expr;
 class ValueRange;
 
@@ -31,10 +33,9 @@ class ValueRange;
  *
  */
 
-class ConditionGroup {
+class ConditionGroup : public ::lavascript::zone::ZoneObject {
  public:
-  ConditionGroup();
-  ~ConditionGroup();
+  ConditionGroup( Graph* );
 
   // indicate that this condition group object is not initialized yet
   bool IsEmpty() const { return range_.empty(); }
@@ -43,7 +44,8 @@ class ConditionGroup {
   std::size_t size() const { return range_.size(); }
 
  private:
-  SparseMap<Expr*,ValueRange*> range_;
+  Graph* graph_;
+  ::lavascript::zone::Table<Expr*,ValueRange*> range_;
 };
 
 } // namespace hir

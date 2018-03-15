@@ -11,7 +11,7 @@ namespace zone {
 
 TEST(Zone,Table) {
   Zone zone(4,4);
-  Table<String*,int,StringTrait> table(&zone,2);
+  Table<String*,int> table(&zone,2);
 
   ASSERT_TRUE(table.empty());
   ASSERT_EQ(0,table.size());
@@ -133,7 +133,7 @@ TEST(Zone,Table) {
   }
 
   {
-    // collision :
+    // Collision :
     // key xxx , bbb and ddd will collide when &(4-1)
     ASSERT_EQ(4,table.capacity());
     ASSERT_EQ(0,table.size());

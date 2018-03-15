@@ -74,9 +74,7 @@ class BytecodeAnalyze {
       scope_ (v),
       cursor_(0),
       max_   (ba.max_local_var_size_)
-    {
-      Move(0);
-    }
+    { Move(0); }
 
     bool HasNext() const { return scope_ != NULL; }
 

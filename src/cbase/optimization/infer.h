@@ -1,5 +1,5 @@
-#ifndef CBASE_OPTIMIZATION_RANGER_H_
-#define CBASE_OPTIMIZATION_RANGER_H_
+#ifndef CBASE_OPTIMIZATION_INFER_H_
+#define CBASE_OPTIMIZATION_INFER_H_
 #include "src/cbase/hir-pass.h"
 
 namespace lavascript {
@@ -8,15 +8,15 @@ namespace hir        {
 
 
 /**
- * Ranger pass mark all the branch condition node with value range object
+ * Infer pass mark all the branch condition node with value range object
  * later on can be used to do inference
  */
 
-class Ranger : public HIRPass {
+class Infer : public HIRPass {
  public:
   virtual bool Perform( Graph* , HIRPass::Flag );
 
-  Ranger() : HIRPass( "ranger" ) {}
+  Infer() : HIRPass( "infer" ) {}
 };
 
 
@@ -24,4 +24,4 @@ class Ranger : public HIRPass {
 } // namespace cbase
 } // namespace lavascript
 
-#endif // CBASE_OPTIMIZATION_RANGER_H_
+#endif // CBASE_OPTIMIZATION_INFER_H_

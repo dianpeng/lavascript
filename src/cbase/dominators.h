@@ -14,6 +14,9 @@ class Graph;
 
 // Simple dominator calculation for HIR graph. It uses straitforward
 // data flow algorithm to calculate
+//
+// This data structure uses STL since it is transient and not hold by
+// the graph data structure
 class Dominators {
  public:
   typedef std::vector<ControlFlow*> DominatorSet;

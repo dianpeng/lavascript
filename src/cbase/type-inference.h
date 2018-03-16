@@ -1,7 +1,5 @@
 #ifndef CBASE_TYPE_INFERENCE_H_
 #define CBASE_TYPE_INFERENCE_H_
-#include "ool-vector.h"
-
 #include "src/cbase/type.h"
 
 /**

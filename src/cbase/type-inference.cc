@@ -37,6 +37,7 @@ TypeKind GetTypeInference( Expr* node ) {
     case IRTYPE_STRING_COMPARE:              return TPKIND_BOOLEAN;
     case IRTYPE_SSTRING_EQ:                  return TPKIND_BOOLEAN;
     case IRTYPE_SSTRING_NE:                  return TPKIND_BOOLEAN;
+    case IRTYPE_BOOLEAN_LOGIC:               return TPKIND_BOOLEAN;
 
 
     case IRTYPE_ICALL:

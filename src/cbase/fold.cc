@@ -77,7 +77,7 @@ inline bool IsNumber( Expr* node , T value ) {
 }
 
 Expr* Fold( Graph* graph , Unary::Operator op , Expr* expr ,
-                                                const std::function<IRInfo*()>& irinfo ) {
+                                                const IRProvider& irinfo ) {
   if(op == Unary::MINUS) {
     if(expr->IsFloat64()) {
       return Float64::New(graph,-expr->AsFloat64()->value(),irinfo());
@@ -137,7 +137,7 @@ Expr* Fold( Graph* graph , Unary::Operator op , Expr* expr ,
 // do anything due to the fact that the extension type bailout every types of optimization
 Expr* Float64Reassociate( Graph* graph , Binary::Operator op , Expr* lhs ,
                                                                Expr* rhs ,
-                                                               const std::function<IRInfo* ()>& irinfo ) {
+                                                               const IRProvider& irinfo ) {
   /**
    * Due to the fact that our operands are both floating point number, not too much
    * operation can be safely done.
@@ -237,7 +237,7 @@ Expr* SimplifyLogicAnd( Graph* graph , TypeKind lhs_type ,
                                        TypeKind rhs_type ,
                                        Expr* lhs ,
                                        Expr* rhs ,
-                                       const std::function<IRInfo* ()>& irinfo ) {
+                                       const IRProvider& irinfo ) {
   (void)lhs_type;
   (void)rhs_type;
 
@@ -262,7 +262,7 @@ Expr* SimplifyLogicAnd( Graph* graph , TypeKind lhs_type ,
 Expr* SimplifyLogicOr ( Graph* graph , TypeKind lhs_type , TypeKind rhs_type ,
                                                            Expr* lhs,
                                                            Expr* rhs,
-                                                           const std::function<IRInfo* ()>& irinfo ) {
+                                                           const IRProvider& irinfo ) {
   if(IsTrue (lhs,lhs_type)) { return Boolean::New(graph,true,irinfo()); }  // true || any ==> true
   if(IsFalse(lhs,lhs_type)) { return rhs; }                                // false|| any ==> any
 
@@ -281,9 +281,31 @@ Expr* SimplifyLogicOr ( Graph* graph , TypeKind lhs_type , TypeKind rhs_type ,
   return NULL;
 }
 
+Expr* SimplifyBooleanCompare( Graph* graph , Binary::Operator op,
+                                             TypeKind lhs_type ,
+                                             TypeKind rhs_type ,
+                                             Expr* lhs,
+                                             Expr* rhs,
+                                             const IRProvider& irinfo ) {
+  if(lhs_type == TPKIND_BOOLEAN && rhs->IsBoolean()) {
+    auto info = irinfo();
+
+    return rhs->AsBoolean()->value() ?  lhs :
+      NewBoxNode<BooleanNot>(graph,TPKIND_BOOLEAN,info,NewUnboxNode(graph,lhs,TPKIND_FLOAT64,info),info);
+
+  } else if(rhs_type == TPKIND_BOOLEAN && lhs->IsBoolean()) {
+    auto info = irinfo();
+
+    return lhs->AsBoolean()->value() ? rhs :
+      NewBoxNode<BooleanNot>(graph,TPKIND_BOOLEAN,info,NewUnboxNode(graph,rhs,TPKIND_FLOAT64,info),info);
+  }
+
+  return NULL;
+}
+
 Expr* SimplifyBinary( Graph* graph , Binary::Operator op , Expr* lhs ,
                                                            Expr* rhs ,
-                                                           const std::function<IRInfo* ()>& irinfo ) {
+                                                           const IRProvider& irinfo ) {
   auto lhs_type = GetTypeInference(lhs);
   auto rhs_type = GetTypeInference(rhs);
 
@@ -293,6 +315,30 @@ Expr* SimplifyBinary( Graph* graph , Binary::Operator op , Expr* lhs ,
     return SimplifyLogicAnd(graph,lhs_type,rhs_type,lhs,rhs,irinfo);
   } else if(op == Binary::OR) {
     return SimplifyLogicOr (graph,lhs_type,rhs_type,lhs,rhs,irinfo);
+
+  } else if(((lhs_type == TPKIND_BOOLEAN && rhs->IsBoolean()) ||
+             (rhs_type == TPKIND_BOOLEAN && lhs->IsBoolean()))&&
+            (op == Binary::EQ || op == Binary::NE)) {
+
+    /**
+     * This situation is that the left hand side is a speculative boolean
+     * and the right hand side is a bollean literal or vise versa , example :
+     *
+     * if(a == true) or if(false == b)
+     *
+     * The above format can be simplifed to be if(a) or if(!b) which genreates
+     * same boolean result.
+     *
+     * One thing to note is this rule doesn't apply on other types because in
+     * lavascript `a` in a boolean context evaluate to a itself but `a == true`
+     * evaluate to a boolean result.
+     *
+     * This also helps infer phase since infer looks for something like (a) or
+     * (!a) in boolean context and doesn't expect something like (a == true)or
+     * (a == false)
+     *
+     */
+    return SimplifyBooleanCompare(graph,op,lhs_type,rhs_type,lhs,rhs,irinfo);
   }
 
   return NULL;
@@ -300,7 +346,7 @@ Expr* SimplifyBinary( Graph* graph , Binary::Operator op , Expr* lhs ,
 
 Expr* Fold( Graph* graph , Binary::Operator op , Expr* lhs ,
                                                  Expr* rhs ,
-                                                 const std::function<IRInfo* ()>& irinfo ) {
+                                                 const IRProvider& irinfo ) {
   if(lhs->IsFloat64() && rhs->IsFloat64()) {
     auto lval = lhs->AsFloat64()->value();
     auto rval = rhs->AsFloat64()->value();
@@ -357,7 +403,7 @@ Expr* Fold( Graph* graph , Binary::Operator op , Expr* lhs ,
 }
 
 Expr* Fold( Graph* graph , Expr* cond , Expr* lhs , Expr* rhs ,
-                                                    const std::function<IRInfo*()>& irinfo) {
+                                                    const IRProvider& irinfo) {
   switch(cond->type()) {
     case IRTYPE_FLOAT64:
     case IRTYPE_LONG_STRING:
@@ -638,24 +684,43 @@ Expr* FoldICall( Graph* graph , ICall* node ) {
 } // namespace
 
 Expr* FoldUnary  ( Graph* graph , Unary::Operator op , Expr* expr ,
-                                                       const std::function<IRInfo*()>& irinfo ) {
+                                                       const IRProvider& irinfo ) {
   return Fold(graph,op,expr,irinfo);
 }
 
 Expr* FoldBinary ( Graph* graph , Binary::Operator op , Expr* lhs ,
                                                         Expr* rhs ,
-                                                        const std::function<IRInfo* ()>& irinfo ) {
+                                                        const IRProvider& irinfo ) {
   return Fold(graph,op,lhs,rhs,irinfo);
 }
 
 Expr* FoldTernary( Graph* graph , Expr* cond , Expr* lhs , Expr* rhs ,
-                                                           const std::function<IRInfo*()>& irinfo) {
+                                                           const IRProvider& irinfo) {
   return Fold(graph,cond,lhs,rhs,irinfo);
 }
 
 Expr* FoldIntrinsicCall( Graph* graph , ICall* icall ) {
   return FoldICall(graph,icall);
 }
+
+Expr* SimplifyLogic ( Graph* graph , Expr* lhs , Expr* rhs , Binary::Operator op,
+                                                             const IRProvider& irinfo ) {
+  if(op == Binary::AND) {
+    return SimplifyLogicAnd(graph,GetTypeInference(lhs),
+                                  GetTypeInference(rhs),
+                                  lhs,
+                                  rhs,
+                                  irinfo);
+  } else {
+    lava_debug(NORMAL,lava_verify(op == Binary::OR););
+    return SimplifyLogicOr (graph,GetTypeInference(lhs),
+                                  GetTypeInference(rhs),
+                                  lhs,
+                                  rhs,
+                                  irinfo);
+  }
+}
+
 
 } // namespace hir
 } // namespace cbase

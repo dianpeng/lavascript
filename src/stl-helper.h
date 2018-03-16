@@ -1,6 +1,8 @@
 #ifndef STL_HELPER_H_
 #define STL_HELPER_H_
 #include <vector>
+#include <variant>
+#include <typeinfo>
 #include <algorithm>
 
 namespace std {
@@ -144,6 +146,40 @@ bool UpdateMap( T* map , K&& key , V&& v ) {
   }
   itr->second = std::move(v);
   return false;
+}
+
+// A wrapper around std::variant to avoid heap allocation
+template< typename ... ARGS > class EmbedStorage {
+ public:
+  typedef std::variant<ARGS...> StorageType;
+
+  template< typename T > T* Get();
+  template< typename T > T* Set();
+
+  int Index() const { return store_.index(); }
+
+ private:
+  StroageType store_;
+};
+
+template< typename ... ARGS >
+template< typename T >
+T* EmbedStorage<ARGS...> Get() {
+  try {
+    T& val = std::get<T>(store_);
+    return &val;
+  } catch(...) {
+    lava_assertF("unexpected get from variant with index %d and expected type %s",
+        Index(),typeid(T).name());
+    return NULL;
+  }
+}
+
+template< typename ... ARGS >
+template< typename T >
+T* EmbedStorage<ARGS...> Set() {
+  store_ = T();
+  return Get();
 }
 
 } // namespace lavascript

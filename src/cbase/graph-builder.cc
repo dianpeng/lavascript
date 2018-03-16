@@ -275,7 +275,8 @@ Expr* GraphBuilder::AddTypeFeedbackIfNeed( const StackSlot& idx ,
      * type value here. If not match basically means our IR graph is wrong
      * fundementally so it is a *BUG* actually
      */
-    lava_assertF(stp == tp,"This is a *SERIOUS BUG*, we get type inference of value %s but "
+    lava_assertF(stp == tp,"This is a *SERIOUS BUG*, we get "
+                           "type inference of value %s but "
                            "the traced type is actually %s!",
                            GetTypeKindName(stp), GetTypeKindName(tp));
     return n;
@@ -328,8 +329,21 @@ Expr* GraphBuilder::TrySpeculativeUnary( const StackSlot& index , Unary::Operato
       // create a guard for this object's boolean value under boolean context
       node = AddTypeFeedbackIfNeed(index,v,pc);
 
-      // based on the input type , we do a speculative *not* operations
-      return Boolean::New(graph_,!v.AsBoolean(),node->ir_info());
+      // do a static boolean inference here
+      auto tp = GetTypeInference(node);
+      bool bval;
+      if(TPKind::ToBoolean(tp,&bval)) {
+        return Boolean::New(graph_,!bval,node->ir_info());
+      } else if(tp == TPKIND_BOOLEAN) {
+
+        // if the guarded type is boolean, then we could just use BooleanNot
+        // node which has type information and enable the inference on it
+        return NewBoxNode<BooleanNot>(graph_,
+                                      TPKIND_BOOLEAN,
+                                      node->ir_info(),
+                                      NewUnboxNode(graph_,node,TPKIND_BOOLEAN,node->ir_info()),
+                                      node->ir_info());
+      }
     } else {
       if(v.IsReal()) {
         // add the type feedback for this node
@@ -508,10 +522,24 @@ Expr* GraphBuilder::TrySpeculativeBinary( const StackSlot& lidx , const StackSlo
       case Binary::AND: case Binary::OR:
         {
           lhs = AddTypeFeedbackIfNeed(lidx,lhs_val,NewIRInfo(pc));
-          bool bval;
-          if(TPKind::ToBoolean(MapValueToTypeKind(lhs_val),&bval)) {
-            return (op == Binary::AND ? (bval ? rhs : lhs) :
-                                        (bval ? lhs : rhs));
+
+          // simplify the logic expression if we can do so
+          auto ret = SimplifyLogic(graph_,lhs,rhs,op,[&]() { return NewIRInfo(pc); });
+          if(ret)
+            return ret;
+
+          rhs = AddTypeFeedbackIfNeed(ridx,rhs_val,NewIRInfo(pc));
+          auto ir_info = NewIRInfo(pc);
+
+          if(GetTypeInference(lhs) == TPKIND_BOOLEAN &&
+             GetTypeInference(rhs) == TPKIND_BOOLEAN) {
+            return NewBoxNode<BooleanLogic>(graph_,
+                                            TPKIND_BOOLEAN,
+                                            ir_info,
+                                            NewUnboxNode(graph_,lhs,TPKIND_BOOLEAN,ir_info),
+                                            NewUnboxNode(graph_,rhs,TPKIND_BOOLEAN,ir_info),
+                                            op,
+                                            ir_info);
           }
         }
         break;

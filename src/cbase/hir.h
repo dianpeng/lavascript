@@ -1,6 +1,5 @@
 #ifndef CBASE_HIR_H_
 #define CBASE_HIR_H_
-#include "type.h"
 #include "src/config.h"
 #include "src/util.h"
 #include "src/stl-helper.h"
@@ -8,8 +7,11 @@
 #include "src/zone/vector.h"
 #include "src/zone/list.h"
 #include "src/zone/string.h"
-#include "src/cbase/bytecode-analyze.h"
 #include "src/interpreter/intrinsic-call.h"
+
+#include "bytecode-analyze.h"
+#include "type.h"
+#include "type-inference.h"
 
 #include <memory>
 #include <type_traits>
@@ -96,6 +98,8 @@ using namespace ::lavascript;
   __(Float64Arithmetic,FLOAT64_ARITHMETIC,"float64_arithmetic",false) \
   __(Float64Bitwise,FLOAT64_BITWISE,"float64_bitwise",false)          \
   __(Float64Compare,FLOAT64_COMPARE,"float64_compare",false)          \
+  __(BooleanNot,BOOLEAN_NOT,"boolean_not",false)                      \
+  __(BooleanLogic ,BOOLEAN_LOGIC ,"boolean_logic" ,false)             \
   __(StringCompare,STRING_COMPARE,"string_compare",false)             \
   __(SStringEq,SSTRING_EQ,"sstring_eq",false)                         \
   __(SStringNe,SSTRING_NE,"sstring_ne",false)                         \
@@ -1795,7 +1799,6 @@ class StringCompare : public Binary , public detail::Float64BinaryGVNImpl<String
 
 class SStringEq : public Binary , public detail::Float64BinaryGVNImpl<SStringEq> {
  public:
-
   inline static SStringEq* New( Graph* , Expr* , Expr* ,
                                                  IRInfo* );
 
@@ -1812,7 +1815,6 @@ class SStringEq : public Binary , public detail::Float64BinaryGVNImpl<SStringEq>
 
 class SStringNe : public Binary , public detail::Float64BinaryGVNImpl<SStringNe> {
  public:
-
   inline static SStringNe* New( Graph* , Expr* , Expr* ,
                                                  IRInfo* );
 
@@ -1825,6 +1827,68 @@ class SStringNe : public Binary , public detail::Float64BinaryGVNImpl<SStringNe>
  public:
   virtual std::uint64_t GVNHash()        const { return GVNHashImpl(); }
   virtual bool Equal( const Expr* that ) const { return EqualImpl(that); }
+};
+
+// Specialized logic operator, its lhs is type fixed by boolean. ie, we are
+// sure its lhs operand outputs boolean in an unboxed format.
+class BooleanNot: public Expr {
+ public:
+  inline static BooleanNot* New( Graph* , Expr* , IRInfo* );
+
+  Expr* operand() const { return operand_list()->First(); }
+
+  BooleanNot( Graph* graph , std::uint32_t id , Expr* opr , IRInfo* info ):
+    Expr(IRTYPE_BOOLEAN_NOT,id,graph,info)
+  {
+    AddOperand(opr);
+  }
+
+ public:
+  virtual std::uint64_t GVNHash() const {
+    return GVNHash1(type_name(),operand()->GVNHash());
+  }
+
+  virtual bool Equal( const Expr* that ) const {
+    if(that->IsBooleanNot()) {
+      auto that_negate = that->AsBooleanNot();
+      return operand()->Equal(that_negate->operand());
+    }
+    return false;
+  }
+
+ private:
+  LAVA_DISALLOW_COPY_AND_ASSIGN(BooleanNot)
+};
+
+class BooleanLogic : public Binary {
+ public:
+   inline static BooleanLogic* New( Graph* , Expr* , Expr* , Operator op ,
+                                                             IRInfo* );
+
+   BooleanLogic( Graph* graph , std::uint32_t id , Expr* lhs ,
+                                                   Expr* rhs ,
+                                                   Operator op,
+                                                   IRInfo* info ):
+     Binary(IRTYPE_BOOLEAN_LOGIC,graph,id,lhs,rhs,op,info)
+  {
+    lava_debug(NORMAL,lava_verify( GetTypeInference(lhs) == TPKIND_BOOLEAN &&
+                                   GetTypeInference(rhs) == TPKIND_BOOLEAN ););
+  }
+
+ public:
+  virtual std::uint64_t GVNHash()        const {
+    return GVNHash3(type_name(), lhs()->GVNHash(), op (), rhs()->GVNHash());
+  }
+
+  virtual bool Equal( const Expr* that ) const {
+    if(that->IsBooleanLogic()) {
+      auto bl = that->AsBooleanLogic();
+      return bl->op() == op() && bl->lhs()->Equal(lhs()) && bl->rhs()->Equal(rhs());
+    }
+    return false;
+  }
+ private:
+  LAVA_DISALLOW_COPY_AND_ASSIGN(BooleanLogic)
 };
 
 class ObjectGet : public PGet {
@@ -3180,6 +3244,16 @@ inline Float64Compare* Float64Compare::New( Graph* graph , Expr* lhs ,
                                                            Operator op,
                                                            IRInfo* info ) {
   return graph->zone()->New<Float64Compare>(graph,graph->AssignID(),lhs,rhs,op,info);
+}
+
+inline BooleanNot* BooleanNot::New( Graph* graph , Expr* opr , IRInfo* info ) {
+  return graph->zone()->New<BooleanNot>(graph,graph->AssignID(),opr,info);
+}
+
+inline BooleanLogic* BooleanLogic::New( Graph* graph , Expr* lhs , Expr* rhs ,
+                                                                   Operator op,
+                                                                   IRInfo* info ) {
+  return graph->zone()->New<BooleanLogic>(graph,graph->AssignID(),lhs,rhs,op,info);
 }
 
 inline StringCompare* StringCompare::New( Graph* graph , Expr* lhs , Expr* rhs ,

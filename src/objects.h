@@ -1242,8 +1242,7 @@ class LAVASCRIPT_OBJECT_ALIGN Script final : public HeapObject {
     Handle<String> name; // Can be empty, if it is empty then it is a anonymous function
     Handle<Prototype> prototype;
     FunctionTableEntry(): name() , prototype() {}
-    FunctionTableEntry( const Handle<String>& n ,
-                        const Handle<Prototype>& p ):
+    FunctionTableEntry( const Handle<String>& n , const Handle<Prototype>& p ):
       name(n),
       prototype(p)
     {}

@@ -1,4 +1,5 @@
 #include "infer.h"
+#include "src/cbase/fold.h"
 #include "src/stl-helper.h"
 #include "src/cbase/dominators.h"
 #include "src/cbase/value-range.h"
@@ -44,7 +45,36 @@ class SimpleConstraintChecker {
    */
   Expr*     expr_;
   Expr*     variable_;
-  TypeKind* type_;
+  TypeKind  type_;
+};
+
+// MultiTypeValueRange is an object that is used to track multiple type value's range
+// independently. Example like this:
+//
+// if(a > 1 && a < 2) {
+//   if(b) {
+//     if(c == 2) {
+//       if(d > 1) {
+//         if(a > 1.5) {
+//           when we reach here, the multiple type value range will contain 4 different
+//           independent value range object and the value range of a is already merged.
+//
+//           Any nested blocks that is domminated by the if(a > 1.5) block will only need
+//           to consult the range contained here to know which value needs to infer. It
+//           doesn't need to go up the chain. Basically the value collapsing right inside
+//           of this dominated block
+//         }
+//       }
+//     }
+//   }
+// }
+//
+// This mechanism will not use much memory due to the fact for any block's multiple type
+// value range , if this block doesn't contain any enforcement of the value range, it will
+// just store a pointer of those block that is owned by its dominator block.
+
+class MultiTypeValueRange : public zone::ZoneObject {
+ public:
 };
 
 
@@ -70,15 +100,32 @@ class SimpleConstraintChecker {
 
 class ConditionGroup {
  public:
-  ConditionGroup( zone::Zone* zone , ConditionGroup* p ):
-    zone_(zone) , prev_(p), variable_(NULL), type_kind_(TPKIND_UNKNOWN), range_(NULL)
+  enum ConditionType {
+    BAILOUT,
+    DEAD_BRANCH,
+    NULL_BRANCH,
+    NORMAL
+  };
+
+  ConditionGroup( Graph* graph , zone::Zone* zone , ConditionGroup* p ):
+    graph_(graph),
+    zone_(zone) ,
+    prev_(p),
+    variable_(NULL),
+    type_kind_(TPKIND_UNKNOWN),
+    range_(NULL),
+    type_(BAILOUT)
   {}
 
-  // Call this function to construct a condition group
-  bool Build ( Expr* );
+  ConditionType Process ( Expr* );
 
  public:
-  bool IsBailout() const { return variable_ == NULL; }
+  ConditionType type () const { return type_; }
+
+  bool IsBailout() const { return type_ == BAILOUT; }
+  bool IsDead   () const { return type_ == DEAD_BRANCH; }
+  bool IsNull   () const { return type_ == NULL_BRANCH; }
+  bool IsNormal () const { return type_ == NORMAL; }
 
   Expr* variable() const { lava_debug(NORMAL,lava_verify(!IsBailout());); return variable_; }
 
@@ -88,23 +135,137 @@ class ConditionGroup {
 
   ValueRange* range() const { return range_; }
 
- public: // apis
-  int   Infer   ( Binary::Operator , Expr* ) const;
-  Expr* Collapse( Graph* , IRInfo* )         const;
+ private:
+  // Do a recursive inference with all the dominator node's condition group
+  int  Infer( Expr* , TypeKind );
+  bool InferLocal( Expr* , TypeKind , int* );
 
  private:
-  void DoSimplify ( Expr* );
-  void DoConstruct( Expr* );
+  // create a new boolean node with value specified to *replace* the input node
+  Expr* DeduceTo ( Expr* , bool );
+
+  // Simplification phase of expression. This phase will just try to deduce the
+  // expression and it will not generate a new value range object
+  Expr* Simplify   ( Expr* );
+  Expr* DoSimplify ( Expr* );
+
+
+  void Construct           ( Expr* );
+  void ConstructSub        ( ValueRange* , Expr* );
+  ValueRange* ConstructSub ( Expr* );
+
+  void ConstructFloat64Expr( ValueRange* , Float64Compare* , bool op = false );
 
  private:
+
+  Graph*          graph_;
   zone::Zone*     zone_;
-  ConditionGroup* prev_;     // previous condition group if it has a immediate dominator
-  Expr*           variable_; // if this variable is NULL, then it means it bailout
+  ConditionGroup* prev_;
+  Expr*           variable_;
   TypeKind        type_kind_;
   ValueRange*     range_;
+  ConditionType   type_;
 };
 
-bool ConditionGroup::Build( Expr* node ) {
+
+Expr* ConditionGroup::DoSimplify( Expr* node ) {
+  switch(node->type()) {
+    case IRTYPE_FLOAT64_COMPARE:
+      goto do_infer;
+    case IRTYPE_BOOLEAN_LOGIC:
+      {
+        auto n = node->AsBooleanLogic();
+        auto l = n->lhs();
+        auto r = n->rhs();
+        auto op= n->op();
+
+        auto lret = DoSimplify(l);
+        auto rret = DoSimplify(r);
+
+        auto nnode = FoldBinary(graph_,n->lhs(),n->rhs(),op,[=]() { return n->ir_info(); });
+        if(nnode) {
+          node->Replace(nnode);
+          return nnode;
+        }
+
+        return NULL;
+      }
+    default:
+      {
+        // when we reach here it means it must be a boolean type
+        lava_debug(NORMAL,lava_verify(type_kind_ == TPKIND_BOOLEAN););
+        lava_debug(NORMAL,
+            auto v = node;
+            if(v->IsBooleanNot()) {
+              v = v->AsBooleanNot()->operand();
+            }
+            lava_verify(v == variable_);
+        );
+        goto do_infer;
+      }
+  }
+
+  lava_die();
+
+do_infer:
+  /** do single node inference **/
+  auto ret = prev_->Infer( node , type_kind_ );
+  if(ret == ValueRange::ALWAYS_TRUE) {
+    return DeduceTo(node,true);
+  } else if(ret == ValueRange::ALWAYS_FALSE) {
+    return DeduceTo(node,false);
+  }
+  return NULL;
+}
+
+ConditionGroup::ConditionType ConditionGroup::Simplify( Expr* node ) {
+}
+
+void ConditionGroup::ConstructFloat64Expr( ValueRange* output , Float64Compare* comp ,
+                                                                bool is_union ) {
+  auto var  = comp->lhs()->IsFloat64() ? comp->rhs() : comp->lhs() ;
+  auto cst  = comp->lhs()->IsFloat64() ? comp->lhs() : comp->rhs() ;
+
+  lava_debug(NORMAL,lava_verify(var == variable_););
+  lava_debug(NORMAL,lava_verify(type_kind_ == TPKIND_FLOAT64););
+
+  if(is_union)
+    output->Union(comp->op(),cst);
+  else
+    output->Intersect(comp->op(),cst);
+}
+
+void ConditionGroup::ConstructSub( ValueRange* output , Expr* node ) {
+}
+
+void ConditionGroup::Construct( Expr* node ) {
+
+  if(node->type() == IRTYPE_BOOLEAN_LOGIC) {
+    auto b = node->AsBooleanLogic();
+
+    // lhs
+    if(b->lhs()->IsFloat64Compare()) {
+      ConstructFloat64Expr(range_,b->lhs()->AsFloat64Compare(),true);
+    } else {
+      auto temp = ConstructSub(b->lhs());
+      range_->Union(*temp);
+    }
+
+    // rhs
+    if(b->rhs()->IsFloat64Compare()) {
+      ConstructFloat64Expr(range_,b->rhs()->AsFloat64Compare(),(b->op() == Binary::AND));
+    } else {
+      auto temp = ConstructSub(b->rhs());
+      if(b->op() == Binary::AND)
+        range_->Intersect(*temp);
+      else
+        range_->Union(*temp);
+    }
+  } else if(node->type() == IRTYPE_FLOAT64_COMPARE) {
+  }
+}
+
+ConditionGroup::ConditionType ConditionGroup::Process( Expr* node ) {
   SimpleConstraintChecker checker;
   if(!checker.Check(node,&variable_,&type_kind_)) {
     goto bailout;
@@ -120,27 +281,39 @@ bool ConditionGroup::Build( Expr* node ) {
     }
   }
 
+  // second pass to do a simplification with inference from its dominator
+  // node's ConditionGroup object
+  switch(Simplify(node)) {
+    case BAILOUT:
+    case DEAD_BRANCH:
+    case NULL_BRANCH:
+      return type_;
+    default:
+      break;
+  }
+
   // construct the specific type of value range
-  if(t == TPKIND_FLOAT64) {
+  if(type_kind_ == TPKIND_FLOAT64) {
     range_ = zone_->New<Float64ValueRange>(zone_);
   } else {
     lava_debug(NORMAL,lava_verify(t == TPKIND_BOOLEAN););
     range_ = zone_->New<BooleanValueRange>(zone_);
   }
 
-  // second pass of the expression to do simple fold if we can do inference
-  // against our dominator condition group
-  DoSimplify(node);
-
   // last pass , which is used to construct the new constraint
-  DoConstruct(node);
+  Construct(node);
 
-  return true;
+  return (type_ = NORMAL);
 
 bailout:
-  variable_ = NULL;
-  return false;
+  return (type_ = BAILOUT);
 }
+
+// ========================================================
+//
+// SimpleConstraintChecker implementation
+//
+// ========================================================
 
 bool SimpleConstraintChecker::CheckExpr( Expr* expr ) {
   /**
@@ -154,8 +327,8 @@ bool SimpleConstraintChecker::CheckExpr( Expr* expr ) {
    */
 
   if(expr->IsFloat64Compare()) {
-    if(*type_ != TPKIND_BOOLEAN) {
-      *type_ = TPKIND_FLOAT64;
+    if(type_ != TPKIND_BOOLEAN) {
+      type_ = TPKIND_FLOAT64;
 
       auto fcomp = expr->AsFloat64Compare();
 
@@ -185,8 +358,8 @@ bool SimpleConstraintChecker::CheckExpr( Expr* expr ) {
     auto l = expr->AsBooleanLogic();
     return DoCheck(l->lhs(),l->rhs());
   } else {
-    if(GetTypeInference(expr) == TPKIND_BOOLEAN && *type_ != TPKIND_FLOAT64) {
-      *type_ = TPKIND_BOOLEAN;
+    if(GetTypeInference(expr) == TPKIND_BOOLEAN && type_ != TPKIND_FLOAT64) {
+      type_ = TPKIND_BOOLEAN;
 
       // do a dereference if the node is a ! operation
       expr = expr->IsBooleanNot() ? expr->AsBooleanNot()->operand() : expr;
@@ -212,7 +385,7 @@ bool SimpleConstraintChecker::Check( Expr* node , Expr** variable , TypeKind* tp
   auto ret   = false;
 
   if(node->IsBooleanLogic()) {
-    auto l = expr->AsBooleanLogic();
+    auto l = node->AsBooleanLogic();
     ret = DoCheck(l->lhs(),l->rhs());
   } else {
     ret = CheckExpr(node);

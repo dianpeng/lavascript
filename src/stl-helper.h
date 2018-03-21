@@ -159,12 +159,12 @@ template< typename ... ARGS > class EmbedStorage {
   int Index() const { return store_.index(); }
 
  private:
-  StroageType store_;
+  StorageType store_;
 };
 
 template< typename ... ARGS >
 template< typename T >
-T* EmbedStorage<ARGS...> Get() {
+T* EmbedStorage<ARGS...>::Get() {
   try {
     T& val = std::get<T>(store_);
     return &val;
@@ -177,7 +177,7 @@ T* EmbedStorage<ARGS...> Get() {
 
 template< typename ... ARGS >
 template< typename T >
-T* EmbedStorage<ARGS...> Set() {
+T* EmbedStorage<ARGS...>::Set() {
   store_ = T();
   return Get();
 }

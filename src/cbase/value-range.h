@@ -85,6 +85,9 @@ class ValueRange : public zone::ZoneObject {
   // debug purpose
   virtual void Dump( DumpWriter* ) const = 0;
 
+  // Check if the value range is empty set or not
+  virtual bool IsEmpty() const = 0;
+
  private:
   ValueRangeType type_;
 };
@@ -102,13 +105,11 @@ class UnknownValueRange : public ValueRange {
   virtual void  Union    ( const ValueRange& );
   virtual void  Intersect( Binary::Operator , Expr* );
   virtual void  Intersect( const ValueRange& );
-
   virtual int   Infer    ( Binary::Operator , Expr* ) const;
   virtual int   Infer    ( const ValueRange& ) const;
-
   virtual Expr* Collapse ( Graph* , IRInfo*         ) const;
-
   virtual void  Dump     ( DumpWriter* ) const;
+  virtual bool  IsEmpty  () const { return false; }
 
  private:
   UnknownValueRange(): ValueRange( UNKNOWN_VALUE_RANGE ) {}
@@ -197,6 +198,7 @@ class Float64ValueRange : public ValueRange {
   virtual int   Infer    ( const ValueRange&  ) const;
   virtual Expr* Collapse ( Graph* , IRInfo* ) const;
   virtual void  Dump     ( DumpWriter* ) const;
+  virtual bool  IsEmpty  () const { return sets_.empty(); }
 
  private:
   Range NewRange  ( Binary::Operator op , double ) const;
@@ -269,6 +271,7 @@ class BooleanValueRange : public ValueRange {
 
   virtual Expr* Collapse ( Graph* , IRInfo*         ) const;
   virtual void  Dump     ( DumpWriter* ) const;
+  virtual bool  IsEmpty  () const { return state_ == EMPTY; }
 
  private:
   void  Union    ( bool );

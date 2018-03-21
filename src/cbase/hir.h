@@ -23,8 +23,6 @@
 namespace lavascript {
 namespace cbase {
 namespace hir {
-using namespace ::lavascript;
-
 
 // High level HIR node. Used to describe unttyped polymorphic
 // operations
@@ -349,16 +347,14 @@ struct StatementEdge {
  * using *Replace* function will modify all these 2 dependency list
  */
 
-typedef zone::List<Expr*> DependencyList;
+typedef zone::List<Expr*>               DependencyList;
 typedef DependencyList::ForwardIterator DependencyIterator;
-
 // OperandList
 typedef DependencyList OperandList;
-typedef OperandList::ForwardIterator OperandIterator;
-
+typedef OperandList::ForwardIterator    OperandIterator;
 // EffectList
 typedef DependencyList EffectList;
-typedef EffectList::ForwardIterator   EffectIterator;
+typedef EffectList::ForwardIterator     EffectIterator;
 
 template< typename ITR >
 struct Ref {
@@ -369,9 +365,8 @@ struct Ref {
   Ref(): id(), node(NULL) {}
 };
 
-typedef Ref<OperandIterator>    OperandRef;
-typedef zone::List<OperandRef>  OperandRefList;
-
+typedef Ref<OperandIterator>          OperandRef;
+typedef zone::List<OperandRef>        OperandRefList;
 typedef zone::List<ControlFlow*>      RegionList;
 typedef RegionList::ForwardIterator   RegionListIterator;
 typedef Ref<RegionListIterator>       RegionRef;
@@ -383,19 +378,14 @@ class Node : public zone::ZoneObject {
  public:
   // type of the node
   IRType type() const { return type_; }
-
   // name/string of the type
   const char* type_name() const { return IRTypeGetName(type()); }
-
   // a unique id for this node , it can be used to indexed into secondary storage
   std::uint32_t id() const { return id_; }
-
   // get the belonged graph object
   Graph* graph() const { return graph_; }
-
   // get the belonged zone object from graph
   inline zone::Zone* zone() const;
-
  public: // type check and cast
   template< typename T > bool Is() const { return type() == MapIRClassToIRType<T>::value; }
   template< typename T > inline T* As();
@@ -411,21 +401,18 @@ class Node : public zone::ZoneObject {
 
   bool IsString() const { return IsSString() || IsLString(); }
   inline const zone::String& AsZoneString() const;
-
   bool IsControlFlow() const { return IRTypeIsControlFlow(type()); }
   inline ControlFlow* AsControlFlow();
   inline const ControlFlow* AsControlFlow() const;
-
   bool IsExpr() const { return IRTypeIsExpr(type()); }
   inline Expr* AsExpr();
   inline const Expr* AsExpr() const;
-
  protected:
   Node( IRType type , std::uint32_t id , Graph* graph ):
     type_    (type),
     id_      (id)  ,
     graph_   (graph)
- {}
+  {}
 
  private:
   IRType        type_;
@@ -516,7 +503,6 @@ class Expr : public Node {
   bool  IsStatement() const { return stmt_.IsUsed(); }
   void  set_statement_edge ( const StatementEdge& st ) { stmt_= st; }
   const StatementEdge& statement_edge() const { return stmt_; }
-
  public: // patching function helps to mutate any def-use and use-def
 
   // Replace *this* node with the input expression node. This replace
@@ -524,7 +510,6 @@ class Expr : public Node {
   // touch all the operands' reference list
   virtual void Replace( Expr* );
  public:
-
   // Operand list
   //
   // This list returns a list of operands used by this Expr/IR node. Most
@@ -532,16 +517,15 @@ class Expr : public Node {
   // function
   OperandList* operand_list() { return &operand_list_; }
   const OperandList* operand_list() const { return &operand_list_; }
-
   // This function will add the input node into this node's operand list and
   // it will take care of the input node's ref list as well
   inline void AddOperand( Expr* node );
 
   // Effect list
-  //
+  // Used to develop dependency between expression which cannot be expressed
+  // as data flow operation. Mainly used to order certain operations
   EffectList* effect_list() { return &effect_list_; }
   const EffectList* effect_list() const { return &effect_list_; }
-
   inline void AddEffect ( Expr* node );
 
   // Reference list
@@ -568,11 +552,8 @@ class Expr : public Node {
     }
 #undef __ // __
   }
-
   bool IsNoneLeaf() const { return !IsLeaf(); }
-
   IRInfo* ir_info() const { return ir_info_; }
-
  public:
   Expr( IRType type , std::uint32_t id , Graph* graph , IRInfo* info ):
     Node             (type,id,graph),
@@ -616,21 +597,17 @@ class Float64 : public Expr {
  public:
   inline static Float64* New( Graph* , double , IRInfo* );
   double value() const { return value_; }
-
   Float64( Graph* graph , std::uint32_t id , double value , IRInfo* info ):
     Expr  (IRTYPE_FLOAT64,id,graph,info),
     value_(value)
   {}
-
  public:
   virtual std::uint64_t GVNHash() const {
     return GVNHash1(type_name(),value_);
   }
-
   virtual bool Equal( const Expr* that ) const {
     return that->IsFloat64() && (that->AsFloat64()->value() == value_);
   }
-
  private:
   double value_;
   LAVA_DISALLOW_COPY_AND_ASSIGN(Float64)
@@ -640,20 +617,16 @@ class Boolean : public Expr {
  public:
   inline static Boolean* New( Graph* , bool , IRInfo* );
   bool value() const { return value_; }
-
   Boolean( Graph* graph , std::uint32_t id , bool value , IRInfo* info ):
     Expr  (IRTYPE_BOOLEAN,id,graph,info),
     value_(value)
   {}
-
   virtual std::uint64_t GVNHash() const {
     return GVNHash1(type_name(),value_ ? 1 : 0);
   }
-
   virtual bool Equal( const Expr* that ) const {
     return that->IsBoolean() && (that->AsBoolean()->value() == value_);
   }
-
  private:
   bool value_;
   LAVA_DISALLOW_COPY_AND_ASSIGN(Boolean)
@@ -665,21 +638,17 @@ class LString : public Expr {
   inline static LString* New( Graph* , const char* , IRInfo* );
   inline static LString* New( Graph* , const zone::String* , IRInfo* );
   const zone::String* value() const { return value_; }
-
   LString( Graph* graph , std::uint32_t id , const zone::String* value ,
                                              IRInfo* info ):
     Expr  (IRTYPE_LONG_STRING,id,graph,info),
     value_(value)
   {}
-
   virtual std::uint64_t GVNHash() const {
     return GVNHash1(type_name(),reinterpret_cast<std::uint64_t>(value_));
   }
-
   virtual bool Equal( const Expr* that ) const {
     return that->IsLString() && (*(that->AsLString()->value()) == *value_);
   }
-
  private:
   const zone::String* value_;
   LAVA_DISALLOW_COPY_AND_ASSIGN(LString)
@@ -691,21 +660,17 @@ class SString : public Expr {
   inline static SString* New( Graph* , const char* , IRInfo* );
   inline static SString* New( Graph* , const zone::String* , IRInfo* );
   const zone::String* value() const { return value_; }
-
   SString( Graph* graph , std::uint32_t id , const zone::String* value ,
                                              IRInfo* info ):
     Expr (IRTYPE_SMALL_STRING,id,graph,info),
     value_(value)
   {}
-
   virtual std::uint64_t GVNHash() const {
     return GVNHash1(type_name(),reinterpret_cast<std::uint64_t>(value_));
   }
-
   virtual bool Equal( const Expr* that ) const {
     return that->IsSString() && (*(that->AsSString()->value()) == *value_);
   }
-
  private:
   const zone::String* value_;
   LAVA_DISALLOW_COPY_AND_ASSIGN(SString)
@@ -720,19 +685,15 @@ inline Expr* NewStringFromReal   ( Graph* , double , IRInfo* );
 class Nil : public Expr {
  public:
   inline static Nil* New( Graph* , IRInfo* );
-
   Nil( Graph* graph , std::uint32_t id , IRInfo* info ):
     Expr(IRTYPE_NIL,id,graph,info)
   {}
-
   virtual std::uint64_t GVNHash() const {
     return GVNHash0(type_name());
   }
-
   virtual bool Equal( const Expr* that ) const {
     return that->IsNil();
   }
-
  private:
   LAVA_DISALLOW_COPY_AND_ASSIGN(Nil)
 };
@@ -740,23 +701,17 @@ class Nil : public Expr {
 class IRList : public Expr {
  public:
   inline static IRList* New( Graph* , std::size_t size , IRInfo* );
-
   void Add( Expr* node ) { AddOperand(node); }
-
   std::size_t Size() const { return operand_list()->size(); }
-
   IRList( Graph* graph , std::uint32_t id , std::size_t size , IRInfo* info ):
     Expr  (IRTYPE_LIST,id,graph,info)
   {
     (void)size; // implicit indicated by the size of operand_list()
   }
 
-
- public:
   // Helper function to clone the IRList
   static IRList* Clone( Graph* , const IRList& );
   static IRList* CloneExceptLastOne( Graph* , const IRList& );
-
  private:
   LAVA_DISALLOW_COPY_AND_ASSIGN(IRList)
 };
@@ -764,10 +719,8 @@ class IRList : public Expr {
 class IRObjectKV : public Expr {
  public:
   inline static IRObjectKV* New( Graph* , Expr* , Expr* ,IRInfo* );
-
   Expr* key  () const { return operand_list()->First(); }
   Expr* value() const { return operand_list()->Last(); }
-
   IRObjectKV( Graph* graph , std::uint32_t id , Expr* key , Expr* val ,
                                                             IRInfo* info ):
     Expr(IRTYPE_OBJECT_KV,id,graph,info)
@@ -783,21 +736,16 @@ class IRObjectKV : public Expr {
 class IRObject : public Expr {
  public:
   inline static IRObject* New( Graph* , std::size_t size , IRInfo* );
-
   void Add( Expr* key , Expr* val , IRInfo* info ) {
     AddOperand(IRObjectKV::New(graph(),key,val,info));
   }
-
   std::size_t Size() const { return operand_list()->size(); }
-
   IRObject( Graph* graph , std::uint32_t id , std::size_t size , IRInfo* info ):
     Expr  (IRTYPE_OBJECT,id,graph,info)
   {
     (void)size;
   }
-
   IRObject* Clone() const;
-
  private:
   LAVA_DISALLOW_COPY_AND_ASSIGN(IRObject)
 };
@@ -809,12 +757,10 @@ class LoadCls : public Expr {
  public:
   static inline LoadCls* New( Graph* , std::uint32_t ref , IRInfo* info );
   std::uint32_t ref() const { return ref_; }
-
   LoadCls( Graph* graph , std::uint32_t id , std::uint32_t ref , IRInfo* info ):
     Expr (IRTYPE_LOAD_CLS,id,graph,info),
     ref_ (ref)
   {}
-
  private:
   std::uint32_t ref_;
   LAVA_DISALLOW_COPY_AND_ASSIGN(LoadCls);
@@ -826,12 +772,9 @@ class LoadCls : public Expr {
 class Unary : public Expr {
  public:
   enum Operator { MINUS, NOT };
-
   inline static Unary* New( Graph* , Expr* , Operator , IRInfo* );
-
   inline static Operator BytecodeToOperator( interpreter::Bytecode bc );
   inline static const char* GetOperatorName( Operator op );
-
  public:
   Expr* operand() const { return operand_list()->First(); }
   Operator op  () const { return op_;      }
@@ -864,29 +807,14 @@ class Unary : public Expr {
 class Binary : public Expr {
  public:
   enum Operator {
-    ADD,
-    SUB,
-    MUL,
-    DIV,
-    MOD,
-    POW,
-    LT ,
-    LE ,
-    GT ,
-    GE ,
-    EQ ,
-    NE ,
-    AND,
-    OR ,
-
-    // bitwise operators , used during the lower phase
-    BAND,
-    BOR ,
-    BXOR,
-    BSHL,
-    BSHR,
-    BROL,
-    BROR
+    // arithmetic
+    ADD, SUB, MUL, DIV, MOD, POW,
+    // comparison
+    LT , LE , GT , GE , EQ , NE ,
+    // logic
+    AND, OR ,
+    // bitwise operators
+    BAND, BOR , BXOR, BSHL, BSHR, BROL, BROR
   };
 
   inline static bool        IsComparisonOperator( Operator );
@@ -899,12 +827,10 @@ class Binary : public Expr {
  public:
   // Create a binary node
   inline static Binary* New( Graph* , Expr* , Expr* , Operator , IRInfo* );
-
   Expr*   lhs() const { return operand_list()->First(); }
   Expr*   rhs() const { return operand_list()->Last (); }
   Operator op() const { return op_;  }
   const char* op_name() const { return GetOperatorName(op()); }
-
   Binary( Graph* graph , std::uint32_t id , Expr* lhs , Expr* rhs , Operator op ,
                                                                     IRInfo* info ):
     Expr  (IRTYPE_BINARY,id,graph,info),
@@ -933,7 +859,6 @@ class Binary : public Expr {
 class Ternary: public Expr {
  public:
   inline static Ternary* New( Graph* , Expr* , Expr* , Expr* , IRInfo* );
-
   Ternary( Graph* graph , std::uint32_t id , Expr* cond , Expr* lhs ,
                                                           Expr* rhs ,
                                                           IRInfo* info ):
@@ -947,8 +872,6 @@ class Ternary: public Expr {
   Expr* condition() const { return operand_list()->First(); }
   Expr* lhs      () const { return operand_list()->Index(1); }
   Expr* rhs      () const { return operand_list()->Last(); }
-
-
  private:
   LAVA_DISALLOW_COPY_AND_ASSIGN(Ternary)
 };
@@ -967,22 +890,17 @@ class Ternary: public Expr {
 class UGet : public Expr {
  public:
   inline static UGet* New( Graph* , std::uint8_t );
-
   std::uint8_t index() const { return index_; }
-
   UGet( Graph* graph , std::uint32_t id , std::uint8_t index ):
     Expr  (IRTYPE_UGET,id,graph,NULL),
     index_(index)
   {}
-
   virtual std::uint64_t GVNHash() const {
     return GVNHash1(type_name(),index());
   }
-
   virtual bool Equal( const Expr* that ) const {
     return that->IsUGet() && that->AsUGet()->index() == index();
   }
-
  private:
   std::uint8_t index_;
   LAVA_DISALLOW_COPY_AND_ASSIGN(UGet)
@@ -990,16 +908,12 @@ class UGet : public Expr {
 
 class USet : public Expr {
  public:
-  inline static USet* New( Graph* , std::uint32_t , Expr* opr , IRInfo* ,
-                                                                ControlFlow* );
-
+  inline static USet* New( Graph* , std::uint32_t , Expr* opr , IRInfo* , ControlFlow* );
   std::uint32_t method() const { return method_; }
   Expr* value() const { return operand_list()->First();  }
-
   virtual std::uint64_t GVNHash() const {
     return GVNHash2(type_name(),method(),value()->GVNHash());
   }
-
   virtual bool Equal( const USet* that ) const {
     if(that->IsUSet()) {
       auto that_uset = that->AsUSet();
@@ -1007,7 +921,6 @@ class USet : public Expr {
     }
     return false;
   }
-
   USet( Graph* graph , std::uint8_t id , std::uint32_t method ,
                                          Expr* value,
                                          IRInfo* info ):
@@ -1016,7 +929,6 @@ class USet : public Expr {
   {
     AddOperand(value);
   }
-
  private:
   std::uint32_t method_;
   LAVA_DISALLOW_COPY_AND_ASSIGN(USet)
@@ -1030,11 +942,9 @@ class PGet : public Expr {
   inline static PGet* New( Graph* , Expr* , Expr* , IRInfo* , ControlFlow* );
   Expr* object() const { return operand_list()->First(); }
   Expr* key   () const { return operand_list()->Last (); }
-
   virtual std::uint64_t GVNHash() const {
     return GVNHash2(type_name(),object()->GVNHash(),key()->GVNHash());
   }
-
   virtual bool Equal( const Expr* that ) const {
     if(that->IsPGet()) {
       auto that_pget = that->AsPGet();
@@ -1042,7 +952,6 @@ class PGet : public Expr {
     }
     return false;
   }
-
   PGet( Graph* graph , std::uint32_t id , Expr* object , Expr* index ,
                                                          IRInfo* info ):
     Expr  (IRTYPE_PGET,id,graph,info)
@@ -1050,7 +959,6 @@ class PGet : public Expr {
     AddOperand(object);
     AddOperand(index );
   }
-
  protected:
   PGet( IRType type , Graph* graph , std::uint32_t id , Expr* object ,
                                                         Expr* index  ,
@@ -1067,28 +975,24 @@ class PGet : public Expr {
 
 class PSet : public Expr {
  public:
-  inline static PSet* New( Graph* , Expr* , Expr* , Expr* , IRInfo* ,
-                                                            ControlFlow* );
+  inline static PSet* New( Graph* , Expr* , Expr* , Expr* , IRInfo* , ControlFlow* );
   Expr* object() const { return operand_list()->First(); }
   Expr* key   () const { return operand_list()->Index(1);}
   Expr* value () const { return operand_list()->Last (); }
-
   virtual std::uint64_t GVNHash() const {
     return GVNHash3(type_name(),object()->GVNHash(),
                                 key()->GVNHash(),
                                 value()->GVNHash());
   }
-
   virtual bool Equal( const Expr* that ) const {
     if(that->IsPSet()) {
       auto that_pset = that->AsPSet();
       return object()->Equal(that_pset->object()) &&
-             key   ()->Equal(that_pset->key())       &&
+             key   ()->Equal(that_pset->key())    &&
              value ()->Equal(that_pset->value());
     }
     return false;
   }
-
   PSet( Graph* graph , std::uint32_t id , Expr* object , Expr* index ,
                                                          Expr* value ,
                                                          IRInfo* info ):
@@ -1098,7 +1002,6 @@ class PSet : public Expr {
     AddOperand(index );
     AddOperand(value );
   }
-
  protected:
   PSet( IRType type , Graph* graph , std::uint32_t id , Expr* object ,
                                                         Expr* index  ,
@@ -1158,19 +1061,15 @@ class IGet : public Expr {
 
 class ISet : public Expr {
  public:
-  inline static ISet* New( Graph* , Expr* , Expr* , Expr* , IRInfo* ,
-                                                            ControlFlow* );
-
+  inline static ISet* New( Graph* , Expr* , Expr* , Expr* , IRInfo* , ControlFlow* );
   Expr* object() const { return operand_list()->First(); }
   Expr* index () const { return operand_list()->Index(1);}
   Expr* value () const { return operand_list()->Last (); }
-
   virtual std::uint64_t GVNHash() const {
     return GVNHash3(type_name(),object()->GVNHash(),
                                 index ()->GVNHash(),
                                 value ()->GVNHash());
   }
-
   virtual bool Eqaul( const Expr* that ) const {
     if(that->IsISet()) {
       auto that_iset = that->AsISet();
@@ -1508,10 +1407,8 @@ class OSRLoad : public Expr {
 class Alias : public Expr {
  public:
   inline static Alias* New( Graph* , Expr* , Expr* , IRInfo* );
-
   Expr* alias() const { return operand_list()->First(); }
   Expr* value() const { return operand_list()->Last (); }
-
   Alias ( Graph* graph , std::uint32_t id , Expr* alias,
                                             Expr* value,
                                             IRInfo* info ):
@@ -1546,10 +1443,8 @@ class Alias : public Expr {
 class Checkpoint : public Expr {
  public:
   inline static Checkpoint* New( Graph* );
-
   // add a StackSlot into the checkpoint
   inline void AddStackSlot( Expr* , std::uint32_t );
-
   // add a upvalue slot
   inline void AddUGetSlot ( Expr* , std::uint32_t );
 
@@ -1612,13 +1507,9 @@ class UGetSlot : public Expr {
 class TestType : public Expr {
  public:
   inline static TestType* New( Graph* , TypeKind , Expr* , IRInfo* );
-
   TypeKind type_kind() const { return type_kind_; }
-
   const char* type_kind_name() const { return GetTypeKindName(type_kind_); }
-
   Expr* object() const { return operand_list()->First(); }
-
   TestType( Graph* graph , std::uint32_t id , TypeKind tc ,
                                               Expr* obj,
                                               IRInfo* info ):
@@ -1660,7 +1551,6 @@ class TestListOOB : public Expr {
 class Float64Negate  : public Expr {
  public:
   inline static Float64Negate* New( Graph* , Expr* , IRInfo* );
-
   Expr* operand() const { return operand_list()->First(); }
 
   Float64Negate( Graph* graph , std::uint32_t id , Expr* opr , IRInfo* info ):
@@ -1699,11 +1589,7 @@ template< typename T > struct Float64BinaryGVNImpl {
 class Float64Arithmetic : public Binary , public detail::Float64BinaryGVNImpl<Float64Arithmetic> {
  public:
   using Binary::Operator;
-
-  inline static Float64Arithmetic* New( Graph* , Expr*, Expr*,
-                                                        Operator,
-                                                        IRInfo* );
-
+  inline static Float64Arithmetic* New( Graph* , Expr*, Expr*, Operator, IRInfo* );
   Float64Arithmetic( Graph* graph , std::uint32_t id , Expr* lhs,
                                                        Expr* rhs,
                                                        Operator op,
@@ -1725,11 +1611,7 @@ class Float64Arithmetic : public Binary , public detail::Float64BinaryGVNImpl<Fl
 class Float64Bitwise: public Binary , public detail::Float64BinaryGVNImpl<Float64Bitwise> {
  public:
   using Binary::Operator;
-
-  inline static Float64Bitwise* New( Graph* , Expr*, Expr*,
-                                                     Operator,
-                                                     IRInfo* );
-
+  inline static Float64Bitwise* New( Graph* , Expr*, Expr*, Operator, IRInfo* );
   Float64Bitwise( Graph* graph , std::uint32_t id , Expr* lhs,
                                                     Expr* rhs,
                                                     Operator op,
@@ -1751,11 +1633,7 @@ class Float64Bitwise: public Binary , public detail::Float64BinaryGVNImpl<Float6
 class Float64Compare : public Binary , public detail::Float64BinaryGVNImpl<Float64Compare> {
  public:
   using Binary::Operator;
-
-  inline static Float64Compare* New( Graph* , Expr* , Expr* ,
-                                                      Operator,
-                                                      IRInfo* );
-
+  inline static Float64Compare* New( Graph* , Expr* , Expr* , Operator, IRInfo* );
   Float64Compare( Graph* graph , std::uint32_t id , Expr* lhs ,
                                                     Expr* rhs ,
                                                     Operator op ,
@@ -1776,11 +1654,7 @@ class Float64Compare : public Binary , public detail::Float64BinaryGVNImpl<Float
 class StringCompare : public Binary , public detail::Float64BinaryGVNImpl<StringCompare> {
  public:
   using Binary::Operator;
-
-  inline static StringCompare* New( Graph* , Expr* , Expr* ,
-                                                     Operator ,
-                                                     IRInfo* );
-
+  inline static StringCompare* New( Graph* , Expr* , Expr* , Operator , IRInfo* );
   StringCompare( Graph* graph , std::uint32_t id , Expr* lhs ,
                                                    Expr* rhs ,
                                                    Operator op ,
@@ -1799,9 +1673,7 @@ class StringCompare : public Binary , public detail::Float64BinaryGVNImpl<String
 
 class SStringEq : public Binary , public detail::Float64BinaryGVNImpl<SStringEq> {
  public:
-  inline static SStringEq* New( Graph* , Expr* , Expr* ,
-                                                 IRInfo* );
-
+  inline static SStringEq* New( Graph* , Expr* , Expr* , IRInfo* );
   SStringEq( Graph* graph , std::uint32_t id , Expr* lhs ,
                                                Expr* rhs ,
                                                IRInfo* info ):
@@ -1815,9 +1687,7 @@ class SStringEq : public Binary , public detail::Float64BinaryGVNImpl<SStringEq>
 
 class SStringNe : public Binary , public detail::Float64BinaryGVNImpl<SStringNe> {
  public:
-  inline static SStringNe* New( Graph* , Expr* , Expr* ,
-                                                 IRInfo* );
-
+  inline static SStringNe* New( Graph* , Expr* , Expr* , IRInfo* );
   SStringNe( Graph* graph , std::uint32_t id , Expr* lhs ,
                                                Expr* rhs ,
                                                IRInfo* info ):
@@ -1834,9 +1704,7 @@ class SStringNe : public Binary , public detail::Float64BinaryGVNImpl<SStringNe>
 class BooleanNot: public Expr {
  public:
   inline static BooleanNot* New( Graph* , Expr* , IRInfo* );
-
   Expr* operand() const { return operand_list()->First(); }
-
   BooleanNot( Graph* graph , std::uint32_t id , Expr* opr , IRInfo* info ):
     Expr(IRTYPE_BOOLEAN_NOT,id,graph,info)
   {
@@ -1862,9 +1730,7 @@ class BooleanNot: public Expr {
 
 class BooleanLogic : public Binary {
  public:
-   inline static BooleanLogic* New( Graph* , Expr* , Expr* , Operator op ,
-                                                             IRInfo* );
-
+   inline static BooleanLogic* New( Graph* , Expr* , Expr* , Operator op , IRInfo* );
    BooleanLogic( Graph* graph , std::uint32_t id , Expr* lhs ,
                                                    Expr* rhs ,
                                                    Operator op,
@@ -1879,7 +1745,6 @@ class BooleanLogic : public Binary {
   virtual std::uint64_t GVNHash()        const {
     return GVNHash3(type_name(), lhs()->GVNHash(), op (), rhs()->GVNHash());
   }
-
   virtual bool Equal( const Expr* that ) const {
     if(that->IsBooleanLogic()) {
       auto bl = that->AsBooleanLogic();
@@ -1894,7 +1759,6 @@ class BooleanLogic : public Binary {
 class ObjectGet : public PGet {
  public:
   inline static ObjectGet* New( Graph* , Expr* , Expr* , IRInfo* );
-
   ObjectGet( Graph* graph , std::uint32_t id , Expr* object ,
                                                Expr* key,
                                                IRInfo* info ):
@@ -1908,7 +1772,6 @@ class ObjectGet : public PGet {
 class ObjectSet : public PSet {
  public:
   inline static ObjectSet* New( Graph* , Expr* , Expr* , Expr* , IRInfo* );
-
   ObjectSet( Graph* graph , std::uint32_t id , Expr* object ,
                                                Expr* key,
                                                Expr* value,
@@ -1923,7 +1786,6 @@ class ObjectSet : public PSet {
 class ListGet : public IGet {
  public:
   inline static ListGet* New( Graph* , Expr* , Expr* , IRInfo* );
-
   ListGet( Graph* graph , std::uint32_t id, Expr* object,
                                             Expr* index ,
                                             IRInfo* info ):
@@ -1937,7 +1799,6 @@ class ListGet : public IGet {
 class ListSet : public ISet {
  public:
   inline static ListSet* New( Graph* , Expr* , Expr* , Expr* , IRInfo* );
-
   ListSet( Graph* graph , std::uint32_t id , Expr* object ,
                                              Expr* index  ,
                                              Expr* value  ,
@@ -1952,7 +1813,6 @@ class ListSet : public ISet {
 class ExtensionGet : public IGet {
  public:
   inline static ExtensionGet* New( Graph* , Expr* , Expr* , IRInfo* );
-
   ExtensionGet( Graph* graph , std::uint32_t id , Expr* extension ,
                                                   Expr* index,
                                                   IRInfo* info ):
@@ -1966,7 +1826,6 @@ class ExtensionGet : public IGet {
 class ExtensionSet : public ISet {
  public:
   inline static ExtensionSet* New( Graph* , Expr* , Expr* , Expr* , IRInfo* );
-
   ExtensionSet( Graph* graph , std::uint32_t id , Expr* extension ,
                                                   Expr* index,
                                                   Expr* value,
@@ -1984,11 +1843,8 @@ class ExtensionSet : public ISet {
 class Box : public Expr {
  public:
   inline static Box* New( Graph* , Expr* , TypeKind , IRInfo* );
-
   Expr* value() const { return operand_list()->First(); }
-
   TypeKind type_kind() const { return type_kind_; }
-
   Box( Graph* graph , std::uint32_t id , Expr* object , TypeKind tk ,
                                                         IRInfo* info ):
     Expr(IRTYPE_BOX,id,graph,info),
@@ -2018,11 +1874,8 @@ class Box : public Expr {
 class Unbox : public Expr {
  public:
   inline static Unbox* New( Graph* , Expr* , TypeKind , IRInfo* );
-
   Expr* value() const { return operand_list()->First(); }
-
   TypeKind type_kind() const { return type_kind_; }
-
   Unbox( Graph* graph , std::uint32_t id , Expr* object , TypeKind tk ,
                                                           IRInfo* info ):
     Expr(IRTYPE_UNBOX,id,graph,info),
@@ -2057,11 +1910,9 @@ class Unbox : public Expr {
 class TypeGuard : public Expr {
  public:
   inline static TypeGuard* New( Graph* , Expr* , TypeKind , Checkpoint* , IRInfo* );
-
   Expr*       node      () const { return operand_list()->First(); }
   Checkpoint* checkpoint() const { return operand_list()->Last()->AsCheckpoint(); }
   TypeKind    type_kind () const { return type_kind_; }
-
   TypeGuard( Graph* graph , std::uint32_t id , Expr* node , TypeKind type,
                                                             Checkpoint* checkpoint ,
                                                             IRInfo* info ):
@@ -2104,53 +1955,40 @@ class ControlFlow : public Node {
   const RegionList* backward_edge() const {
     return &backward_edge_;
   }
-
   RegionList* backward_edge() {
     return &backward_edge_;
   }
-
   // special case that only one backward edge we have
   ControlFlow* parent() const {
     lava_debug(NORMAL,lava_verify(backward_edge()->size() == 1););
     return backward_edge()->First();
   }
-
   void AddBackwardEdge( ControlFlow* edge ) {
     AddBackwardEdgeImpl(edge);
     edge->AddForwardEdgeImpl(this);
   }
-
   void RemoveBackwardEdge( ControlFlow* );
   void RemoveBackwardEdge( std::size_t index );
-
   void ClearBackwardEdge () { backward_edge()->Clear(); }
-
   const RegionList* forward_edge() const {
     return &forward_edge_;
   }
-
   RegionList* forward_edge() {
     return &forward_edge_;
   }
-
   void AddForwardEdge ( ControlFlow* edge ) {
     AddForwardEdgeImpl(edge);
     edge->AddBackwardEdgeImpl(this);
   }
-
   void RemoveForwardEdge( ControlFlow* edge );
   void RemoveForwardEdge( std::size_t index );
-
   void ClearForwardEdge () { forward_edge()->Clear(); }
-
   const RegionRefList* ref_list() const {
     return &ref_list_;
   }
-
   RegionRefList* ref_list() {
     return &ref_list_;
   }
-
   // Add the referece into the reference list
   void AddRef( ControlFlow* who_uses_me , const RegionListIterator& iter ) {
     ref_list()->PushBack(zone(),RegionRef(iter,who_uses_me));
@@ -2166,23 +2004,18 @@ class ControlFlow : public Node {
   const StatementList* statement_list() const {
     return &stmt_expr_;
   }
-
   StatementList* statement_list() {
     return &stmt_expr_;
   }
-
   void AddStatement( Expr* node ) {
     auto itr = stmt_expr_.PushBack(zone(),node);
     node->set_statement_edge(StatementEdge(this,itr));
   }
-
   void RemoveStatement( const StatementEdge& ee ) {
     lava_debug(NORMAL,lava_verify(ee.region == this););
     statement_list()->Remove(ee.iterator);
   }
-
   void MoveStatement( ControlFlow* );
-
   // OperandList
   //
   // All control flow's related data input should be stored via this list
@@ -2192,18 +2025,14 @@ class ControlFlow : public Node {
   OperandList* operand_list() {
     return &operand_list_;
   }
-
   const OperandList* operand_list() const {
     return &operand_list_;
   }
-
   void AddOperand( Expr* node ) {
     auto itr = operand_list()->PushBack(zone(),node);
     node->AddRef(this,itr);
   }
-
  public:
-
   /**
    * This function will replace |this| node with another control flow
    * node.
@@ -2215,9 +2044,7 @@ class ControlFlow : public Node {
    * in this function
    */
   virtual void Replace( ControlFlow* );
-
  public:
-
   ControlFlow( IRType type , std::uint32_t id , Graph* graph , ControlFlow* parent = NULL ):
     Node(type,id,graph),
     backward_edge_   (),
@@ -2646,11 +2473,9 @@ class ControlFlowBFSIterator: public ControlFlowIterator {
     stack_.Push(graph.start());
     Move();
   }
-
   bool HasNext() const { return next_ != NULL; }
   bool Move();
   ControlFlow* value() const { lava_debug(NORMAL,lava_verify(HasNext());); return next_; }
-
  private:
   OnceList     stack_;
   const Graph* graph_;
@@ -2673,11 +2498,9 @@ class ControlFlowPOIterator : public ControlFlowIterator {
     stack_.Push(graph.start());
     Move();
   }
-
   bool HasNext() const { return next_ != NULL; }
   bool Move();
   ControlFlow* value() const { lava_debug(NORMAL,lava_verify(HasNext());); return next_; }
-
  private:
   OnceList     stack_;
   const Graph* graph_;
@@ -2700,11 +2523,8 @@ class ControlFlowRPOIterator : public ControlFlowIterator {
     stack_.Push(graph.end());
     Move();
   }
-
   bool HasNext() const { return next_ != NULL; }
-
   bool Move();
-
   ControlFlow* value() const { lava_debug(NORMAL,lava_verify(HasNext());); return next_; }
  private:
   DynamicBitSet mark_;
@@ -2740,11 +2560,8 @@ class ControlFlowEdgeIterator {
   }
 
   bool HasNext() const { return !next_.empty(); }
-
   bool Move();
-
   const Edge& value() const { lava_debug(NORMAL,lava_verify(HasNext());); return next_; }
-
  private:
   OnceList stack_;
   std::deque<Edge> results_;
@@ -2769,20 +2586,15 @@ class ExprDFSIterator : public ExprIterator {
   {}
 
  public:
-
   void Reset( Expr* node ) {
     root_ = node;
     next_ = NULL;
     stack_.Clear();
     Move();
   }
-
   bool HasNext() const { return next_ != NULL; }
-
   bool Move();
-
   Expr* value() const { lava_debug(NORMAL,lava_verify(HasNext());); return next_; }
-
  private:
   Expr* root_;
   Expr* next_;

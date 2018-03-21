@@ -7,6 +7,7 @@
 #include "src/hash.h"
 #include "src/bits.h"
 
+#include <type_traits>
 #include <algorithm>
 #include <utility>
 
@@ -37,9 +38,22 @@ template< typename T > class TableIterator {
 };
 
 // =====================================================================
+//
 // Default builtin traits
+//
 // =====================================================================
 template < typename T >struct DefaultTrait {
+
+  static std::uint32_t Hash( const T& val ) {
+    static_assert( std::is_integral<T>::value );
+    static const std::uint32_t kMagic = 2654435761;
+    std::uint32_t v = static_cast<std::uint32_t>(val);
+    return v * kMagic;
+  }
+
+  static bool Equal( const T& lhs , const T& rhs ) {
+    return lhs == rhs;
+  }
 };
 
 template<> struct DefaultTrait<String*> {

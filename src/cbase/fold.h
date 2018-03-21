@@ -20,15 +20,13 @@ namespace hir {
 typedef std::function<IRInfo*()> IRProvider;
 
 Expr* FoldUnary  ( Graph* , Unary::Operator , Expr* , const IRProvider& );
-
 Expr* FoldBinary ( Graph* , Binary::Operator, Expr* , Expr* , const IRProvider& );
-
 Expr* FoldTernary( Graph* , Expr* , Expr* , Expr* , const IRProvider& );
-
 // Helper to simplify the logic, it is used mainly after 1) type guard generated 2) inference succeeded
 Expr* SimplifyLogic( Graph* , Expr* , Expr* , Binary::Operator , const IRProvider& );
-
 Expr* FoldIntrinsicCall( Graph* , ICall* );
+Expr* FoldObjectSet( Graph* , Expr* , Expr* , Expr* , const IRProvider& );
+Expr* FoldObjectGet( Graph* , Expr* , Expr* , const IRProvider& );
 
 } // namespace hir
 } // namespace cbase

@@ -22,10 +22,7 @@ using namespace ::lavascript::interpreter;
  * -----------------------------------------------------------*/
 class GraphBuilder::OSRScope {
  public:
-  OSRScope( GraphBuilder* gb , const Handle<Prototype>& ,
-                               ControlFlow* ,
-                               const std::uint32_t* );
-
+  OSRScope( GraphBuilder* , const Handle<Prototype>& , ControlFlow* , const std::uint32_t* );
   ~OSRScope() {
     gb_->func_info_.pop_back();
     gb_->upvalue_ = old_upvalue_;
@@ -36,10 +33,7 @@ class GraphBuilder::OSRScope {
 };
 class GraphBuilder::FuncScope {
  public:
-  FuncScope( GraphBuilder* gb , const Handle<Prototype>& proto ,
-                                ControlFlow* region ,
-                                std::uint32_t base );
-
+  FuncScope( GraphBuilder* , const Handle<Prototype>& , ControlFlow* , std::uint32_t );
   ~FuncScope() {
     gb_->func_info_.pop_back();
     gb_->upvalue_ = old_upvalue_;
@@ -77,7 +71,6 @@ class GraphBuilder::BackupState {
   {
     if(gb->stack_) state->stack = *gb->stack_;
     if(gb->upvalue_) state->upvalue = *gb->upvalue_;
-
     gb->stack_ = &(state->stack);
     gb->upvalue_ = &(state->upvalue);
   }
@@ -113,12 +106,10 @@ GraphBuilder::OSRScope::OSRScope( GraphBuilder* gb , const Handle<Prototype>& pr
   old_upvalue_(gb->upvalue_) {
 
   FuncInfo temp(proto,region,osr_start); // initialize a FuncInfo as OSR entry
-
   // get the loop header information and recursively register all its needed
   // loop info object inside of the FuncInfo object
   auto loop_header = temp.bc_analyze.LookUpLoopHeader(osr_start);
   lava_debug(NORMAL,lava_verify(loop_header););
-
   /**
    * We need to iterate the loop one by one from the top most loop
    * inside of the nested loop cluster so we need to use a queue to
@@ -131,17 +122,13 @@ GraphBuilder::OSRScope::OSRScope( GraphBuilder* gb , const Handle<Prototype>& pr
       queue.push_back(cur_header);
       cur_header = cur_header->prev;
     }
-
     for( auto ritr = queue.rbegin() ; ritr != queue.rend(); ++ritr ) {
       temp.loop_info.push_back(LoopInfo(*ritr));
     }
-
   }
-
   gb->graph_->AddPrototypeInfo(proto,0);
   gb->func_info_.push_back(FuncInfo(std::move(temp)));
   gb->stack_->resize(interpreter::kRegisterSize);
-
   // populate upvalue array for this function
   {
     FuncInfo &ctx = gb->func_info_.back();
@@ -161,7 +148,6 @@ GraphBuilder::FuncScope::FuncScope( GraphBuilder* gb , const Handle<Prototype>& 
   gb->graph_->AddPrototypeInfo(proto,base);
   gb->func_info_.push_back(FuncInfo(proto,region,base));
   gb->stack_->resize(base+interpreter::kRegisterSize);
-
   if(gb->func_info_.size() == 1) {
     /**
      * Initialize function argument for entry function. When we hit
@@ -173,7 +159,6 @@ GraphBuilder::FuncScope::FuncScope( GraphBuilder* gb , const Handle<Prototype>& 
       gb->stack_->at(i) = Arg::New(gb->graph_,static_cast<std::uint32_t>(i));
     }
   }
-
   // populate upvalue array for this function
   {
     FuncInfo &ctx = gb->func_info_.back();
@@ -268,7 +253,6 @@ Expr* GraphBuilder::AddTypeFeedbackIfNeed( const StackSlot& idx ,
                                            IRInfo* info ) {
   auto n   = idx.node;
   auto stp = GetTypeInference(n);
-
   if(stp != TPKIND_UNKNOWN) {
     /**
      * This check means our static type inference should match the traced
@@ -283,13 +267,10 @@ Expr* GraphBuilder::AddTypeFeedbackIfNeed( const StackSlot& idx ,
   }
 
   lava_debug(NORMAL,lava_verify(tp != TPKIND_UNKNOWN););
-
   auto cp = BuildCheckpoint(info->bc());
   auto guard = TypeGuard::New(graph_,n,tp,cp,info);
-
   // set the modified node back to where the stack slot is put
   if(idx.HasIndex()) StackSet(idx.index,guard);
-
   // return the new guarded node
   return guard;
 }
@@ -306,9 +287,7 @@ Expr* GraphBuilder::NewUnary( const StackSlot& index , Unary::Operator op ,
         return NewIRInfo(pc);
       }
   );
-
   if(new_node) return new_node;
-
   // 2. now we know there's no way we can resolve the expression and
   //    we don't have any type information from static type inference.
   //    fallback to do speculative unary or dynamic dispatch if needed
@@ -318,17 +297,13 @@ Expr* GraphBuilder::NewUnary( const StackSlot& index , Unary::Operator op ,
 Expr* GraphBuilder::TrySpeculativeUnary( const StackSlot& index , Unary::Operator op ,
                                                                   const BytecodeLocation& pc ) {
   auto node = index.node;
-
   // try to get the value feedback from type trace operations
   auto tt = type_trace_.GetTrace( pc.address() );
-
   if(tt) {
     auto v = tt->data[1]; // unary operation's 1st operand
-
     if(op == Unary::NOT) {
       // create a guard for this object's boolean value under boolean context
       node = AddTypeFeedbackIfNeed(index,v,pc);
-
       // do a static boolean inference here
       auto tp = GetTypeInference(node);
       bool bval;
@@ -338,11 +313,8 @@ Expr* GraphBuilder::TrySpeculativeUnary( const StackSlot& index , Unary::Operato
 
         // if the guarded type is boolean, then we could just use BooleanNot
         // node which has type information and enable the inference on it
-        return NewBoxNode<BooleanNot>(graph_,
-                                      TPKIND_BOOLEAN,
-                                      node->ir_info(),
-                                      NewUnboxNode(graph_,node,TPKIND_BOOLEAN,node->ir_info()),
-                                      node->ir_info());
+        return NewBoxNode<BooleanNot>(graph_, TPKIND_BOOLEAN, node->ir_info(),
+                 NewUnboxNode(graph_,node,TPKIND_BOOLEAN,node->ir_info()),node->ir_info());
       }
     } else {
       if(v.IsReal()) {
@@ -350,11 +322,8 @@ Expr* GraphBuilder::TrySpeculativeUnary( const StackSlot& index , Unary::Operato
         node = AddTypeFeedbackIfNeed(index,TPKIND_FLOAT64,pc);
 
         // create a boxed node with gut of Float64Negate node
-        return NewBoxNode<Float64Negate>(graph_,
-                                         TPKIND_FLOAT64,
-                                         node->ir_info(),
-                                         NewUnboxNode(graph_,node,TPKIND_FLOAT64,node->ir_info()),
-                                         node->ir_info());
+        return NewBoxNode<Float64Negate>(graph_, TPKIND_FLOAT64, node->ir_info(),
+                 NewUnboxNode(graph_,node,TPKIND_FLOAT64,node->ir_info()),node->ir_info());
       }
     }
   }
@@ -380,7 +349,6 @@ Expr* GraphBuilder::NewBinary  ( const StackSlot& lidx, const StackSlot& ridx,
                                                         const BytecodeLocation& pc ) {
   auto lhs = lidx.node;
   auto rhs = ridx.node;
-
   auto new_node = FoldBinary(graph_,op,lhs,rhs,[this,pc]() {
       return NewIRInfo(pc);
   });
@@ -403,7 +371,6 @@ Expr* GraphBuilder::TrySpecialTestBinary( const StackSlot& lidx , const StackSlo
                                                                   const BytecodeLocation& pc ) {
   auto lhs = lidx.node;
   auto rhs = ridx.node;
-
   if(op == Binary::EQ || op == Binary::NE) {
     if((lhs->IsICall() && rhs->IsString()) || (rhs->IsICall() && lhs->IsString())) {
       /**
@@ -414,19 +381,19 @@ Expr* GraphBuilder::TrySpecialTestBinary( const StackSlot& lidx , const StackSlo
       auto type  = lhs->IsString()? lhs->AsZoneString() : rhs->AsZoneString();
 
       if(type == "real") {
-        return TestType::New(graph_,TPKIND_FLOAT64,icall->GetArgument(0),NewIRInfo(pc));
+        return TestType::New(graph_,TPKIND_FLOAT64  ,icall->GetArgument(0),NewIRInfo(pc));
       } else if(type == "boolean") {
-        return TestType::New(graph_,TPKIND_BOOLEAN,icall->GetArgument(0),NewIRInfo(pc));
+        return TestType::New(graph_,TPKIND_BOOLEAN  ,icall->GetArgument(0),NewIRInfo(pc));
       } else if(type == "null") {
-        return TestType::New(graph_,TPKIND_NIL,icall->GetArgument(0),NewIRInfo(pc));
+        return TestType::New(graph_,TPKIND_NIL      ,icall->GetArgument(0),NewIRInfo(pc));
       } else if(type == "list") {
-        return TestType::New(graph_,TPKIND_LIST,icall->GetArgument(0),NewIRInfo(pc));
+        return TestType::New(graph_,TPKIND_LIST     ,icall->GetArgument(0),NewIRInfo(pc));
       } else if(type == "object") {
-        return TestType::New(graph_,TPKIND_OBJECT,icall->GetArgument(0),NewIRInfo(pc));
+        return TestType::New(graph_,TPKIND_OBJECT   ,icall->GetArgument(0),NewIRInfo(pc));
       } else if(type == "closure") {
-        return TestType::New(graph_,TPKIND_CLOSURE,icall->GetArgument(0),NewIRInfo(pc));
+        return TestType::New(graph_,TPKIND_CLOSURE  ,icall->GetArgument(0),NewIRInfo(pc));
       } else if(type == "iterator") {
-        return TestType::New(graph_,TPKIND_ITERATOR,icall->GetArgument(0),NewIRInfo(pc));
+        return TestType::New(graph_,TPKIND_ITERATOR ,icall->GetArgument(0),NewIRInfo(pc));
       } else if(type == "extension") {
         return TestType::New(graph_,TPKIND_EXTENSION,icall->GetArgument(0),NewIRInfo(pc));
       }
@@ -452,69 +419,44 @@ Expr* GraphBuilder::TrySpeculativeBinary( const StackSlot& lidx , const StackSlo
       case Binary::DIV: case Binary::POW: case Binary::MOD:
         if(lhs_val.IsReal() && rhs_val.IsReal()) {
           auto ir_info = NewIRInfo(pc);
-
           lhs = AddTypeFeedbackIfNeed(lidx,TPKIND_FLOAT64,ir_info);
           rhs = AddTypeFeedbackIfNeed(ridx,TPKIND_FLOAT64,ir_info);
 
-          return NewBoxNode<Float64Arithmetic>(graph_,
-                                               TPKIND_FLOAT64,
-                                               ir_info,
-                                               NewUnboxNode(graph_,lhs,TPKIND_FLOAT64,ir_info),
-                                               NewUnboxNode(graph_,rhs,TPKIND_FLOAT64,ir_info),
-                                               op,
-                                               ir_info);
+          return NewBoxNode<Float64Arithmetic>(graph_, TPKIND_FLOAT64, ir_info,
+                   NewUnboxNode(graph_,lhs,TPKIND_FLOAT64,ir_info),
+                   NewUnboxNode(graph_,rhs,TPKIND_FLOAT64,ir_info), op,ir_info);
         }
         break;
       case Binary::LT: case Binary::LE: case Binary::GT:
       case Binary::GE: case Binary::EQ: case Binary::NE:
         if(lhs_val.IsReal() && rhs_val.IsReal()) {
           auto ir_info = NewIRInfo(pc);
-
           lhs = AddTypeFeedbackIfNeed(lidx,TPKIND_FLOAT64,ir_info);
           rhs = AddTypeFeedbackIfNeed(ridx,TPKIND_FLOAT64,ir_info);
-
-          return NewBoxNode<Float64Compare>(graph_,
-                                            TPKIND_BOOLEAN,
-                                            ir_info,
-                                            NewUnboxNode(graph_,lhs,TPKIND_FLOAT64,ir_info),
-                                            NewUnboxNode(graph_,rhs,TPKIND_FLOAT64,ir_info),
-                                            op,
-                                            ir_info);
+          return NewBoxNode<Float64Compare>(graph_, TPKIND_BOOLEAN, ir_info,
+                   NewUnboxNode(graph_,lhs,TPKIND_FLOAT64,ir_info),
+                   NewUnboxNode(graph_,rhs,TPKIND_FLOAT64,ir_info), op, ir_info);
 
         } else if(lhs_val.IsString() && rhs_val.IsString()) {
           auto ir_info = NewIRInfo(pc);
-
           if((lhs_val.IsSSO() && rhs_val.IsSSO()) && (op == Binary::EQ || op == Binary::NE)) {
-
             lhs = AddTypeFeedbackIfNeed(lidx,TPKIND_SMALL_STRING,ir_info);
             rhs = AddTypeFeedbackIfNeed(ridx,TPKIND_SMALL_STRING,ir_info);
-
             if(op == Binary::EQ) {
-              return NewBoxNode<SStringEq>(graph_,
-                                           TPKIND_BOOLEAN,
-                                           ir_info,
-                                           NewUnboxNode(graph_,lhs,TPKIND_SMALL_STRING,ir_info),
-                                           NewUnboxNode(graph_,rhs,TPKIND_SMALL_STRING,ir_info),
-                                           ir_info);
+              return NewBoxNode<SStringEq>(graph_, TPKIND_BOOLEAN, ir_info,
+                       NewUnboxNode(graph_,lhs,TPKIND_SMALL_STRING,ir_info),
+                       NewUnboxNode(graph_,rhs,TPKIND_SMALL_STRING,ir_info),ir_info);
             } else {
-              return NewBoxNode<SStringNe>(graph_,
-                                           TPKIND_BOOLEAN,
-                                           ir_info,
-                                           NewUnboxNode(graph_,lhs,TPKIND_SMALL_STRING,ir_info),
-                                           NewUnboxNode(graph_,rhs,TPKIND_SMALL_STRING,ir_info),
-                                           ir_info);
+              return NewBoxNode<SStringNe>(graph_, TPKIND_BOOLEAN, ir_info,
+                       NewUnboxNode(graph_,lhs,TPKIND_SMALL_STRING,ir_info),
+                       NewUnboxNode(graph_,rhs,TPKIND_SMALL_STRING,ir_info),ir_info);
             }
           } else {
             lhs = AddTypeFeedbackIfNeed(lidx,TPKIND_STRING,ir_info);
             rhs = AddTypeFeedbackIfNeed(ridx,TPKIND_STRING,ir_info);
-
-            return NewBoxNode<StringCompare>(graph_,
-                                             TPKIND_BOOLEAN,
-                                             ir_info,
-                                             NewUnboxNode(graph_,lhs,TPKIND_STRING,ir_info),
-                                             NewUnboxNode(graph_,rhs,TPKIND_STRING,ir_info),
-                                             op,
-                                             ir_info);
+            return NewBoxNode<StringCompare>(graph_, TPKIND_BOOLEAN, ir_info,
+                     NewUnboxNode(graph_,lhs,TPKIND_STRING,ir_info),
+                     NewUnboxNode(graph_,rhs,TPKIND_STRING,ir_info), op,ir_info);
           }
         }
         break;
@@ -522,24 +464,17 @@ Expr* GraphBuilder::TrySpeculativeBinary( const StackSlot& lidx , const StackSlo
       case Binary::AND: case Binary::OR:
         {
           lhs = AddTypeFeedbackIfNeed(lidx,lhs_val,NewIRInfo(pc));
-
           // simplify the logic expression if we can do so
           auto ret = SimplifyLogic(graph_,lhs,rhs,op,[&]() { return NewIRInfo(pc); });
           if(ret)
             return ret;
-
           rhs = AddTypeFeedbackIfNeed(ridx,rhs_val,NewIRInfo(pc));
           auto ir_info = NewIRInfo(pc);
-
           if(GetTypeInference(lhs) == TPKIND_BOOLEAN &&
              GetTypeInference(rhs) == TPKIND_BOOLEAN) {
-            return NewBoxNode<BooleanLogic>(graph_,
-                                            TPKIND_BOOLEAN,
-                                            ir_info,
-                                            NewUnboxNode(graph_,lhs,TPKIND_BOOLEAN,ir_info),
-                                            NewUnboxNode(graph_,rhs,TPKIND_BOOLEAN,ir_info),
-                                            op,
-                                            ir_info);
+            return NewBoxNode<BooleanLogic>(graph_, TPKIND_BOOLEAN, ir_info,
+                     NewUnboxNode(graph_,lhs,TPKIND_BOOLEAN,ir_info),
+                     NewUnboxNode(graph_,rhs,TPKIND_BOOLEAN,ir_info), op,ir_info);
           }
         }
         break;
@@ -565,20 +500,16 @@ Expr* GraphBuilder::NewBinaryFallback( const StackSlot& lidx , const StackSlot& 
 // ========================================================================
 Expr* GraphBuilder::NewTernary ( const StackSlot& cidx, Expr* lhs, Expr* rhs, const BytecodeLocation& pc ) {
   auto cond = cidx.node;
-
   auto new_node = FoldTernary(graph_,cond,lhs,rhs,[this,pc]() {
         return NewIRInfo(pc);
       }
   );
   if(new_node) return new_node;
-
   { // do a guess based on type trace
     auto tt = type_trace_.GetTrace(pc.address());
-
     if(tt) {
       auto ir_info = NewIRInfo(pc);
       auto a1 = tt->data[0]; // condition's value
-
       cond = AddTypeFeedbackIfNeed(cidx,a1,ir_info);
       bool bval;
       if(TPKind::ToBoolean(MapValueToTypeKind(a1),&bval)) {
@@ -586,24 +517,25 @@ Expr* GraphBuilder::NewTernary ( const StackSlot& cidx, Expr* lhs, Expr* rhs, co
       }
     }
   }
-
   // Fallback
   return Ternary::New(graph_,cond,lhs,rhs,NewIRInfo(pc));
 }
 
+// ========================================================================
+//
+// Intrinsic Call Node
+//
+// ========================================================================
 Expr* GraphBuilder::NewICall   ( std::uint8_t a1 , std::uint8_t a2 , std::uint8_t a3 ,
                                                                      bool tcall ,
                                                                      const BytecodeLocation& pc ) {
   IntrinsicCall ic = static_cast<IntrinsicCall>(a1);
   auto base = a2; // new base to get value from current stack
   auto node = ICall::New(graph_,ic,tcall,NewIRInfo(pc));
-
   for( std::uint8_t i = 0 ; i < a3 ; ++i ) {
     node->AddArgument(StackGet(i,base));
   }
-
   lava_debug(NORMAL,lava_verify(GetIntrinsicCallArgumentSize(ic) == a3););
-
   // try to optimize the intrinsic call
   auto ret = FoldIntrinsicCall(graph_,node);
 
@@ -647,82 +579,38 @@ Expr* GraphBuilder::LowerICall( ICall* node ) {
   return NULL;
 }
 
-Expr* GraphBuilder::FoldObjectSet( IRObject* object , const zone::String& key ,
-                                                      Expr* value,
-                                                      IRInfo* ir_info ) {
-  auto itr  = object->operand_list()->FindIf(
-      [key]( const OperandList::ConstForwardIterator& itr ) {
-        auto v = itr.value()->AsIRObjectKV();
-        return (v->key()->IsString() && v->key()->AsZoneString() == key);
-      }
-    );
-  if(itr.HasNext()) {
-    auto new_obj = IRObject::New(graph_,object->Size(),ir_info);
-
-    for( auto i(object->operand_list()->GetForwardIterator());
-         i.HasNext(); i.Move() ) {
-      auto kv = i.value()->AsIRObjectKV();
-      if(kv == itr.value()) {
-        new_obj->Add(kv->key(),value,ir_info);
-      } else {
-        new_obj->AddOperand(kv);
-      }
-    }
-    return new_obj;
-  }
-  return NULL;
-}
-
-Expr* GraphBuilder::FoldObjectGet( IRObject* object , const zone::String& key ,
-                                                      IRInfo* ir_info ) {
-  (void)ir_info;
-
-  auto itr = object->operand_list()->FindIf(
-      [key]( const OperandList::ConstForwardIterator& itr ) {
-        auto v = itr.value()->AsIRObjectKV();
-        return (v->key()->IsString() && v->key()->AsZoneString() == key);
-      }
-    );
-
-  if(itr.HasNext()) {
-    return itr.value()->AsIRObjectKV()->value(); // forward the value
-  }
-  return NULL;
-}
-
+// ====================================================================
+//
+// Property Get/Set
+//
+// ====================================================================
 Expr* GraphBuilder::NewPSet( Expr* object , Expr* key , Expr* value , IRInfo* ir_info ) {
   // try to fold the object if object is a literal
-  if(object->IsIRObject()) {
-    auto kstr = key->AsZoneString();
-    auto obj  = object->AsIRObject();
-    auto v    = FoldObjectSet(obj,kstr,value,ir_info);
-    if(v) return v;
-  }
-
+  auto v = FoldObjectSet(graph_,object,key,value,[=](){ return ir_info; });
+  if(!v) return v;
   return PSet::New(graph_,object,key,value,ir_info,region());
 }
 
 Expr* GraphBuilder::NewPGet( Expr* object , Expr* key , IRInfo* ir_info ) {
   // here we *do not* do any folding operations and let the later on pass handle it
   // and we just simply do a pget node test plus some guard if needed
-  if(object->IsIRObject()) {
-    auto kstr= key->AsZoneString();
-    auto obj = object->AsIRObject();
-    auto v   = FoldObjectGet(obj,kstr,ir_info);
-    if(v) return v;
-  }
-
+  auto v = FoldObjectGet(graph_,object,key,[=](){ return ir_info; });
+  if(!v) return v;
   // when we reach here we needs to generate guard
   return PGet::New(graph_,object,key,ir_info,region());
 }
 
+// ====================================================================
+//
+// Index Get/Set
+//
+// ====================================================================
 Expr* GraphBuilder::NewISet( Expr* object, Expr* index, Expr* value, IRInfo* ir_info ) {
   if(object->IsIRList() && index->IsFloat64()) {
     auto iidx = static_cast<std::uint32_t>(index->AsFloat64()->value());
     auto list = object->AsIRList();
     if(iidx < list->Size()) {
       auto new_list = IRList::New(graph_,list->Size(),ir_info);
-
       // create a new list
       std::uint32_t count = 0;
       for( auto itr(list->operand_list()->GetForwardIterator()) ;
@@ -735,16 +623,12 @@ Expr* GraphBuilder::NewISet( Expr* object, Expr* index, Expr* value, IRInfo* ir_
         ++count;
       }
       lava_debug(NORMAL,lava_verify(count == list->operand_list()->size()););
-
       return new_list;
     }
-  } else if(object->IsIRObject() && index->IsString()) {
-    auto key = index->AsZoneString();
-    auto obj = object->AsIRObject();
-    auto v   = FoldObjectSet(obj,key,value,ir_info);
+  } else if(index->IsString()) {
+    auto v = FoldObjectSet(graph_,object,index,value,[=](){ return ir_info; });
     if(v) return v;
   }
-
   return ISet::New(graph_,object,index,value,ir_info,region());
 }
 
@@ -755,13 +639,10 @@ Expr* GraphBuilder::NewIGet( Expr* object, Expr* index, IRInfo* ir_info ) {
     if(iidx < list->Size()) {
       return list->operand_list()->Index(iidx);
     }
-  } else if(object->IsIRObject() && index->IsString()) {
-    auto key = index->AsZoneString();
-    auto obj = object->AsIRObject();
-    auto v   = FoldObjectGet(obj,key,ir_info);
+  } else if(index->IsString()) {
+    auto v = FoldObjectGet(graph_,object,index,[=](){ return ir_info;});
     if(v) return v;
   }
-
   return IGet::New(graph_,object,index,ir_info,region());
 }
 
@@ -774,7 +655,6 @@ void GraphBuilder::NewGGet( std::uint8_t a1 , std::uint8_t a2 ,
                                               const BytecodeLocation& loc ,
                                               bool sso ) {
   std::string key;
-
   if(sso) {
     const SSO& sso = *(func_info().prototype->GetSSO(a2)->sso);
     key = sso.ToStdString();
@@ -782,7 +662,6 @@ void GraphBuilder::NewGGet( std::uint8_t a1 , std::uint8_t a2 ,
     Handle<String> str(func_info().prototype->GetString(a2));
     key = str->ToStdString();
   }
-
   // 1. do a global variable lookup in the global table
   {
     auto itr = globals_.find(key);
@@ -791,16 +670,11 @@ void GraphBuilder::NewGGet( std::uint8_t a1 , std::uint8_t a2 ,
       return;
     }
   }
-
   auto info = NewIRInfo(loc);
-
   // 2. fallback to create a GGet node and attach it to corresponding places
-  auto gget = GGet::New(graph_, (sso ? NewSSO(a2,info) : NewString(a2,info)) ,
-                                info , region() );
-
+  auto gget = GGet::New(graph_, (sso ? NewSSO(a2,info) : NewString(a2,info)) , info , region() );
   // 3. write the node back
   StackSet(a1,gget);
-
   // record it inside of the global table , this basically records there's a alias
   // here inside of the table , later on when a function call is issued which cannot
   // be inlined , then it will cast a alias node on all the global variables which
@@ -812,7 +686,6 @@ void GraphBuilder::NewGSet( std::uint8_t a1 , std::uint8_t a2 ,
                                               const BytecodeLocation& loc ,
                                               bool sso ) {
   std::string key;
-
   if(sso) {
     const SSO& sso = *(func_info().prototype->GetSSO(a1)->sso);
     key = sso.ToStdString();
@@ -820,7 +693,6 @@ void GraphBuilder::NewGSet( std::uint8_t a1 , std::uint8_t a2 ,
     Handle<String> str(func_info().prototype->GetString(a1));
     key = str->ToStdString();
   }
-
   // do a update to the table
   UpdateMap(&globals_,std::move(key),StackGetSlot(a2));
 }
@@ -871,7 +743,6 @@ void GraphBuilder::GeneratePhi( ValueStack* dest , const ValueStack& lhs ,
                                                    ControlFlow* region ,
                                                    const interpreter::BytecodeLocation& pc ) {
   lava_debug(NORMAL,lava_verify(lhs.size() == rhs.size()););
-
   for( std::size_t i = 0 ; i < lhs.size() ; ++i ) {
     Expr* l = lhs[i];
     Expr* r = rhs[i];
@@ -905,9 +776,7 @@ void GraphBuilder::InsertUnconditionalJumpPhi( const ValueStack& stk , ControlFl
   for( std::size_t i = 0 ; i < stack_->size(); ++i ) {
     Expr* lhs = stack_->at(i);
     if(i == stk.size()) break;
-
     Expr* rhs = stk[i];
-
     if(lhs && rhs) {
       if(lhs != rhs) {
         stack_->at(i) = Phi::New(graph_,lhs,rhs,region,NewIRInfo(pc));
@@ -936,17 +805,12 @@ GraphBuilder::StopReason GraphBuilder::BuildLogic( BytecodeIterator* itr ) {
   bool op_and = itr->opcode() == BC_AND ? true : false;
   std::uint8_t lhs,rhs,dummy;
   std::uint32_t pc;
-
   itr->GetOperand(&lhs,&rhs,&dummy,&pc);
-
   // where we should end for the other part of the logical cominator
   const std::uint32_t* end_pc = itr->OffsetAt(pc);
-
   Expr* lhs_expr = StackGet(lhs);
   lava_debug(NORMAL,lava_verify(lhs_expr););
-
   StackSet(rhs,lhs_expr);
-
   { // evaluate the rhs
     itr->Move();
     StopReason reason = BuildBasicBlock(itr,end_pc);
@@ -955,14 +819,12 @@ GraphBuilder::StopReason GraphBuilder::BuildLogic( BytecodeIterator* itr ) {
 
   Expr* rhs_expr = StackGet(rhs);
   lava_debug(NORMAL,lava_verify(rhs_expr););
-
   if(op_and)
     StackSet(rhs,NewBinary(StackSlot(lhs_expr,lhs),
                            StackSlot(rhs_expr,rhs),Binary::AND,itr->bytecode_location()));
   else
     StackSet(rhs,NewBinary(StackSlot(lhs_expr,lhs),
                            StackSlot(rhs_expr,rhs),Binary::OR ,itr->bytecode_location()));
-
   return STOP_SUCCESS;
 }
 
@@ -974,7 +836,6 @@ GraphBuilder::StopReason GraphBuilder::BuildTernary( BytecodeIterator* itr ) {
   Expr* lhs, *rhs;
 
   itr->GetOperand(&cond,&result,&dummy,&offset);
-
   { // evaluate the fall through branch
     for( itr->Move() ; itr->HasNext() ; ) {
       if(itr->opcode() == BC_JMP) break; // end of the first ternary fall through branch
@@ -989,7 +850,6 @@ GraphBuilder::StopReason GraphBuilder::BuildTernary( BytecodeIterator* itr ) {
   }
 
   const std::uint32_t* end_pc = itr->OffsetAt(final_cursor);
-
   { // evaluate the jump branch
     lava_debug(NORMAL,StackReset(result););
     lava_debug(NORMAL,itr->Move();lava_verify(itr->pc() == itr->OffsetAt(offset)););
@@ -1012,7 +872,6 @@ GraphBuilder::StopReason GraphBuilder::BuildTernary( BytecodeIterator* itr ) {
 GraphBuilder::StopReason GraphBuilder::GotoIfEnd( BytecodeIterator* itr,
                                                   const std::uint32_t* pc ) {
   StopReason ret;
-
   lava_verify(itr->SkipTo(
     [pc,&ret]( BytecodeIterator* itr ) {
       if(itr->pc() == pc) {
@@ -1024,7 +883,6 @@ GraphBuilder::StopReason GraphBuilder::GotoIfEnd( BytecodeIterator* itr,
       }
       return true;
   }));
-
   return ret;
 }
 
@@ -1079,7 +937,6 @@ GraphBuilder::BuildIf( BytecodeIterator* itr ) {
     itr->Move();              // skip the BC_JMPF
     BackupState backup(&true_stack,this); // back up the old stack and use new stack
     set_region(true_region);  // switch to true region
-
     {
       StopReason reason = BuildIfBlock(itr,itr->OffsetAt(offset));
       if(reason == STOP_BAILOUT) {
@@ -1094,10 +951,8 @@ GraphBuilder::BuildIf( BytecodeIterator* itr ) {
         have_false_branch = false;
       }
     }
-
     rhs = region();
   }
-
   // 2. Build code inside of the *false* branch
   if(have_false_branch) {
     set_region(false_region);
@@ -1110,14 +965,11 @@ GraphBuilder::BuildIf( BytecodeIterator* itr ) {
     final_cursor = offset; // we don't have a else/elif branch
     lhs = false_region;
   }
-
   // 3. set the merge backward edge
   merge->AddBackwardEdge(lhs);
   merge->AddBackwardEdge(rhs);
-
   itr->BranchTo(final_cursor);
   set_region(merge);
-
   // 3. handle PHI node
   InsertIfPhi(*stack_ , true_stack.stack , *upvalue_ , true_stack.upvalue ,
                                                        merge ,
@@ -1128,12 +980,12 @@ GraphBuilder::BuildIf( BytecodeIterator* itr ) {
 GraphBuilder::StopReason
 GraphBuilder::GotoLoopEnd( BytecodeIterator* itr ) {
   lava_verify(itr->SkipTo(
-        []( BytecodeIterator* itr ) {
-          return !(itr->opcode() == BC_FEEND ||
-                   itr->opcode() == BC_FEND1 ||
-                   itr->opcode() == BC_FEND2 ||
-                   itr->opcode() == BC_FEVREND);
-        }
+    []( BytecodeIterator* itr ) {
+      return !(itr->opcode() == BC_FEEND ||
+               itr->opcode() == BC_FEND1 ||
+               itr->opcode() == BC_FEND2 ||
+               itr->opcode() == BC_FEVREND);
+    }
   ));
 
   return STOP_SUCCESS;
@@ -1243,62 +1095,45 @@ GraphBuilder::BuildLoopBody( BytecodeIterator* itr , ControlFlow* loop_header ) 
 
   {
     BackupState backup(&true_stack,this);
-
     LoopScope lscope(this,itr->pc());
-
     // create new loop body node
     body = Loop::New(graph_);
-
     // set it as the current region node
     set_region(body);
-
     // generate PHI node at the head of the *block*
     GenerateLoopPhi(itr->bytecode_location());
-
     // iterate all BC inside of the loop body
     StopReason reason = BuildLoopBlock(itr);
     if(reason == STOP_BAILOUT) return STOP_BAILOUT;
-
     lava_debug(NORMAL, lava_verify(reason == STOP_SUCCESS || reason == STOP_JUMP););
-
     cont_pc = itr->bytecode_location(); // continue should jump at current BC which is loop exit node
-
     // now we should stop at the FEND1/FEND2/FEEND instruction
     auto exit_cond = BuildLoopEndCondition(itr,body);
     lava_debug(NORMAL,lava_verify(!exit););
     exit = LoopExit::New(graph_,exit_cond);
-
     // connect each control flow node together
     exit->AddBackwardEdge(region());  // NOTES: do not link back to body directly since current
                                       //        region may changed due to new basic block creation
 
     body->AddBackwardEdge(loop_header);
     body->AddBackwardEdge(exit);
-
     after->AddBackwardEdge(exit);
-
     // skip the last end instruction
     itr->Move();
-
     // patch all the Phi node
     PatchLoopPhi();
-
     // break should jump here which is *after* the merge region
     brk_pc = itr->bytecode_location();
-
     // patch all the pending continue and break node
     PatchUnconditionalJump( &func_info().current_loop().pending_continue , exit , cont_pc );
     PatchUnconditionalJump( &func_info().current_loop().pending_break    , after, brk_pc  );
-
     lava_debug(NORMAL,
         lava_verify(func_info().current_loop().pending_continue.empty());
         lava_verify(func_info().current_loop().pending_break.empty());
         lava_verify(func_info().current_loop().phi_list.empty());
     );
   }
-
   set_region(after);
-
   // merge the loop header
   InsertIfPhi(*stack_ , true_stack.stack , *upvalue_ , true_stack.upvalue ,
                                                        after,
@@ -1309,13 +1144,9 @@ GraphBuilder::BuildLoopBody( BytecodeIterator* itr , ControlFlow* loop_header ) 
 GraphBuilder::StopReason
 GraphBuilder::BuildLoop( BytecodeIterator* itr ) {
   lava_debug(NORMAL,lava_verify(IsLoopStartBytecode(itr->opcode())););
-
   LoopHeader* loop_header = LoopHeader::New(graph_,region());
-
-
   // set the current region to be loop header
   set_region(loop_header);
-
   // construct the loop's first branch. all loop here are automatically
   // inversed
   if(itr->opcode() == BC_FSTART) {
@@ -1325,11 +1156,9 @@ GraphBuilder::BuildLoop( BytecodeIterator* itr ) {
   } else if(itr->opcode() == BC_FESTART) {
     std::uint8_t a1; std::uint16_t a2;
     itr->GetOperand(&a1,&a2);
-
     // create ir ItrNew which basically initialize the itr and also do
     // a test against the iterator to see whether it is workable
     IRInfo* info = NewIRInfo(itr->bytecode_location());
-
     ItrNew* inew = ItrNew::New(graph_,StackGet(a1),info,region());
     StackSet(a1,inew);
     ItrTest* itest = ItrTest::New(graph_,inew,info,region());
@@ -1343,10 +1172,8 @@ GraphBuilder::BuildLoop( BytecodeIterator* itr ) {
      */
     loop_header->set_condition(NewBoolean(true,itr->bytecode_location()));
   }
-
   // skip the loop start bytecode
   itr->Move();
-
   return BuildLoopBody(itr,loop_header);
 }
 
@@ -1792,22 +1619,20 @@ void GraphBuilder::BuildOSRLocalVariable() {
 GraphBuilder::StopReason
 GraphBuilder::GotoOSRBlockEnd( BytecodeIterator* itr , const std::uint32_t* end_pc ) {
   StopReason ret;
-
   lava_verify(itr->SkipTo(
-        [end_pc,&ret]( BytecodeIterator* itr ) {
-          if(itr->pc() == end_pc) {
-            ret = STOP_END;
-            return false;
-          } else if(itr->opcode() == BC_FEND1 || itr->opcode() == BC_FEND2 ||
-                    itr->opcode() == BC_FEEND || itr->opcode() == BC_FEVREND) {
-            ret = STOP_SUCCESS;
-            return false;
-          } else {
-            return true;
-          }
-        }
+    [end_pc,&ret]( BytecodeIterator* itr ) {
+      if(itr->pc() == end_pc) {
+        ret = STOP_END;
+        return false;
+      } else if(itr->opcode() == BC_FEND1 || itr->opcode() == BC_FEND2 ||
+                itr->opcode() == BC_FEEND || itr->opcode() == BC_FEVREND) {
+        ret = STOP_SUCCESS;
+        return false;
+      } else {
+        return true;
+      }
+    }
   ));
-
   return ret;
 }
 

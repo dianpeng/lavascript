@@ -295,9 +295,6 @@ class GraphBuilder {
   Expr* NewPGet       ( Expr* , Expr* , IRInfo* );
   Expr* NewISet       ( Expr* , Expr* , Expr* , IRInfo* );
   Expr* NewIGet       ( Expr* , Expr* , IRInfo* );
-  // helper functions for creating Set/Get and do local constant fold
-  Expr* FoldObjectSet ( IRObject* , const zone::String& , Expr* , IRInfo* );
-  Expr* FoldObjectGet ( IRObject* , const zone::String& , IRInfo* );
 
  private: // Global variables
   void NewGGet( std::uint8_t , std::uint8_t , const interpreter::BytecodeLocation& , bool sso = false );

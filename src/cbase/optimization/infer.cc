@@ -48,7 +48,7 @@ class SimpleConstraintChecker {
   TypeKind  type_;
 };
 
-// MultiTypeValueRange is an object that is used to track multiple type value's range
+// MultiValueRange is an object that is used to track multiple type value's range
 // independently. Example like this:
 //
 // if(a > 1 && a < 2) {
@@ -72,18 +72,162 @@ class SimpleConstraintChecker {
 // This mechanism will not use much memory due to the fact for any block's multiple type
 // value range , if this block doesn't contain any enforcement of the value range, it will
 // just store a pointer of those block that is owned by its dominator block.
+//
+//
+// This object should be used in 2 steps :
+// 1) Get a clone from its domminator node if it has one
+//
+// 2) Mutate it directly , since essentially this object is copy on write style, so internally
+//    it will duplicate the value range if you modify one
 
-class MultiTypeValueRange : public zone::ZoneObject {
+class MultiValueRange : public zone::ZoneObject {
  public:
+  inline MultiValueRange( zone::Zone* );
+
+  // Inherit this empty object from another object typically comes from its
+  // immediate dominator node's value range.
+  void Inherit      ( MultiValueRange* );
+
+  // Call this function to setup the node's value range if needed; this is
+  // used for set up new constraint when enter into the current branch node
+  void SetCondition ( Expr* , TypeKind , ValueRange* );
+
+  void Clear() { table_.Clear(); }
+
+ public:
+  // inference
+  int  Infer     ( Binary::Operator , Expr* );
+  Expr* Collapse ( Graph* , IRInfo* ) const;
+
+ private:
+  ValueRange* NewValueRange     ( ValueRange* that = NULL );
+  ValueRange* MaybeCopy         ( Expr* );
+  bool        TestTypeCompatible( TypeKind , ValueRange* );
+
+
+ private:
+  zone::Zone* zone_;
+
+  // the object that will be stored inside of the table internally held by this object.
+  // it basically records whether the range stored here is a reference or not; since we
+  // support copy on write semantic, we will duplicate the range object on the fly if we
+  // try to modify it
+  struct Item : public zone::ZoneObject {
+    bool ref;             // whether this object is a reference
+    ValueRange* range;    // the corresponding range object
+
+    Item() : ref() , range(NULL) {}
+    Item( ValueRange* r ) : ref(true) , range(r) {}
+    Item( bool r , ValueRange* rng ) : ref(r) , range(rng) {}
+  };
+
+  Expr* variable_;
+  ValueRange* range_;
+  zone::Table<std::uint32_t,Item> table_;
+  TypeKind type_kind_;
 };
 
+inline MultiValueRange::MultiValueRange( zone::Zone* zone ):
+  zone_     (zone),
+  variable_ (NULL),
+  range_    (NULL),
+  table_    (zone),
+  type_kind_(TPKIND_UNKNOWN)
+{}
+
+void MultiValueRange::Inherit( MultiValueRange* another ) {
+  lava_debug(NORMAL,lava_verify(table_.empty()););
+
+  // do a copy and mark everything to be reference
+  for( auto itr(another->table_.GetIterator()); itr.HasNext() ; itr.Move() ) {
+    lava_verify(
+        table_.Insert(zone_,itr.key(),Item(itr.value().range)).second
+    );
+  }
+}
+
+ValueRange* MultiValueRange::NewValueRange( ValueRange* that ) {
+  if(type_kind_ == TPKIND_FLOAT64) {
+    if(that) {
+      lava_debug(NORMAL,lava_verify(that->type() == FLOAT64_VALUE_RANGE););
+      return zone_->New<Float64ValueRange>(*static_cast<Float64ValueRange*>(that));
+    }
+    return zone_->New<Float64ValueRange>(zone_);
+  } else {
+    lava_debug(NORMAL,lava_verify(type_kind_ == TPKIND_BOOLENA););
+    if(that) {
+      lava_debug(NORMAL,lava_verify(that->type() == BOOLEAN_VALUE_RANGE););
+      return zone_->New<BooleanValueRange>(*static_cast<Float64ValueRange*>(that));
+    }
+    return zone_->New<BooleanValueRange>(zone_);
+  }
+}
+
+ValueRange* MultiValueRange::MaybeCopy( Expr* node ) {
+  auto itr = table_.Find(node->id());
+  if(itr.HasNext()) {
+    if(itr.value().ref) {
+      /**
+       * if the existed node is a UnknownValueRange then the type test will not
+       * pass so still we will mark this node as a UnknownValueRange
+       */
+      if(TypeTestCompatible(type_kind_,itr.value().range)) {
+        range_ = NewValueRange(itr.value().range);
+      } else {
+        range_ = UnknownValueRange::Get(); // mark it as unknown range since the previous dominator
+                                           // has a different type of the same expression node , mostly
+                                           // a bug in code or a dead branch
+      }
+      itr.set_value(Item(false,range_));
+
+    } else {
+      lava_debug(NORMAL,lava_verify(range_ == itr.value().range););
+    }
+  } else {
+    range_ = NewValueRange();
+    lava_verify(table_.Insert(&zone_,node->id(),Item(false,range_)).second);
+  }
+
+  return range_;
+}
+
+void MultiValueRange::SetCondition ( Expr* node , TypeKind type , ValueRange* range ) {
+  variable_ = node;
+  type_kind_= type;
+  MaybeCopy(node)->Intersect(*range);
+}
+
+bool MultiValueRange::TestTypeCompatible( TypeKind type , ValueRange* range ) {
+  if(type == TPKIND_BOOLEAN)
+    return range->type() == BOOLEAN_VALUE_RANGE;
+  else if(type == TPKIND_FLOAT64)
+    return range->type() == FLOAT64_VALUE_RANGE;
+  else
+    return false;
+}
+
+int  MultiValueRange::Infer( Binary::Operator op , Expr* node ) {
+  auto itr = table_.Find(node->id());
+  if(itr.HasNext()) {
+    return itr.value().range->Infer(op,node);
+  }
+  return ValueRange::UNKNOWN;
+}
+
+int  MultiValueRange::Collapse( Graph* graph , IRInfo* node ) {
+  auto itr = table_.Find(node->id());
+  if(itr.HasNext()) {
+    return itr.value().range->Collapse(graph,node);
+  }
+  return NULL;
+}
 
 /**
  * Condition group object. Used to represent a simple constraint whenever a branch node
  * is encountered.
  *
  * We only support simple constraint, a simple constraint means a condition for a branch
- * node that *only* has one variables and also it must be typpped with certain types.
+ * node that *only* has one variables and also it must be typed with certain types.
  *
  * The current support types are 1) float64 2) boolean. And the form must be as following:
  *
@@ -100,40 +244,20 @@ class MultiTypeValueRange : public zone::ZoneObject {
 
 class ConditionGroup {
  public:
-  enum ConditionType {
-    BAILOUT,
-    DEAD_BRANCH,
-    NULL_BRANCH,
-    NORMAL
-  };
+  inline ConditionGroup( Graph* , zone::Zone* , ConditionGroup* );
 
-  ConditionGroup( Graph* graph , zone::Zone* zone , ConditionGroup* p ):
-    graph_(graph),
-    zone_(zone) ,
-    prev_(p),
-    variable_(NULL),
-    type_kind_(TPKIND_UNKNOWN),
-    range_(NULL),
-    type_(BAILOUT)
-  {}
-
-  ConditionType Process ( Expr* );
+  void Process ( Expr* );
 
  public:
-  ConditionType type () const { return type_; }
-
-  bool IsBailout() const { return type_ == BAILOUT; }
-  bool IsDead   () const { return type_ == DEAD_BRANCH; }
-  bool IsNull   () const { return type_ == NULL_BRANCH; }
-  bool IsNormal () const { return type_ == NORMAL; }
-
   Expr* variable() const { lava_debug(NORMAL,lava_verify(!IsBailout());); return variable_; }
+
+  bool IsDead() const { return dead_; }
 
   TypeKind type_kind() const { return type_kind_; }
 
   ConditionGroup* prev() const { return prev_; }
 
-  ValueRange* range() const { return range_; }
+  MultiValueRange* range() const { return &range_; }
 
  private:
   // Do a recursive inference with all the dominator node's condition group
@@ -141,33 +265,49 @@ class ConditionGroup {
   bool InferLocal( Expr* , TypeKind , int* );
 
  private:
-  // create a new boolean node with value specified to *replace* the input node
-  Expr* DeduceTo ( Expr* , bool );
-
-  // Simplification phase of expression. This phase will just try to deduce the
-  // expression and it will not generate a new value range object
-  Expr* Simplify   ( Expr* );
+  /** ------------------------------------------
+   * Simplification
+   * ------------------------------------------*/
+  Expr* DeduceTo   ( Expr* , bool );
+  bool  Simplify   ( Expr* , Expr** );
   Expr* DoSimplify ( Expr* );
 
 
+  /** ------------------------------------------
+   * Construction
+   * ------------------------------------------*/
   void Construct           ( Expr* );
   void ConstructSub        ( ValueRange* , Expr* );
   ValueRange* ConstructSub ( Expr* );
-
   void ConstructFloat64Expr( ValueRange* , Float64Compare* , bool op = false );
 
  private:
 
-  Graph*          graph_;
-  zone::Zone*     zone_;
-  ConditionGroup* prev_;
-  Expr*           variable_;
-  TypeKind        type_kind_;
-  ValueRange*     range_;
-  ConditionType   type_;
+  Graph*              graph_;
+  zone::Zone*         zone_;
+  ConditionGroup*     prev_;
+  Expr*               variable_;
+  TypeKind            type_kind_;
+  MultiValueRange     range_;
+  bool                dead_;
 };
 
+inline ConditionGroup::ConditionGroup( Graph* graph , zone::Zone* zone , ConditionGroup* p ):
+  graph_(graph),
+  zone_(zone) ,
+  prev_(p),
+  variable_(NULL),
+  type_kind_(TPKIND_UNKNOWN),
+  range_(),
+  dead_ (false)
+{}
 
+int ConditionGroup::Infer( Expr* node , TypeKind type_kind ) {
+}
+
+/** -----------------------------------------------------------------------
+ *  Expression Simplification
+ *  ----------------------------------------------------------------------*/
 Expr* ConditionGroup::DoSimplify( Expr* node ) {
   switch(node->type()) {
     case IRTYPE_FLOAT64_COMPARE:
@@ -218,7 +358,19 @@ do_infer:
   return NULL;
 }
 
-ConditionGroup::ConditionType ConditionGroup::Simplify( Expr* node ) {
+bool ConditionGroup::Simplify( Expr* node , Expr** nnode ) {
+  *nnode = DoSimplify(node);
+
+  if((*nnode)->IsBoolean()) {
+    auto bval = (*nnode)->AsBoolean()->value();
+    if(!bval) { // just mark
+      range_.Clear();
+      dead_ = true;
+    }
+    return false;
+  }
+
+  return true;
 }
 
 void ConditionGroup::ConstructFloat64Expr( ValueRange* output , Float64Compare* comp ,
@@ -235,78 +387,39 @@ void ConditionGroup::ConstructFloat64Expr( ValueRange* output , Float64Compare* 
     output->Intersect(comp->op(),cst);
 }
 
-void ConditionGroup::ConstructSub( ValueRange* output , Expr* node ) {
-}
-
-void ConditionGroup::Construct( Expr* node ) {
-
-  if(node->type() == IRTYPE_BOOLEAN_LOGIC) {
-    auto b = node->AsBooleanLogic();
-
-    // lhs
-    if(b->lhs()->IsFloat64Compare()) {
-      ConstructFloat64Expr(range_,b->lhs()->AsFloat64Compare(),true);
-    } else {
-      auto temp = ConstructSub(b->lhs());
-      range_->Union(*temp);
-    }
-
-    // rhs
-    if(b->rhs()->IsFloat64Compare()) {
-      ConstructFloat64Expr(range_,b->rhs()->AsFloat64Compare(),(b->op() == Binary::AND));
-    } else {
-      auto temp = ConstructSub(b->rhs());
-      if(b->op() == Binary::AND)
-        range_->Intersect(*temp);
-      else
-        range_->Union(*temp);
-    }
-  } else if(node->type() == IRTYPE_FLOAT64_COMPARE) {
+void ConditionGroup::Process( Expr* node ) {
+  // Check if we are dominated by a dead branch or not
+  if(prev_ && prev_->IsDead()) {
+    dead_ = true;
+    return;
   }
-}
 
-ConditionGroup::ConditionType ConditionGroup::Process( Expr* node ) {
+  // Do the inheritance
+  if(prev_) range_.Inherit(prev_->range());
+
+
   SimpleConstraintChecker checker;
   if(!checker.Check(node,&variable_,&type_kind_)) {
-    goto bailout;
+    return;
   }
 
-  // do a check whether the dominator condition group has same
+  // Do a check whether the dominator condition group has same
   // type with same variable
   if(prev_) {
     if(prev_->variable() == variable_) {
       if(prev_->type_kind() != type_kind_) {
-        goto bailout;
+        return;
       }
     }
   }
 
-  // second pass to do a simplification with inference from its dominator
-  // node's ConditionGroup object
-  switch(Simplify(node)) {
-    case BAILOUT:
-    case DEAD_BRANCH:
-    case NULL_BRANCH:
-      return type_;
-    default:
-      break;
-  }
+  // Try to simplify the node with the current node
+  Expr* nnode;
+  if(!Simplify(node,&nnode)) return;
 
-  // construct the specific type of value range
-  if(type_kind_ == TPKIND_FLOAT64) {
-    range_ = zone_->New<Float64ValueRange>(zone_);
-  } else {
-    lava_debug(NORMAL,lava_verify(t == TPKIND_BOOLEAN););
-    range_ = zone_->New<BooleanValueRange>(zone_);
-  }
-
-  // last pass , which is used to construct the new constraint
-  Construct(node);
-
-  return (type_ = NORMAL);
-
-bailout:
-  return (type_ = BAILOUT);
+  // Construct the simplified node and then merge it back to range
+  Construct(nnode);
+  return;
 }
 
 // ========================================================

@@ -465,8 +465,7 @@ std::uint64_t GVNHash2( T* ptr , const V1& v1 , const V2& v2 ) {
 }
 
 template< typename T , typename V1, typename V2 , typename V3 >
-std::uint64_t GVNHash3( T* ptr , const V1& v1 , const V2& v2 ,
-                                                const V3& v3 ) {
+std::uint64_t GVNHash3( T* ptr , const V1& v1 , const V2& v2 , const V3& v3 ) {
   std::uint64_t uv3 = static_cast<std::uint64_t>(v3);
   return GVNHash2(ptr,v1,v2) ^ (uv3);
 }
@@ -475,10 +474,8 @@ class GVNHashN {
  public:
   template< typename T >
   GVNHashN( T* seed ): value_(reinterpret_cast<std::uint64_t>(seed)<<7) {}
-
   template< typename T >
   void Add( const T& value ) { value_ ^= static_cast<std::uint64_t>(value); }
-
   std::uint64_t value() const { return value_; }
  private:
   std::uint64_t value_;
@@ -675,12 +672,6 @@ class SString : public Expr {
   const zone::String* value_;
   LAVA_DISALLOW_COPY_AND_ASSIGN(SString)
 };
-
-// Helper function to create String node from different types of configuration
-inline Expr* NewString           ( Graph* , const char* , IRInfo* );
-inline Expr* NewString           ( Graph* , const zone::String* , IRInfo* );
-inline Expr* NewStringFromBoolean( Graph* , bool , IRInfo* );
-inline Expr* NewStringFromReal   ( Graph* , double , IRInfo* );
 
 class Nil : public Expr {
  public:
@@ -2601,13 +2592,22 @@ class ExprDFSIterator : public ExprIterator {
   OnceList stack_;
 };
 
+// -------------------------------------------------------------------------
+//
+// Helper
+//
+// -------------------------------------------------------------------------
+inline Expr* NewString           ( Graph* , const char* , IRInfo* );
+inline Expr* NewString           ( Graph* , const zone::String* , IRInfo* );
+inline Expr* NewStringFromBoolean( Graph* , bool , IRInfo* );
+inline Expr* NewStringFromReal   ( Graph* , double , IRInfo* );
+
 
 // =========================================================================
 //
 // Inline Functions
 //
 // =========================================================================
-//
 namespace detail {
 
 template< typename T >

@@ -3,6 +3,7 @@
 #include "zone.h"
 #include "string.h"
 
+#include "src/util.h"
 #include "src/common.h"
 #include "src/hash.h"
 #include "src/bits.h"
@@ -66,6 +67,15 @@ template<> struct DefaultTrait<String*> {
   }
 };
 
+template<> struct DefaultTrait<Str> {
+  static std::uint32_t Hash( const Str& str ) {
+    return Hasher::Hash(str.data,str.length);
+  }
+  static bool Eqaul( const Str& left , const Str& right ) {
+    return Str::Cmp(left,right) == 0;
+  }
+};
+
 template< typename T > struct DefaultTrait<T*> {
   static std::uint32_t Hash( const void* ptr ) {
     static const std::uint64_t kMagic = 2654435761U;
@@ -116,6 +126,7 @@ class Table {
   };
 
   explicit Table( Zone* , std::size_t cap = kDefaultCap );
+  Table( Zone* , const Table& );
 
   typedef detail::TableIterator<Self> Iterator;
   typedef const Iterator ConstIterator;
@@ -137,6 +148,7 @@ class Table {
   Iterator Update( Zone* , const K& , const V& );
   Iterator Update( Zone* , K&& , V&& );
 
+  void Copy  ( Zone* , Table* ) const;
   void Swap  ( Table* );
   void Clear ();
 
@@ -164,9 +176,9 @@ class Table {
   std::size_t size_;
   std::size_t slot_size_;
 
-  friend class detail::TableIterator<Self>;
+  void operator = ( const Table& ) = delete; // cannot do assignment since we need zone
 
-  LAVA_DISALLOW_COPY_AND_ASSIGN(Table);
+  friend class detail::TableIterator<Self>;
 };
 
 namespace detail {
@@ -241,6 +253,19 @@ Table<K,V,Trait>::Table( Zone* zone , std::size_t cap ):
   entry_ = static_cast<Entry*>(zone->Malloc(sizeof(Entry) * cap));
   ZeroOut(entry_,cap);
   cap_ = cap;
+}
+
+template< typename K , typename V , typename Trait >
+Table<K,V,Trait>::Table( Zone* zone , const Table& table ):
+  entry_(NULL),
+  cap_  (bits::NextPowerOf2(table.size_)),
+  size_ (0),
+  slot_size_(0)
+{
+  entry_ = static_cast<Entry*>(zone->Malloc(sizeof(Entry) * cap_));
+  ZeroOut(entry_,cap_);
+  for( auto itr(table.GetIterator()) ; itr.HasNext() ; itr.Move() )
+    Insert(zone,itr.key(),itr.value());
 }
 
 template< typename K , typename V , typename Trait >
@@ -375,6 +400,12 @@ Table<K,V,Trait>::Update( Zone* zone , const K& k , const V& v ) {
   e->use = true;
   e->del = false;
   return Iterator(this,(e-entry_));
+}
+
+template< typename K , typename V , typename Trait >
+void Table<K,V,Trait>::Copy( Zone* zone , Table* t ) {
+  Table temp(zone,*this);
+  t->Swap(&temp);
 }
 
 template< typename K , typename V , typename Trait >

@@ -85,6 +85,20 @@ inline bool LexicalCast( bool bval , std::string* output ) {
   return true;
 }
 
+inline int Str::Cmp( const Str& lhs , const Str& rhs ) {
+  auto sz = std::min(lhs.length,rhs.length);
+  auto ret= sz ? std::memcmp(lhs.data,rhs.data,sz) : 0;
+  if(!ret) {
+    if(lhs.length < rhs.length)
+      return -1;
+    else if(lhs.length == rhs.length)
+      return 0;
+    else
+      return 1;
+  }
+  return ret;
+}
+
 } // namespace lavascript
 
 #endif // UTIL_INL_H_

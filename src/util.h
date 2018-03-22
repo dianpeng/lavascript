@@ -23,9 +23,11 @@
 
 namespace lavascript {
 
+// template function to get the size of an C array
 template< std::size_t N , typename T >
 size_t ArraySize( const T (&arr)[N] ) { (void)arr; return N; }
 
+// format a vararg into a std::string
 void FormatV( std::string* , const char*  , va_list );
 
 inline std::string FormatV( const char* format , va_list vl ) {
@@ -33,59 +35,58 @@ inline std::string FormatV( const char* format , va_list vl ) {
   FormatV(&temp,format,vl);
   return temp;
 }
-
 inline std::string Format( const char * format , ... ) {
   va_list vl; va_start(vl,format);
   return FormatV(format,vl);
 }
-
 inline void Format( std::string* buffer , const char* format , ... ) {
   va_list vl; va_start(vl,format);
   FormatV(buffer,format,vl);
 }
 
+// convert std::string to a raw c buffer
 inline char* AsBuffer( std::string* output , std::size_t off )
 { return &(*output->begin()) + off; }
 
+// convert std::vector to raw c buffer
 template< typename T >
 inline T* AsBuffer( std::vector<T>* output , std::size_t off ) {
   lava_verify(!output->empty());
   return &(*output->begin()) + off;
 }
-
 template< typename T >
 inline const T* AsBuffer( const std::vector<T>* output , std::size_t off ) {
   lava_verify(!output->empty());
   return &(*output->begin()) + off;
 }
 
+// object level memcpy/memmove/memset functions
 template< typename T >
 inline T* MemCopy( T* dest , const T* from , std::size_t size ) {
   return static_cast<T*>(std::memcpy(dest,from,size*sizeof(T)));
 }
-
 template< typename T >
 inline T* MemCopy( T* dest, const std::vector<T>& from ) {
   return static_cast<T*>(std::memcpy(dest,AsBuffer(&from,0),from.size()*sizeof(T)));
 }
-
 template< typename T >
 inline T* MemMove( T* dest , const T* source , std::size_t size ) {
   return static_cast<T*>(std::memmove(dest,source,size*sizeof(T)));
 }
-
 template< typename T >
 inline T* ZeroOut( T* dest , std::size_t size ) {
   memset(dest,0,sizeof(T)*size);
   return dest;
 }
 
+// object oriented buffer offset
 template< typename T >
 inline void* BufferOffset( void* buffer , std::size_t offset ) {
   return reinterpret_cast<void*>(
       static_cast<T*>(buffer) + offset);
 }
 
+// lexcial cast to convert string representation of number into primitive type
 inline bool LexicalCast( const char* , std::int32_t* );
 inline bool LexicalCast( const char* , std::uint32_t* );
 inline bool LexicalCast( const char* , std::int64_t* );
@@ -123,22 +124,20 @@ bool TryCastReal( double real , T* output ) {
 }
 
 template< typename T >
-T CastReal( double real ) {
-  return static_cast<T>(real);
-}
+T CastReal( double real ) { return static_cast<T>(real); }
 
 template< typename T >
-double CastRealAndStoreAsReal( double real ) {
-  return static_cast<double>( CastReal<T>(real) );
-}
+double CastRealAndStoreAsReal( double real ) { return static_cast<double>( CastReal<T>(real) ); }
 
+// align a number against another number std::align is kind of hard to use
 template< typename T > T Align( T value , T alignment ) {
   return (value + (alignment-1)) & ~(alignment-1);
 }
 
+// placement new wrapper , use c++11 perfect forwarding mechanism
 template< typename T , typename Allocator , typename ... ARGS >
 T* Construct( Allocator* allocator , ARGS ...args ) {
-  return ::new (allocator->Grab(sizeof(T))) T(args...);
+  return ::new (allocator->Grab(sizeof(T))) T(std::forward(args)...);
 }
 
 template< typename T , typename Allocator >
@@ -148,7 +147,7 @@ T* Construct( Allocator* allocator ) {
 
 template< typename T , typename ... ARGS >
 T* ConstructFromBuffer( void* buffer , ARGS ...args ) {
-  return ::new (buffer) T(args...);
+  return ::new (buffer) T(std::forward(args)...);
 }
 
 template< typename T >
@@ -160,53 +159,32 @@ template< typename T > void Destruct( T* object ) {
   object->~T();
 }
 
+// Old legacy code, before std::optional we do have a implementation, now it is just
+// a wrapper around std::optional. For any future code, we should just use std::optional
 template< typename T >
 class Optional {
  public:
-  Optional():value_(),has_(false) {}
-  Optional( const T& value ):value_(),has_(false) { Set(value); }
-  Optional( const Optional& opt ):
-    value_(),
-    has_  (opt.has_) {
-    if(has_) Copy(opt.Get());
-  }
-  Optional& operator = ( const Optional& that ) {
-    if(this != &that) {
-      Clear();
-      if(that.Has()) Set(that.Get());
-    }
-    return *this;
-  }
-  ~Optional() { Clear(); }
- public:
-  void Set( const T& value ) {
-    Clear();
-    Copy(value);
-    has_ = true;
-  }
-  void Clear() {
-    if(has_) {
-      Destruct( reinterpret_cast<T*>(value_) );
-      has_ = false;
-    }
-  }
-  T& Get() {
-    lava_verify(has_);
-    return *reinterpret_cast<T*>(value_);
-  }
-  const T& Get() const {
-    lava_verify(has_);
-    return *reinterpret_cast<const T*>(value_);
-  }
-  bool Has() const { return has_; }
-  operator bool () const { return has_; }
+  Optional() : val_() {}
+  explicit Optional( const T& value ): val_(value) {}
+  void Set( const T& value ) { val_ = value; }
+  void Clear()               { val_.reset(); }
+  T& Get()                   { lava_verify(Has()); return val_.value(); }
+  const T& Get()      const  { lava_verify(Has()); return val_.value(); }
+  bool Has()          const  { return val_.has_value(); }
+  operator bool ()    const  { return Has(); }
  private:
-  void Copy( const T& value ) {
-    ConstructFromBuffer<T>(reinterpret_cast<T*>(value_),value);
-  }
+  std::optional<T> val_;
+};
 
-  std::uint8_t value_[sizeof(T)];
-  bool has_;
+// Wrapper of Slice style string, basically a const char* and a length field
+// No memory ownership is managed with this wrapper
+struct Str {
+  const void* data;
+  std::size_t length;
+  Str() : data(NULL) , length() {}
+  Str( const void* d , std::size_t l ) : data(d), length(l) {}
+  // do a comparison of two chunk of memory/Str
+  static inline int Cmp( const Str& , const Str& );
 };
 
 } // namespace lavascript

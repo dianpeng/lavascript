@@ -5,6 +5,7 @@
 #include "src/interpreter/bytecode.h"
 #include "src/interpreter/bytecode-iterator.h"
 
+#include <cmath>
 #include <vector>
 #include <set>
 #include <map>
@@ -13,6 +14,21 @@ namespace lavascript {
 namespace cbase {
 namespace hir    {
 using namespace ::lavascript::interpreter;
+
+void GraphBuilder::Environment::InitFromPrototype( Graph* graph , const Handle<Prototype>& proto ) {
+  // resize the stack to have 256 slots for new prototype
+  stack_.resize( stack_.size() + interpreter::kRegisterSize );
+  // resize the upvalue to have enough slots for this function's upvalue
+  auto old_sz = upvalue_.size();
+  upvalue_.resize( upvalue_.size() + proto->upvalue_size() );
+  // initialize the upvalue
+  {
+    const std::size_t usz = proto->upvalue_size();
+    for( std::size_t i = old_sz ; i < usz ; ++i ) {
+      upvalue_[i] = UGet::New(graph,static_cast<std::uint8_t>((i-old_sz)));
+    }
+  }
+}
 
 /* -------------------------------------------------------------
  *
@@ -23,98 +39,53 @@ using namespace ::lavascript::interpreter;
 class GraphBuilder::OSRScope {
  public:
   OSRScope( GraphBuilder* , const Handle<Prototype>& , ControlFlow* , const std::uint32_t* );
-  ~OSRScope() {
-    gb_->func_info_.pop_back();
-    gb_->upvalue_ = old_upvalue_;
-  }
+  ~OSRScope() { gb_->func_info_.pop_back(); }
  private:
   GraphBuilder* gb_;
-  ValueStack* old_upvalue_;
 };
+
 class GraphBuilder::FuncScope {
  public:
-  FuncScope( GraphBuilder* , const Handle<Prototype>& , ControlFlow* , std::uint32_t );
-  ~FuncScope() {
-    gb_->func_info_.pop_back();
-    gb_->upvalue_ = old_upvalue_;
-  }
-
+  FuncScope( GraphBuilder* , const Handle<Prototype>& , ControlFlow* , std::uint32_t ,
+                                                                       std::uint32_t );
+  ~FuncScope() { gb_->func_info_.pop_back(); }
  private:
   GraphBuilder* gb_;
-  ValueStack* old_upvalue_;
 };
 
 class GraphBuilder::LoopScope {
  public:
-  LoopScope( GraphBuilder* gb , const std::uint32_t* pc ) : gb_(gb) {
-    gb->func_info().EnterLoop(pc);
-  }
-
+  LoopScope( GraphBuilder* gb , const std::uint32_t* pc ) : gb_(gb) { gb->func_info().EnterLoop(pc); }
   ~LoopScope() { gb_->func_info().LeaveLoop(); }
  private:
   GraphBuilder* gb_;
   LAVA_DISALLOW_COPY_AND_ASSIGN(LoopScope)
 };
 
-struct GraphBuilder::VMState {
-  ValueStack stack;
-  ValueStack upvalue;
-};
-
-class GraphBuilder::BackupState {
+class GraphBuilder::BackupEnvironment {
  public:
-  BackupState( VMState* state , GraphBuilder* gb ):
-    old_stack_(gb->stack_),
-    old_upvalue_(gb->upvalue_),
-    gb_(gb),
-    has_upvalue_(true)
-  {
-    if(gb->stack_) state->stack = *gb->stack_;
-    if(gb->upvalue_) state->upvalue = *gb->upvalue_;
-    gb->stack_ = &(state->stack);
-    gb->upvalue_ = &(state->upvalue);
-  }
+  BackupEnvironment( GraphBuilder::Environment* new_env , GraphBuilder* gb ):
+    old_env_(gb->env_), gb_(gb) { gb->env_ = new_env; }
 
-  BackupState( ValueStack* stack , GraphBuilder* gb ):
-    old_stack_(gb->stack_),
-    old_upvalue_(NULL),
-    gb_(gb),
-    has_upvalue_(false)
-  {
-    if(gb->stack_) *stack = *gb->stack_;
-    gb->stack_ = stack;
-  }
-
-  ~BackupState() {
-    gb_->stack_ = old_stack_;
-    if(has_upvalue_) gb_->upvalue_ = old_upvalue_;
-  }
-
+  ~BackupEnvironment() { gb_->env_ = old_env_; }
  private:
-  ValueStack* old_stack_;
-  ValueStack* old_upvalue_;
+  Environment* old_env_;
   GraphBuilder* gb_;
-  bool has_upvalue_;
-
-  LAVA_DISALLOW_COPY_AND_ASSIGN(BackupState);
 };
 
 GraphBuilder::OSRScope::OSRScope( GraphBuilder* gb , const Handle<Prototype>& proto ,
                                                      ControlFlow* region ,
                                                      const std::uint32_t* osr_start ):
-  gb_(gb) ,
-  old_upvalue_(gb->upvalue_) {
+  gb_(gb) {
 
-  FuncInfo temp(proto,region,osr_start); // initialize a FuncInfo as OSR entry
+  // initialize FuncInfo for OSR compilation entry
+  FuncInfo temp(proto,region,osr_start);
   // get the loop header information and recursively register all its needed
   // loop info object inside of the FuncInfo object
   auto loop_header = temp.bc_analyze.LookUpLoopHeader(osr_start);
   lava_debug(NORMAL,lava_verify(loop_header););
-  /**
-   * We need to iterate the loop one by one from the top most loop
-   * inside of the nested loop cluster so we need to use a queue to
-   * help us
-   */
+  // need to iterate the loop one bye one from the top most loop
+  // inside of the nested loop cluster so we will use a queue
   {
     std::vector<const BytecodeAnalyze::LoopHeaderInfo*> queue;
     auto cur_header = loop_header->prev; // skip the OSR loop
@@ -126,46 +97,30 @@ GraphBuilder::OSRScope::OSRScope( GraphBuilder* gb , const Handle<Prototype>& pr
       temp.loop_info.push_back(LoopInfo(*ritr));
     }
   }
+  // add the prototype information into graph
   gb->graph_->AddPrototypeInfo(proto,0);
+  // push current FuncInfo object to the trackings tack
   gb->func_info_.push_back(FuncInfo(std::move(temp)));
-  gb->stack_->resize(interpreter::kRegisterSize);
-  // populate upvalue array for this function
-  {
-    FuncInfo &ctx = gb->func_info_.back();
-    for( std::size_t i = 0 ; i < ctx.upvalue.size(); ++i ) {
-      ctx.upvalue[i] = UGet::New(gb->graph_,static_cast<std::uint8_t>(i));
-    }
-    gb->upvalue_ = &(ctx.upvalue);
-  }
+  // initialize environment object for this OSRScope
+  gb->env()->InitFromPrototype(gb->graph_,proto);
 }
 
 GraphBuilder::FuncScope::FuncScope( GraphBuilder* gb , const Handle<Prototype>& proto ,
                                                        ControlFlow* region ,
-                                                       std::uint32_t base ):
-  gb_(gb),
-  old_upvalue_(gb->upvalue_) {
+                                                       std::uint32_t base  ,
+                                                       std::uint32_t uv_base ):
+  gb_(gb) {
 
   gb->graph_->AddPrototypeInfo(proto,base);
-  gb->func_info_.push_back(FuncInfo(proto,region,base));
-  gb->stack_->resize(base+interpreter::kRegisterSize);
+  gb->func_info_.push_back(FuncInfo(proto,region,base,uv_base));
+  gb->env()->InitFromPrototype(gb->graph_,proto);
+
   if(gb->func_info_.size() == 1) {
-    /**
-     * Initialize function argument for entry function. When we hit
-     * inline frame, we dont need to populate its argument since they
-     * will be taken care of by the graph builder
-     */
+    // initialize the argument value inside of the stack
     auto arg_size = proto->argument_size();
     for( std::size_t i = 0 ; i < arg_size ; ++i ) {
-      gb->stack_->at(i) = Arg::New(gb->graph_,static_cast<std::uint32_t>(i));
+      gb->vstk()->at(i) = Arg::New(gb->graph_,static_cast<std::uint32_t>(i));
     }
-  }
-  // populate upvalue array for this function
-  {
-    FuncInfo &ctx = gb->func_info_.back();
-    for( std::size_t i = 0 ; i < ctx.upvalue.size(); ++i ) {
-      ctx.upvalue[i] = UGet::New(gb->graph_,static_cast<std::uint8_t>(i));
-    }
-    gb->upvalue_ = &(ctx.upvalue);
   }
 }
 
@@ -358,11 +313,10 @@ Expr* GraphBuilder::NewBinary  ( const StackSlot& lidx, const StackSlot& ridx,
   // require guard instruction and deoptimization
   new_node = TrySpecialTestBinary(lidx,ridx,op,pc);
   if(new_node) return new_node;
-
   // try speculative binary node
   new_node = TrySpeculativeBinary(lidx,ridx,op,pc);
   if(new_node) return new_node;
-
+  // fallback to use normal binary dispatch
   return NewBinaryFallback(lidx,ridx,op,pc);
 }
 
@@ -489,7 +443,6 @@ Expr* GraphBuilder::TrySpeculativeBinary( const StackSlot& lidx , const StackSlo
 Expr* GraphBuilder::NewBinaryFallback( const StackSlot& lidx , const StackSlot& ridx ,
                                                                Binary::Operator op,
                                                                const BytecodeLocation& pc ) {
-
   return Binary::New(graph_,lidx.node,ridx.node,op,NewIRInfo(pc));
 }
 
@@ -694,15 +647,13 @@ void GraphBuilder::NewGSet( std::uint8_t a1 , std::uint8_t a2 ,
     key = str->ToStdString();
   }
   // do a update to the table
-  UpdateMap(&globals_,std::move(key),StackGetSlot(a2));
+  STLUpdateMap(&globals_,std::move(key),StackGetSlot(a2));
 }
 
 IRInfo* GraphBuilder::NewIRInfo( const BytecodeLocation& pc ) {
   IRInfo* ret;
-  {
-    void* mem = graph_->zone()->Malloc(sizeof(IRInfo));
-    ret = ConstructFromBuffer<IRInfo> (mem,method_index(),pc);
-  }
+  void* mem = graph_->zone()->Malloc(sizeof(IRInfo));
+  ret = ConstructFromBuffer<IRInfo> (mem,method_index(),pc);
   return ret;
 }
 
@@ -712,7 +663,6 @@ IRInfo* GraphBuilder::NewIRInfo( BytecodeIterator* itr ) {
 
 Checkpoint* GraphBuilder::BuildCheckpoint( const BytecodeLocation& pc ) {
   auto cp = Checkpoint::New(graph_);
-
   // 1. generate stack register expression states
   {
     // get the register offset to decide offset for all the temporary register
@@ -722,17 +672,15 @@ Checkpoint* GraphBuilder::BuildCheckpoint( const BytecodeLocation& pc ) {
     const std::uint32_t stack_end = func_info().base + offset;
 
     for( std::uint32_t i = 0 ; i < stack_end ; ++i ) {
-      auto node = stack_->at(i);
+      auto node = vstk()->at(i);
       if(node) cp->AddStackSlot(node,i);
     }
   }
-
   // 2. generate upvalue states
   {
-    lava_debug(NORMAL,lava_verify(upvalue_->size() < 256););
-    auto len = static_cast<std::uint8_t>(upvalue_->size());
+    auto len = static_cast<std::uint8_t>(upval()->size());
     for( std::uint8_t i = 0 ; i < len ; ++i ) {
-      cp->AddUGetSlot(upvalue_->at(i),i);
+      cp->AddUGetSlot(upval()->at(i),i);
     }
   }
   return cp;
@@ -740,17 +688,16 @@ Checkpoint* GraphBuilder::BuildCheckpoint( const BytecodeLocation& pc ) {
 
 void GraphBuilder::GeneratePhi( ValueStack* dest , const ValueStack& lhs ,
                                                    const ValueStack& rhs ,
+                                                   std::size_t base ,
                                                    ControlFlow* region ,
                                                    const interpreter::BytecodeLocation& pc ) {
-  lava_debug(NORMAL,lava_verify(lhs.size() == rhs.size()););
-  for( std::size_t i = 0 ; i < lhs.size() ; ++i ) {
+  const std::size_t sz = std::min(lhs.size() , rhs.size());
+
+  for( std::size_t i = base ; i < sz ; ++i ) {
     Expr* l = lhs[i];
     Expr* r = rhs[i];
-    /**
-     * if one of lhs and rhs is NULL, it basically means some lexical scope bounded
-     * variable is mutated and obviously not variable that needs a PHI, so we just
-     * need to skip these type of variable entirely
-     */
+    // only when l and r both exists we know this is variable that is available after
+    // the branch or jump
     if(l && r) {
       if(l != r) {
         dest->at(i) = Phi::New(graph_,l,r,region,NewIRInfo(pc));
@@ -761,31 +708,11 @@ void GraphBuilder::GeneratePhi( ValueStack* dest , const ValueStack& lhs ,
   }
 }
 
-void GraphBuilder::InsertIfPhi( const ValueStack& false_stack ,
-                                const ValueStack& true_stack  ,
-                                const ValueStack& false_uval  ,
-                                const ValueStack& true_uval   ,
-                                ControlFlow* region ,
-                                const BytecodeLocation& pc ) {
-  GeneratePhi(stack_,false_stack,true_stack,region,pc);
-  GeneratePhi(upvalue_,false_uval,true_uval,region,pc);
-}
+void GraphBuilder::InsertPhi( Environment* lhs , Environment* rhs , ControlFlow* region ,
+                                                                    const BytecodeLocation& pc ) {
 
-void GraphBuilder::InsertUnconditionalJumpPhi( const ValueStack& stk , ControlFlow* region ,
-                                                                       const BytecodeLocation& pc ) {
-  for( std::size_t i = 0 ; i < stack_->size(); ++i ) {
-    Expr* lhs = stack_->at(i);
-    if(i == stk.size()) break;
-    Expr* rhs = stk[i];
-    if(lhs && rhs) {
-      if(lhs != rhs) {
-        stack_->at(i) = Phi::New(graph_,lhs,rhs,region,NewIRInfo(pc));
-        lava_debug(NORMAL,lava_verify(region->backward_edge()->size() == 2););
-      } else {
-        stack_->at(i) = lhs;
-      }
-    }
-  }
+  GeneratePhi(vstk() ,*lhs->stack()  ,*rhs->stack()  ,func_info().base   ,region,pc);
+  GeneratePhi(upval(),*lhs->upvalue(),*rhs->upvalue(),func_info().uv_base,region,pc);
 }
 
 void GraphBuilder::PatchUnconditionalJump( UnconditionalJumpList* jumps ,
@@ -795,7 +722,7 @@ void GraphBuilder::PatchUnconditionalJump( UnconditionalJumpList* jumps ,
     lava_debug(NORMAL,lava_verify(e.pc == pc.address()););
     lava_verify(e.node->TrySetTarget(pc.address(),region));
     region->AddBackwardEdge(e.node);
-    InsertUnconditionalJumpPhi(e.stack,region,pc);
+    InsertPhi(env(),&e.env,region,pc);
   }
   jumps->clear();
 }
@@ -869,8 +796,7 @@ GraphBuilder::StopReason GraphBuilder::BuildTernary( BytecodeIterator* itr ) {
   return STOP_SUCCESS;
 }
 
-GraphBuilder::StopReason GraphBuilder::GotoIfEnd( BytecodeIterator* itr,
-                                                  const std::uint32_t* pc ) {
+GraphBuilder::StopReason GraphBuilder::GotoIfEnd( BytecodeIterator* itr, const std::uint32_t* pc ) {
   StopReason ret;
   lava_verify(itr->SkipTo(
     [pc,&ret]( BytecodeIterator* itr ) {
@@ -886,8 +812,7 @@ GraphBuilder::StopReason GraphBuilder::GotoIfEnd( BytecodeIterator* itr,
   return ret;
 }
 
-GraphBuilder::StopReason GraphBuilder::BuildIfBlock( BytecodeIterator* itr ,
-                                                     const std::uint32_t* pc ) {
+GraphBuilder::StopReason GraphBuilder::BuildIfBlock( BytecodeIterator* itr , const std::uint32_t* pc ) {
   while( itr->HasNext() ) {
     // check whether we reache end of PC where we suppose to stop
     if(pc == itr->pc()) return STOP_END;
@@ -926,7 +851,7 @@ GraphBuilder::BuildIf( BytecodeIterator* itr ) {
 
   if_region->set_merge(merge);
 
-  VMState true_stack;
+  Environment true_env(*env());
 
   std::uint16_t final_cursor;
   bool have_false_branch;
@@ -934,9 +859,12 @@ GraphBuilder::BuildIf( BytecodeIterator* itr ) {
   // 1. Build code inside of the *true* branch and it will also help us to
   //    identify whether we have dangling elif/else branch
   {
-    itr->Move();              // skip the BC_JMPF
-    BackupState backup(&true_stack,this); // back up the old stack and use new stack
-    set_region(true_region);  // switch to true region
+    // skip BC_JMP
+    itr->Move();
+    // backup the old stack and use the new stack to do simulation
+    BackupEnvironment backup(&true_env,this);
+    // swith to a true region
+    set_region(true_region);
     {
       StopReason reason = BuildIfBlock(itr,itr->OffsetAt(offset));
       if(reason == STOP_BAILOUT) {
@@ -953,16 +881,18 @@ GraphBuilder::BuildIf( BytecodeIterator* itr ) {
     }
     rhs = region();
   }
+
   // 2. Build code inside of the *false* branch
   if(have_false_branch) {
     set_region(false_region);
-    itr->BranchTo(offset); // go to the false branch
-
+    // goto false branch
+    itr->BranchTo(offset);
     if(BuildIfBlock(itr,itr->OffsetAt(final_cursor)) == STOP_BAILOUT)
       return STOP_BAILOUT;
     lhs = region();
   } else {
-    final_cursor = offset; // we don't have a else/elif branch
+    // reach here means we don't have a elif/else branch
+    final_cursor = offset;
     lhs = false_region;
   }
   // 3. set the merge backward edge
@@ -970,10 +900,9 @@ GraphBuilder::BuildIf( BytecodeIterator* itr ) {
   merge->AddBackwardEdge(rhs);
   itr->BranchTo(final_cursor);
   set_region(merge);
+
   // 3. handle PHI node
-  InsertIfPhi(*stack_ , true_stack.stack , *upvalue_ , true_stack.upvalue ,
-                                                       merge ,
-                                                       itr->bytecode_location());
+  InsertPhi(env(),&true_env,merge,itr->bytecode_location());
   return STOP_SUCCESS;
 }
 
@@ -1080,7 +1009,7 @@ GraphBuilder::BuildLoopBody( BytecodeIterator* itr , ControlFlow* loop_header ) 
   Loop*       body        = NULL;
   LoopExit*   exit        = NULL;
   Region*     after       = Region::New(graph_);
-  VMState     true_stack;
+  Environment true_env    (*env());
 
   if(loop_header->IsLoopHeader()) {
     loop_header->AsLoopHeader()->set_merge(after);
@@ -1094,7 +1023,9 @@ GraphBuilder::BuildLoopBody( BytecodeIterator* itr , ControlFlow* loop_header ) 
   BytecodeLocation brk_pc ;
 
   {
-    BackupState backup(&true_stack,this);
+    // backup the old environment and use a temporary environment
+    BackupEnvironment backup(&true_env,this);
+    // entier the loop scope
     LoopScope lscope(this,itr->pc());
     // create new loop body node
     body = Loop::New(graph_);
@@ -1135,9 +1066,7 @@ GraphBuilder::BuildLoopBody( BytecodeIterator* itr , ControlFlow* loop_header ) 
   }
   set_region(after);
   // merge the loop header
-  InsertIfPhi(*stack_ , true_stack.stack , *upvalue_ , true_stack.upvalue ,
-                                                       after,
-                                                       itr->bytecode_location());
+  InsertPhi(env(),&true_env,after,itr->bytecode_location());
   return STOP_SUCCESS;
 }
 
@@ -1429,7 +1358,7 @@ GraphBuilder::StopReason GraphBuilder::BuildBytecode( BytecodeIterator* itr ) {
       {
         std::uint8_t a1,a2;
         itr->GetOperand(&a1,&a2);
-        auto uval = func_info().upvalue[a2];
+        auto uval = UpValueGet(a1);
         lava_debug(NORMAL,lava_verify(uval););
         StackSet(a1,uval);
       }
@@ -1440,7 +1369,7 @@ GraphBuilder::StopReason GraphBuilder::BuildBytecode( BytecodeIterator* itr ) {
         itr->GetOperand(&a1,&a2);
         auto uset =
           USet::New(graph_,method_index(),StackGet(a2),NewIRInfo(itr->bytecode_location()),region());
-        func_info().upvalue[a1] = uset;
+        UpValueSet(a1,uset);
       }
       break;
     case BC_GGET: case BC_GGETSSO:
@@ -1480,9 +1409,7 @@ GraphBuilder::StopReason GraphBuilder::BuildBytecode( BytecodeIterator* itr ) {
       return BuildIf(itr);
 
     /* loop */
-    case BC_FSTART:
-    case BC_FESTART:
-    case BC_FEVRSTART:
+    case BC_FSTART: case BC_FESTART: case BC_FEVRSTART:
       return BuildLoop(itr);
 
     /* iterator dereference */
@@ -1515,9 +1442,9 @@ GraphBuilder::StopReason GraphBuilder::BuildBytecode( BytecodeIterator* itr ) {
         set_region(jump);
 
         if(itr->opcode() == BC_BRK)
-          func_info().current_loop().AddBreak(jump,itr->OffsetAt(pc),*stack_);
+          func_info().current_loop().AddBreak   (jump,itr->OffsetAt(pc),*env());
         else
-          func_info().current_loop().AddContinue(jump,itr->OffsetAt(pc),*stack_);
+          func_info().current_loop().AddContinue(jump,itr->OffsetAt(pc),*env());
       }
       break;
 
@@ -1575,33 +1502,29 @@ bool GraphBuilder::Build( const Handle<Prototype>& entry , Graph* graph ) {
 
   // 2. start the basic block building
   {
-    // set up the evaluation stack all evaluation stack are triansient so I
-    // just put it on to the stack
-    VMState stack;
-    BackupState backup(&stack,this);
-
-    FuncScope scope(this,entry,region,0);
+    // setup the main environment object
+    Environment root_env;
+    BackupEnvironment backup(&root_env,this);
+    // enter into the top level function
+    FuncScope scope(this,entry,region,0,0);
+    // setup the bytecode iterator
     BytecodeIterator itr(entry->GetBytecodeIterator());
-
     // set the current region
     set_region(region);
-
     // start to execute the build basic block
     if(BuildBasicBlock(&itr) == STOP_BAILOUT)
       return false;
-
+    // finish return value Phi generation
     {
       Phi* return_value = Phi::New(graph_,succ,NULL);
-
       for( auto &e : func_info().return_list ) {
         return_value->AddOperand(e->AsReturn()->value());
         succ->AddBackwardEdge(e);
       }
-
       end = End::New(graph_,succ,fail);
     }
   }
-
+  // initialize the graph
   graph->Initialize(start,end);
   return true;
 }
@@ -1611,8 +1534,8 @@ void GraphBuilder::BuildOSRLocalVariable() {
   lava_debug(NORMAL,lava_verify(loop_header););
   for( BytecodeAnalyze::LocalVariableIterator itr(loop_header->bb,func_info().bc_analyze);
        itr.HasNext() ; itr.Move() ) {
-    lava_debug(NORMAL,lava_verify(!stack_->at(itr.value())););
-    stack_->at(itr.value()) = OSRLoad::New(graph_,itr.value());
+    lava_debug(NORMAL,lava_verify(!vstk()->at(itr.value())););
+    vstk()->at(itr.value()) = OSRLoad::New(graph_,itr.value());
   }
 }
 
@@ -1776,58 +1699,46 @@ GraphBuilder::BuildOSRStart( const Handle<Prototype>& entry ,  const std::uint32
                                                                Graph* graph ) {
   graph_ = graph;
   zone_  = graph->zone();
-
   // 1. create OSRStart node which is the entry of OSR compilation
   OSRStart* start = OSRStart::New(graph);
   OSREnd*   end   = NULL;
-
   // next region node connect back to the OSRStart
   Region* header = Region::New(graph,start);
-
+  // setup the fail node which accepts guard bailout
   Fail* fail = Fail::New(graph);
   Success* succ = Success::New(graph);
-
   {
     // set up the value stack/expression stack
-    ValueStack stack;
-    BackupState backup_stack(&stack,this);
-
+    Environment root_env;
+    BackupEnvironment backup(&root_env,this);
     // set up the OSR scope
     OSRScope scope(this,entry,header,pc);
-
     // set up OSR local variable
     BuildOSRLocalVariable();
-
     // craft a bytecode iterator *starts* at the OSR instruction entry
     // which should be a loop start instruction like FESTART,FSTART,FEVRSTART
     const std::uint32_t* code_buffer   = entry->code_buffer();
     const std::size_t code_buffer_size = entry->code_buffer_size();
     lava_debug(NORMAL,lava_verify(pc >= code_buffer););
-
     BytecodeIterator itr(code_buffer,code_buffer_size);
-
     itr.BranchTo(pc);
     lava_debug(NORMAL,lava_verify(itr.HasNext()););
-
     // peel all nested loop until hit the outermost one
     if(PeelOSRLoop(&itr) == STOP_BAILOUT) return STOP_BAILOUT;
-
     // create trap for current region since once we abort from the loop we should
     // fallback to interpreter
     {
       Trap* trap = Trap::New(graph_,BuildCheckpoint(itr.bytecode_location()),region());
       fail->AddBackwardEdge(trap);
     }
-
     // link each return node back to the success node
     for( auto & e : func_info().return_list ) {
       succ->AddBackwardEdge(e);
     }
-
     // lastly create the end node for the osr graph
     end = OSREnd::New(graph_,succ,fail);
   }
-
+  // initialize the graph via OSR compilation
   graph->Initialize(start,end);
   return STOP_SUCCESS;
 }

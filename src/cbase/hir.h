@@ -67,6 +67,7 @@ namespace hir {
   __(ICall,ICALL ,"icall",false)                \
   /* phi */                                     \
   __(Phi,PHI,"phi",false)                       \
+  __(EffectPhi,EFFECT_PHI,"effect_phi",false)   \
   /* statement */                               \
   __(InitCls,INIT_CLS,"init_cls",false)         \
   __(Projection,PROJECTION,"projection",false)  \
@@ -106,9 +107,7 @@ namespace hir {
   __(ObjectGet    ,OBJECT_GET    ,"object_get"   ,false)              \
   __(ObjectSet    ,OBJECT_SET    ,"object_set"   ,false)              \
   __(ListGet      ,LIST_GET      ,"list_get"     ,false)              \
-  __(ListSet      ,LIST_SET      ,"list_set"     ,false)              \
-  __(ExtensionGet ,EXTENSION_GET ,"extension_get",false)              \
-  __(ExtensionSet ,EXTENSION_SET ,"extension_set",false)
+  __(ListSet      ,LIST_SET      ,"list_set"     ,false)
 
 // All the low HIR nodes
 #define CBASE_IR_EXPRESSION_LOW(__)                                   \
@@ -133,9 +132,10 @@ namespace hir {
  * we do graph generation.
  *
  * Finally I decide to make guard as an expression . As an expression, it
- * means the node can be used in any expression optimization and it is flowed
- * inside of the bytecode register simulation which implicitly propogate along
- * the control flow. So we could end up saving many guard node generation.
+ * means the node can be used in any expression optimization and it is
+ * flowed inside of the bytecode register simulation which implicitly
+ * propogate along the control flow. So we could end up saving many guard
+ * node generation.
  *
  * Another thing is GVN can help to elminiate redundancy. Only one thing is
  * hard to achieve is this :
@@ -203,20 +203,16 @@ namespace hir {
 
 enum IRType {
 #define __(A,B,...) IRTYPE_##B,
-
   /** expression related IRType **/
   CBASE_IR_EXPRESSION_START,
   CBASE_IR_EXPRESSION(__)
   CBASE_IR_EXPRESSION_END,
-
   /** control flow related IRType **/
   CBASE_IR_CONTROL_FLOW_START,
   CBASE_IR_CONTROL_FLOW(__)
   CBASE_IR_CONTROL_FLOW_END
-
 #undef __ // __
 };
-
 #define SIZE_OF_IR (CBASE_IR_STMT_END-6)
 
 // IR classes forward declaration
@@ -227,7 +223,8 @@ CBASE_IR_LIST(__)
 // IRType value static mapping
 template< typename T > struct MapIRClassToIRType {};
 
-#define __(A,B,...) template<> struct MapIRClassToIRType<A> { static const IRType value = IRTYPE_##B; };
+#define __(A,B,...)         \
+  template<> struct MapIRClassToIRType<A> { static const IRType value = IRTYPE_##B; };
 CBASE_IR_LIST(__)
 #undef __ // __
 
@@ -251,8 +248,8 @@ class GraphBuilder;
 class ValueRange;
 class Node;
 class Expr;
+class MemStore;
 class ControlFlow;
-
 
 /**
  * This is a separate information maintained for each IR node. It contains
@@ -289,7 +286,6 @@ struct PrototypeInfo : zone::ZoneObject {
   {}
 };
 
-
 // ----------------------------------------------------------------------------
 // Statement list
 //
@@ -315,36 +311,33 @@ struct StatementEdge {
 /**
  * Each expression will have 2 types of dependency with regards to other expression.
  *
- * 1. OperandList   , describe the operands used by this expression node
- * 2. EffectList    , describe the observable effects of this expression node
+ * 1) a data dependency, expressed via the code , things like c = a + b basically means
+ *    c is data dependent on a and b. The ir node's operand is designed to express this
+ *    sort of relationship
+ * 2) effect dependenty, EffectList in expr node are used to represent this. In general
+ *    effect represents alias information. Weak type language cannot do too much alias.
+ *    example like:
+ *      g.f = 1; // g is a global variable
+ *      e.b = 2; // e is a global variable
  *
- * A operand list is easy to understand, example like :
+ *    these 2 statements has a effect dependency , the latter one depend on first one since
+ *    g and e alias the same underly memory based on conservative guess. To express this
+ *    types of information we just need to add g.f = 1's ir node into e.b's effect list then
+ *    scheduler will take care of it.
  *
- *   a = b + c ; for node a , node b and node c are operands and they are inside of the
- *               operands list
+ *    another situation is the control flow , example like :
  *
- *   a <= b    ; for node a , its value is implicitly dependend on node b's evaluation.
- *               or in other word, b's evaluation has observable effect that a needs to
- *               say.
+ *    if(cond) { g.c = 200; } else { g.d = 200; g.e = 300; }
+ *    return g.ret;
  *
- *
- * Essentially effect list are only used to describe dependency that is not esay to
- * be expressed inside of IR graph or inefficient to be described here. Example like :
- *
- * a[10] = 10;
- * return a[10] + 1;
- *
- * We can forward 10 to the return statements, but return statments has effect dependency
- * on a[10] = 10 since a[10] = 10 can *fail* due to a is an C++ side extension. But if
- * we don't describe such dependency, then the problem is return a[10] + 1 can be folded
- * into return 11 and it may be able to schedule before a[10] = 10 , obviously this is
- * incorrect execution flow. With effect list we are able to add a[10] = 10 to be effect
- * dependent of return statment, then the scheduler will consider this facts and also guarantee
- * that a[10] + 1 will be scheduled *after* a[10] = 10
- *
- *
- * All these 2 types of dependency are tracked by OperandRefList, so a substituion of node by
- * using *Replace* function will modify all these 2 dependency list
+ *    this example basically says that the expression g.ret should be executed *after* that
+ *    control flow branch, however we cannot express this by simply add certain expression
+ *    into our effect list. here to merge the side effect brought by this branch, we need
+ *    a node called EffectPhi node , this node is used to represent that there're multiple
+ *    expression executed which could bring us potential side effect ; and this side effect
+ *    should be observed at statement of g.ret. We use EffectPhi node to merge the side
+ *    effect in each branch, basically EffectPhi(g.e=300;g.c=200) , and then g.ret depend on
+ *    this EffectPhi node.
  */
 
 typedef zone::List<Expr*>               DependencyList;
@@ -358,19 +351,18 @@ typedef EffectList::ForwardIterator     EffectIterator;
 
 template< typename ITR >
 struct Ref {
-  ITR     id;  // iterator used for fast deletion of this Ref it is
-               // modified
+  ITR     id;  // iterator used for fast deletion of this Ref it is modified
   Node* node;
   Ref( const ITR& iter , Node* n ): id(iter),node(n) {}
   Ref(): id(), node(NULL) {}
 };
 
-typedef Ref<OperandIterator>          OperandRef;
-typedef zone::List<OperandRef>        OperandRefList;
-typedef zone::List<ControlFlow*>      RegionList;
-typedef RegionList::ForwardIterator   RegionListIterator;
-typedef Ref<RegionListIterator>       RegionRef;
-typedef zone::List<RegionRef>         RegionRefList;
+typedef Ref<OperandIterator>            OperandRef;
+typedef zone::List<OperandRef>          OperandRefList;
+typedef zone::List<ControlFlow*>        RegionList;
+typedef RegionList::ForwardIterator     RegionListIterator;
+typedef Ref<RegionListIterator>         RegionRef;
+typedef zone::List<RegionRef>           RegionRefList;
 
 // Mother of all IR node , most of the important information should be stored via ID
 // as out of line storage
@@ -408,11 +400,7 @@ class Node : public zone::ZoneObject {
   inline Expr* AsExpr();
   inline const Expr* AsExpr() const;
  protected:
-  Node( IRType type , std::uint32_t id , Graph* graph ):
-    type_    (type),
-    id_      (id)  ,
-    graph_   (graph)
-  {}
+  Node( IRType type , std::uint32_t id , Graph* graph ):type_(type),id_(id),graph_(graph) {}
 
  private:
   IRType        type_;
@@ -422,7 +410,7 @@ class Node : public zone::ZoneObject {
   LAVA_DISALLOW_COPY_AND_ASSIGN(Node)
 };
 
-/* =========================================================================
+/**
  *
  * GVN hash function helper implementation
  *
@@ -442,7 +430,6 @@ class Node : public zone::ZoneObject {
  *    is put the node's id() value into the GVNHash generation. Prefer
  *    using id() function instead of use this pointer address as seed.
  *
- * ==========================================================================
  */
 
 template< typename T >
@@ -496,7 +483,9 @@ class Expr : public Node {
   virtual std::uint64_t GVNHash()        const { return GVNHash1(type_name(),id()); }
   virtual bool Equal( const Expr* that ) const { return this == that;       }
 
- public:
+ public: // The statement in our IR is still an expression, we could use
+         // following function to test whether it is an actual statement
+         // pint to a certain region
   bool  IsStatement() const { return stmt_.IsUsed(); }
   void  set_statement_edge ( const StatementEdge& st ) { stmt_= st; }
   const StatementEdge& statement_edge() const { return stmt_; }
@@ -540,18 +529,18 @@ class Expr : public Node {
   }
 
  public:
+  // check if this expression is used by any other expression, basically
+  // check whether ref_list is empty or not
+  //
+  // this check may not be accurate once the node is deleted/removed since
+  // once a node is removed, we don't clean its ref_list but it is not used
+  // essentially
+  bool IsUsed() const { return !ref_list()->Empty(); }
   // Check if this Expression is a Leaf node or not
-  bool IsLeaf() const {
-#define __(A,B,C,D) case IRTYPE_##B: return D;
-    switch(type()) {
-      CBASE_IR_EXPRESSION(__)
-      default: lava_die(); return false;
-    }
-#undef __ // __
-  }
-  bool IsNoneLeaf() const { return !IsLeaf(); }
-  IRInfo* ir_info() const { return ir_info_; }
- public:
+  inline bool IsLeaf()     const;
+  bool        IsNoneLeaf() const { return !IsLeaf(); }
+  IRInfo*     ir_info()    const { return ir_info_; }
+
   Expr( IRType type , std::uint32_t id , Graph* graph , IRInfo* info ):
     Node             (type,id,graph),
     operand_list_    (),
@@ -771,8 +760,7 @@ class Unary : public Expr {
   Operator op  () const { return op_;      }
   const char* op_name() const { return GetOperatorName(op()); }
 
-  Unary( Graph* graph , std::uint32_t id , Expr* opr , Operator op ,
-                                                       IRInfo* info ):
+  Unary( Graph* graph , std::uint32_t id , Expr* opr , Operator op , IRInfo* info ):
     Expr  (IRTYPE_UNARY,id,graph,info),
     op_   (op)
   {
@@ -780,9 +768,7 @@ class Unary : public Expr {
   }
 
  protected:
-  Unary( IRType type , Graph* graph , std::uint32_t id , Expr* opr ,
-                                                         Operator op ,
-                                                         IRInfo* info ):
+  Unary( IRType type , Graph* graph , std::uint32_t id , Expr* opr , Operator op , IRInfo* info ):
     Expr  (type,id,graph,info),
     op_   (op)
   {
@@ -832,9 +818,7 @@ class Binary : public Expr {
   }
 
  protected:
-  Binary( IRType irtype , Graph* graph , std::uint32_t id , Expr* lhs , Expr* rhs ,
-                                                                        Operator op,
-                                                                        IRInfo* info ):
+  Binary( IRType irtype ,Graph* graph ,std::uint32_t id ,Expr* lhs ,Expr* rhs ,Operator op,IRInfo* info ):
     Expr  (irtype,id,graph,info),
     op_   (op)
   {
@@ -850,9 +834,7 @@ class Binary : public Expr {
 class Ternary: public Expr {
  public:
   inline static Ternary* New( Graph* , Expr* , Expr* , Expr* , IRInfo* );
-  Ternary( Graph* graph , std::uint32_t id , Expr* cond , Expr* lhs ,
-                                                          Expr* rhs ,
-                                                          IRInfo* info ):
+  Ternary( Graph* graph , std::uint32_t id , Expr* cond , Expr* lhs , Expr* rhs , IRInfo* info ):
     Expr  (IRTYPE_TERNARY,id,graph,info)
   {
     AddOperand(cond);
@@ -866,14 +848,6 @@ class Ternary: public Expr {
  private:
   LAVA_DISALLOW_COPY_AND_ASSIGN(Ternary)
 };
-
-// -------------------------------------------------------------------------
-// Specific Arithmetic
-//
-// Specific arithmetic node means the node has already been properly guarded
-// and type hint will be provided inside of the node for code generation
-// -------------------------------------------------------------------------
-
 
 // -------------------------------------------------------------------------
 // upvalue get/set
@@ -925,6 +899,27 @@ class USet : public Expr {
   LAVA_DISALLOW_COPY_AND_ASSIGN(USet)
 };
 
+// MemStore
+// this node represents all possible memory store operation which essentially
+// can cause observable side effect inside of program. The node that is MemStore
+// are :
+// 1. PSet
+// 2. ISet
+// 3. ObjectSet
+// 4. ListSet
+//
+// 5. EffectPhi, this node takes multiple MemStore node as input and join the
+//    effect after the branch control flow
+//
+// 6. GGet , in current implementation global are treated very simple it will
+//    generate a side effect so it is always ordered
+class MemStore : public Expr {
+ public:
+  MemStore( IRType type , Graph* g , std::uint32_t id , IRInfo* info ):
+    Expr(type,id,g,info)
+  {}
+};
+
 // -------------------------------------------------------------------------
 // property set/get (side effect)
 // -------------------------------------------------------------------------
@@ -964,7 +959,7 @@ class PGet : public Expr {
   LAVA_DISALLOW_COPY_AND_ASSIGN(PGet)
 };
 
-class PSet : public Expr {
+class PSet : public MemStore {
  public:
   inline static PSet* New( Graph* , Expr* , Expr* , Expr* , IRInfo* , ControlFlow* );
   Expr* object() const { return operand_list()->First(); }
@@ -984,21 +979,17 @@ class PSet : public Expr {
     }
     return false;
   }
-  PSet( Graph* graph , std::uint32_t id , Expr* object , Expr* index ,
-                                                         Expr* value ,
-                                                         IRInfo* info ):
-    Expr  (IRTYPE_PSET,id,graph,info)
+  PSet( Graph* graph , std::uint32_t id , Expr* object , Expr* index , Expr* value , IRInfo* info ):
+    MemStore(IRTYPE_PSET,id,graph,info)
   {
     AddOperand(object);
     AddOperand(index );
     AddOperand(value );
   }
+
  protected:
-  PSet( IRType type , Graph* graph , std::uint32_t id , Expr* object ,
-                                                        Expr* index  ,
-                                                        Expr* value  ,
-                                                        IRInfo* info ):
-    Expr(type,id,graph,info)
+  PSet(IRType type,Graph* graph,std::uint32_t id,Expr* object,Expr* index,Expr* value,IRInfo* info):
+    MemStore(type,id,graph,info)
   {
     AddOperand(object);
     AddOperand(index );
@@ -1050,7 +1041,7 @@ class IGet : public Expr {
   LAVA_DISALLOW_COPY_AND_ASSIGN(IGet)
 };
 
-class ISet : public Expr {
+class ISet : public MemStore {
  public:
   inline static ISet* New( Graph* , Expr* , Expr* , Expr* , IRInfo* , ControlFlow* );
   Expr* object() const { return operand_list()->First(); }
@@ -1071,10 +1062,8 @@ class ISet : public Expr {
     return false;
   }
 
-  ISet( Graph* graph , std::uint32_t id , Expr* object , Expr* index ,
-                                                         Expr* value ,
-                                                         IRInfo* info ):
-    Expr(IRTYPE_ISET,id,graph,info)
+  ISet( Graph* graph , std::uint32_t id , Expr* object , Expr* index , Expr* value , IRInfo* info ):
+    MemStore(IRTYPE_ISET,id,graph,info)
   {
     AddOperand(object);
     AddOperand(index );
@@ -1082,11 +1071,8 @@ class ISet : public Expr {
   }
 
  protected:
-  ISet( IRType type , Graph* graph , std::uint32_t id , Expr* object ,
-                                                        Expr* index  ,
-                                                        Expr* value  ,
-                                                        IRInfo* info ):
-    Expr(type,id,graph,info)
+  ISet(IRType type,Graph* graph,std::uint32_t id,Expr* object,Expr* index,Expr* value,IRInfo* info):
+    MemStore(type,id,graph,info)
   {
     AddOperand(object);
     AddOperand(index );
@@ -1115,16 +1101,15 @@ class GGet : public Expr {
   LAVA_DISALLOW_COPY_AND_ASSIGN(GGet)
 };
 
-class GSet : public Expr {
+class GSet : public MemStore {
  public:
   inline static GSet* New( Graph* , Expr* key , Expr* value , IRInfo* ,
                                                               ControlFlow* );
   Expr* key () const { return operand_list()->First(); }
   Expr* value()const { return operand_list()->Last() ; }
 
-  GSet( Graph* graph , std::uint32_t id , Expr* key , Expr* value ,
-                                                      IRInfo* info ):
-    Expr  (IRTYPE_GSET,id,graph,info)
+  GSet( Graph* graph , std::uint32_t id , Expr* key , Expr* value , IRInfo* info ):
+    MemStore(IRTYPE_GSET,id,graph,info)
   {
     AddOperand(key);
     AddOperand(value);
@@ -1224,6 +1209,8 @@ class Phi : public Expr {
   inline static Phi* New( Graph* , ControlFlow* , IRInfo* );
   inline static Phi* New( Graph* , Expr* , Expr* , ControlFlow* , IRInfo* );
 
+  ControlFlow* region() const { return region_; }
+
   // Bounded control flow region node.
   // Each phi node is bounded to a control flow regional node
   // and by this we can easily decide which region contributs
@@ -1234,6 +1221,28 @@ class Phi : public Expr {
   LAVA_DISALLOW_COPY_AND_ASSIGN(Phi)
 };
 
+// -------------------------------------------------------------------------
+// EffectPhi
+//
+// A phi node that is used to merge effect right after the control flow. It
+// will only be used inside of some expression's effect list
+// -------------------------------------------------------------------------
+class EffectPhi : public MemStore {
+ public:
+  inline static EffectPhi* New( Graph* , ControlFlow* , IRInfo* );
+  inline static EffectPhi* New( Graph* , Expr* , Expr* , ControlFlow* , IRInfo* );
+
+  ControlFlow* region() const { return region_; }
+
+  inline EffectPhi( Graph* , std::uint32_t , ControlFlow* , IRInfo* );
+ private:
+  ControlFlow* region_;
+  LAVA_DISALLOW_COPY_AND_ASSIGN(EffectPhi);
+};
+
+// -------------------------------------------------------------------------
+// Function Call node
+// -------------------------------------------------------------------------
 class Call : public Expr {
  public:
   inline static Call* New( Graph* graph , Expr* , std::uint8_t , std::uint8_t ,
@@ -1722,10 +1731,7 @@ class BooleanNot: public Expr {
 class BooleanLogic : public Binary {
  public:
    inline static BooleanLogic* New( Graph* , Expr* , Expr* , Operator op , IRInfo* );
-   BooleanLogic( Graph* graph , std::uint32_t id , Expr* lhs ,
-                                                   Expr* rhs ,
-                                                   Operator op,
-                                                   IRInfo* info ):
+   BooleanLogic( Graph* graph , std::uint32_t id , Expr* lhs , Expr* rhs , Operator op, IRInfo* info ):
      Binary(IRTYPE_BOOLEAN_LOGIC,graph,id,lhs,rhs,op,info)
   {
     lava_debug(NORMAL,lava_verify( GetTypeInference(lhs) == TPKIND_BOOLEAN &&
@@ -1750,9 +1756,7 @@ class BooleanLogic : public Binary {
 class ObjectGet : public PGet {
  public:
   inline static ObjectGet* New( Graph* , Expr* , Expr* , IRInfo* );
-  ObjectGet( Graph* graph , std::uint32_t id , Expr* object ,
-                                               Expr* key,
-                                               IRInfo* info ):
+  ObjectGet( Graph* graph , std::uint32_t id , Expr* object , Expr* key, IRInfo* info ):
     PGet(IRTYPE_OBJECT_GET,graph,id,object,key,info)
   {}
 
@@ -1763,10 +1767,7 @@ class ObjectGet : public PGet {
 class ObjectSet : public PSet {
  public:
   inline static ObjectSet* New( Graph* , Expr* , Expr* , Expr* , IRInfo* );
-  ObjectSet( Graph* graph , std::uint32_t id , Expr* object ,
-                                               Expr* key,
-                                               Expr* value,
-                                               IRInfo* info ):
+  ObjectSet( Graph* graph , std::uint32_t id , Expr* object , Expr* key, Expr* value, IRInfo* info ):
     PSet(IRTYPE_OBJECT_SET,graph,id,object,key,value,info)
   {}
 
@@ -1777,9 +1778,7 @@ class ObjectSet : public PSet {
 class ListGet : public IGet {
  public:
   inline static ListGet* New( Graph* , Expr* , Expr* , IRInfo* );
-  ListGet( Graph* graph , std::uint32_t id, Expr* object,
-                                            Expr* index ,
-                                            IRInfo* info ):
+  ListGet( Graph* graph , std::uint32_t id, Expr* object, Expr* index , IRInfo* info ):
     IGet(IRTYPE_LIST_GET,graph,id,object,index,info)
   {}
 
@@ -1790,42 +1789,12 @@ class ListGet : public IGet {
 class ListSet : public ISet {
  public:
   inline static ListSet* New( Graph* , Expr* , Expr* , Expr* , IRInfo* );
-  ListSet( Graph* graph , std::uint32_t id , Expr* object ,
-                                             Expr* index  ,
-                                             Expr* value  ,
-                                             IRInfo* info ):
+  ListSet( Graph* graph , std::uint32_t id , Expr* object , Expr* index  , Expr* value  , IRInfo* info ):
     ISet(IRTYPE_LIST_SET,graph,id,object,index,value,info)
   {}
 
  private:
   LAVA_DISALLOW_COPY_AND_ASSIGN(ListSet)
-};
-
-class ExtensionGet : public IGet {
- public:
-  inline static ExtensionGet* New( Graph* , Expr* , Expr* , IRInfo* );
-  ExtensionGet( Graph* graph , std::uint32_t id , Expr* extension ,
-                                                  Expr* index,
-                                                  IRInfo* info ):
-    IGet(IRTYPE_EXTENSION_GET,graph,id,extension,index,info)
-  {}
-
- private:
-  LAVA_DISALLOW_COPY_AND_ASSIGN(ExtensionGet)
-};
-
-class ExtensionSet : public ISet {
- public:
-  inline static ExtensionSet* New( Graph* , Expr* , Expr* , Expr* , IRInfo* );
-  ExtensionSet( Graph* graph , std::uint32_t id , Expr* extension ,
-                                                  Expr* index,
-                                                  Expr* value,
-                                                  IRInfo* info ):
-    ISet(IRTYPE_EXTENSION_SET,graph,id,extension,index,value,info)
-  {}
-
- private:
-  LAVA_DISALLOW_COPY_AND_ASSIGN(ExtensionSet)
 };
 
 // -------------------------------------------------------------------------
@@ -1836,8 +1805,7 @@ class Box : public Expr {
   inline static Box* New( Graph* , Expr* , TypeKind , IRInfo* );
   Expr* value() const { return operand_list()->First(); }
   TypeKind type_kind() const { return type_kind_; }
-  Box( Graph* graph , std::uint32_t id , Expr* object , TypeKind tk ,
-                                                        IRInfo* info ):
+  Box( Graph* graph , std::uint32_t id , Expr* object , TypeKind tk , IRInfo* info ):
     Expr(IRTYPE_BOX,id,graph,info),
     type_kind_(tk)
   {
@@ -1867,8 +1835,7 @@ class Unbox : public Expr {
   inline static Unbox* New( Graph* , Expr* , TypeKind , IRInfo* );
   Expr* value() const { return operand_list()->First(); }
   TypeKind type_kind() const { return type_kind_; }
-  Unbox( Graph* graph , std::uint32_t id , Expr* object , TypeKind tk ,
-                                                          IRInfo* info ):
+  Unbox( Graph* graph , std::uint32_t id , Expr* object , TypeKind tk , IRInfo* info ):
     Expr(IRTYPE_UNBOX,id,graph,info),
     type_kind_(tk)
   {
@@ -2695,6 +2662,15 @@ inline zone::Zone* Node::zone() const {
   return graph_->zone();
 }
 
+inline bool Expr::IsLeaf() const {
+#define __(A,B,C,D) case IRTYPE_##B: return D;
+  switch(type()) {
+    CBASE_IR_EXPRESSION(__)
+    default: lava_die(); return false;
+  }
+#undef __ // __
+}
+
 inline Arg* Arg::New( Graph* graph , std::uint32_t index ) {
   return graph->zone()->New<Arg>(graph,graph->AssignID(),index);
 }
@@ -2816,33 +2792,23 @@ inline bool Binary::IsLogicOperator( Operator op ) {
 }
 
 inline Binary::Operator Binary::BytecodeToOperator( interpreter::Bytecode op ) {
+  using namespace interpreter;
   switch(op) {
-    case interpreter::BC_ADDRV: case interpreter::BC_ADDVR: case interpreter::BC_ADDVV: return ADD;
-    case interpreter::BC_SUBRV: case interpreter::BC_SUBVR: case interpreter::BC_SUBVV: return SUB;
-    case interpreter::BC_MULRV: case interpreter::BC_MULVR: case interpreter::BC_MULVV: return MUL;
-    case interpreter::BC_DIVRV: case interpreter::BC_DIVVR: case interpreter::BC_DIVVV: return DIV;
-    case interpreter::BC_MODRV: case interpreter::BC_MODVR: case interpreter::BC_MODVV: return MOD;
-    case interpreter::BC_POWRV: case interpreter::BC_POWVR: case interpreter::BC_POWVV: return POW;
-    case interpreter::BC_LTRV : case interpreter::BC_LTVR : case interpreter::BC_LTVV : return LT ;
-    case interpreter::BC_LERV : case interpreter::BC_LEVR : case interpreter::BC_LEVV : return LE ;
-    case interpreter::BC_GTRV : case interpreter::BC_GTVR : case interpreter::BC_GTVV : return GT ;
-    case interpreter::BC_GERV : case interpreter::BC_GEVR : case interpreter::BC_GEVV : return GE ;
-
-    case interpreter::BC_EQRV : case interpreter::BC_EQVR : case interpreter::BC_EQSV :
-    case interpreter::BC_EQVS: case interpreter::BC_EQVV:
-      return EQ;
-
-    case interpreter::BC_NERV : case interpreter::BC_NEVR : case interpreter::BC_NESV :
-    case interpreter::BC_NEVS: case interpreter::BC_NEVV:
-      return NE;
-
-    case interpreter::BC_AND: return AND;
-    case interpreter::BC_OR : return OR;
-    default:
-      lava_unreachF("unknown bytecode %s",interpreter::GetBytecodeName(op));
-      break;
+    case BC_ADDRV: case BC_ADDVR: case BC_ADDVV: return ADD;
+    case BC_SUBRV: case BC_SUBVR: case BC_SUBVV: return SUB;
+    case BC_MULRV: case BC_MULVR: case BC_MULVV: return MUL;
+    case BC_DIVRV: case BC_DIVVR: case BC_DIVVV: return DIV;
+    case BC_MODRV: case BC_MODVR: case BC_MODVV: return MOD;
+    case BC_POWRV: case BC_POWVR: case BC_POWVV: return POW;
+    case BC_LTRV : case BC_LTVR : case BC_LTVV : return LT ;
+    case BC_LERV : case BC_LEVR : case BC_LEVV : return LE ;
+    case BC_GTRV : case BC_GTVR : case BC_GTVV : return GT ;
+    case BC_GERV : case BC_GEVR : case BC_GEVV : return GE ;
+    case BC_EQRV : case BC_EQVR : case BC_EQSV : case BC_EQVS: case BC_EQVV: return EQ;
+    case BC_NERV : case BC_NEVR : case BC_NESV : case BC_NEVS: case BC_NEVV: return NE;
+    case BC_AND: return AND; case BC_OR : return OR;
+    default: lava_unreachF("unknown bytecode %s",interpreter::GetBytecodeName(op)); break;
   }
-
   return ADD;
 }
 
@@ -2987,6 +2953,25 @@ inline Phi* Phi::New( Graph* graph , ControlFlow* region , IRInfo* info ) {
   return graph->zone()->New<Phi>(graph,graph->AssignID(),region,info);
 }
 
+inline EffectPhi::EffectPhi( Graph* graph , std::uint32_t id , ControlFlow* region , IRInfo* info ):
+  MemStore(IRTYPE_EFFECT_PHI,id,graph,info),
+  region_ (region)
+{
+  region->AddOperand(this);
+}
+
+inline EffectPhi* EffectPhi::::New( Graph* graph , Expr* lhs , Expr* rhs , ControlFlow* region ,
+                                                                           IRInfo* info ) {
+  auto ret = graph->zone()->New<EffectPhi>(graph,graph->AssignID(),region,info);
+  ret->AddOperand(lhs);
+  ret->AddOperand(rhs);
+  return ret;
+}
+
+inline EffectPhi* EffectPhi::New( Graph* graph , ControlFlow* region , IRInfo* info ) {
+  return graph->zone()->New<EffectPhi>(graph,graph->AssignID(),region,info);
+}
+
 inline ICall* ICall::New( Graph* graph , interpreter::IntrinsicCall ic ,
                                          bool tc,
                                          IRInfo* info ) {
@@ -3100,15 +3085,6 @@ inline ObjectSet* ObjectSet::New( Graph* graph , Expr* obj , Expr* key , Expr* v
   return graph->zone()->New<ObjectSet>(graph,graph->AssignID(),obj,key,value,info);
 }
 
-inline ExtensionGet* ExtensionGet::New( Graph* graph , Expr* obj , Expr* key , IRInfo* info ) {
-  return graph->zone()->New<ExtensionGet>(graph,graph->AssignID(),obj,key,info);
-}
-
-inline ExtensionSet* ExtensionSet::New( Graph* graph , Expr* obj , Expr* key , Expr* value ,
-                                                                               IRInfo* info ) {
-  return graph->zone()->New<ExtensionSet>(graph,graph->AssignID(),obj,key,value,info);
-}
-
 inline Box* Box::New( Graph* graph , Expr* obj , TypeKind tk , IRInfo* info ) {
   return graph->zone()->New<Box>(graph,graph->AssignID(),obj,tk,info);
 }
@@ -3194,8 +3170,7 @@ inline bool Jump::TrySetTarget( const std::uint32_t* bytecode_pc , ControlFlow* 
     target_ = target;
     return true;
   }
-  // The target should not be set since this jump doesn't and shouldn't jump
-  // to the input region
+  // The target should not be set since this jump doesn't and shouldn't jump to the input region
   return false;
 }
 

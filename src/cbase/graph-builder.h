@@ -2,9 +2,9 @@
 #define CBASE_GRAPH_BUILDER_H_
 #include "hir.h"
 
+#include "src/interpreter/intrinsic-call.h"
 #include "src/objects.h"
 #include "src/zone/zone.h"
-#include "src/interpreter/intrinsic-call.h"
 #include "src/type-trace.h"
 
 #include <cstdint>
@@ -40,18 +40,50 @@ class GraphBuilder {
     }
   };
 
+  // Environment --------------------------------------------------------------
+  // this object records all the side effect that can be observed by the
+  // function or its nested inline functions.
+  // In general, we can observe side effect via three categories:
+  // 1. input argument
+  // 2. return value (if inlined)
+  // 3. global variables
+  class Environment {
+   public:
+    Environment(): stack_(),upvalue_(),zone_(zone),effect_(NULL){}
+    // init environment object from prototype object
+    void InitFromPrototype( Graph*, const Handle<Prototype>& );
+
+    ValueStack* stack()     { return &stack_; }
+    ValueStack* upvalue()   { return &upvalue_; }
+
+   public:
+    // update the current effect node inside of the environment
+    void UpdateEffect( GraphBuilder* , MemStore* );
+    // get current effect node
+    MemStore* effect() const { return effect_; }
+   private:
+    // register stack
+    ValueStack stack_;
+    // upvalue array
+    ValueStack upvalue_;
+    // this field records an expression that is a *memory mutation* operation that acutally
+    // should be observed by various field inside of the program. To generate a real effect
+    // we do it by scanning all following positions which is considered to be aliased with
+    // each other :
+    // 1. all global variables
+    // 2. upvalue
+    // 3. input argument
+    MemStore* effect_;
+  };
+
   // Data structure record the pending jump that happened inside of the loop
   // body. It is typically break and continue keyword , since they cause a
   // unconditional jump happened
   struct UnconditionalJump {
     Jump* node;                     // node that is created when break/continue jump happened
     const std::uint32_t* pc;        // address of this unconditional jump
-    ValueStack stack;               // stack results for this branch , used to generate PHI node
-    UnconditionalJump( Jump* n , const std::uint32_t* p , const ValueStack& stk ):
-      node(n),
-      pc  (p),
-      stack(stk)
-    {}
+    Environment         env;        // environment for this unconditional jump
+    UnconditionalJump( Jump* n , const std::uint32_t* p , const Environment& e ):node(n),pc(p),env(e){}
   };
 
   typedef std::vector<UnconditionalJump> UnconditionalJumpList;
@@ -69,20 +101,17 @@ class GraphBuilder {
     struct PhiVar {
       std::uint8_t reg;  // register index
       Phi*         phi;  // phi node
-      PhiVar( std::uint8_t r , Phi* p ):
-        reg(r),
-        phi(p)
-      {}
+      PhiVar( std::uint8_t r , Phi* p ): reg(r), phi(p) {}
     };
     std::vector<PhiVar> phi_list;
    public:
     bool HasParentLoop() const { return loop_header_info->prev != NULL; }
     bool HasJump() const { return !pending_break.empty() || !pending_continue.empty(); }
-    void AddBreak( Jump* node , const std::uint32_t* target , const ValueStack& stk ) {
-      pending_break.push_back(UnconditionalJump(node,target,stk));
+    void AddBreak( Jump* node , const std::uint32_t* target , const Environment& e ) {
+      pending_break.push_back(UnconditionalJump(node,target,e));
     }
-    void AddContinue( Jump* node , const std::uint32_t* target , const ValueStack& stk ) {
-      pending_continue.push_back(UnconditionalJump(node,target,stk));
+    void AddContinue( Jump* node , const std::uint32_t* target , const Environment& e ) {
+      pending_continue.push_back(UnconditionalJump(node,target,e));
     }
     void AddPhi( std::uint8_t index , Phi* phi ) {
       phi_list.push_back(PhiVar(index,phi));
@@ -100,18 +129,18 @@ class GraphBuilder {
   // stack/vector
   struct FuncInfo {
     /** member field **/
-    Handle<Prototype> prototype; // cached for faster access
-    std::vector<Expr*> upvalue;
-    ControlFlow* region;
-    std::uint32_t base;
-    std::uint8_t  max_local_var_size;
-    std::vector<LoopInfo> loop_info;
+    Handle<Prototype>         prototype; // cached for faster access
+    ControlFlow*              region;
+    std::uint32_t             base;
+    std::uint32_t             uv_base;   // upvalue base
+    std::uint8_t              max_local_var_size;
+    std::vector<LoopInfo>     loop_info;
     std::vector<ControlFlow*> return_list;
-    BytecodeAnalyze bc_analyze;
-    const std::uint32_t* osr_start;
+    BytecodeAnalyze           bc_analyze;
+    const std::uint32_t*      osr_start;
 
    public:
-    inline FuncInfo( const Handle<Prototype>& , ControlFlow* , std::uint32_t );
+    inline FuncInfo( const Handle<Prototype>& , ControlFlow* , std::uint32_t , std::uint32_t );
     inline FuncInfo( const Handle<Prototype>& , ControlFlow* , const std::uint32_t* );
     inline FuncInfo( FuncInfo&& );
     bool IsOSR() const { return osr_start != NULL; }
@@ -147,44 +176,52 @@ class GraphBuilder {
   bool Build( const Handle<Prototype>& , Graph* );
   // Build a function's graph assume OSR
   bool BuildOSR( const Handle<Prototype>& , const std::uint32_t* , Graph* );
+
  private: // Stack accessing
   std::uint32_t StackIndex( std::uint32_t index ) const {
     return func_info().base+index;
   }
   void StackSet( std::uint32_t index , Expr* value ) {
-    stack_->at(StackIndex(index)) = value;
+    vstk()->at(StackIndex(index)) = value;
   }
   void StackReset( std::uint32_t index ) {
-    stack_->at(StackIndex(index)) = NULL;
+    vstk()->at(StackIndex(index)) = NULL;
   }
   Expr* StackGet( std::uint32_t index ) {
-    return stack_->at(StackIndex(index));
+    return vstk()->at(StackIndex(index));
   }
   Expr* StackGet( std::uint32_t index , std::uint32_t base ) {
-    return stack_->at(base+index);
+    return vstk()->at(base+index);
   }
   StackSlot StackGetSlot( std::uint32_t index ) {
     return StackSlot(StackGet(index),index);
   }
+ private: // UpValue accessing
+  std::uint32_t UpValueIndex( std::uint32_t index ) const {
+    return func_info().uv_base + index;
+  }
+  void UpValueSet( std::uint32_t index , Expr* value ) {
+    upval()->at(UpValueIndex(index)) = value;
+  }
+  Expr* UpValueGet( std::uint32_t index ) {
+    return upval()->at(UpValueIndex(index));
+  }
+
  private: // Current FuncInfo
   std::uint32_t method_index() const {
     return static_cast<std::uint32_t>(func_info_.size());
   }
-  FuncInfo& func_info() { return func_info_.back(); }
-  const FuncInfo& func_info() const { return func_info_.back(); }
-  bool IsTopFunction() const { return func_info_.size() == 1; }
-  const Handle<Prototype>& prototype() const {
-    return func_info().prototype;
-  }
-  std::uint32_t base() const {
-    return func_info().base;
-  }
-  ControlFlow* region() const {
-    return func_info().region;
-  }
-  void set_region( ControlFlow* new_region ) {
-    func_info().region = new_region;
-  }
+
+  FuncInfo& func_info()                      { return func_info_.back(); }
+  const FuncInfo& func_info()          const { return func_info_.back(); }
+  bool IsTopFunction()                 const { return func_info_.size() == 1; }
+  const Handle<Prototype>& prototype() const { return func_info().prototype; }
+  std::uint32_t base()                 const { return func_info().base; }
+  ControlFlow* region()                const { return func_info().region; }
+  void set_region( ControlFlow* new_region ) { func_info().region = new_region; }
+  Environment* env()                   const { return env_; }
+  ValueStack*  vstk()                  const { return vstk(); }
+  ValueStack*  upval()                 const { return env()->upvalue(); }
  private: // Constant handling
   Expr* NewConstNumber( std::int32_t , const interpreter::BytecodeLocation& );
   Expr* NewConstNumber( std::int32_t );
@@ -267,13 +304,11 @@ class GraphBuilder {
   StopReason BuildBasicBlock( interpreter::BytecodeIterator* itr , const std::uint32_t* end_pc = NULL );
 
   // Build branch IR graph
-  void InsertIfPhi( const ValueStack& false_stack , const ValueStack& true_stack ,
-                                                    const ValueStack& false_uval  ,
-                                                    const ValueStack& true_uval  ,
-                                                    ControlFlow* ,
-                                                    const interpreter::BytecodeLocation& );
+  void InsertPhi( Environment* lhs , Environment* rhs , ControlFlow* ,
+                                                        const interpreter::BytecodeLocation& );
 
   void GeneratePhi( ValueStack* dest , const ValueStack& lhs , const ValueStack& rhs ,
+                                                               std::size_t base ,
                                                                ControlFlow* region ,
                                                                const interpreter::BytecodeLocation& );
 
@@ -302,13 +337,7 @@ class GraphBuilder {
 
   // Iterate until we see FEEND/FEND1/FEND2/FEVREND
   StopReason BuildLoopBlock  ( interpreter::BytecodeIterator* itr );
-
-  void InsertUnconditionalJumpPhi( const ValueStack& , ControlFlow* ,
-      const interpreter::BytecodeLocation& );
-
-  void PatchUnconditionalJump    ( UnconditionalJumpList* , ControlFlow* ,
-      const interpreter::BytecodeLocation& );
-
+  void PatchUnconditionalJump( UnconditionalJumpList* , ControlFlow* , const interpreter::BytecodeLocation& );
 
  private:
   IRInfo* NewIRInfo( const interpreter::BytecodeLocation& loc );
@@ -319,33 +348,21 @@ class GraphBuilder {
   Handle<Script>        script_;
   Graph*                graph_;
   // Working set data , used when doing inline and other stuff
-  ValueStack*           stack_;
-  ValueStack*           upvalue_;
+  Environment*          env_;
   std::vector<FuncInfo> func_info_;
   // Type trace for speculative operation generation
   const TypeTrace&      type_trace_;
-  // Global variable table
-  //
-  // For simplicity we just use std::map, we can use Object/Map but it lives
-  // on internal managed heap which we want to separate memory use during compilation
-  // from program execution memory
-  //
-  // We need to track the stack slot for a specific expression as well since these are
-  // also the places that future expression gonna use that expression which alias inside
-  // of a global variable.
-  std::map<std::string,StackSlot> globals_;
 
  private:
   class OSRScope ;
   class FuncScope;
   class LoopScope;
-  struct VMState;
-  class BackupState;
+  class BackupEnvironment;
 
+  friend class OSRScope ;
   friend class FuncScope;
   friend class LoopScope;
-  friend class BackupState;
-  friend class OSRScope;
+  friend class BackupEnvironment;
 };
 
 // --------------------------------------------------------------------------
@@ -354,11 +371,12 @@ class GraphBuilder {
 //
 // --------------------------------------------------------------------------
 inline GraphBuilder::FuncInfo::FuncInfo( const Handle<Prototype>& proto , ControlFlow* start_region ,
-                                                                          std::uint32_t b ):
+                                                                          std::uint32_t b ,
+                                                                          std::uint32_t ub ):
   prototype         (proto),
-  upvalue           (proto->upvalue_size()),
   region            (start_region),
   base              (b),
+  uv_base           (ub),
   max_local_var_size(proto->max_local_var_size()),
   loop_info         (),
   return_list       (),
@@ -369,9 +387,9 @@ inline GraphBuilder::FuncInfo::FuncInfo( const Handle<Prototype>& proto , Contro
 inline GraphBuilder::FuncInfo::FuncInfo( const Handle<Prototype>& proto , ControlFlow* start_region ,
                                                                           const std::uint32_t* ostart ):
   prototype         (proto),
-  upvalue           (proto->upvalue_size()),
   region            (start_region),
   base              (0),
+  uv_base           (0),
   max_local_var_size(proto->max_local_var_size()),
   loop_info         (),
   return_list       (),
@@ -381,7 +399,6 @@ inline GraphBuilder::FuncInfo::FuncInfo( const Handle<Prototype>& proto , Contro
 
 inline GraphBuilder::FuncInfo::FuncInfo( FuncInfo&& that ):
   prototype         (that.prototype),
-  upvalue           (std::move(that.upvalue)),
   region            (that.region),
   base              (that.base),
   max_local_var_size(that.max_local_var_size),
@@ -395,11 +412,8 @@ inline GraphBuilder::GraphBuilder( const Handle<Script>& script , const TypeTrac
   zone_             (NULL),
   script_           (script),
   graph_            (NULL),
-  stack_            (),
-  upvalue_          (),
   func_info_        (),
   type_trace_       (tt),
-  globals_          ()
 {}
 
 inline void GraphBuilder::FuncInfo::EnterLoop( const std::uint32_t* pc ) {

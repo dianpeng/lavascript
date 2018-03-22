@@ -129,7 +129,7 @@ template< typename C > class STLConstBackwardIteratorAdapter :
 // have a default constructor which is different from the default
 // operator [] provided by STL map container
 template< typename T , typename K , typename V >
-bool UpdateMap( T* map , const K& key , const V& v ) {
+bool STLUpdateMap( T* map , const K& key , const V& v ) {
   auto itr = map->insert(std::make_pair(key,v));
   if(itr.second) {
     itr.first->second = v;
@@ -138,7 +138,7 @@ bool UpdateMap( T* map , const K& key , const V& v ) {
 }
 
 template< typename T , typename K , typename V >
-bool UpdateMap( T* map , K&& key , V&& v ) {
+bool STLUpdateMap( T* map , K&& key , V&& v ) {
   auto itr = map->find(key);
   if(itr == map->end()) {
     map->insert(std::make_pair(std::move(key),std::move(v)));

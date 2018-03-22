@@ -13,7 +13,7 @@ namespace cbase {
  *
  * The indent here indicate the parental relationship between each type
  */
-#define LAVASCRIPT_CBASE_TYPE_KIND_LIST(__) \
+#define LAVASCRIPT_CBASE_TYPE_KIND_LIST(__)             \
   __(unknown,UNKNOWN)                                   \
   __(root,ROOT)                                         \
   __(primitive,PRIMITIVE)                               \
@@ -134,7 +134,7 @@ class TPKind {
 };
 
 inline bool TPKind::IsString( TypeKind tp ) {
-  return tp == TPKIND_STRING      || tp == TPKIND_LONG_STRING || tp == TPKIND_SMALL_STRING;
+  return tp == TPKIND_STRING || tp == TPKIND_LONG_STRING || tp == TPKIND_SMALL_STRING;
 }
 
 inline bool TPKind::ToBoolean( TypeKind tp , bool* output ) {

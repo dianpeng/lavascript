@@ -644,9 +644,7 @@ void DotGraphVisualizer::RenderExpr( const std::string& name , Expr* node ) {
 
       }
       break;
-    case IRTYPE_IGET:
-    case IRTYPE_LIST_GET:
-    case IRTYPE_EXTENSION_GET:
+    case IRTYPE_IGET: case IRTYPE_LIST_GET:
       {
         auto iget = static_cast<IGet*>(node);
 
@@ -660,9 +658,7 @@ void DotGraphVisualizer::RenderExpr( const std::string& name , Expr* node ) {
 
       }
       break;
-    case IRTYPE_ISET:
-    case IRTYPE_LIST_SET:
-    case IRTYPE_EXTENSION_SET:
+    case IRTYPE_ISET: case IRTYPE_LIST_SET:
       {
         auto iset = static_cast<ISet*>(node);
 
@@ -742,24 +738,8 @@ void DotGraphVisualizer::RenderExpr( const std::string& name , Expr* node ) {
 
       }
       break;
-    case IRTYPE_PHI:
-      {
-        auto phi = node->AsPhi();
-        Indent(1) << name << "[label=\"PHI\" color=gray style=filled]\n";
-        std::size_t count = 0;
-        for( auto itr = phi->operand_list()->GetForwardIterator() ; itr.HasNext() ; itr.Move() , ++count ) {
-          auto node = itr.value();
-          auto node_name = GetNodeName(node);
-          RenderExpr(node_name,node);
-          Indent(1) << name << " -> " << node_name << "[label=\"" << count
-                                                                  << "\" color=pink style=bold]\n";
-        }
-      }
-      break;
-
     case IRTYPE_PROJECTION:
-      Indent(1) << name << "[label=\"projection(" << node->AsProjection()->index()
-                                                  <<")]\n";
+      Indent(1) << name << "[label=\"projection(" << node->AsProjection()->index() <<")]\n";
       break;
     case IRTYPE_INIT_CLS:
       {

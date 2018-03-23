@@ -392,7 +392,8 @@ void DotGraphVisualizer::RenderCheckpoint ( const std::string& cp_name ,
 
   for( std::size_t i = 0 ; i < len ; ++i ) {
     auto n = checkpoint->operand_list()->Index(i);
-    if(n->IsStackSlot()) {
+    lava_debug(NORMAL,lava_verify(n->IsStackSlot()););
+    {
       auto ss        = n->AsStackSlot();
       auto ss_name   = GetNodeName(ss);
 
@@ -406,22 +407,6 @@ void DotGraphVisualizer::RenderCheckpoint ( const std::string& cp_name ,
       RenderExpr(expr_name,expr);
       Indent(1) << ss_name << " -> " << expr_name <<'\n';
       Indent(1) << cp_name << " -> " << ss_name   <<'\n';
-    } else {
-      lava_debug(NORMAL,lava_verify(n->IsUGetSlot()););
-
-      auto us      = n->AsUGetSlot();
-      auto us_name = GetNodeName(us);
-
-      Indent(1) << us_name << "[shape=doublecircle style=bold color=cyan label=\"[uval_slot("
-                           << us->index()
-                           << ")\"]\n";
-
-      // render the expression
-      auto expr      = us->expr();
-      auto expr_name = GetNodeName(expr);
-      RenderExpr(expr_name,expr);
-      Indent(1) << us_name << " -> " << expr_name <<'\n';
-      Indent(1) << cp_name << " -> " << us_name   <<'\n';
     }
   }
 }
@@ -439,7 +424,7 @@ void DotGraphVisualizer::RenderControlFlow( const std::string& region_name ,
     auto node = itr.value();
     auto name = GetNodeName(node);
     RenderExpr(name,node);
-    Indent(1) << region_name << " -> " << name << "[color=yellow style=dashed]\n";
+    Indent(1) << region_name << " -> " << name << "[color=blue style=dashed]\n";
   }
 
   // for all the statment's bounded inside of this control flow node
@@ -448,7 +433,7 @@ void DotGraphVisualizer::RenderControlFlow( const std::string& region_name ,
     auto expr = itr.value();
     auto name = GetNodeName(expr);
     RenderExpr(name,expr);
-    Indent(1) << region_name << " -> " << name << "[color=grey style=dashed]\n";
+    Indent(1) << region_name << " -> " << name << "[color=purple style=dashed label=stmt]\n";
   }
 }
 
@@ -851,7 +836,7 @@ void DotGraphVisualizer::RenderExpr( const std::string& name , Expr* node ) {
   for( auto itr(node->effect_list()->GetForwardIterator()) ;
        itr.HasNext() ; itr.Move() ) {
     Indent(1) << name << " -> " << GetNodeName(itr.value())
-                                << "[label=\"depend\" style=filled color=blue ]\n";
+                                << "[label=\"dep\" style=filled color=blue ]\n";
   }
 }
 

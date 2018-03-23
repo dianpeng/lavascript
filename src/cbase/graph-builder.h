@@ -52,24 +52,21 @@ class GraphBuilder {
   // 3. global variables
   class Environment {
    public:
-    Environment( Graph* graph ):stack_(),upvalue_(),effect_(NoEffect::New(graph)) {}
+    Environment( Graph* graph ): stack_(), effect_(NoEffect::New(graph)) {}
     // init environment object from prototype object
     void EnterFunctionScope( Graph*, const FuncInfo& );
     void ExitFunctionScope ( Graph*, const FuncInfo& );
 
     ValueStack* stack()     { return &stack_; }
-    ValueStack* upvalue()   { return &upvalue_; }
    public:
     // update the current effect node inside of the environment
-    void UpdateEffect( GraphBuilder* , MemStore* );
+    void UpdateEffect( GraphBuilder* , SideEffect* );
 
     // get current effect node
-    MemStore* effect() const { return effect_; }
+    SideEffect* effect() const { return effect_; }
    private:
     // register stack
     ValueStack stack_;
-    // upvalue array
-    ValueStack upvalue_;
     // this field records an expression that is a *memory mutation* operation that acutally
     // should be observed by various field inside of the program. To generate a real effect
     // we do it by scanning all following positions which is considered to be aliased with
@@ -77,7 +74,7 @@ class GraphBuilder {
     // 1. all global variables
     // 2. upvalue
     // 3. input argument
-    MemStore* effect_;
+    SideEffect* effect_;
   };
 
   // Data structure record the pending jump that happened inside of the loop
@@ -108,7 +105,6 @@ class GraphBuilder {
       PhiVar( std::uint8_t i , Phi* p ): idx(i), phi(p) {}
     };
     std::vector<PhiVar> phi_list;
-    std::vector<PhiVar> uvphi_list;
    public:
     bool HasParentLoop() const { return loop_header_info->prev != NULL; }
     bool HasJump() const { return !pending_break.empty() || !pending_continue.empty(); }
@@ -121,15 +117,11 @@ class GraphBuilder {
     void AddPhi( std::uint8_t index , Phi* phi ) {
       phi_list.push_back(PhiVar(index,phi));
     }
-    void AddUVPhi( std::uint8_t index , Phi* phi ) {
-      uvphi_list.push_back(PhiVar(index,phi));
-    }
     LoopInfo( const BytecodeAnalyze::LoopHeaderInfo* info ):
       pending_break(),
       pending_continue(),
       loop_header_info(info),
-      phi_list(),
-      uvphi_list()
+      phi_list()
     {}
   };
 
@@ -141,7 +133,6 @@ class GraphBuilder {
     Handle<Prototype>         prototype; // cached for faster access
     ControlFlow*              region;
     std::uint32_t             base;
-    std::uint32_t             uv_base;   // upvalue base
     std::uint8_t              max_local_var_size;
     std::vector<LoopInfo>     loop_info;
     std::vector<ControlFlow*> return_list;
@@ -149,7 +140,7 @@ class GraphBuilder {
     const std::uint32_t*      osr_start;
 
    public:
-    inline FuncInfo( const Handle<Prototype>& , ControlFlow* , std::uint32_t , std::uint32_t );
+    inline FuncInfo( const Handle<Prototype>& , ControlFlow* , std::uint32_t );
     inline FuncInfo( const Handle<Prototype>& , ControlFlow* , const std::uint32_t* );
     inline FuncInfo( FuncInfo&& );
     bool IsOSR() const { return osr_start != NULL; }
@@ -205,16 +196,6 @@ class GraphBuilder {
   StackSlot StackGetSlot( std::uint32_t index ) {
     return StackSlot(StackGet(index),index);
   }
- private: // UpValue accessing
-  std::uint32_t UpValueIndex( std::uint32_t index ) const {
-    return func_info().uv_base + index;
-  }
-  void UpValueSet( std::uint32_t index , Expr* value ) {
-    upval()->at(UpValueIndex(index)) = value;
-  }
-  Expr* UpValueGet( std::uint32_t index ) {
-    return upval()->at(UpValueIndex(index));
-  }
 
  public: // Current FuncInfo
   std::uint32_t method_index() const {
@@ -230,7 +211,6 @@ class GraphBuilder {
   void set_region( ControlFlow* new_region ) { func_info().region = new_region; }
   Environment* env()                   const { return env_; }
   ValueStack*  vstk()                  const { return env_->stack(); }
-  ValueStack*  upval()                 const { return env_->upvalue(); }
  private: // Constant handling
   Expr* NewConstNumber( std::int32_t , const interpreter::BytecodeLocation& );
   Expr* NewConstNumber( std::int32_t );
@@ -257,21 +237,13 @@ class GraphBuilder {
   Expr* AddTypeFeedbackIfNeed( const StackSlot& , TypeKind     , IRInfo* );
   Expr* AddTypeFeedbackIfNeed( const StackSlot& , const Value& , IRInfo* );
 
- private:
-  // create unary/binary/tenrary node accordingly. it will do constant folding if
-  // needed , this is to avoid generate too many checkpoint node . later on the
-  // type inference phase will kick in and mark each node with type and some of the
-  // checkpoint node will be enimilated since type is known
+ private: // Arithmetic
+  // Unary
   Expr* NewUnary            ( const StackSlot& , Unary::Operator , const interpreter::BytecodeLocation& );
   Expr* TrySpeculativeUnary ( const StackSlot& , Unary::Operator , const interpreter::BytecodeLocation& );
   Expr* NewUnaryFallback    ( const StackSlot& , Unary::Operator , const interpreter::BytecodeLocation& );
 
-  // speicial test binary means some expression like :
-  //
-  //  if(a == null) or if(null == a) ;
-  //  if(a == true) or if(false ==a) ;
-  //
-  // Note , ==/!= both works
+  // Binary
   Expr* NewBinary            ( const StackSlot& , const StackSlot& , Binary::Operator ,
                                                                      const interpreter::BytecodeLocation& );
   Expr* TrySpecialTestBinary ( const StackSlot& , const StackSlot& , Binary::Operator ,
@@ -281,15 +253,14 @@ class GraphBuilder {
   Expr* NewBinaryFallback    ( const StackSlot& , const StackSlot& , Binary::Operator ,
                                                                      const interpreter::BytecodeLocation& );
 
-  // ternary node
+  // Ternary
   Expr* NewTernary           ( const StackSlot& , Expr* , Expr* , const interpreter::BytecodeLocation& );
-  // create a intrinsic call node
-  Expr* NewICall      ( std::uint8_t a1 , std::uint8_t a2 , std::uint8_t a3 ,
-                                                            bool tcall ,
-                                                            const interpreter::BytecodeLocation&);
+
+  // Intrinsic
+  Expr* NewICall      ( std::uint8_t ,std::uint8_t ,std::uint8_t ,bool ,const interpreter::BytecodeLocation& );
   Expr* LowerICall    ( ICall* );
 
-  // create node for pset/pget and iset/iget family instructions
+ private: // Property/Index Get/Set
   Expr* NewPSet       ( Expr* , Expr* , Expr* , IRInfo* );
   Expr* NewPGet       ( Expr* , Expr* , IRInfo* );
   Expr* NewISet       ( Expr* , Expr* , Expr* , IRInfo* );
@@ -297,6 +268,9 @@ class GraphBuilder {
  private: // Global variables
   void NewGGet( std::uint8_t , std::uint8_t , const interpreter::BytecodeLocation& , bool sso = false );
   void NewGSet( std::uint8_t , std::uint8_t , const interpreter::BytecodeLocation& , bool sso = false );
+ private: // Upvalue
+  void NewUGet( std::uint8_t , std::uint8_t , const interpreter::BytecodeLocation& );
+  void NewUSet( std::uint8_t , std::uint8_t , const interpreter::BytecodeLocation& );
  private: // Checkpoint generation
   Checkpoint* BuildCheckpoint( const interpreter::BytecodeLocation& );
  private:
@@ -379,12 +353,10 @@ class GraphBuilder {
 //
 // --------------------------------------------------------------------------
 inline GraphBuilder::FuncInfo::FuncInfo( const Handle<Prototype>& proto , ControlFlow* start_region ,
-                                                                          std::uint32_t b ,
-                                                                          std::uint32_t ub ):
+                                                                          std::uint32_t b ):
   prototype         (proto),
   region            (start_region),
   base              (b),
-  uv_base           (ub),
   max_local_var_size(proto->max_local_var_size()),
   loop_info         (),
   return_list       (),
@@ -397,7 +369,6 @@ inline GraphBuilder::FuncInfo::FuncInfo( const Handle<Prototype>& proto , Contro
   prototype         (proto),
   region            (start_region),
   base              (0),
-  uv_base           (0),
   max_local_var_size(proto->max_local_var_size()),
   loop_info         (),
   return_list       (),
@@ -409,7 +380,6 @@ inline GraphBuilder::FuncInfo::FuncInfo( FuncInfo&& that ):
   prototype         (that.prototype),
   region            (that.region),
   base              (that.base),
-  uv_base           (that.uv_base),
   max_local_var_size(that.max_local_var_size),
   loop_info         (std::move(that.loop_info)),
   return_list       (std::move(that.return_list)),

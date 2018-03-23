@@ -289,19 +289,6 @@ bool BytecodeAnalyze::BuildBytecode( BytecodeIterator* itr ) {
     case BC_FSTART:    BuildLoop(itr);        break;
     case BC_FESTART:   BuildLoop(itr);        break;
     case BC_FEVRSTART: BuildForeverLoop(itr); break;
-    // upvalue instructions
-    case BC_UVSET:
-    {
-      std::uint8_t a1, a2;
-      itr->GetOperand(&a1,&a2);
-      if(current_loop()) {
-        // this upvalue is modified inside of the loop body so it should
-        // have a Phi node at the head of the loop since all upvalue has
-        // default value regardless
-        current_loop()->uv_phi[a1] = true;
-      }
-    }
-    break;
 
     // bytecode that gonna terminate current basic block
     case BC_CONT: case BC_BRK: case BC_RET: case BC_RETNULL:

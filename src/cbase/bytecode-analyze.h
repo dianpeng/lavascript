@@ -60,9 +60,7 @@ class BytecodeAnalyze {
     const std::uint32_t* end   ;  // end   of the bytecode
     InterpreterRegisterSet phi ;  // variables that have been modified and need to insert PHI
                                   // ahead of the loop
-    InterpreterUpValueSet  uv_phi;// Up value phi set , these upvalues need to insert PHI ahead
-                                  // of the loop
-    LoopHeaderInfo(): prev(NULL), bb(NULL), start(NULL), end(NULL) , phi() , uv_phi() {}
+    LoopHeaderInfo(): prev(NULL), bb(NULL), start(NULL), end(NULL) , phi() {}
 
     const BasicBlockVariable* enclosed_bb() const {
       return bb->prev;
@@ -80,14 +78,10 @@ class BytecodeAnalyze {
     { Move(0); }
 
     bool HasNext() const { return scope_ != NULL; }
-
     bool Move() { return Move(++cursor_); }
-
     std::uint8_t value() const { return cursor_; }
-
    private:
     bool Move( std::uint8_t start );
-
     const BasicBlockVariable* scope_;
     std::uint8_t cursor_;
     std::uint8_t max_;

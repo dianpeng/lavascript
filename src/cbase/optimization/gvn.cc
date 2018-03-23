@@ -1,15 +1,11 @@
 #include "gvn.h"
-
 #include "src/cbase/hir-helper.h"
 #include "src/cbase/hir-visitor.h"
-
 #include <unordered_set>
-
 
 namespace lavascript {
 namespace cbase {
 namespace hir {
-
 namespace {
 
 /**
@@ -25,18 +21,15 @@ namespace {
  * One thing to note , though GVN is disabled but reduction is still left as
  * it is. The GVN pass also perform expression level reduction.
  */
-
 class GVNHashTable {
  public:
   // Find a expression from the GVNHashTable , if we cannot find it or the GVNHash
   // returns 0 , then we return NULL
   Expr* Find( Expr* ) const;
-
   // Try to insert this expression into GVNHashTable, if the target expression
   // doesn't support GVNHash by returning hash value to 0, then just return false,
   // otherwise return true.
   void Insert( Expr* );
-
  private:
   std::unordered_set<Expr*> table_;
 };
@@ -54,28 +47,20 @@ void GVNHashTable::Insert( Expr* node ) {
 
 bool GVN::Perform( Graph* graph , HIRPass::Flag flag ) {
   (void)flag;
-
   ControlFlowRPOIterator itr(*graph);
   GVNHashTable table;
   DynamicBitSet visited(graph->MaxID());
-
   for( ; itr.HasNext() ; itr.Move() ) {
     auto cf = itr.value();
-
     // all the operands node
     for( auto opr_itr( cf->operand_list()->GetForwardIterator() );
          opr_itr.HasNext(); opr_itr.Move() ) {
       auto expr = opr_itr.value();
-
       if(!visited[expr->id()]) {
-
         // number valuing
-        for( ExprDFSIterator expr_itr(*graph,expr) ;
-             expr_itr.HasNext(); expr_itr.Move() ) {
-
+        for( ExprDFSIterator expr_itr(*graph,expr) ; expr_itr.HasNext(); expr_itr.Move() ) {
           auto subexpr = expr_itr.value();
           auto tar     = table.Find(subexpr);
-
           if(tar) {
             if(tar != subexpr) {
               subexpr->Replace(tar);          // okay, find a target, just replace the old one
@@ -85,7 +70,6 @@ bool GVN::Perform( Graph* graph , HIRPass::Flag flag ) {
             table.Insert(subexpr);
           }
         }
-
         // mark it to be visited
         visited[expr->id()] = true;
       }

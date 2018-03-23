@@ -68,7 +68,7 @@ namespace hir {
   /* phi */                                     \
   __(Phi,PHI,"phi",false)                       \
   __(EffectPhi,EFFECT_PHI,"effect_phi",false)   \
-  __(NoEffect ,NO_EFFECT ,"no_effect" ,false)   \
+  __(NoEffect ,NO_EFFECT ,"no_effect" ,true)    \
   /* statement */                               \
   __(InitCls,INIT_CLS,"init_cls",false)         \
   __(Projection,PROJECTION,"projection",false)  \
@@ -78,8 +78,7 @@ namespace hir {
   __(Alias,ALIAS,"alias",false)                 \
   /* checkpoints */                             \
   __(Checkpoint,CHECKPOINT,"checkpoint",false)  \
-  __(StackSlot ,STACK_SLOT, "stackslot",false)  \
-  __(UGetSlot  ,UGET_SLOT , "uvalslot" ,false)
+  __(StackSlot ,STACK_SLOT, "stackslot",false)
 
 // Low level HIR node and they are fully typped or partially typped
 
@@ -249,7 +248,7 @@ class GraphBuilder;
 class ValueRange;
 class Node;
 class Expr;
-class MemStore;
+class SideEffect;
 class ControlFlow;
 
 /**
@@ -530,6 +529,8 @@ class Expr : public Node {
   }
 
  public:
+  // check if this expression node has side effect if it is used as operand
+  inline bool HasSideEffect() const;
   // check if this expression is used by any other expression, basically
   // check whether ref_list is empty or not
   //
@@ -558,6 +559,29 @@ class Expr : public Node {
   IRInfo*     ir_info_;
   StatementEdge  stmt_;
 };
+
+// SideEffect
+// this node represents all possible memory store operation which essentially
+// can cause observable side effect inside of program. The node that is SideEffect
+// are :
+// 1. UGet, this node will have side effect since we don't know its alias situation
+//
+// 2. Arg , same as UGet
+//
+// 3. GGet , in current implementation global are treated very simple it will
+//    generate a side effect so it is always ordered
+//
+// 4. EffectPhi, this node takes multiple SideEffect node as input and join the
+//    effect after the branch control flow
+//
+// 5. ISet/PSet/ObjectSet/ListSet
+class SideEffect : public Expr {
+ public:
+  SideEffect( IRType type , std::uint32_t id , Graph* g , IRInfo* info ):
+    Expr(type,id,g,info)
+  {}
+};
+
 
 /* ---------------------------------------------------
  *
@@ -855,12 +879,16 @@ class Ternary: public Expr {
 // -------------------------------------------------------------------------
 class UGet : public Expr {
  public:
-  inline static UGet* New( Graph* , std::uint8_t );
-  std::uint8_t index() const { return index_; }
-  UGet( Graph* graph , std::uint32_t id , std::uint8_t index ):
-    Expr  (IRTYPE_UGET,id,graph,NULL),
-    index_(index)
+  inline static UGet* New( Graph* , std::uint8_t , std::uint32_t , IRInfo* );
+  std::uint8_t index()   const { return index_;  }
+  std::uint32_t method() const { return method_; }
+
+  UGet( Graph* graph , std::uint32_t id , std::uint8_t index , std::uint32_t method , IRInfo* info ):
+    Expr   (IRTYPE_UGET,id,graph,info),
+    index_ (index),
+    method_(method)
   {}
+ public:
   virtual std::uint64_t GVNHash() const {
     return GVNHash1(type_name(),index());
   }
@@ -869,17 +897,21 @@ class UGet : public Expr {
   }
  private:
   std::uint8_t index_;
+  std::uint32_t method_;
   LAVA_DISALLOW_COPY_AND_ASSIGN(UGet)
 };
 
-class USet : public Expr {
+class USet : public SideEffect {
  public:
-  inline static USet* New( Graph* , std::uint32_t , Expr* opr , IRInfo* , ControlFlow* );
+  inline static USet* New( Graph* , std::uint8_t , std::uint32_t , Expr* opr , IRInfo* );
   std::uint32_t method() const { return method_; }
+  std::uint8_t  index () const { return index_ ; }
   Expr* value() const { return operand_list()->First();  }
+
   virtual std::uint64_t GVNHash() const {
     return GVNHash2(type_name(),method(),value()->GVNHash());
   }
+
   virtual bool Equal( const USet* that ) const {
     if(that->IsUSet()) {
       auto that_uset = that->AsUSet();
@@ -887,40 +919,20 @@ class USet : public Expr {
     }
     return false;
   }
-  USet( Graph* graph , std::uint8_t id , std::uint32_t method ,
-                                         Expr* value,
-                                         IRInfo* info ):
-    Expr   (IRTYPE_USET,id,graph,info),
-    method_(method)
+
+  USet( Graph* graph , std::uint8_t id , std::uint8_t index , std::uint32_t method , Expr* value,
+                                                                                     IRInfo* info ):
+    SideEffect (IRTYPE_USET,id,graph,info),
+    index_     (index),
+    method_    (method)
   {
     AddOperand(value);
   }
  private:
+  std::uint8_t  index_;
   std::uint32_t method_;
   LAVA_DISALLOW_COPY_AND_ASSIGN(USet)
 };
-
-// MemStore
-// this node represents all possible memory store operation which essentially
-// can cause observable side effect inside of program. The node that is MemStore
-// are :
-// 1. PSet
-// 2. ISet
-// 3. ObjectSet
-// 4. ListSet
-//
-// 5. EffectPhi, this node takes multiple MemStore node as input and join the
-//    effect after the branch control flow
-//
-// 6. GGet , in current implementation global are treated very simple it will
-//    generate a side effect so it is always ordered
-class MemStore : public Expr {
- public:
-  MemStore( IRType type , std::uint32_t id , Graph* g , IRInfo* info ):
-    Expr(type,id,g,info)
-  {}
-};
-
 // -------------------------------------------------------------------------
 // property set/get (side effect)
 // -------------------------------------------------------------------------
@@ -960,7 +972,7 @@ class PGet : public Expr {
   LAVA_DISALLOW_COPY_AND_ASSIGN(PGet)
 };
 
-class PSet : public MemStore {
+class PSet : public SideEffect {
  public:
   inline static PSet* New( Graph* , Expr* , Expr* , Expr* , IRInfo* , ControlFlow* );
   Expr* object() const { return operand_list()->First(); }
@@ -981,7 +993,7 @@ class PSet : public MemStore {
     return false;
   }
   PSet( Graph* graph , std::uint32_t id , Expr* object , Expr* index , Expr* value , IRInfo* info ):
-    MemStore(IRTYPE_PSET,id,graph,info)
+    SideEffect(IRTYPE_PSET,id,graph,info)
   {
     AddOperand(object);
     AddOperand(index );
@@ -990,7 +1002,7 @@ class PSet : public MemStore {
 
  protected:
   PSet(IRType type,Graph* graph,std::uint32_t id,Expr* object,Expr* index,Expr* value,IRInfo* info):
-    MemStore(type,id,graph,info)
+    SideEffect(type,id,graph,info)
   {
     AddOperand(object);
     AddOperand(index );
@@ -1042,7 +1054,7 @@ class IGet : public Expr {
   LAVA_DISALLOW_COPY_AND_ASSIGN(IGet)
 };
 
-class ISet : public MemStore {
+class ISet : public SideEffect {
  public:
   inline static ISet* New( Graph* , Expr* , Expr* , Expr* , IRInfo* , ControlFlow* );
   Expr* object() const { return operand_list()->First(); }
@@ -1064,7 +1076,7 @@ class ISet : public MemStore {
   }
 
   ISet( Graph* graph , std::uint32_t id , Expr* object , Expr* index , Expr* value , IRInfo* info ):
-    MemStore(IRTYPE_ISET,id,graph,info)
+    SideEffect(IRTYPE_ISET,id,graph,info)
   {
     AddOperand(object);
     AddOperand(index );
@@ -1073,7 +1085,7 @@ class ISet : public MemStore {
 
  protected:
   ISet(IRType type,Graph* graph,std::uint32_t id,Expr* object,Expr* index,Expr* value,IRInfo* info):
-    MemStore(type,id,graph,info)
+    SideEffect(type,id,graph,info)
   {
     AddOperand(object);
     AddOperand(index );
@@ -1102,7 +1114,7 @@ class GGet : public Expr {
   LAVA_DISALLOW_COPY_AND_ASSIGN(GGet)
 };
 
-class GSet : public MemStore {
+class GSet : public SideEffect {
  public:
   inline static GSet* New( Graph* , Expr* key , Expr* value , IRInfo* ,
                                                               ControlFlow* );
@@ -1110,7 +1122,7 @@ class GSet : public MemStore {
   Expr* value()const { return operand_list()->Last() ; }
 
   GSet( Graph* graph , std::uint32_t id , Expr* key , Expr* value , IRInfo* info ):
-    MemStore(IRTYPE_GSET,id,graph,info)
+    SideEffect(IRTYPE_GSET,id,graph,info)
   {
     AddOperand(key);
     AddOperand(value);
@@ -1241,10 +1253,10 @@ class Phi : public Expr {
 // A phi node that is used to merge effect right after the control flow. It
 // will only be used inside of some expression's effect list
 // -------------------------------------------------------------------------
-class EffectPhi : public MemStore {
+class EffectPhi : public SideEffect {
  public:
   inline static EffectPhi* New( Graph* , ControlFlow* , IRInfo* );
-  inline static EffectPhi* New( Graph* , MemStore* , MemStore* , ControlFlow* , IRInfo* );
+  inline static EffectPhi* New( Graph* , SideEffect* , SideEffect* , ControlFlow* , IRInfo* );
   ControlFlow* region() const { return region_; }
 
   inline EffectPhi( Graph* , std::uint32_t , ControlFlow* , IRInfo* );
@@ -1255,11 +1267,12 @@ class EffectPhi : public MemStore {
 
 // this is a no effect node which is just a placeholder indicating we don't
 // have any effect dependency
-class NoEffect : public MemStore {
+// No effect , though can be GVNed , but it will only generate once in a graph,
+// so no need to bother adding code here.
+class NoEffect : public SideEffect {
  public:
   inline static NoEffect* New( Graph* );
-  NoEffect( Graph* graph , std::uint32_t id ): MemStore(IRTYPE_NO_EFFECT,id,graph,NULL) {}
-
+  NoEffect( Graph* graph , std::uint32_t id ): SideEffect(IRTYPE_NO_EFFECT,id,graph,NULL) {}
  private:
   LAVA_DISALLOW_COPY_AND_ASSIGN(NoEffect);
 };
@@ -1469,9 +1482,6 @@ class Checkpoint : public Expr {
   inline static Checkpoint* New( Graph* );
   // add a StackSlot into the checkpoint
   inline void AddStackSlot( Expr* , std::uint32_t );
-  // add a upvalue slot
-  inline void AddUGetSlot ( Expr* , std::uint32_t );
-
   Checkpoint( Graph* graph , std::uint32_t id ):
     Expr(IRTYPE_CHECKPOINT,id,graph,NULL)
   {}
@@ -1501,27 +1511,6 @@ class StackSlot : public Expr {
  private:
   std::uint32_t index_;
   LAVA_DISALLOW_COPY_AND_ASSIGN(StackSlot)
-};
-
-// UGetSlot node
-//
-// Represent a value must be flushed back to the upvalue array of the
-// calling closure
-class UGetSlot : public Expr {
- public:
-  inline static UGetSlot* New( Graph* , Expr* , std::uint32_t );
-  std::uint32_t index() const { return index_; }
-  Expr* expr() const { return operand_list()->First(); }
-
-  UGetSlot( Graph* graph , std::uint32_t id , Expr* expr , std::uint32_t index ):
-    Expr(IRTYPE_UGET_SLOT,id,graph,NULL),
-    index_(index)
-  {
-    AddOperand(expr);
-  }
- private:
-  std::uint32_t index_;
-  LAVA_DISALLOW_COPY_AND_ASSIGN(UGetSlot)
 };
 
 /* -------------------------------------------------------
@@ -2695,6 +2684,15 @@ inline bool Expr::IsLeaf() const {
 #undef __ // __
 }
 
+inline bool Expr::HasSideEffect() const {
+  switch(type()) {
+    case IRTYPE_ARG: case IRTYPE_GGET: case IRTYPE_EFFECT_PHI: case IRTYPE_UGET:
+      return true;
+    default:
+      return false;
+  }
+}
+
 inline Arg* Arg::New( Graph* graph , std::uint32_t index ) {
   return graph->zone()->New<Arg>(graph,graph->AssignID(),index);
 }
@@ -2887,13 +2885,14 @@ inline Ternary* Ternary::New( Graph* graph , Expr* cond , Expr* lhs , Expr* rhs 
   return graph->zone()->New<Ternary>(graph,graph->AssignID(),cond,lhs,rhs,info);
 }
 
-inline UGet* UGet::New( Graph* graph , std::uint8_t index ) {
-  return graph->zone()->New<UGet>(graph,graph->AssignID(),index);
+inline UGet* UGet::New( Graph* graph , std::uint8_t index , std::uint32_t method , IRInfo* info ) {
+  return graph->zone()->New<UGet>(graph,graph->AssignID(),index,method,info);
 }
 
-inline USet* USet::New( Graph* graph , std::uint32_t method , Expr* opr , IRInfo* info ,
-                                                                          ControlFlow* region ) {
-  auto ret = graph->zone()->New<USet>(graph,graph->AssignID(),method,opr,info);
+inline USet* USet::New( Graph* graph , std::uint8_t index , std::uint32_t method ,
+                                                            Expr* opr ,
+                                                            IRInfo* info ) {
+  auto ret = graph->zone()->New<USet>(graph,graph->AssignID(),index,method,opr,info);
   return ret;
 }
 
@@ -2986,15 +2985,15 @@ inline Phi* Phi::New( Graph* graph , ControlFlow* region , IRInfo* info ) {
 }
 
 inline EffectPhi::EffectPhi( Graph* graph , std::uint32_t id , ControlFlow* region , IRInfo* info ):
-  MemStore(IRTYPE_EFFECT_PHI,id,graph,info),
+  SideEffect(IRTYPE_EFFECT_PHI,id,graph,info),
   region_ (region)
 {
   region->AddOperand(this);
 }
 
-inline EffectPhi* EffectPhi::New( Graph* graph , MemStore* lhs , MemStore* rhs ,
-                                                                 ControlFlow* region ,
-                                                                 IRInfo* info ) {
+inline EffectPhi* EffectPhi::New( Graph* graph , SideEffect* lhs , SideEffect* rhs ,
+                                                                   ControlFlow* region ,
+                                                                   IRInfo* info ) {
   auto ret = graph->zone()->New<EffectPhi>(graph,graph->AssignID(),region,info);
   ret->AddOperand(lhs);
   ret->AddOperand(rhs);
@@ -3039,10 +3038,6 @@ inline Checkpoint* Checkpoint::New( Graph* graph ) {
 
 inline void Checkpoint::AddStackSlot( Expr* val , std::uint32_t index ) {
   AddOperand(StackSlot::New(graph(),val,index));
-}
-
-inline void Checkpoint::AddUGetSlot ( Expr* val , std::uint32_t index ) {
-  AddOperand(UGetSlot::New(graph(),val,index));
 }
 
 inline TestType* TestType::New( Graph* graph , TypeKind tc , Expr* object ,
@@ -3132,10 +3127,6 @@ inline Unbox* Unbox::New( Graph* graph , Expr* obj , TypeKind tk , IRInfo* info 
 
 inline StackSlot* StackSlot::New( Graph* graph , Expr* expr , std::uint32_t index ) {
   return graph->zone()->New<StackSlot>(graph,graph->AssignID(),expr,index);
-}
-
-inline UGetSlot* UGetSlot::New( Graph* graph , Expr* expr , std::uint32_t index ) {
-  return graph->zone()->New<UGetSlot>(graph,graph->AssignID(),expr,index);
 }
 
 inline Region* Region::New( Graph* graph ) {

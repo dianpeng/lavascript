@@ -68,6 +68,7 @@ namespace hir {
   /* phi */                                     \
   __(Phi,PHI,"phi",false)                       \
   __(EffectPhi,EFFECT_PHI,"effect_phi",false)   \
+  __(NoEffect ,NO_EFFECT ,"no_effect" ,false)   \
   /* statement */                               \
   __(InitCls,INIT_CLS,"init_cls",false)         \
   __(Projection,PROJECTION,"projection",false)  \
@@ -301,7 +302,7 @@ typedef StatementList::ForwardIterator StatementIterator;
 struct StatementEdge {
   ControlFlow* region;
   StatementIterator iterator;
-  bool IsUsed() const { return region != NULL; }
+  bool HasRef() const { return region != NULL; }
 
   StatementEdge( ControlFlow* r , const StatementIterator& itr ): region(r), iterator(itr) {}
   StatementEdge(): region(NULL), iterator() {}
@@ -486,7 +487,7 @@ class Expr : public Node {
  public: // The statement in our IR is still an expression, we could use
          // following function to test whether it is an actual statement
          // pint to a certain region
-  bool  IsStatement() const { return stmt_.IsUsed(); }
+  bool  IsStatement() const { return stmt_.HasRef(); }
   void  set_statement_edge ( const StatementEdge& st ) { stmt_= st; }
   const StatementEdge& statement_edge() const { return stmt_; }
  public: // patching function helps to mutate any def-use and use-def
@@ -535,7 +536,7 @@ class Expr : public Node {
   // this check may not be accurate once the node is deleted/removed since
   // once a node is removed, we don't clean its ref_list but it is not used
   // essentially
-  bool IsUsed() const { return !ref_list()->Empty(); }
+  bool HasRef() const { return !ref_list()->empty(); }
   // Check if this Expression is a Leaf node or not
   inline bool IsLeaf()     const;
   bool        IsNoneLeaf() const { return !IsLeaf(); }
@@ -915,7 +916,7 @@ class USet : public Expr {
 //    generate a side effect so it is always ordered
 class MemStore : public Expr {
  public:
-  MemStore( IRType type , Graph* g , std::uint32_t id , IRInfo* info ):
+  MemStore( IRType type , std::uint32_t id , Graph* g , IRInfo* info ):
     Expr(type,id,g,info)
   {}
 };
@@ -1209,7 +1210,20 @@ class Phi : public Expr {
   inline static Phi* New( Graph* , ControlFlow* , IRInfo* );
   inline static Phi* New( Graph* , Expr* , Expr* , ControlFlow* , IRInfo* );
 
+  // Remove the phi node from its belonged region. The reason this one is just
+  // a static function is because this function *doesn't* touch its ref_list,
+  // so its ref_list will still have its belonged region's reference there and
+  // it is invalid. This function should be used under strict condition.
+  static inline void RemovePhiFromRegion( Phi* );
+
   ControlFlow* region() const { return region_; }
+
+  // Check if this Phi node is not used. We cannot use HasRef function since
+  // a Phi node may added to a region during setup time and there will be one
+  // ref inside of the RefList. We just need to check that
+  bool IsUsed() const {
+    return !(region() ? ref_list()->size() == 1 : (ref_list()->empty()));
+  }
 
   // Bounded control flow region node.
   // Each phi node is bounded to a control flow regional node
@@ -1230,14 +1244,24 @@ class Phi : public Expr {
 class EffectPhi : public MemStore {
  public:
   inline static EffectPhi* New( Graph* , ControlFlow* , IRInfo* );
-  inline static EffectPhi* New( Graph* , Expr* , Expr* , ControlFlow* , IRInfo* );
-
+  inline static EffectPhi* New( Graph* , MemStore* , MemStore* , ControlFlow* , IRInfo* );
   ControlFlow* region() const { return region_; }
 
   inline EffectPhi( Graph* , std::uint32_t , ControlFlow* , IRInfo* );
  private:
   ControlFlow* region_;
   LAVA_DISALLOW_COPY_AND_ASSIGN(EffectPhi);
+};
+
+// this is a no effect node which is just a placeholder indicating we don't
+// have any effect dependency
+class NoEffect : public MemStore {
+ public:
+  inline static NoEffect* New( Graph* );
+  NoEffect( Graph* graph , std::uint32_t id ): MemStore(IRTYPE_NO_EFFECT,id,graph,NULL) {}
+
+ private:
+  LAVA_DISALLOW_COPY_AND_ASSIGN(NoEffect);
 };
 
 // -------------------------------------------------------------------------
@@ -1974,12 +1998,12 @@ class ControlFlow : public Node {
     statement_list()->Remove(ee.iterator);
   }
   void MoveStatement( ControlFlow* );
+
   // OperandList
   //
   // All control flow's related data input should be stored via this list
   // since this list supports expression substitution/replacement. It is
   // used in all optimization pass
-
   OperandList* operand_list() {
     return &operand_list_;
   }
@@ -2934,6 +2958,14 @@ inline ItrDeref* ItrDeref::New( Graph* graph , Expr* operand , IRInfo* info ,
   return ret;
 }
 
+inline void Phi::RemovePhiFromRegion( Phi* phi ) {
+  if(phi->region()) {
+    auto itr = phi->region()->operand_list()->Find(phi);
+    lava_debug(NORMAL,lava_verify(itr.HasNext()););
+    phi->region()->operand_list()->Remove(itr);
+  }
+}
+
 inline Phi::Phi( Graph* graph , std::uint32_t id , ControlFlow* region , IRInfo* info ):
   Expr           (IRTYPE_PHI,id,graph,info),
   region_        (region)
@@ -2960,8 +2992,9 @@ inline EffectPhi::EffectPhi( Graph* graph , std::uint32_t id , ControlFlow* regi
   region->AddOperand(this);
 }
 
-inline EffectPhi* EffectPhi::::New( Graph* graph , Expr* lhs , Expr* rhs , ControlFlow* region ,
-                                                                           IRInfo* info ) {
+inline EffectPhi* EffectPhi::New( Graph* graph , MemStore* lhs , MemStore* rhs ,
+                                                                 ControlFlow* region ,
+                                                                 IRInfo* info ) {
   auto ret = graph->zone()->New<EffectPhi>(graph,graph->AssignID(),region,info);
   ret->AddOperand(lhs);
   ret->AddOperand(rhs);
@@ -2970,6 +3003,10 @@ inline EffectPhi* EffectPhi::::New( Graph* graph , Expr* lhs , Expr* rhs , Contr
 
 inline EffectPhi* EffectPhi::New( Graph* graph , ControlFlow* region , IRInfo* info ) {
   return graph->zone()->New<EffectPhi>(graph,graph->AssignID(),region,info);
+}
+
+inline NoEffect* NoEffect::New( Graph* graph ) {
+  return graph->zone()->New<NoEffect>(graph,graph->AssignID());
 }
 
 inline ICall* ICall::New( Graph* graph , interpreter::IntrinsicCall ic ,

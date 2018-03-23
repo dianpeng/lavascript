@@ -27,6 +27,9 @@ typedef std::vector<Expr*> ValueStack;
 // The builder can build 1) normal function call 2) OSR style function IR
 class GraphBuilder {
  private:
+  // all intenral class forward declaration
+  struct FuncInfo;
+
   // Used to track a value inside of the ValueStack
   struct StackSlot {
     static const std::uint32_t kMax = std::numeric_limits<std::uint32_t>::max();
@@ -49,16 +52,17 @@ class GraphBuilder {
   // 3. global variables
   class Environment {
    public:
-    Environment(): stack_(),upvalue_(),zone_(zone),effect_(NULL){}
+    Environment( Graph* graph ):stack_(),upvalue_(),effect_(NoEffect::New(graph)) {}
     // init environment object from prototype object
-    void InitFromPrototype( Graph*, const Handle<Prototype>& );
+    void EnterFunctionScope( Graph*, const FuncInfo& );
+    void ExitFunctionScope ( Graph*, const FuncInfo& );
 
     ValueStack* stack()     { return &stack_; }
     ValueStack* upvalue()   { return &upvalue_; }
-
    public:
     // update the current effect node inside of the environment
     void UpdateEffect( GraphBuilder* , MemStore* );
+
     // get current effect node
     MemStore* effect() const { return effect_; }
    private:
@@ -99,11 +103,12 @@ class GraphBuilder {
     const BytecodeAnalyze::LoopHeaderInfo* loop_header_info;
     // pending PHIs in this loop's body
     struct PhiVar {
-      std::uint8_t reg;  // register index
+      std::uint8_t idx;  // register index
       Phi*         phi;  // phi node
-      PhiVar( std::uint8_t r , Phi* p ): reg(r), phi(p) {}
+      PhiVar( std::uint8_t i , Phi* p ): idx(i), phi(p) {}
     };
     std::vector<PhiVar> phi_list;
+    std::vector<PhiVar> uvphi_list;
    public:
     bool HasParentLoop() const { return loop_header_info->prev != NULL; }
     bool HasJump() const { return !pending_break.empty() || !pending_continue.empty(); }
@@ -116,11 +121,15 @@ class GraphBuilder {
     void AddPhi( std::uint8_t index , Phi* phi ) {
       phi_list.push_back(PhiVar(index,phi));
     }
+    void AddUVPhi( std::uint8_t index , Phi* phi ) {
+      uvphi_list.push_back(PhiVar(index,phi));
+    }
     LoopInfo( const BytecodeAnalyze::LoopHeaderInfo* info ):
       pending_break(),
       pending_continue(),
       loop_header_info(info),
-      phi_list()
+      phi_list(),
+      uvphi_list()
     {}
   };
 
@@ -177,7 +186,7 @@ class GraphBuilder {
   // Build a function's graph assume OSR
   bool BuildOSR( const Handle<Prototype>& , const std::uint32_t* , Graph* );
 
- private: // Stack accessing
+ public: // Stack accessing
   std::uint32_t StackIndex( std::uint32_t index ) const {
     return func_info().base+index;
   }
@@ -207,7 +216,7 @@ class GraphBuilder {
     return upval()->at(UpValueIndex(index));
   }
 
- private: // Current FuncInfo
+ public: // Current FuncInfo
   std::uint32_t method_index() const {
     return static_cast<std::uint32_t>(func_info_.size());
   }
@@ -220,8 +229,8 @@ class GraphBuilder {
   ControlFlow* region()                const { return func_info().region; }
   void set_region( ControlFlow* new_region ) { func_info().region = new_region; }
   Environment* env()                   const { return env_; }
-  ValueStack*  vstk()                  const { return vstk(); }
-  ValueStack*  upval()                 const { return env()->upvalue(); }
+  ValueStack*  vstk()                  const { return env_->stack(); }
+  ValueStack*  upval()                 const { return env_->upvalue(); }
  private: // Constant handling
   Expr* NewConstNumber( std::int32_t , const interpreter::BytecodeLocation& );
   Expr* NewConstNumber( std::int32_t );
@@ -304,13 +313,11 @@ class GraphBuilder {
   StopReason BuildBasicBlock( interpreter::BytecodeIterator* itr , const std::uint32_t* end_pc = NULL );
 
   // Build branch IR graph
-  void InsertPhi( Environment* lhs , Environment* rhs , ControlFlow* ,
-                                                        const interpreter::BytecodeLocation& );
-
+  void InsertPhi( Environment* lhs , Environment* rhs , ControlFlow* , IRInfo* );
   void GeneratePhi( ValueStack* dest , const ValueStack& lhs , const ValueStack& rhs ,
                                                                std::size_t base ,
                                                                ControlFlow* region ,
-                                                               const interpreter::BytecodeLocation& );
+                                                               IRInfo* );
 
   StopReason GotoIfEnd   ( interpreter::BytecodeIterator* , const std::uint32_t* );
   StopReason BuildIf     ( interpreter::BytecodeIterator* itr );
@@ -363,6 +370,7 @@ class GraphBuilder {
   friend class FuncScope;
   friend class LoopScope;
   friend class BackupEnvironment;
+  friend class Environment;
 };
 
 // --------------------------------------------------------------------------
@@ -401,6 +409,7 @@ inline GraphBuilder::FuncInfo::FuncInfo( FuncInfo&& that ):
   prototype         (that.prototype),
   region            (that.region),
   base              (that.base),
+  uv_base           (that.uv_base),
   max_local_var_size(that.max_local_var_size),
   loop_info         (std::move(that.loop_info)),
   return_list       (std::move(that.return_list)),
@@ -413,7 +422,7 @@ inline GraphBuilder::GraphBuilder( const Handle<Script>& script , const TypeTrac
   script_           (script),
   graph_            (NULL),
   func_info_        (),
-  type_trace_       (tt),
+  type_trace_       (tt)
 {}
 
 inline void GraphBuilder::FuncInfo::EnterLoop( const std::uint32_t* pc ) {

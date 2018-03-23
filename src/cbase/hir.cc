@@ -439,7 +439,7 @@ void DotGraphVisualizer::RenderControlFlow( const std::string& region_name ,
     auto node = itr.value();
     auto name = GetNodeName(node);
     RenderExpr(name,node);
-    Indent(1) << region_name << " -> " << name << '\n';
+    Indent(1) << region_name << " -> " << name << "[color=yellow style=dashed]\n";
   }
 
   // for all the statment's bounded inside of this control flow node

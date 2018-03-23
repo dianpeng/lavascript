@@ -200,7 +200,7 @@ void LexicalScope::Init( const ast::Chunk& node ) {
   }
 
   for( std::size_t i = 0 ; i < node.iterator_count ; ++i )
-    loop_iter_.push_back(func_scope()->GetLocalVarRegister());
+    loop_iter_.push_back(Optional(func_scope()->GetLocalVarRegister()));
 }
 
 void LexicalScope::Init( const ast::Function& node ) {

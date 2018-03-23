@@ -23,16 +23,12 @@ template< typename T > class TableIterator {
   friend T;
 
   TableIterator( T* table , std::size_t cursor = 0 );
-
   bool HasNext() const;
   bool Move   () const;
-
   const KeyType&   key  () const;
   const ValueType& value() const;
-
   void  set_value( const ValueType& );
   void  set_value( ValueType&& );
-
  private:
   mutable T*          table_;
   mutable std::size_t cursor_;
@@ -44,7 +40,6 @@ template< typename T > class TableIterator {
 //
 // =====================================================================
 template < typename T >struct DefaultTrait {
-
   static std::uint32_t Hash( const T& val ) {
     static_assert( std::is_integral<T>::value );
     static const std::uint32_t kMagic = 2654435761;
@@ -403,7 +398,7 @@ Table<K,V,Trait>::Update( Zone* zone , const K& k , const V& v ) {
 }
 
 template< typename K , typename V , typename Trait >
-void Table<K,V,Trait>::Copy( Zone* zone , Table* t ) {
+void Table<K,V,Trait>::Copy( Zone* zone , Table* t ) const {
   Table temp(zone,*this);
   t->Swap(&temp);
 }
@@ -425,19 +420,16 @@ void Table<K,V,Trait>::Clear() {
 template< typename K , typename V , typename Trait >
 void Table<K,V,Trait>::Rehash( Zone* zone ) {
   Table<K,V,Trait> temp(zone,cap_*2);
-
   for( auto itr(GetIterator()); itr.HasNext() ; itr.Move() ) {
     auto e = entry_ + itr.cursor_; // to help me *steal* the data
     temp.Insert(zone,std::move(e->key),std::move(e->val));
   }
-
   Swap(&temp); // swap the old one and trash it
 }
 
 template< typename K , typename V , typename Trait >
 typename Table<K,V,Trait>::Entry*
 Table<K,V,Trait>::FindSlot( const K& key , std::uint32_t hash , int option ) {
-
   // 1. find the main position of the hash entry
   auto idx = hash & ( cap_ - 1 );
   auto e   = entry_ + idx;
@@ -449,7 +441,6 @@ Table<K,V,Trait>::FindSlot( const K& key , std::uint32_t hash , int option ) {
     }
     return NULL;
   }
-
   // 2. find the collided one along with the chain
   while(true) {
     if(e->IsUse()) {
@@ -460,10 +451,8 @@ Table<K,V,Trait>::FindSlot( const K& key , std::uint32_t hash , int option ) {
 
     if(e->next) e = e->next; else break;
   }
-
   // 3. we find a e which doesn't have pending chain
   if(option == LOOKUP) return NULL;
-
   // do a linear probing here to find a slot to be chained with
   {
     auto h = hash;

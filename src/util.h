@@ -5,6 +5,7 @@
 #define __STDC_FORMAT_MACROS
 #endif // __STDC_FORMAT_MACROS
 
+#include <optional>
 #include <cstdint>
 #include <cstdarg>
 #include <cstddef>
@@ -147,7 +148,7 @@ T* Construct( Allocator* allocator ) {
 
 template< typename T , typename ... ARGS >
 T* ConstructFromBuffer( void* buffer , ARGS ...args ) {
-  return ::new (buffer) T(std::forward(args)...);
+  return ::new (buffer) T(args...);
 }
 
 template< typename T >
@@ -166,6 +167,8 @@ class Optional {
  public:
   Optional() : val_() {}
   explicit Optional( const T& value ): val_(value) {}
+  Optional( const Optional& that ) : val_(that.val_) {}
+  Optional& operator = ( const Optional& that ) { val_ = that.val_; return *this; }
   void Set( const T& value ) { val_ = value; }
   void Clear()               { val_.reset(); }
   T& Get()                   { lava_verify(Has()); return val_.value(); }

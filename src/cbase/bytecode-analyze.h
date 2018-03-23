@@ -13,7 +13,8 @@ class DumpWriter;
 
 namespace cbase      {
 
-typedef std::bitset<::lavascript::interpreter::kRegisterSize> InterpreterRegisterSet;
+typedef std::bitset<::lavascript::interpreter::kRegisterSize>   InterpreterRegisterSet;
+typedef std::bitset<::lavascript::interpreter::kMaxUpValueSize> InterpreterUpValueSet ;
 
 /**
  * This is a pre-pass before ir graph construction and it holds
@@ -59,7 +60,9 @@ class BytecodeAnalyze {
     const std::uint32_t* end   ;  // end   of the bytecode
     InterpreterRegisterSet phi ;  // variables that have been modified and need to insert PHI
                                   // ahead of the loop
-    LoopHeaderInfo(): prev(NULL), bb(NULL), start(NULL), end(NULL) , phi() {}
+    InterpreterUpValueSet  uv_phi;// Up value phi set , these upvalues need to insert PHI ahead
+                                  // of the loop
+    LoopHeaderInfo(): prev(NULL), bb(NULL), start(NULL), end(NULL) , phi() , uv_phi() {}
 
     const BasicBlockVariable* enclosed_bb() const {
       return bb->prev;

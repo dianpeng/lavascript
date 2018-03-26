@@ -17,16 +17,16 @@ namespace hir {
  * otherwise it will return the new node
  */
 
-typedef std::function<IRInfo*()> IRProvider;
+typedef std::function<IRInfo*()> IRInfoProvider;
 
-Expr* FoldUnary  ( Graph* , Unary::Operator , Expr* , const IRProvider& );
-Expr* FoldBinary ( Graph* , Binary::Operator, Expr* , Expr* , const IRProvider& );
-Expr* FoldTernary( Graph* , Expr* , Expr* , Expr* , const IRProvider& );
+Expr* FoldUnary  ( Graph* , Unary::Operator , Expr* , const IRInfoProvider& );
+Expr* FoldBinary ( Graph* , Binary::Operator, Expr* , Expr* , const IRInfoProvider& );
+Expr* FoldTernary( Graph* , Expr* , Expr* , Expr* , const IRInfoProvider& );
 // Helper to simplify the logic, it is used mainly after 1) type guard generated 2) inference succeeded
-Expr* SimplifyLogic( Graph* , Expr* , Expr* , Binary::Operator , const IRProvider& );
+Expr* SimplifyLogic( Graph* , Expr* , Expr* , Binary::Operator , const IRInfoProvider& );
 Expr* FoldIntrinsicCall( Graph* , ICall* );
-Expr* FoldObjectSet( Graph* , Expr* , Expr* , Expr* , const IRProvider& );
-Expr* FoldObjectGet( Graph* , Expr* , Expr* , const IRProvider& );
+Expr* FoldObjectSet( Graph* , Expr* , Expr* , Expr* , const IRInfoProvider& );
+Expr* FoldObjectGet( Graph* , Expr* , Expr* , const IRInfoProvider& );
 
 } // namespace hir
 } // namespace cbase

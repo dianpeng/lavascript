@@ -1,20 +1,24 @@
 #ifndef BYTECODE_ANALYZE_H_
 #define BYTECODE_ANALYZE_H_
 #include "src/config.h"
+#include "src/util.h"
 #include "src/objects.h"
 #include "src/interpreter/bytecode.h"
 #include "src/interpreter/bytecode-iterator.h"
 
+#include <unordered_set>
 #include <map>
 #include <bitset>
 
 namespace lavascript {
 class DumpWriter;
-
 namespace cbase      {
 
+// -----------------------------------------------------------------------------------
+// TODO:: All use Zone ADT ??
 typedef std::bitset<::lavascript::interpreter::kRegisterSize>   InterpreterRegisterSet;
 typedef std::bitset<::lavascript::interpreter::kMaxUpValueSize> InterpreterUpValueSet ;
+typedef std::unordered_set<Str>                                 GlobalVariableSet;
 
 /**
  * This is a pre-pass before ir graph construction and it holds
@@ -51,6 +55,19 @@ class BytecodeAnalyze {
     void Add( std::uint8_t reg ) { variable[reg] = true; }
   };
 
+  // indicate which variables are modified inside of the loop, implicitly indicate the
+  // graph builder needs to insert several Phis in corresponding arrays ahead of the loop
+  struct LoopModifiedVar {
+    InterpreterRegisterSet var;
+    InterpreterUpValueSet  uv ;
+    GlobalVariableSet      glb;
+    LoopModifiedVar(): var() , uv() , glb() {}
+    LoopModifiedVar( const LoopModifiedVar& that ): var(that.var),uv(that.uv),glb(that.glb) {}
+    LoopModifiedVar( LoopModifiedVar&& that ) :
+      var(std::move(that.var)),uv(std::move(that.uv)),glb(std::move(that.glb))
+    {}
+  };
+
   // LoopHeaderInfo captures the loop's internal body information and its nested
   // information
   struct LoopHeaderInfo {
@@ -58,8 +75,7 @@ class BytecodeAnalyze {
     const BasicBlockVariable* bb; // corresponding basic block
     const std::uint32_t* start ;  // start of the bytecode
     const std::uint32_t* end   ;  // end   of the bytecode
-    InterpreterRegisterSet phi ;  // variables that have been modified and need to insert PHI
-                                  // ahead of the loop
+    LoopModifiedVar      phi   ;
     LoopHeaderInfo(): prev(NULL), bb(NULL), start(NULL), end(NULL) , phi() {}
 
     const BasicBlockVariable* enclosed_bb() const {

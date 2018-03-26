@@ -24,6 +24,62 @@ void GraphBuilder::Environment::ExitFunctionScope( Graph* graph , const FuncInfo
   stack_.resize( func.base );
 }
 
+Expr* GraphBuilder::GetUpValue( std::uint8_t index , const IRInfoProvider& irinfo ) const {
+  // 1. tries to index into upvalue group
+  {
+    lava_debug(NORMAL,lava_verify(index < upvalue_.size()));
+    auto grp = upvalue_[index];
+    if(!grp.IsEmpty()) {
+      // a read is always free to be reordered, so just return here
+      return grp.value();
+    }
+  }
+  // 2. fallback to the global groups and need to create a UGet node
+  auto uget = UGet::New(gb_->graph_,index,gb_->method(),irinfo());
+  // uget must be ordered by the previous write effect
+  uget->AddEffect( root_.write_effect );
+  // uget must be updated as the previous read effect
+  root_.read_effect = uget;
+  return uget;
+}
+
+Expr* GraphBuilder::GetGlobal ( const void* key , std::size_t length , const KeyProvider& key_provider ,
+                                                                       const IRInfoProvider& irinfo ) const {
+  // 1. tries to index into existed global table
+  {
+    auto itr = global_.find(Str(key,length));
+    if(itr != global_.end()) {
+      auto &eg = itr->second;
+      lava_verify(!eg.IsEmpty());
+      return eg.value();
+    }
+  }
+  // 2. fallback to a global get node
+  auto gget = GGet::New(gb_->graph_,key_provider(),irinfo(),gb_->region());
+  // gget must be ordered by the previous write effect
+  gget->AddEffect(root_.write_effect);
+  // gget must be updated as previous read effect
+  root_.read_effect = gget;
+  return gget;
+}
+
+void GraphBuilder::SetUpValue( std::uint8_t index , Expr* value , const IRInfoProvider& irinfo ) {
+  // 1. setup the upvalue set node USet , regardless whether we can track it or not
+  //    this node must be used as a statement node into the current region to ensure
+  //    it is flushed back at the correct timing.
+  auto uset = USet::New(gb_->graph_,index,gb_->method(),value,irinfo());
+  // add it as a statement
+  gb_->region()->AddStatement(uset);
+
+  // 2. check whether we have this node tracked
+  {
+    auto grp = upvalue_[index];
+    if(grp.IsEmpty()) {
+      // not tracked, update to global side effect node
+    }
+  }
+}
+
 void GraphBuilder::Environment::UpdateEffect( GraphBuilder* gb , SideEffect* effect ) {
   // update the effect node
   effect_ = effect;
@@ -565,7 +621,7 @@ Expr* GraphBuilder::NewPSet( Expr* object , Expr* key , Expr* value , IRInfo* ir
   if(v) return v;
   auto ret = PSet::New(graph_,object,key,value,ir_info,region());
   // check if this pset node has side effect or not
-  if(object->HasSideEffect()) {
+  if(object->HasObservableSideEffect()) {
     // update itself as the new effect node
     env()->UpdateEffect(this,ret);
     // treat it as statement as well
@@ -614,7 +670,7 @@ Expr* GraphBuilder::NewISet( Expr* object, Expr* index, Expr* value, IRInfo* ir_
   }
 
   auto ret = ISet::New(graph_,object,index,value,ir_info,region());
-  if(object->HasSideEffect()) {
+  if(object->HasObservableSideEffect()) {
     env()->UpdateEffect(this,ret);
     region()->AddStatement(ret);
   }
@@ -971,9 +1027,9 @@ GraphBuilder::BuildLoopBlock( BytecodeIterator* itr ) {
 
 void GraphBuilder::GenerateLoopPhi( const BytecodeLocation& pc ) {
   auto ir_info = NewIRInfo(pc);
-  const std::size_t len = func_info().current_loop_header()->phi.size();
+  const std::size_t len = func_info().current_loop_header()->phi.var.size();
   for( std::size_t i = 0 ; i < len ; ++i ) {
-    if(func_info().current_loop_header()->phi[i]) {
+    if(func_info().current_loop_header()->phi.var[i]) {
       Expr* old = StackGet(static_cast<std::uint32_t>(i));
       lava_debug(NORMAL,lava_verify(old););
       Phi* phi = Phi::New(graph_,region(),ir_info);

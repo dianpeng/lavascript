@@ -68,7 +68,8 @@ namespace hir {
   /* phi */                                     \
   __(Phi,PHI,"phi",false)                       \
   __(EffectPhi,EFFECT_PHI,"effect_phi",false)   \
-  __(NoEffect ,NO_EFFECT ,"no_effect" ,true)    \
+  __(NoReadEffect,NO_READ_EFFECT,"no_read_effect",true)    \
+  __(NoWriteEffect,NO_WRITE_EFFECT,"no_write_effect",true) \
   /* statement */                               \
   __(InitCls,INIT_CLS,"init_cls",false)         \
   __(Projection,PROJECTION,"projection",false)  \
@@ -248,7 +249,8 @@ class GraphBuilder;
 class ValueRange;
 class Node;
 class Expr;
-class SideEffect;
+class SideEffectWrite;
+class SideEffectRead ;
 class ControlFlow;
 
 /**
@@ -530,7 +532,13 @@ class Expr : public Node {
 
  public:
   // check if this expression node has side effect if it is used as operand
-  inline bool HasSideEffect() const;
+  inline bool IsSideEffectWrite() const;
+  inline bool IsSideEffectRead () const;
+  inline bool IsSideEffect     () const;
+  // check if this expression node can be observed in other unit or basically
+  // has observable side effect
+  inline bool HasObservableSideEffect() const;
+
   // check if this expression is used by any other expression, basically
   // check whether ref_list is empty or not
   //
@@ -560,28 +568,40 @@ class Expr : public Node {
   StatementEdge  stmt_;
 };
 
-// SideEffect
-// this node represents all possible memory store operation which essentially
-// can cause observable side effect inside of program. The node that is SideEffect
-// are :
-// 1. UGet, this node will have side effect since we don't know its alias situation
-//
-// 2. Arg , same as UGet
-//
-// 3. GGet , in current implementation global are treated very simple it will
-//    generate a side effect so it is always ordered
-//
-// 4. EffectPhi, this node takes multiple SideEffect node as input and join the
-//    effect after the branch control flow
-//
-// 5. ISet/PSet/ObjectSet/ListSet
 class SideEffect : public Expr {
  public:
-  SideEffect( IRType type , std::uint32_t id , Graph* g , IRInfo* info ):
-    Expr(type,id,g,info)
-  {}
+  SideEffect( IRType type , std::uint32_t id , Graph* g , IRInfo* info ): Expr(type,id,g,info){}
+}
+
+// SideEffectWrite
+// this node represents all possible memory store operation which essentially
+// can cause observable side effect inside of program. The node that is SideEffectWrite
+// are :
+// 1. USet, this node will have side effect since we don't know its alias situation
+// 2. Arg , same as UGet
+// 3. GSet , in current implementation global are treated very simple it will
+//    generate a side effect so it is always ordered
+// 4. ISet/PSet/ObjectSet/ListSet
+class SideEffectWrite : public SideEffect {
+ public:
+  SideEffectWrite( IRType type , std::uint32_t id , Graph* g , IRInfo* info ):
+    SideEffect(type,id,g,info){}
 };
 
+// SideEffectRead
+//
+// this node represents all possible memory load operation which needs to depend
+// on certain memory read node and also *be* depended on by other memory write
+// node. The following IR nodes are type of SideEffectRead node :
+// 1. UGet
+// 2. GGet
+// 3. EffectPhi
+// 4. IGet/PGet/ObjectGet/ListGet
+class SideEffectRead : public SideEffect {
+ public:
+  SideEffectRead( IRType type , std::uint32_t id , Graph* g , IRInfo* info ):
+    SideEffect(type,id,g,info) {}
+};
 
 /* ---------------------------------------------------
  *
@@ -877,14 +897,14 @@ class Ternary: public Expr {
 // -------------------------------------------------------------------------
 // upvalue get/set
 // -------------------------------------------------------------------------
-class UGet : public Expr {
+class UGet : public SideEffectRead {
  public:
   inline static UGet* New( Graph* , std::uint8_t , std::uint32_t , IRInfo* );
   std::uint8_t index()   const { return index_;  }
   std::uint32_t method() const { return method_; }
 
   UGet( Graph* graph , std::uint32_t id , std::uint8_t index , std::uint32_t method , IRInfo* info ):
-    Expr   (IRTYPE_UGET,id,graph,info),
+    SideEffectRead (IRTYPE_UGET,id,graph,info),
     index_ (index),
     method_(method)
   {}
@@ -901,7 +921,7 @@ class UGet : public Expr {
   LAVA_DISALLOW_COPY_AND_ASSIGN(UGet)
 };
 
-class USet : public SideEffect {
+class USet : public SideEffectWrite {
  public:
   inline static USet* New( Graph* , std::uint8_t , std::uint32_t , Expr* opr , IRInfo* );
   std::uint32_t method() const { return method_; }
@@ -920,9 +940,8 @@ class USet : public SideEffect {
     return false;
   }
 
-  USet( Graph* graph , std::uint8_t id , std::uint8_t index , std::uint32_t method , Expr* value,
-                                                                                     IRInfo* info ):
-    SideEffect (IRTYPE_USET,id,graph,info),
+  USet( Graph* graph , std::uint8_t id , std::uint8_t index , std::uint32_t method , Expr* value, IRInfo* info ):
+    SideEffectWrite (IRTYPE_USET,id,graph,info),
     index_     (index),
     method_    (method)
   {
@@ -936,7 +955,7 @@ class USet : public SideEffect {
 // -------------------------------------------------------------------------
 // property set/get (side effect)
 // -------------------------------------------------------------------------
-class PGet : public Expr {
+class PGet : public SideEffectRead {
  public:
   inline static PGet* New( Graph* , Expr* , Expr* , IRInfo* , ControlFlow* );
   Expr* object() const { return operand_list()->First(); }
@@ -951,18 +970,15 @@ class PGet : public Expr {
     }
     return false;
   }
-  PGet( Graph* graph , std::uint32_t id , Expr* object , Expr* index ,
-                                                         IRInfo* info ):
-    Expr  (IRTYPE_PGET,id,graph,info)
+  PGet( Graph* graph , std::uint32_t id , Expr* object , Expr* index , IRInfo* info ):
+    SideEffectRead (IRTYPE_PGET,id,graph,info)
   {
     AddOperand(object);
     AddOperand(index );
   }
  protected:
-  PGet( IRType type , Graph* graph , std::uint32_t id , Expr* object ,
-                                                        Expr* index  ,
-                                                        IRInfo* info ):
-    Expr(type,id,graph,info)
+  PGet( IRType type , Graph* graph , std::uint32_t id , Expr* object , Expr* index  , IRInfo* info ):
+    SideEffectRead(type,id,graph,info)
   {
     AddOperand(object);
     AddOperand(index );
@@ -972,7 +988,7 @@ class PGet : public Expr {
   LAVA_DISALLOW_COPY_AND_ASSIGN(PGet)
 };
 
-class PSet : public SideEffect {
+class PSet : public SideEffectWrite {
  public:
   inline static PSet* New( Graph* , Expr* , Expr* , Expr* , IRInfo* , ControlFlow* );
   Expr* object() const { return operand_list()->First(); }
@@ -993,7 +1009,7 @@ class PSet : public SideEffect {
     return false;
   }
   PSet( Graph* graph , std::uint32_t id , Expr* object , Expr* index , Expr* value , IRInfo* info ):
-    SideEffect(IRTYPE_PSET,id,graph,info)
+    SideEffectWrite(IRTYPE_PSET,id,graph,info)
   {
     AddOperand(object);
     AddOperand(index );
@@ -1002,7 +1018,7 @@ class PSet : public SideEffect {
 
  protected:
   PSet(IRType type,Graph* graph,std::uint32_t id,Expr* object,Expr* index,Expr* value,IRInfo* info):
-    SideEffect(type,id,graph,info)
+    SideEffectWrite(type,id,graph,info)
   {
     AddOperand(object);
     AddOperand(index );
@@ -1013,14 +1029,13 @@ class PSet : public SideEffect {
   LAVA_DISALLOW_COPY_AND_ASSIGN(PSet)
 };
 
-class IGet : public Expr {
+class IGet : public SideEffectRead {
  public:
   inline static IGet* New( Graph* , Expr* , Expr* , IRInfo* , ControlFlow* );
   Expr* object() const { return operand_list()->First(); }
   Expr* index () const { return operand_list()->Last (); }
 
-  IGet( Graph* graph , std::uint32_t id , Expr* object , Expr* index ,
-                                                         IRInfo* info ):
+  IGet( Graph* graph , std::uint32_t id , Expr* object , Expr* index , IRInfo* info ):
     Expr  (IRTYPE_IGET,id,graph,info)
   {
     AddOperand(object);
@@ -1041,10 +1056,8 @@ class IGet : public Expr {
   }
 
  protected:
-  IGet( IRType type , Graph* graph , std::uint32_t id , Expr* object ,
-                                                        Expr* index ,
-                                                        IRInfo* info ):
-    Expr(type,id,graph,info)
+  IGet( IRType type , Graph* graph , std::uint32_t id , Expr* object , Expr* index , IRInfo* info ):
+    SideEffectRead(type,id,graph,info)
   {
     AddOperand(object);
     AddOperand(index );
@@ -1054,7 +1067,7 @@ class IGet : public Expr {
   LAVA_DISALLOW_COPY_AND_ASSIGN(IGet)
 };
 
-class ISet : public SideEffect {
+class ISet : public SideEffectWrite {
  public:
   inline static ISet* New( Graph* , Expr* , Expr* , Expr* , IRInfo* , ControlFlow* );
   Expr* object() const { return operand_list()->First(); }
@@ -1076,7 +1089,7 @@ class ISet : public SideEffect {
   }
 
   ISet( Graph* graph , std::uint32_t id , Expr* object , Expr* index , Expr* value , IRInfo* info ):
-    SideEffect(IRTYPE_ISET,id,graph,info)
+    SideEffectWrite(IRTYPE_ISET,id,graph,info)
   {
     AddOperand(object);
     AddOperand(index );
@@ -1085,7 +1098,7 @@ class ISet : public SideEffect {
 
  protected:
   ISet(IRType type,Graph* graph,std::uint32_t id,Expr* object,Expr* index,Expr* value,IRInfo* info):
-    SideEffect(type,id,graph,info)
+    SideEffectWrite(type,id,graph,info)
   {
     AddOperand(object);
     AddOperand(index );
@@ -1099,13 +1112,13 @@ class ISet : public SideEffect {
 // -------------------------------------------------------------------------
 // global set/get (side effect)
 // -------------------------------------------------------------------------
-class GGet : public Expr {
+class GGet : public SideEffectRead {
  public:
   inline static GGet* New( Graph* , Expr* , IRInfo* , ControlFlow* );
   Expr* key() const { return operand_list()->First(); }
 
   GGet( Graph* graph , std::uint32_t id , Expr* name , IRInfo* info ):
-    Expr  (IRTYPE_GGET,id,graph,info)
+    SideEffectRead (IRTYPE_GGET,id,graph,info)
   {
     AddOperand(name);
   }
@@ -1114,7 +1127,7 @@ class GGet : public Expr {
   LAVA_DISALLOW_COPY_AND_ASSIGN(GGet)
 };
 
-class GSet : public SideEffect {
+class GSet : public SideEffectWrite {
  public:
   inline static GSet* New( Graph* , Expr* key , Expr* value , IRInfo* ,
                                                               ControlFlow* );
@@ -1122,7 +1135,7 @@ class GSet : public SideEffect {
   Expr* value()const { return operand_list()->Last() ; }
 
   GSet( Graph* graph , std::uint32_t id , Expr* key , Expr* value , IRInfo* info ):
-    SideEffect(IRTYPE_GSET,id,graph,info)
+    SideEffectWrite(IRTYPE_GSET,id,graph,info)
   {
     AddOperand(key);
     AddOperand(value);
@@ -1253,10 +1266,10 @@ class Phi : public Expr {
 // A phi node that is used to merge effect right after the control flow. It
 // will only be used inside of some expression's effect list
 // -------------------------------------------------------------------------
-class EffectPhi : public SideEffect {
+class EffectPhi : public SideEffectRead {
  public:
   inline static EffectPhi* New( Graph* , ControlFlow* , IRInfo* );
-  inline static EffectPhi* New( Graph* , SideEffect* , SideEffect* , ControlFlow* , IRInfo* );
+  inline static EffectPhi* New( Graph* , SideEffectWrite* , SideEffectWrite* , ControlFlow* , IRInfo* );
   ControlFlow* region() const { return region_; }
 
   inline EffectPhi( Graph* , std::uint32_t , ControlFlow* , IRInfo* );
@@ -1265,16 +1278,21 @@ class EffectPhi : public SideEffect {
   LAVA_DISALLOW_COPY_AND_ASSIGN(EffectPhi);
 };
 
-// this is a no effect node which is just a placeholder indicating we don't
-// have any effect dependency
-// No effect , though can be GVNed , but it will only generate once in a graph,
-// so no need to bother adding code here.
-class NoEffect : public SideEffect {
+// placeholder for empty read/write effect to avoid checking NULL pointer
+class NoReadEffect: public SideEffectRead {
  public:
-  inline static NoEffect* New( Graph* );
-  NoEffect( Graph* graph , std::uint32_t id ): SideEffect(IRTYPE_NO_EFFECT,id,graph,NULL) {}
+  inline static NoReadEffect* New( Graph* );
+  NoReadEffect( Graph* graph , std::uint32_t id ): SideEffectRead(IRTYPE_NO_READ_EFFECT,id,graph,NULL) {}
  private:
-  LAVA_DISALLOW_COPY_AND_ASSIGN(NoEffect);
+  LAVA_DISALLOW_COPY_AND_ASSIGN(NoReadEffect);
+};
+
+class NoWriteEffect: public SideEffectWrite {
+ public:
+  inline static NoWriteEffect* New( Graph* );
+  NoWriteEffect( Graph* graph , std::uint32_t id ): SideEffectWrite(IRTYPE_NO_WRITE_EFFECT,id,graph,NULL) {}
+ private:
+  LAVA_DISALLOW_COPY_AND_ASSIGN(NoWriteEffect);
 };
 
 // -------------------------------------------------------------------------
@@ -1282,12 +1300,8 @@ class NoEffect : public SideEffect {
 // -------------------------------------------------------------------------
 class Call : public Expr {
  public:
-  inline static Call* New( Graph* graph , Expr* , std::uint8_t , std::uint8_t ,
-                                                                 IRInfo* );
-
-  Call( Graph* graph , std::uint32_t id , Expr* obj , std::uint8_t base ,
-                                                      std::uint8_t narg ,
-                                                      IRInfo* info ):
+  inline static Call* New( Graph* graph , Expr* , std::uint8_t , std::uint8_t , IRInfo* );
+  Call( Graph* graph , std::uint32_t id , Expr* obj , std::uint8_t base , std::uint8_t narg , IRInfo* info ):
     Expr  (IRTYPE_CALL,id,graph,info),
     base_ (base),
     narg_ (narg)
@@ -1329,9 +1343,7 @@ class ICall : public Expr {
   virtual std::uint64_t GVNHash() const;
   virtual bool Equal( const Expr* ) const;
 
-  ICall( Graph* graph , std::uint32_t id , interpreter::IntrinsicCall ic ,
-                                           bool tail ,
-                                           IRInfo* info ):
+  ICall( Graph* graph , std::uint32_t id , interpreter::IntrinsicCall ic , bool tail , IRInfo* info ):
     Expr(IRTYPE_ICALL,id,graph,info),
     ic_ (ic),
     tail_call_(tail)
@@ -1361,8 +1373,7 @@ class Projection : public Expr {
   // needs to be projected
   std::uint32_t index() const { return index_; }
 
-  Projection( Graph* graph , std::uint32_t id , Expr* operand , std::uint32_t index ,
-                                                                IRInfo* info ):
+  Projection( Graph* graph , std::uint32_t id , Expr* operand , std::uint32_t index , IRInfo* info ):
     Expr  (IRTYPE_PROJECTION,id,graph,info),
     index_(index)
   {
@@ -1446,9 +1457,7 @@ class Alias : public Expr {
   inline static Alias* New( Graph* , Expr* , Expr* , IRInfo* );
   Expr* alias() const { return operand_list()->First(); }
   Expr* value() const { return operand_list()->Last (); }
-  Alias ( Graph* graph , std::uint32_t id , Expr* alias,
-                                            Expr* value,
-                                            IRInfo* info ):
+  Alias ( Graph* graph , std::uint32_t id , Expr* alias, Expr* value, IRInfo* info ):
     Expr(IRTYPE_ALIAS,id,graph,info)
   {
     AddOperand(alias);
@@ -1523,9 +1532,7 @@ class TestType : public Expr {
   TypeKind type_kind() const { return type_kind_; }
   const char* type_kind_name() const { return GetTypeKindName(type_kind_); }
   Expr* object() const { return operand_list()->First(); }
-  TestType( Graph* graph , std::uint32_t id , TypeKind tc ,
-                                              Expr* obj,
-                                              IRInfo* info ):
+  TestType( Graph* graph , std::uint32_t id , TypeKind tc , Expr* obj, IRInfo* info ):
     Expr(IRTYPE_TEST_TYPE,id,graph,info),
     type_kind_(tc)
   {
@@ -1545,8 +1552,7 @@ class TestListOOB : public Expr {
   Expr* object() const { return operand_list()->First(); }
   Expr* index () const { return operand_list()->Last (); }
 
-  TestListOOB( Graph* graph , std::uint32_t id , Expr* obj , Expr* idx ,
-                                                             IRInfo* info ):
+  TestListOOB( Graph* graph , std::uint32_t id , Expr* obj , Expr* idx , IRInfo* info ):
     Expr(IRTYPE_TEST_LISTOOB,id,graph,info)
   {
     AddOperand(obj);
@@ -2324,6 +2330,10 @@ class Graph {
   void Initialize( Start* start    , End* end );
   void Initialize( OSRStart* start , OSREnd* end  );
 
+ public: // placeholder nodes
+  NoReadEffect*  no_read_effect() const { return no_read_effect_; }
+  NoWriteEffect* no_write_effect() const { return no_write_effect_; }
+
  public: // getter and setter
   ControlFlow* start() const { return start_; }
   ControlFlow* end  () const { return end_;   }
@@ -2370,9 +2380,11 @@ class Graph {
   zone::Zone                  zone_;
   ControlFlow*                start_;
   ControlFlow*                end_;
-
   zone::Vector<PrototypeInfo> prototype_info_;
   std::uint32_t               id_;
+  // placeholder nodes, context free nodes basically
+  NoReadEffect*               no_read_effect_;
+  NoWriteEffect*              no_write_effect_;
 
   friend class GraphBuilder;
   LAVA_DISALLOW_COPY_AND_ASSIGN(Graph)
@@ -2582,650 +2594,6 @@ inline Expr* NewString           ( Graph* , const zone::String* , IRInfo* );
 inline Expr* NewStringFromBoolean( Graph* , bool , IRInfo* );
 inline Expr* NewStringFromReal   ( Graph* , double , IRInfo* );
 
-
-// =========================================================================
-//
-// Inline Functions
-//
-// =========================================================================
-namespace detail {
-
-template< typename T >
-std::uint64_t Float64BinaryGVNImpl<T>::GVNHashImpl() const {
-  auto self = static_cast<const T*>(this);
-  return GVNHash3(self->type_name(),self->op(),
-                                    self->lhs()->GVNHash(),
-                                    self->rhs()->GVNHash());
-}
-
-template< typename T >
-bool Float64BinaryGVNImpl<T>::EqualImpl( const Expr* that ) const {
-  auto self = static_cast<const T*>(this);
-  if(that->Is<T>()) {
-    auto n = that->As<T>();
-    return self->op() == n->op() && self->lhs()->Equal(n->lhs()) &&
-                                    self->rhs()->Equal(n->rhs());
-  }
-  return false;
-}
-
-
-} // namespace detail
-
-#define __(A,B,...)                           \
-  inline A* Node::As##A() {                   \
-    lava_debug(NORMAL,lava_verify(Is##A());); \
-    return static_cast<A*>(this);             \
-  }                                           \
-  inline const A* Node::As##A() const {       \
-    lava_debug(NORMAL,lava_verify(Is##A());); \
-    return static_cast<const A*>(this);       \
-  }
-
-CBASE_IR_LIST(__)
-
-#undef __ // __
-
-template< typename T >
-inline T* Node::As() { lava_debug(NORMAL,lava_verify(Is<T>());); return static_cast<T*>(this); }
-
-template< typename T >
-inline const T* Node::As() const {
-  lava_debug(NORMAL,lava_verify(Is<T>()););
-  return static_cast<const T*>(this);
-}
-
-inline const zone::String& Node::AsZoneString() const {
-  lava_debug(NORMAL,lava_verify(IsString()););
-  return IsLString() ? *AsLString()->value() :
-                       *AsSString()->value() ;
-}
-
-inline void Expr::AddOperand( Expr* node ) {
-  auto itr = operand_list()->PushBack(zone(),node);
-  node->AddRef(this,itr);
-}
-
-inline void Expr::AddEffect ( Expr* node ) {
-  auto itr = effect_list()->PushBack(zone(),node);
-  node->AddRef(this,itr);
-}
-
-inline ControlFlow* Node::AsControlFlow() {
-  lava_debug(NORMAL,lava_verify(IsControlFlow()););
-  return static_cast<ControlFlow*>(this);
-}
-
-inline const ControlFlow* Node::AsControlFlow() const {
-  lava_debug(NORMAL,lava_verify(IsControlFlow()););
-  return static_cast<const ControlFlow*>(this);
-}
-
-inline Expr* Node::AsExpr() {
-  lava_debug(NORMAL,lava_verify(IsExpr()););
-  return static_cast<Expr*>(this);
-}
-
-inline const Expr* Node::AsExpr() const {
-  lava_debug(NORMAL,lava_verify(IsExpr()););
-  return static_cast<const Expr*>(this);
-}
-
-inline zone::Zone* Node::zone() const {
-  return graph_->zone();
-}
-
-inline bool Expr::IsLeaf() const {
-#define __(A,B,C,D) case IRTYPE_##B: return D;
-  switch(type()) {
-    CBASE_IR_EXPRESSION(__)
-    default: lava_die(); return false;
-  }
-#undef __ // __
-}
-
-inline bool Expr::HasSideEffect() const {
-  switch(type()) {
-    case IRTYPE_ARG: case IRTYPE_GGET: case IRTYPE_EFFECT_PHI: case IRTYPE_UGET:
-      return true;
-    default:
-      return false;
-  }
-}
-
-inline Arg* Arg::New( Graph* graph , std::uint32_t index ) {
-  return graph->zone()->New<Arg>(graph,graph->AssignID(),index);
-}
-
-inline Float64* Float64::New( Graph* graph , double value , IRInfo* info ) {
-  return graph->zone()->New<Float64>(graph,graph->AssignID(),value,info);
-}
-
-inline Boolean* Boolean::New( Graph* graph , bool value , IRInfo* info ) {
-  return graph->zone()->New<Boolean>(graph,graph->AssignID(),value,info);
-}
-
-inline LString* LString::New( Graph* graph , const LongString& str , IRInfo* info ) {
-  return graph->zone()->New<LString>(graph,graph->AssignID(),
-      zone::String::New(graph->zone(),static_cast<const char*>(str.data()),str.size),info);
-}
-
-inline LString* LString::New( Graph* graph , const char* data , IRInfo* info ) {
-  auto str = zone::String::New(graph->zone(),data);
-  lava_debug(NORMAL,lava_verify(!str->IsSSO()););
-  return graph->zone()->New<LString>(graph,graph->AssignID(),str,info);
-}
-
-inline LString* LString::New( Graph* graph , const zone::String* str , IRInfo* info ) {
-  lava_debug(NORMAL,lava_verify(!str->IsSSO()););
-  return graph->zone()->New<LString>(graph,graph->AssignID(),str,info);
-}
-
-inline SString* SString::New( Graph* graph , const SSO& str , IRInfo* info ) {
-  return graph->zone()->New<SString>(graph,graph->AssignID(),
-      zone::String::New(graph->zone(),static_cast<const char*>(str.data()),str.size()),info);
-}
-
-inline SString* SString::New( Graph* graph , const char* data , IRInfo* info ) {
-  auto str = zone::String::New(graph->zone(),data);
-  lava_debug(NORMAL,lava_verify(str->IsSSO()););
-  return graph->zone()->New<SString>(graph,graph->AssignID(),str,info);
-}
-
-inline SString* SString::New( Graph* graph , const zone::String* str , IRInfo* info ) {
-  lava_debug(NORMAL,lava_verify(str->IsSSO()););
-  return graph->zone()->New<SString>(graph,graph->AssignID(),str,info);
-}
-
-inline Expr* NewString( Graph* graph , const zone::String* str , IRInfo* info ) {
-  return str->IsSSO() ? static_cast<Expr*>(SString::New(graph,str,info)) :
-                        static_cast<Expr*>(LString::New(graph,str,info)) ;
-}
-
-inline Expr* NewString( Graph* graph , const char* data , IRInfo* info ) {
-  auto str = zone::String::New(graph->zone(),data);
-  return NewString(graph,str,info);
-}
-
-inline Expr* NewStringFromBoolean( Graph* graph , bool value , IRInfo* info ) {
-  std::string temp;
-  LexicalCast(value,&temp);
-  auto str = zone::String::New(graph->zone(),temp.c_str(),temp.size());
-  return NewString(graph,str,info);
-}
-
-inline Expr* NewStringFromReal( Graph* graph , double value , IRInfo* info ) {
-  std::string temp;
-  LexicalCast(value,&temp);
-  auto str = zone::String::New(graph->zone(),temp.c_str(),temp.size());
-  return NewString(graph,str,info);
-}
-
-inline Nil* Nil::New( Graph* graph , IRInfo* info ) {
-  return graph->zone()->New<Nil>(graph,graph->AssignID(),info);
-}
-
-inline IRList* IRList::New( Graph* graph , std::size_t size , IRInfo* info ) {
-  return graph->zone()->New<IRList>(graph,graph->AssignID(),size,info);
-}
-
-inline IRObjectKV* IRObjectKV::New( Graph* graph , Expr* key , Expr* val , IRInfo* info ) {
-  return graph->zone()->New<IRObjectKV>(graph,graph->AssignID(),key,val,info);
-}
-
-inline IRObject* IRObject::New( Graph* graph , std::size_t size , IRInfo* info ) {
-  return graph->zone()->New<IRObject>(graph,graph->AssignID(),size,info);
-}
-
-inline Binary* Binary::New( Graph* graph , Expr* lhs , Expr* rhs, Operator op ,
-                                                                  IRInfo* info ) {
-  return graph->zone()->New<Binary>(graph,graph->AssignID(),lhs,rhs,op,info);
-}
-
-inline bool Binary::IsComparisonOperator( Operator op ) {
-  switch(op) {
-    case LT : case LE : case GT : case GE : case EQ : case NE :
-      return true;
-    default:
-      return false;
-  }
-}
-
-inline bool Binary::IsArithmeticOperator( Operator op ) {
-  switch(op) {
-    case ADD : case SUB : case MUL : case DIV : case MOD : case POW :
-      return true;
-    default:
-      return false;
-  }
-}
-
-inline bool Binary::IsBitwiseOperator( Operator op ) {
-  switch(op) {
-    case BAND: case BOR: case BXOR: case BSHL: case BSHR: case BROL: case BROR:
-      return true;
-    default:
-      return false;
-  }
-}
-
-inline bool Binary::IsLogicOperator( Operator op ) {
-  return op == AND || op == OR;
-}
-
-inline Binary::Operator Binary::BytecodeToOperator( interpreter::Bytecode op ) {
-  using namespace interpreter;
-  switch(op) {
-    case BC_ADDRV: case BC_ADDVR: case BC_ADDVV: return ADD;
-    case BC_SUBRV: case BC_SUBVR: case BC_SUBVV: return SUB;
-    case BC_MULRV: case BC_MULVR: case BC_MULVV: return MUL;
-    case BC_DIVRV: case BC_DIVVR: case BC_DIVVV: return DIV;
-    case BC_MODRV: case BC_MODVR: case BC_MODVV: return MOD;
-    case BC_POWRV: case BC_POWVR: case BC_POWVV: return POW;
-    case BC_LTRV : case BC_LTVR : case BC_LTVV : return LT ;
-    case BC_LERV : case BC_LEVR : case BC_LEVV : return LE ;
-    case BC_GTRV : case BC_GTVR : case BC_GTVV : return GT ;
-    case BC_GERV : case BC_GEVR : case BC_GEVV : return GE ;
-    case BC_EQRV : case BC_EQVR : case BC_EQSV : case BC_EQVS: case BC_EQVV: return EQ;
-    case BC_NERV : case BC_NEVR : case BC_NESV : case BC_NEVS: case BC_NEVV: return NE;
-    case BC_AND: return AND; case BC_OR : return OR;
-    default: lava_unreachF("unknown bytecode %s",interpreter::GetBytecodeName(op)); break;
-  }
-  return ADD;
-}
-
-inline const char* Binary::GetOperatorName( Operator op ) {
-  switch(op) {
-    case ADD :    return "add";
-    case SUB :    return "sub";
-    case MUL :    return "mul";
-    case DIV :    return "div";
-    case MOD :    return "mod";
-    case POW :    return "pow";
-    case LT  :    return "lt" ;
-    case LE  :    return "le" ;
-    case GT  :    return "gt" ;
-    case GE  :    return "ge" ;
-    case EQ  :    return "eq" ;
-    case NE  :    return "ne" ;
-    case AND :    return "and";
-    case OR  :    return "or";
-    case BAND:    return "band";
-    case BOR :    return "bor";
-    case BXOR:    return "bxor";
-    case BSHL:    return "bshl";
-    case BSHR:    return "bshr";
-    case BROL:    return "brol";
-    case BROR:    return "bror";
-    default:
-      lava_die(); return NULL;
-  }
-}
-
-inline Unary::Operator Unary::BytecodeToOperator( interpreter::Bytecode bc ) {
-  if(bc == interpreter::BC_NEGATE)
-    return MINUS;
-  else
-    return NOT;
-}
-
-inline const char* Unary::GetOperatorName( Operator op ) {
-  if(op == MINUS)
-    return "minus";
-  else
-    return "not";
-}
-
-inline Unary* Unary::New( Graph* graph , Expr* opr , Operator op , IRInfo* info ) {
-  return graph->zone()->New<Unary>(graph,graph->AssignID(),opr,op,info);
-}
-
-inline Ternary* Ternary::New( Graph* graph , Expr* cond , Expr* lhs , Expr* rhs ,
-                                                                      IRInfo* info ) {
-  return graph->zone()->New<Ternary>(graph,graph->AssignID(),cond,lhs,rhs,info);
-}
-
-inline UGet* UGet::New( Graph* graph , std::uint8_t index , std::uint32_t method , IRInfo* info ) {
-  return graph->zone()->New<UGet>(graph,graph->AssignID(),index,method,info);
-}
-
-inline USet* USet::New( Graph* graph , std::uint8_t index , std::uint32_t method ,
-                                                            Expr* opr ,
-                                                            IRInfo* info ) {
-  auto ret = graph->zone()->New<USet>(graph,graph->AssignID(),index,method,opr,info);
-  return ret;
-}
-
-inline PGet* PGet::New( Graph* graph , Expr* obj , Expr* key , IRInfo* info ,
-                                                               ControlFlow* region ) {
-  auto ret = graph->zone()->New<PGet>(graph,graph->AssignID(),obj,key,info);
-  return ret;
-}
-
-inline PSet* PSet::New( Graph* graph , Expr* obj , Expr* key , Expr* value ,
-                                                               IRInfo* info,
-                                                               ControlFlow* region ) {
-  auto ret = graph->zone()->New<PSet>(graph,graph->AssignID(),obj,key,value,info);
-  return ret;
-}
-
-inline IGet* IGet::New( Graph* graph , Expr* obj, Expr* key , IRInfo* info ,
-                                                              ControlFlow* region ) {
-  auto ret = graph->zone()->New<IGet>(graph,graph->AssignID(),obj,key,info);
-  return ret;
-}
-
-inline ISet* ISet::New( Graph* graph , Expr* obj , Expr* key , Expr* val ,
-                                                               IRInfo* info ,
-                                                               ControlFlow* region ) {
-  auto ret = graph->zone()->New<ISet>(graph,graph->AssignID(),obj,key,val,info);
-  return ret;
-}
-
-inline GGet* GGet::New( Graph* graph , Expr* key , IRInfo* info , ControlFlow* region ) {
-  auto ret = graph->zone()->New<GGet>(graph,graph->AssignID(),key,info);
-  return ret;
-}
-
-inline GSet* GSet::New( Graph* graph , Expr* key, Expr* value , IRInfo* info ,
-                                                                ControlFlow* region ) {
-  auto ret = graph->zone()->New<GSet>(graph,graph->AssignID(),key,value,info);
-  return ret;
-}
-
-inline ItrNew* ItrNew::New( Graph* graph , Expr* operand , IRInfo* info ,
-                                                           ControlFlow* region ) {
-  auto ret = graph->zone()->New<ItrNew>(graph,graph->AssignID(),operand,info);
-  return ret;
-}
-
-inline ItrNext* ItrNext::New( Graph* graph , Expr* operand , IRInfo* info ,
-                                                             ControlFlow* region ) {
-  auto ret = graph->zone()->New<ItrNext>(graph,graph->AssignID(),operand,info);
-  return ret;
-}
-
-inline ItrTest* ItrTest::New( Graph* graph , Expr* operand , IRInfo* info ,
-                                                             ControlFlow* region ) {
-  auto ret = graph->zone()->New<ItrTest>(graph,graph->AssignID(),operand,info);
-  return ret;
-}
-
-inline ItrDeref* ItrDeref::New( Graph* graph , Expr* operand , IRInfo* info ,
-                                                               ControlFlow* region ) {
-  auto ret = graph->zone()->New<ItrDeref>(graph,graph->AssignID(),operand,info);
-  return ret;
-}
-
-inline void Phi::RemovePhiFromRegion( Phi* phi ) {
-  if(phi->region()) {
-    auto itr = phi->region()->operand_list()->Find(phi);
-    lava_debug(NORMAL,lava_verify(itr.HasNext()););
-    phi->region()->operand_list()->Remove(itr);
-  }
-}
-
-inline Phi::Phi( Graph* graph , std::uint32_t id , ControlFlow* region , IRInfo* info ):
-  Expr           (IRTYPE_PHI,id,graph,info),
-  region_        (region)
-{
-  region->AddOperand(this);
-}
-
-inline Phi* Phi::New( Graph* graph , Expr* lhs , Expr* rhs , ControlFlow* region ,
-                                                             IRInfo* info ) {
-  auto ret = graph->zone()->New<Phi>(graph,graph->AssignID(),region,info);
-  ret->AddOperand(lhs);
-  ret->AddOperand(rhs);
-  return ret;
-}
-
-inline Phi* Phi::New( Graph* graph , ControlFlow* region , IRInfo* info ) {
-  return graph->zone()->New<Phi>(graph,graph->AssignID(),region,info);
-}
-
-inline EffectPhi::EffectPhi( Graph* graph , std::uint32_t id , ControlFlow* region , IRInfo* info ):
-  SideEffect(IRTYPE_EFFECT_PHI,id,graph,info),
-  region_ (region)
-{
-  region->AddOperand(this);
-}
-
-inline EffectPhi* EffectPhi::New( Graph* graph , SideEffect* lhs , SideEffect* rhs ,
-                                                                   ControlFlow* region ,
-                                                                   IRInfo* info ) {
-  auto ret = graph->zone()->New<EffectPhi>(graph,graph->AssignID(),region,info);
-  ret->AddOperand(lhs);
-  ret->AddOperand(rhs);
-  return ret;
-}
-
-inline EffectPhi* EffectPhi::New( Graph* graph , ControlFlow* region , IRInfo* info ) {
-  return graph->zone()->New<EffectPhi>(graph,graph->AssignID(),region,info);
-}
-
-inline NoEffect* NoEffect::New( Graph* graph ) {
-  return graph->zone()->New<NoEffect>(graph,graph->AssignID());
-}
-
-inline ICall* ICall::New( Graph* graph , interpreter::IntrinsicCall ic ,
-                                         bool tc,
-                                         IRInfo* info ) {
-  return graph->zone()->New<ICall>(graph,graph->AssignID(),ic,tc,info);
-}
-
-inline LoadCls* LoadCls::New( Graph* graph , std::uint32_t ref , IRInfo* info ) {
-  return graph->zone()->New<LoadCls>(graph,graph->AssignID(),ref,info);
-}
-
-inline Projection* Projection::New( Graph* graph , Expr* operand , std::uint32_t index ,
-                                                                   IRInfo* info ) {
-  return graph->zone()->New<Projection>(graph,graph->AssignID(),operand,index,info);
-}
-
-inline OSRLoad* OSRLoad::New( Graph* graph , std::uint32_t index ) {
-  return graph->zone()->New<OSRLoad>(graph,graph->AssignID(),index);
-}
-
-inline Alias* Alias::New( Graph* graph , Expr* receiver , Expr* applier ,
-                                                          IRInfo* info ) {
-  return graph->zone()->New<Alias>(graph,graph->AssignID(),receiver,applier,info);
-}
-
-inline Checkpoint* Checkpoint::New( Graph* graph ) {
-  return graph->zone()->New<Checkpoint>(graph,graph->AssignID());
-}
-
-inline void Checkpoint::AddStackSlot( Expr* val , std::uint32_t index ) {
-  AddOperand(StackSlot::New(graph(),val,index));
-}
-
-inline TestType* TestType::New( Graph* graph , TypeKind tc , Expr* object ,
-                                                                 IRInfo* info ) {
-  return graph->zone()->New<TestType>(graph,graph->AssignID(),tc,object,info);
-}
-
-inline TestListOOB* TestListOOB::New( Graph* graph , Expr* object , Expr* key ,
-                                                                      IRInfo* info ) {
-  return graph->zone()->New<TestListOOB>(graph,graph->AssignID(),object,key,info);
-}
-
-inline Float64Negate* Float64Negate::New( Graph* graph , Expr* opr , IRInfo* info ) {
-  return graph->zone()->New<Float64Negate>(graph,graph->AssignID(),opr,info);
-}
-
-inline Float64Arithmetic* Float64Arithmetic::New( Graph* graph , Expr* lhs ,
-                                                                 Expr* rhs ,
-                                                                 Operator op,
-                                                                 IRInfo* info ) {
-  return graph->zone()->New<Float64Arithmetic>(graph,graph->AssignID(),lhs,rhs,op,info);
-}
-
-inline Float64Bitwise* Float64Bitwise::New( Graph* graph , Expr* lhs ,
-                                                           Expr* rhs ,
-                                                           Operator op,
-                                                           IRInfo* info ) {
-  return graph->zone()->New<Float64Bitwise>(graph,graph->AssignID(),lhs,rhs,op,info);
-}
-
-inline Float64Compare* Float64Compare::New( Graph* graph , Expr* lhs ,
-                                                           Expr* rhs ,
-                                                           Operator op,
-                                                           IRInfo* info ) {
-  return graph->zone()->New<Float64Compare>(graph,graph->AssignID(),lhs,rhs,op,info);
-}
-
-inline BooleanNot* BooleanNot::New( Graph* graph , Expr* opr , IRInfo* info ) {
-  return graph->zone()->New<BooleanNot>(graph,graph->AssignID(),opr,info);
-}
-
-inline BooleanLogic* BooleanLogic::New( Graph* graph , Expr* lhs , Expr* rhs ,
-                                                                   Operator op,
-                                                                   IRInfo* info ) {
-  return graph->zone()->New<BooleanLogic>(graph,graph->AssignID(),lhs,rhs,op,info);
-}
-
-inline StringCompare* StringCompare::New( Graph* graph , Expr* lhs , Expr* rhs ,
-                                                                     Operator op ,
-                                                                     IRInfo* info ) {
-  return graph->zone()->New<StringCompare>(graph,graph->AssignID(),lhs,rhs,op,info);
-}
-
-inline SStringEq* SStringEq::New( Graph* graph , Expr* lhs , Expr* rhs , IRInfo* info ) {
-  return graph->zone()->New<SStringEq>(graph,graph->AssignID(),lhs,rhs,info);
-}
-
-inline SStringNe* SStringNe::New( Graph* graph , Expr* lhs , Expr* rhs , IRInfo* info ) {
-  return graph->zone()->New<SStringNe>(graph,graph->AssignID(),lhs,rhs,info);
-}
-
-inline ListGet* ListGet::New( Graph* graph , Expr* obj , Expr* index , IRInfo* info ) {
-  return graph->zone()->New<ListGet>(graph,graph->AssignID(),obj,index,info);
-}
-
-inline ListSet* ListSet::New( Graph* graph , Expr* obj , Expr* index , Expr* value ,
-                                                                       IRInfo* info ) {
-  return graph->zone()->New<ListSet>(graph,graph->AssignID(),obj,index,value,info);
-}
-
-inline ObjectGet* ObjectGet::New( Graph* graph , Expr* obj , Expr* key , IRInfo* info ) {
-  return graph->zone()->New<ObjectGet>(graph,graph->AssignID(),obj,key,info);
-}
-
-inline ObjectSet* ObjectSet::New( Graph* graph , Expr* obj , Expr* key , Expr* value ,
-                                                                         IRInfo* info ) {
-  return graph->zone()->New<ObjectSet>(graph,graph->AssignID(),obj,key,value,info);
-}
-
-inline Box* Box::New( Graph* graph , Expr* obj , TypeKind tk , IRInfo* info ) {
-  return graph->zone()->New<Box>(graph,graph->AssignID(),obj,tk,info);
-}
-
-inline Unbox* Unbox::New( Graph* graph , Expr* obj , TypeKind tk , IRInfo* info ) {
-  return graph->zone()->New<Unbox>(graph,graph->AssignID(),obj,tk,info);
-}
-
-inline StackSlot* StackSlot::New( Graph* graph , Expr* expr , std::uint32_t index ) {
-  return graph->zone()->New<StackSlot>(graph,graph->AssignID(),expr,index);
-}
-
-inline Region* Region::New( Graph* graph ) {
-  return graph->zone()->New<Region>(graph,graph->AssignID());
-}
-
-inline Region* Region::New( Graph* graph , ControlFlow* parent ) {
-  auto ret = New(graph);
-  ret->AddBackwardEdge(parent);
-  return ret;
-}
-
-inline LoopHeader* LoopHeader::New( Graph* graph , ControlFlow* parent ) {
-  return graph->zone()->New<LoopHeader>(graph,graph->AssignID(),parent);
-}
-
-inline Loop* Loop::New( Graph* graph ) { return graph->zone()->New<Loop>(graph,graph->AssignID()); }
-
-inline LoopExit* LoopExit::New( Graph* graph , Expr* condition ) {
-  return graph->zone()->New<LoopExit>(graph,graph->AssignID(),condition);
-}
-
-inline If* If::New( Graph* graph , Expr* condition , ControlFlow* parent ) {
-  return graph->zone()->New<If>(graph,graph->AssignID(),condition,parent);
-}
-
-inline TypeGuard* TypeGuard::New( Graph* graph , Expr* node , TypeKind type ,
-                                                              Checkpoint* cp,
-                                                              IRInfo*  info ) {
-  return graph->zone()->New<TypeGuard>(graph,graph->AssignID(),node,type,cp,info);
-}
-
-inline IfTrue* IfTrue::New( Graph* graph , ControlFlow* parent ) {
-  lava_debug(NORMAL,lava_verify(
-        parent->IsIf() && parent->forward_edge()->size() == 1););
-
-  return graph->zone()->New<IfTrue>(graph,graph->AssignID(),parent);
-}
-
-inline IfTrue* IfTrue::New( Graph* graph ) {
-  return IfTrue::New(graph,NULL);
-}
-
-inline IfFalse* IfFalse::New( Graph* graph , ControlFlow* parent ) {
-  lava_debug(NORMAL,lava_verify(
-        parent->IsIf() && parent->forward_edge()->size() == 0););
-
-  return graph->zone()->New<IfFalse>(graph,graph->AssignID(),parent);
-}
-
-inline IfFalse* IfFalse::New( Graph* graph ) {
-  return IfFalse::New(graph,NULL);
-}
-
-inline Jump* Jump::New( Graph* graph , const std::uint32_t* pc , ControlFlow* parent ) {
-  return graph->zone()->New<Jump>(graph,graph->AssignID(),parent,pc);
-}
-
-inline Fail* Fail::New( Graph* graph ) {
-  return graph->zone()->New<Fail>(graph,graph->AssignID());
-}
-
-inline Success* Success::New( Graph* graph ) {
-  return graph->zone()->New<Success>(graph,graph->AssignID());
-}
-
-inline bool Jump::TrySetTarget( const std::uint32_t* bytecode_pc , ControlFlow* target ) {
-  if(bytecode_pc_ == bytecode_pc) {
-    target_ = target;
-    return true;
-  }
-  // The target should not be set since this jump doesn't and shouldn't jump to the input region
-  return false;
-}
-
-inline Return* Return::New( Graph* graph , Expr* value , ControlFlow* parent ) {
-  return graph->zone()->New<Return>(graph,graph->AssignID(),value,parent);
-}
-
-inline Start* Start::New( Graph* graph ) {
-  return graph->zone()->New<Start>(graph,graph->AssignID());
-}
-
-inline End* End::New( Graph* graph , Success* s , Fail* f ) {
-  return graph->zone()->New<End>(graph,graph->AssignID(),s,f);
-}
-
-inline Trap* Trap::New( Graph* graph , Checkpoint* cp , ControlFlow* region ) {
-  return graph->zone()->New<Trap>(graph,graph->AssignID(),cp,region);
-}
-
-inline OSRStart* OSRStart::New( Graph* graph ) {
-  return graph->zone()->New<OSRStart>(graph,graph->AssignID());
-}
-
-inline OSREnd* OSREnd::New( Graph* graph , Success* s , Fail* f ) {
-  return graph->zone()->New<OSREnd>(graph,graph->AssignID(),s,f);
-}
-
 // ---------------------------------------------------------------------
 // Helper functions for creation of node
 // ---------------------------------------------------------------------
@@ -3238,9 +2606,10 @@ inline Box* NewBoxNode( Graph* graph , TypeKind tk , IRInfo* irinfo , ARGS ...ar
 // Create a unbox value from a node that has type inference.
 Expr* NewUnboxNode( Graph* , Expr* node , TypeKind tk , IRInfo* );
 
-
 } // namespace hir
 } // namespace cbase
 } // namespace lavascript
+
+#include "hir-inl.h"
 
 #endif // CBASE_HIR_H_

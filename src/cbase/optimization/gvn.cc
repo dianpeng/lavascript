@@ -1,5 +1,4 @@
 #include "gvn.h"
-#include "src/cbase/hir-helper.h"
 #include "src/cbase/hir-visitor.h"
 #include <unordered_set>
 

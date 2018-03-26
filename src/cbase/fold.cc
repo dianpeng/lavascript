@@ -64,7 +64,7 @@ inline bool IsNumber( Expr* node , T value ) {
          (static_cast<double>(value) == node->AsFloat64()->value()) : false;
 }
 Expr* Fold( Graph* graph , Unary::Operator op , Expr* expr ,
-                                                const IRProvider& irinfo ) {
+                                                const IRInfoProvider& irinfo ) {
   if(op == Unary::MINUS) {
     if(expr->IsFloat64()) {
       return Float64::New(graph,-expr->AsFloat64()->value(),irinfo());
@@ -119,7 +119,7 @@ Expr* Fold( Graph* graph , Unary::Operator op , Expr* expr ,
 // do anything due to the fact that the extension type bailout every types of optimization
 Expr* Float64Reassociate( Graph* graph , Binary::Operator op , Expr* lhs ,
                                                                Expr* rhs ,
-                                                               const IRProvider& irinfo ) {
+                                                               const IRInfoProvider& irinfo ) {
   /**
    * Due to the fact that our operands are both floating point number, not too much
    * operation can be safely done.
@@ -206,7 +206,7 @@ Expr* SimplifyLogicAnd( Graph* graph , TypeKind lhs_type ,
                                        TypeKind rhs_type ,
                                        Expr* lhs ,
                                        Expr* rhs ,
-                                       const IRProvider& irinfo ) {
+                                       const IRInfoProvider& irinfo ) {
   (void)lhs_type;
   (void)rhs_type;
   if(IsFalse(lhs,lhs_type)) { return Boolean::New(graph,false,irinfo()); }  // false && any ==> false
@@ -225,7 +225,7 @@ Expr* SimplifyLogicAnd( Graph* graph , TypeKind lhs_type ,
 Expr* SimplifyLogicOr ( Graph* graph , TypeKind lhs_type , TypeKind rhs_type ,
                                                            Expr* lhs,
                                                            Expr* rhs,
-                                                           const IRProvider& irinfo ) {
+                                                           const IRInfoProvider& irinfo ) {
   if(IsTrue (lhs,lhs_type)) { return Boolean::New(graph,true,irinfo()); }  // true || any ==> true
   if(IsFalse(lhs,lhs_type)) { return rhs; }                                // false|| any ==> any
   if(lhs == rhs) return lhs; // a || a ==> a
@@ -244,7 +244,7 @@ Expr* SimplifyBooleanCompare( Graph* graph , Binary::Operator op,
                                              TypeKind rhs_type ,
                                              Expr* lhs,
                                              Expr* rhs,
-                                             const IRProvider& irinfo ) {
+                                             const IRInfoProvider& irinfo ) {
   if(lhs_type == TPKIND_BOOLEAN && rhs->IsBoolean()) {
     auto info = irinfo();
     return rhs->AsBoolean()->value() ?  lhs :
@@ -258,7 +258,7 @@ Expr* SimplifyBooleanCompare( Graph* graph , Binary::Operator op,
 }
 Expr* SimplifyBinary( Graph* graph , Binary::Operator op , Expr* lhs ,
                                                            Expr* rhs ,
-                                                           const IRProvider& irinfo ) {
+                                                           const IRInfoProvider& irinfo ) {
   auto lhs_type = GetTypeInference(lhs);
   auto rhs_type = GetTypeInference(rhs);
   if(lhs_type == TPKIND_FLOAT64 && rhs_type == TPKIND_FLOAT64) {
@@ -294,7 +294,7 @@ Expr* SimplifyBinary( Graph* graph , Binary::Operator op , Expr* lhs ,
 }
 Expr* Fold( Graph* graph , Binary::Operator op , Expr* lhs ,
                                                  Expr* rhs ,
-                                                 const IRProvider& irinfo ) {
+                                                 const IRInfoProvider& irinfo ) {
   if(lhs->IsFloat64() && rhs->IsFloat64()) {
     auto lval = lhs->AsFloat64()->value();
     auto rval = rhs->AsFloat64()->value();
@@ -346,7 +346,7 @@ Expr* Fold( Graph* graph , Binary::Operator op , Expr* lhs ,
   return SimplifyBinary(graph,op,lhs,rhs,irinfo);
 }
 Expr* Fold( Graph* graph , Expr* cond , Expr* lhs , Expr* rhs ,
-                                                    const IRProvider& irinfo) {
+                                                    const IRInfoProvider& irinfo) {
   switch(cond->type()) {
     case IRTYPE_FLOAT64:
     case IRTYPE_LONG_STRING:
@@ -607,23 +607,23 @@ Expr* FoldICall( Graph* graph , ICall* node ) {
 } // namespace
 
 Expr* FoldUnary  ( Graph* graph , Unary::Operator op , Expr* expr ,
-                                                       const IRProvider& irinfo ) {
+                                                       const IRInfoProvider& irinfo ) {
   return Fold(graph,op,expr,irinfo);
 }
 Expr* FoldBinary ( Graph* graph , Binary::Operator op , Expr* lhs ,
                                                         Expr* rhs ,
-                                                        const IRProvider& irinfo ) {
+                                                        const IRInfoProvider& irinfo ) {
   return Fold(graph,op,lhs,rhs,irinfo);
 }
 Expr* FoldTernary( Graph* graph , Expr* cond , Expr* lhs , Expr* rhs ,
-                                                           const IRProvider& irinfo) {
+                                                           const IRInfoProvider& irinfo) {
   return Fold(graph,cond,lhs,rhs,irinfo);
 }
 Expr* FoldIntrinsicCall( Graph* graph , ICall* icall ) {
   return FoldICall(graph,icall);
 }
 Expr* SimplifyLogic ( Graph* graph , Expr* lhs , Expr* rhs , Binary::Operator op,
-                                                             const IRProvider& irinfo ) {
+                                                             const IRInfoProvider& irinfo ) {
   if(op == Binary::AND) {
     return SimplifyLogicAnd(graph,GetTypeInference(lhs),
                                   GetTypeInference(rhs),
@@ -641,7 +641,7 @@ Expr* SimplifyLogic ( Graph* graph , Expr* lhs , Expr* rhs , Binary::Operator op
 }
 
 Expr* FoldObjectSet( Graph* graph , Expr* obj , Expr* k , Expr* value ,
-                                                          const IRProvider& irinfo ) {
+                                                          const IRInfoProvider& irinfo ) {
   if(obj->IsIRObject()) {
     auto object = obj->AsIRObject();
     auto key    = k->AsZoneString();
@@ -668,7 +668,7 @@ Expr* FoldObjectSet( Graph* graph , Expr* obj , Expr* k , Expr* value ,
   return NULL;
 }
 
-Expr* FoldObjectGet( Graph* graph , Expr* obj , Expr* k , const IRProvider& irinfo ) {
+Expr* FoldObjectGet( Graph* graph , Expr* obj , Expr* k , const IRInfoProvider& irinfo ) {
   (void)irinfo;
   if(obj->IsIRObject()) {
     auto object = obj->AsIRObject();

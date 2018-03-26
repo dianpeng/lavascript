@@ -88,7 +88,7 @@ void BytecodeAnalyze::Kill( std::uint8_t reg ) {
         // block but in its enclosed lexical scope chain and now it is
         // modified, so we need to insert a PHI to capture it at the
         // head of the loop
-        current_loop()->phi[reg] = true;
+        current_loop()->phi.var[reg] = true;
       }
     }
   }
@@ -289,7 +289,32 @@ bool BytecodeAnalyze::BuildBytecode( BytecodeIterator* itr ) {
     case BC_FSTART:    BuildLoop(itr);        break;
     case BC_FESTART:   BuildLoop(itr);        break;
     case BC_FEVRSTART: BuildForeverLoop(itr); break;
-
+    // upvalue set
+    case BC_UVSET:
+      if(current_loop()) {
+        std::uint8_t a1,a2; itr->GetOperand(&a1,&a2);
+        current_loop()->phi.uv[a1] = true;
+      }
+      break;
+    // global variables
+    case BC_GSET: case BC_GSETSSO:
+      if(current_loop()) {
+        std::uint8_t a1;
+        std::uint16_t a2;
+        itr->GetOperand(&a1,&a2);
+        Str key;
+        if(itr->opcode() == BC_GSET) {
+          auto s = proto_->GetString(a2);
+          key.data   = s->data();
+          key.length = s->size();
+        } else {
+          auto s = proto_->GetSSO   (a2);
+          key.data   = s->sso->data();
+          key.length = s->sso->size();
+        }
+        current_loop()->phi.glb.insert(key);
+      }
+      break;
     // bytecode that gonna terminate current basic block
     case BC_CONT: case BC_BRK: case BC_RET: case BC_RETNULL:
       itr->Move();
@@ -332,9 +357,19 @@ void BytecodeAnalyze::Dump( DumpWriter* writer ) const {
                                                                   e.second.end,
                                                                  (e.second.start-start));
       for( std::size_t i = 0 ; i < interpreter::kRegisterSize ; ++i ) {
-        if(e.second.phi[i]) {
-          writer->WriteL("Phi: %zu",i);
+        if(e.second.phi.var[i]) {
+          writer->WriteL("LocalVar: %zu",i);
         }
+      }
+
+      for( std::size_t i = 0 ; i < interpreter::kMaxUpValueSize; ++i ) {
+        if(e.second.phi.uv[i]) {
+          writer->WriteL("UpValue: %zu",i);
+        }
+      }
+
+      for( auto &v : e.second.phi.glb ) {
+        writer->WriteL("Global: %s",Str::ToStdString(v).c_str());
       }
     }
   }

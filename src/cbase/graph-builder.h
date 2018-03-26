@@ -43,6 +43,27 @@ class GraphBuilder {
     }
   };
 
+  // Represents an effect tracking cell for upvalue and globals , input argument
+  // is tracked actively since we don't have special bytecode to tell to load a
+  // argument, jvm does. So for input argument whenever a possible side effect
+  // statement is met, then all the input argument slots inside of the simulated
+  // stack will be replaced or regenerated.
+  struct EffectGroup {
+    EffectGroup( Graph* g ):
+      read_effect_ (g->no_read_effect ()),
+      write_effect_(g->no_write_effect()),
+      value_(NULL)
+    {}
+
+    EffectGroup():read_effect_(),write_effect_(),value_() {}
+    bool IsEmpty() const { return value_ == NULL; }
+    inline void Update( SideEffect* , Expr* );
+
+    SideEffectRead*   read_effect;             // *last* read side effect
+    SideEffectWrite*  write_effect;            // *last* write side effect
+    Expr*             value;                   // current value of the effect group
+  };
+
   // Environment --------------------------------------------------------------
   // this object records all the side effect that can be observed by the
   // function or its nested inline functions.
@@ -52,29 +73,40 @@ class GraphBuilder {
   // 3. global variables
   class Environment {
    public:
-    Environment( Graph* graph ): stack_(), effect_(NoEffect::New(graph)) {}
+    typedef std::vector<EffectGroup>            UpValueVector;
+    typedef std::unordered_map<Str,EffectGroup> GlobalMap;
+    typedef std::function<Expr* ()> KeyProvider;
+
+    Environment( GraphBuilder* graph );
     // init environment object from prototype object
-    void EnterFunctionScope( Graph*, const FuncInfo& );
-    void ExitFunctionScope ( Graph*, const FuncInfo& );
+    void EnterFunctionScope( const FuncInfo& );
+    void ExitFunctionScope ( const FuncInfo& );
 
     ValueStack* stack()     { return &stack_; }
-   public:
-    // update the current effect node inside of the environment
-    void UpdateEffect( GraphBuilder* , SideEffect* );
+    UpValueVector upvalue() { return &upvalue_;}
+    GlobalMap*  global()    { return &global_; }
 
-    // get current effect node
-    SideEffect* effect() const { return effect_; }
+    Expr*       GetUpValue( std::uint8_t , const IRInfoProvider& ) const;
+    Expr*       GetGlobal ( const void* , std::size_t , const KeyProvider& , const IRInfoProvider& ) const;
+    void        SetUpValue( std::uint8_t , Expr* , const IRInfoProvider& );
+    void        SetGlobal ( const void* , std::size_t , const KeyProvider& , Expr* , const IRInfoProvider& );
+
    private:
     // register stack
     ValueStack stack_;
-    // this field records an expression that is a *memory mutation* operation that acutally
-    // should be observed by various field inside of the program. To generate a real effect
-    // we do it by scanning all following positions which is considered to be aliased with
-    // each other :
-    // 1. all global variables
-    // 2. upvalue
-    // 3. input argument
-    SideEffect* effect_;
+
+    // root effect track , all unknown field that may alias each other will fallback
+    // to this EffectGroup.
+    EffectGroup root_;
+
+    // upvalue's effect group
+    EffectGroupVector        upvalue_;
+
+    // global's effect group
+    std::unordered_map<Str,EffectGroup> global_;
+
+    // graph builder
+    GraphBuilder* gb_;
   };
 
   // Data structure record the pending jump that happened inside of the loop
@@ -265,15 +297,19 @@ class GraphBuilder {
   Expr* NewPGet       ( Expr* , Expr* , IRInfo* );
   Expr* NewISet       ( Expr* , Expr* , Expr* , IRInfo* );
   Expr* NewIGet       ( Expr* , Expr* , IRInfo* );
+
  private: // Global variables
   void NewGGet( std::uint8_t , std::uint8_t , const interpreter::BytecodeLocation& , bool sso = false );
   void NewGSet( std::uint8_t , std::uint8_t , const interpreter::BytecodeLocation& , bool sso = false );
+
  private: // Upvalue
   void NewUGet( std::uint8_t , std::uint8_t , const interpreter::BytecodeLocation& );
   void NewUSet( std::uint8_t , std::uint8_t , const interpreter::BytecodeLocation& );
+
  private: // Checkpoint generation
   Checkpoint* BuildCheckpoint( const interpreter::BytecodeLocation& );
- private:
+
+ private: // OSR
   StopReason BuildOSRStart( const Handle<Prototype>& , const std::uint32_t* , Graph* );
   void BuildOSRLocalVariable();
   void SetupOSRLoopCondition( interpreter::BytecodeIterator* );
@@ -281,6 +317,8 @@ class GraphBuilder {
   StopReason PeelOSRLoop    ( interpreter::BytecodeIterator* );
   // Build a block as OSR loop body
   StopReason GotoOSRBlockEnd( interpreter::BytecodeIterator* , const std::uint32_t* );
+
+ private: // Build bytecode
   // Just build *one* BC isntruction , this will not build certain type of BCs
   // since it is expected other routine to consume those BCs
   StopReason BuildBytecode  ( interpreter::BytecodeIterator* itr );
@@ -320,7 +358,7 @@ class GraphBuilder {
   StopReason BuildLoopBlock  ( interpreter::BytecodeIterator* itr );
   void PatchUnconditionalJump( UnconditionalJumpList* , ControlFlow* , const interpreter::BytecodeLocation& );
 
- private:
+ private: // IRInfo
   IRInfo* NewIRInfo( const interpreter::BytecodeLocation& loc );
   IRInfo* NewIRInfo( interpreter::BytecodeIterator* );
 

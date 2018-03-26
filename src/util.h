@@ -5,6 +5,7 @@
 #define __STDC_FORMAT_MACROS
 #endif // __STDC_FORMAT_MACROS
 
+#include <functional>
 #include <optional>
 #include <cstdint>
 #include <cstdarg>
@@ -17,6 +18,7 @@
 #include <limits>
 #include <inttypes.h>
 
+#include "hash.h"
 #include "trace.h"
 
 #define LAVA_FMTI64 PRId64
@@ -188,9 +190,32 @@ struct Str {
   Str( const void* d , std::size_t l ) : data(d), length(l) {}
   // do a comparison of two chunk of memory/Str
   static inline int Cmp( const Str& , const Str& );
+  static inline std::uint32_t Hash( const Str& str ) { return Hasher::Hash(str.data,str.length); }
+  static std::string ToStdString  ( const Str& str ) {
+    return std::string(static_cast<const char*>(str.data),str.length);
+  }
 };
 
 } // namespace lavascript
+
+// Hash wrapper for Str object to be used by std::unordered_xxx
+namespace std {
+
+template<> struct hash<::lavascript::Str> {
+  typedef ::lavascript::Str type;
+  std::size_t operator () ( const type& expr ) const {
+    return static_cast<std::uint32_t>(type::Hash(expr));
+  }
+};
+
+template<> struct equal_to<::lavascript::Str> {
+  typedef ::lavascript::Str type;
+  bool operator () ( const type& lhs , const type& rhs ) const {
+    return type::Cmp(lhs,rhs) == 0;
+  }
+};
+
+} // namespace std
 
 #include "util-inl.h"
 

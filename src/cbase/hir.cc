@@ -143,8 +143,14 @@ Graph::Graph():
   start_                (NULL),
   end_                  (NULL),
   prototype_info_       (),
-  id_                   ()
-{}
+  id_                   (),
+  no_read_effect_       (),
+  no_write_effect_      ()
+{
+  // initialize placeholders
+  no_read_effect_ = NoReadEffect::New(*this);
+  no_write_effect_= NoWriteEffect::New(*this);
+}
 
 Graph::~Graph() {}
 

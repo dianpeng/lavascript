@@ -98,8 +98,8 @@ bool DumpBytecodeAnalyze( const RA& bb , const RA& loop , const char* source ) {
       return false;
     }
     for( std::size_t i = 0 ; i < 256 ; ++i ) {
-      if(e.set[i] != ret->phi[i]) {
-        std::cerr<<"Register "<<i<<" mismatch expect "<<e.set[i]<<" but get "<<ret->phi[i]<<std::endl;
+      if(e.set[i] != ret->phi.var[i]) {
+        std::cerr<<"Register "<<i<<" mismatch expect "<<e.set[i]<<" but get "<<ret->phi.var[i]<<std::endl;
         return false;
       }
     }

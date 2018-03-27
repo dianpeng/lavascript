@@ -25,27 +25,21 @@ void GraphBuilder::Environment::ExitFunctionScope( Graph* graph , const FuncInfo
 }
 
 Expr* GraphBuilder::GetUpValue( std::uint8_t index , const IRInfoProvider& irinfo ) const {
-  // 1. tries to index into upvalue group
   {
     lava_debug(NORMAL,lava_verify(index < upvalue_.size()));
     auto grp = upvalue_[index];
     if(!grp.IsEmpty()) {
-      // a read is always free to be reordered, so just return here
       return grp.value();
     }
   }
-  // 2. fallback to the global groups and need to create a UGet node
   auto uget = UGet::New(gb_->graph_,index,gb_->method(),irinfo());
-  // uget must be ordered by the previous write effect
   uget->AddEffect( root_.write_effect );
-  // uget must be updated as the previous read effect
   root_.read_effect = uget;
   return uget;
 }
 
 Expr* GraphBuilder::GetGlobal ( const void* key , std::size_t length , const KeyProvider& key_provider ,
                                                                        const IRInfoProvider& irinfo ) const {
-  // 1. tries to index into existed global table
   {
     auto itr = global_.find(Str(key,length));
     if(itr != global_.end()) {
@@ -54,52 +48,48 @@ Expr* GraphBuilder::GetGlobal ( const void* key , std::size_t length , const Key
       return eg.value();
     }
   }
-  // 2. fallback to a global get node
   auto gget = GGet::New(gb_->graph_,key_provider(),irinfo(),gb_->region());
-  // gget must be ordered by the previous write effect
   gget->AddEffect(root_.write_effect);
-  // gget must be updated as previous read effect
   root_.read_effect = gget;
   return gget;
 }
 
 void GraphBuilder::SetUpValue( std::uint8_t index , Expr* value , const IRInfoProvider& irinfo ) {
-  // 1. setup the upvalue set node USet , regardless whether we can track it or not
-  //    this node must be used as a statement node into the current region to ensure
-  //    it is flushed back at the correct timing.
   auto uset = USet::New(gb_->graph_,index,gb_->method(),value,irinfo());
-  // add it as a statement
   gb_->region()->AddStatement(uset);
-
-  // 2. check whether we have this node tracked
   {
     auto grp = upvalue_[index];
     if(grp.IsEmpty()) {
-      // not tracked, update to global side effect node
+      uset->AddEffect(root_.read_effect );
+      uset->AddEffect(root_.write_effect);
+      grp.write_effect = uset;
+      grp.value = value;
+    } else {
+      uset->AddEffect(grp.read_effect );
+      uset->AddEffect(grp.write_effect);
+      grp.write_effect = uset;
+      grp.value = value;
     }
   }
 }
 
-void GraphBuilder::Environment::UpdateEffect( GraphBuilder* gb , SideEffect* effect ) {
-  // update the effect node
-  effect_ = effect;
-  // Go through the *first* function's argument list and add effect to these
-  // nodes. We don't need to go through inlined function argument list since
-  // they are just be stored as local variables and we do know what value are
-  // them since they are inlined
+void GraphBuilder::SetGlobal( const void* key , std::size_t length , const KeyProvider& key_provider ,
+                                                                     Expr* value,
+                                                                     const IRInfoProvider& irinfo ) {
+  auto gset = GSet::New(gb_->graph_,key_provider(),value,irinfo());
+  gb_->region()->AddStatement(gset);
   {
-    auto &e = gb->func_info_.front();
-    auto arg_sz = e.prototype->argument_size();
-    for( std::size_t i = e.base ; i < arg_sz + e.base ; ++i ) {
-      auto n = gb->vstk()->at(i);
-      if(n->IsArg()) {
-        auto arg = n->AsArg();
-        if(arg->HasRef()) {
-          gb->vstk()->at(i) = Arg::New(gb->graph_,(i - e.base));
-        } else {
-          arg->AddEffect(effect_);
-        }
-      }
+    auto itr = global_.find(Str(key,length));
+    if(itr == global_.end()) {
+      gset->AddEffect(root_.read_effect );
+      gset->AddEffect(root_.write_effect);
+      global_[Str(key,length)] = EffectGroup(gb_->graph_->no_read_effect(),gset,value);
+    } else {
+      auto &grp = itr->second;
+      gset->AddEffect(grp.read_effect );
+      gset->AddEffect(grp.write_effect);
+      grp.write_effect = gset;
+      grp.value = value;
     }
   }
 }
@@ -617,8 +607,8 @@ Expr* GraphBuilder::LowerICall( ICall* node ) {
 // ====================================================================
 Expr* GraphBuilder::NewPSet( Expr* object , Expr* key , Expr* value , IRInfo* ir_info ) {
   // try to fold the object if object is a literal
-  auto v = FoldObjectSet(graph_,object,key,value,[=](){ return ir_info; });
-  if(v) return v;
+  if((auto v = FoldObjectSet(graph_,object,key,value,[=](){ return ir_info; })))
+      return v;
   auto ret = PSet::New(graph_,object,key,value,ir_info,region());
   // check if this pset node has side effect or not
   if(object->HasObservableSideEffect()) {
@@ -633,8 +623,8 @@ Expr* GraphBuilder::NewPSet( Expr* object , Expr* key , Expr* value , IRInfo* ir
 Expr* GraphBuilder::NewPGet( Expr* object , Expr* key , IRInfo* ir_info ) {
   // here we *do not* do any folding operations and let the later on pass handle it
   // and we just simply do a pget node test plus some guard if needed
-  auto v = FoldObjectGet(graph_,object,key,[=](){ return ir_info; });
-  if(v) return v;
+  if((auto v = FoldObjectGet(graph_,object,key,[=](){ return ir_info; })))
+    return v;
   // when we reach here we needs to generate guard
   return PGet::New(graph_,object,key,ir_info,region());
 }

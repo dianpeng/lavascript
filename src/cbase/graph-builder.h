@@ -50,15 +50,15 @@ class GraphBuilder {
   // stack will be replaced or regenerated.
   struct EffectGroup {
     EffectGroup( Graph* g ):
-      read_effect_ (g->no_read_effect ()),
-      write_effect_(g->no_write_effect()),
-      value_(NULL)
-    {}
-
+      read_effect_ (g->no_read_effect ()), write_effect_(g->no_write_effect()), value_(NULL) {}
+    EffectGroup( SideEffectRead* r , SideEffectWrite* w , Value* v ):
+      read_effect(r),write_effect(w),value(v) {}
     EffectGroup():read_effect_(),write_effect_(),value_() {}
+    // Check whehter this node is empty or not
     bool IsEmpty() const { return value_ == NULL; }
-    inline void Update( SideEffect* , Expr* );
-
+    // Used to update the corresponding effect node internally
+    inline void Update( SideEffect* );
+   public:
     SideEffectRead*   read_effect;             // *last* read side effect
     SideEffectWrite*  write_effect;            // *last* write side effect
     Expr*             value;                   // current value of the effect group
@@ -73,38 +73,34 @@ class GraphBuilder {
   // 3. global variables
   class Environment {
    public:
-    typedef std::vector<EffectGroup>            UpValueVector;
-    typedef std::unordered_map<Str,EffectGroup> GlobalMap;
-    typedef std::function<Expr* ()> KeyProvider;
+    typedef std::vector<EffectGroup*>             UpValueVector;
+    typedef std::unordered_map<Str,EffectGroup*>  GlobalMap;
+    typedef std::function<Expr* ()>               KeyProvider;
 
     Environment( GraphBuilder* graph );
     // init environment object from prototype object
     void EnterFunctionScope( const FuncInfo& );
     void ExitFunctionScope ( const FuncInfo& );
-
-    ValueStack* stack()     { return &stack_; }
-    UpValueVector upvalue() { return &upvalue_;}
-    GlobalMap*  global()    { return &global_; }
-
-    Expr*       GetUpValue( std::uint8_t , const IRInfoProvider& ) const;
-    Expr*       GetGlobal ( const void* , std::size_t , const KeyProvider& , const IRInfoProvider& ) const;
-    void        SetUpValue( std::uint8_t , Expr* , const IRInfoProvider& );
-    void        SetGlobal ( const void* , std::size_t , const KeyProvider& , Expr* , const IRInfoProvider& );
-
+    // getter/setter
+    Expr*  GetUpValue( std::uint8_t , const IRInfoProvider& ) const;
+    Expr*  GetGlobal ( const void* , std::size_t , const KeyProvider& , const IRInfoProvider& ) const;
+    void   SetUpValue( std::uint8_t , Expr* , const IRInfoProvider& );
+    void   SetGlobal ( const void* , std::size_t , const KeyProvider& , Expr* , const IRInfoProvider& );
+    // accessor
+    ValueStack*      stack()    { return &stack_;  }
+    UpValueVector*   upvalue()  { return &upvalue_;}
+    GlobalMap*       global()   { return &global_; }
+    EffectGroup*     root  ()   { return &root_;   }
    private:
     // register stack
     ValueStack stack_;
-
     // root effect track , all unknown field that may alias each other will fallback
     // to this EffectGroup.
     EffectGroup root_;
-
     // upvalue's effect group
-    EffectGroupVector        upvalue_;
-
+    EffectGroupVector upvalue_;
     // global's effect group
-    std::unordered_map<Str,EffectGroup> global_;
-
+    GlobalMap global_;
     // graph builder
     GraphBuilder* gb_;
   };

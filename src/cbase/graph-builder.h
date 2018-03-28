@@ -43,25 +43,39 @@ class GraphBuilder {
     }
   };
 
-  // Represents an effect tracking cell for upvalue and globals , input argument
-  // is tracked actively since we don't have special bytecode to tell to load a
-  // argument, jvm does. So for input argument whenever a possible side effect
-  // statement is met, then all the input argument slots inside of the simulated
-  // stack will be replaced or regenerated.
-  struct EffectGroup {
-    EffectGroup( Graph* g ):
-      read_effect_ (g->no_read_effect ()), write_effect_(g->no_write_effect()), value_(NULL) {}
-    EffectGroup( SideEffectRead* r , SideEffectWrite* w , Value* v ):
-      read_effect(r),write_effect(w),value(v) {}
-    EffectGroup():read_effect_(),write_effect_(),value_() {}
-    // Check whehter this node is empty or not
-    bool IsEmpty() const { return value_ == NULL; }
-    // Used to update the corresponding effect node internally
-    inline void Update( SideEffect* );
+  // UnknownEffect represents an effect region that is used as default effect tracking
+  // group whenever we don't know what's the value of certain names.
+  // The names we care about are as following :
+  // 1. globals
+  // 2. upvalue
+  // 3. function arg
+  //
+  // These 3 types of arguments are default to the this UnkownEffect object which can
+  // help to establish correct dependency chain of each node
+  //
+  // In fact we only track
+  // 1) true dependency ( read after write )
+  // 2) anti dependency ( write after read ).
+  //
+  // for write after write we don't need to track and read is always free to reschedule.
+  class UnknownEffect {
    public:
-    SideEffectRead*   read_effect;             // *last* read side effect
-    SideEffectWrite*  write_effect;            // *last* write side effect
-    Expr*             value;                   // current value of the effect group
+    UnknownEffect( Graph* g ): write_effect_(g->no_write_effect()) , read_list_() {}
+    // current write_effect node
+    SideEffectWrite* write_effect() const { return write_effect_; }
+    // add a read effect , does correct side effect dependency
+    inline void AddReadEffect( SideEffectRead* effect);
+    // update write effect
+    inline void UpdateWriteEffect( SideEffectWrite* effect );
+    // list of read happened at this point
+    const std::vector<SideEffectRead*>& read_list() const { return read_list_; }
+    // helper to add an effect when predicate is true
+    void AddReadEffectIf( Node* node , const std::function< bool (SideEffectRead*) >& pre ) {
+      for( auto &e : read_list_ ) if(pre(e)) node->AddEffect(e);
+    }
+   private:
+    SideEffectWrite* write_effect_;          // an effect node indicates the previous write
+    std::vector<SideEffectRead*> read_list_; // list of read happend *after* the write_effect_ issued
   };
 
   // Environment --------------------------------------------------------------
@@ -73,36 +87,47 @@ class GraphBuilder {
   // 3. global variables
   class Environment {
    public:
-    typedef std::vector<EffectGroup*>             UpValueVector;
-    typedef std::unordered_map<Str,EffectGroup*>  GlobalMap;
-    typedef std::function<Expr* ()>               KeyProvider;
+    typedef std::vector<Expr*>             UpValueVector;
+    struct GlobalVar {
+      Str name; Expr* value;
+      GlobalVar( const void* k , std::size_t l , Expr* v ): name(k,l), value(v) {}
+      bool operator == ( const Str& k ) const { return Str::Cmp(name,k) == 0; }
+    };
+    typedef std::vector<GlobalVar>         GlobalMap;
+    typedef std::function<Expr* ()>        KeyProvider;
 
-    Environment( GraphBuilder* graph );
+    Environment( GraphBuilder* );
     // init environment object from prototype object
     void EnterFunctionScope( const FuncInfo& );
+    void PopulateArgument  ( const FuncInfo& );
     void ExitFunctionScope ( const FuncInfo& );
     // getter/setter
     Expr*  GetUpValue( std::uint8_t , const IRInfoProvider& ) const;
     Expr*  GetGlobal ( const void* , std::size_t , const KeyProvider& , const IRInfoProvider& ) const;
     void   SetUpValue( std::uint8_t , Expr* , const IRInfoProvider& );
     void   SetGlobal ( const void* , std::size_t , const KeyProvider& , Expr* , const IRInfoProvider& );
+    // update read effect
+    void   UpdateReadEffect  ( SideEffectRead* node );
+    // update write effect
+    void   UpdateWriteEffect ( SideEffectWrite* node );
     // accessor
     ValueStack*      stack()    { return &stack_;  }
     UpValueVector*   upvalue()  { return &upvalue_;}
     GlobalMap*       global()   { return &global_; }
-    EffectGroup*     root  ()   { return &root_;   }
+    // root side effect
+    void AddRootReadEffect ( SideEffectRead* );
+    void AddRootWriteEffect( SideEffectWrite* );
    private:
-    // register stack
-    ValueStack stack_;
-    // root effect track , all unknown field that may alias each other will fallback
-    // to this EffectGroup.
-    EffectGroup root_;
-    // upvalue's effect group
-    EffectGroupVector upvalue_;
-    // global's effect group
-    GlobalMap global_;
-    // graph builder
-    GraphBuilder* gb_;
+    // check if a Arg node is in used or not
+    bool IsArgUsed( Arg* ) const;
+    void PropWriteEffectToArg( SideEffectWrite* );
+   private:
+    ValueStack stack_;          // register stack
+    UnknownEffect root_;        // root's unknown effect tracking region
+    EffectGroupVector upvalue_; // upvalue's effect group
+    GlobalMap global_;          // global's effect group
+    GraphBuilder* gb_;          // graph builder
+    std::vector<Arg*> args_;    // tracked argument node
   };
 
   // Data structure record the pending jump that happened inside of the loop
@@ -239,6 +264,11 @@ class GraphBuilder {
   void set_region( ControlFlow* new_region ) { func_info().region = new_region; }
   Environment* env()                   const { return env_; }
   ValueStack*  vstk()                  const { return env_->stack(); }
+  // input argument size , the input argument size is the argument size that
+  // is belong to the top most function since this function's input argument
+  // remains as input argument, rest of the nested inlined function's input
+  // argument is not argument but just local variables
+  std::size_t input_argument_size()    const { return func_info_.front().prototype->argument_size(); }
  private: // Constant handling
   Expr* NewConstNumber( std::int32_t , const interpreter::BytecodeLocation& );
   Expr* NewConstNumber( std::int32_t );
@@ -250,6 +280,8 @@ class GraphBuilder {
   Expr* NewString     ( std::uint8_t , IRInfo* );
   Expr* NewString     ( std::uint8_t , const interpreter::BytecodeLocation& );
   Expr* NewString     ( std::uint8_t );
+
+  Str   NewStr        ( std::uint32_t ref , bool sso );
 
   Expr* NewSSO        ( std::uint8_t , IRInfo* );
   Expr* NewSSO        ( std::uint8_t , const interpreter::BytecodeLocation& );
@@ -433,6 +465,21 @@ inline void GraphBuilder::FuncInfo::EnterLoop( const std::uint32_t* pc ) {
   const BytecodeAnalyze::LoopHeaderInfo* info = bc_analyze.LookUpLoopHeader(pc);
   lava_debug(NORMAL,lava_verify(info););
   loop_info.push_back(LoopInfo(info));
+}
+
+inline GraphBuilder::UnknownEffect::AddReadEffect( SideEffectRead* read ) {
+  // this is a read after write effect or *true* effect
+  read->AddEffect(write_effect_);
+  read_list_.push_back(read);
+}
+
+inline GraphBuilder::UnknownEffect::UpdateWriteEffect( SideEffectWrite* write ) {
+  // this is a write after read effect or *anti* effect
+  for( auto &e : read_list_ ) write->AddEffect(e);
+  // new write barrier will be setup, just clear the read list
+  read_list_.clear();
+  // update the new write effect
+  write_effect_ = write;
 }
 
 } // namespace hir

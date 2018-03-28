@@ -1129,8 +1129,7 @@ class GGet : public SideEffectRead {
 
 class GSet : public SideEffectWrite {
  public:
-  inline static GSet* New( Graph* , Expr* key , Expr* value , IRInfo* ,
-                                                              ControlFlow* );
+  inline static GSet* New( Graph* , Expr* key , Expr* value , IRInfo* , ControlFlow* );
   Expr* key () const { return operand_list()->First(); }
   Expr* value()const { return operand_list()->Last() ; }
 

@@ -15,61 +15,98 @@ namespace cbase {
 namespace hir    {
 using namespace ::lavascript::interpreter;
 
-void GraphBuilder::Environment::EnterFunctionScope( Graph* graph , const FuncInfo& func ) {
+void GraphBuilder::Environment::EnterFunctionScope( const FuncInfo& func ) {
   // resize the stack to have 256 slots for new prototype
   stack_.resize( stack_.size() + interpreter::kRegisterSize );
+  // resize the stack to have enough slots for the upvalues
+  upvalue_.resize( func.prototype->upvalue_size() );
 }
 
-void GraphBuilder::Environment::ExitFunctionScope( Graph* graph , const FuncInfo& func ) {
+void GraphBuilder::Environment::PopulateArgument ( const FuncInfo& func ) {
+  auto sz = func.prototype->argument_size();
+  for( std::size_t i = 0 ; i < sz ; ++i ) {
+    auto arg = Arg::New(gb_->graph_,static_cast<std::uint32_t>(i));
+    // add dummy write effect for this argument node
+    arg->AddEffect( root_.write_effect() );
+    stack_[0]= arg;
+    args_ .push_back(arg); // track them for effect chain
+  }
+}
+
+void GraphBuilder::Environment::ExitFunctionScope( const FuncInfo& func ) {
+  // TODO:: do we really need to resize it ? A new scope will have a new environment
+  //        created
   stack_.resize( func.base );
 }
 
-Expr* GraphBuilder::GetUpValue( std::uint8_t index , const IRInfoProvider& irinfo ) const {
+Expr* GraphBuilder::Environment::GetUpValue( std::uint8_t index , const IRInfoProvider& irinfo ) const {
   {
     lava_debug(NORMAL,lava_verify(index < upvalue_.size()));
-    auto grp = upvalue_[index];
-    if(!grp.IsEmpty()) {
-      return grp.value();
-    }
+    auto v = upvalue_[index];
+    if(!v) return v;
   }
-  auto uget = UGet::New(gb_->graph_,index,gb_->method(),irinfo());
-  uget->AddEffect( root_.write_effect );
-  root_.read_effect = uget;
+  auto uget = UGet::New(gb_->graph_,index,gb_->method_index(),irinfo());
+  root_.AddReadEffect(uget);
   return uget;
 }
 
-Expr* GraphBuilder::GetGlobal ( const void* key , std::size_t length , const KeyProvider& key_provider ,
-                                                                       const IRInfoProvider& irinfo ) const {
+Expr* GraphBuilder::Environment::GetGlobal ( const void* key , std::size_t length ,
+                                                               const KeyProvider& key_provider ,
+                                                               const IRInfoProvider& irinfo ) const {
   {
-    auto itr = global_.find(Str(key,length));
+    auto itr = std::find(global_.begin(),global_.end(),Str(key,length));
     if(itr != global_.end()) {
-      auto &eg = itr->second;
-      lava_verify(!eg.IsEmpty());
-      return eg.value();
+      return itr->value;
     }
   }
   auto gget = GGet::New(gb_->graph_,key_provider(),irinfo(),gb_->region());
-  gget->AddEffect(root_.write_effect);
-  root_.read_effect = gget;
+  root_.AddReadEffect(gget);
   return gget;
 }
 
+bool GraphBuilder::Environment::IsArgUsed( Arg* arg ) const {
+  return arg->HasRef();
+}
+
+void GraphBuilder::Environment::PropWriteEffectToArg( SideEffectWrite* write ) {
+  // propogate the side effect of write to each argument if we need to
+  // this function is called right after there're new side effects write
+  // happened to the root of effect region. we use this function to proactively
+  // populate the write dependency of each argument
+  auto sz = gb_->input_argument_size();
+  for( std::size_t i = 0 ; i < sz ; ++i ) {
+    auto arg = args_[i];
+    // check whether this argument is actually referenced by other expression
+    if(IsArgUsed(arg)) {
+      // anti dependency, write after read
+      write->AddEffect(arg);
+    }
+    // check whether the argument has been modified or not
+    if(args_[i] == stack_[i]) {
+      auto a = Arg::New(gb_->graph_,static_cast<std::uint32_t>(i));
+      stack_[i] = a;
+      args_ [i] = a;
+      a->AddEffect(write);
+    }
+  }
+}
+
 void GraphBuilder::SetUpValue( std::uint8_t index , Expr* value , const IRInfoProvider& irinfo ) {
-  auto uset = USet::New(gb_->graph_,index,gb_->method(),value,irinfo());
+  auto uset = USet::New(gb_->graph_,index,gb_->method_index(),value,irinfo());
   gb_->region()->AddStatement(uset);
   {
-    auto grp = upvalue_[index];
-    if(grp.IsEmpty()) {
-      uset->AddEffect(root_.read_effect );
-      uset->AddEffect(root_.write_effect);
-      grp.write_effect = uset;
-      grp.value = value;
-    } else {
-      uset->AddEffect(grp.read_effect );
-      uset->AddEffect(grp.write_effect);
-      grp.write_effect = uset;
-      grp.value = value;
+    auto v = upvalue_[index];
+    if(!v) {
+      root_.AddReadEffectIf(uset,[=](SideEffectRead* node) {
+          if(node->IsUGet()) {
+            auto uget = e->AsUGet();
+            return uget->index() == index && get->method() == gb_->method_index();
+          }
+          return false;
+        }
+      );
     }
+    upvalue_[index] = value;
   }
 }
 
@@ -79,19 +116,29 @@ void GraphBuilder::SetGlobal( const void* key , std::size_t length , const KeyPr
   auto gset = GSet::New(gb_->graph_,key_provider(),value,irinfo());
   gb_->region()->AddStatement(gset);
   {
-    auto itr = global_.find(Str(key,length));
+    auto itr = std::find(global_.begin(),global_.end(),Str(key,length));
     if(itr == global_.end()) {
-      gset->AddEffect(root_.read_effect );
-      gset->AddEffect(root_.write_effect);
-      global_[Str(key,length)] = EffectGroup(gb_->graph_->no_read_effect(),gset,value);
-    } else {
-      auto &grp = itr->second;
-      gset->AddEffect(grp.read_effect );
-      gset->AddEffect(grp.write_effect);
-      grp.write_effect = gset;
-      grp.value = value;
+      root_.AddReadEffectIf(gset,[=](SideEffectRead* node) {
+          if(node->IsGGet()) {
+            auto gget = node->AsGGet();
+            auto &k   = gget->key()->AsZoneString();
+            return Str::Cmp(Str(k.data(),k.size()),Str(key,length)) == 0;
+          }
+          return false;
+        }
+      );
     }
+    *itr = value;
   }
+}
+
+void GraphBuilder::UpdateReadEffect( SideEffectRead* node ) {
+  root_.AddReadEffect(node);
+}
+
+void GraphBuilder::UpdateWriteEffect( SideEffectWrite* node ) {
+  root_.UpdateWriteEffect(node);
+  PropWriteEffectToArg   (node);
 }
 
 /* -------------------------------------------------------------
@@ -104,7 +151,7 @@ class GraphBuilder::OSRScope {
  public:
   OSRScope( GraphBuilder* , const Handle<Prototype>& , ControlFlow* , const std::uint32_t* );
   ~OSRScope() {
-    gb_->env()->ExitFunctionScope(gb_->graph_,gb_->func_info_.back());
+    gb_->env()->ExitFunctionScope(gb_->func_info_.back());
     gb_->func_info_.pop_back();
   }
  private:
@@ -115,7 +162,7 @@ class GraphBuilder::FuncScope {
  public:
   FuncScope( GraphBuilder* , const Handle<Prototype>& , ControlFlow* , std::uint32_t );
   ~FuncScope() {
-    gb_->env()->ExitFunctionScope(gb_->graph_,gb_->func_info_.back());
+    gb_->env()->ExitFunctionScope(gb_->func_info_.back());
     gb_->func_info_.pop_back();
   }
  private:
@@ -171,7 +218,9 @@ GraphBuilder::OSRScope::OSRScope( GraphBuilder* gb , const Handle<Prototype>& pr
   // push current FuncInfo object to the trackings tack
   gb->func_info_.push_back(FuncInfo(std::move(temp)));
   // initialize environment object for this OSRScope
-  gb->env()->EnterFunctionScope(gb->graph_,gb->func_info());
+  gb->env()->EnterFunctionScope(gb->func_info());
+  // initialize the function argument
+  gb->env()->PopulateArgument  (gb->func_info());
 }
 
 GraphBuilder::FuncScope::FuncScope( GraphBuilder* gb , const Handle<Prototype>& proto ,
@@ -181,16 +230,18 @@ GraphBuilder::FuncScope::FuncScope( GraphBuilder* gb , const Handle<Prototype>& 
 
   gb->graph_->AddPrototypeInfo(proto,base);
   gb->func_info_.push_back(FuncInfo(proto,region,base));
-  gb->env()->EnterFunctionScope(gb->graph_,gb->func_info());
 
+  gb->env()->EnterFunctionScope(gb->func_info());
   if(gb->func_info_.size() == 1) {
-    // initialize the argument value inside of the stack
-    auto arg_size = proto->argument_size();
-    for( std::size_t i = 0 ; i < arg_size ; ++i ) {
-      gb->vstk()->at(i) = Arg::New(gb->graph_,static_cast<std::uint32_t>(i));
-    }
+    gb->env()->PopulateArgument(gb->func_info());
   }
 }
+
+// ===============================================================================
+//
+// Graph Builder
+//
+// ===============================================================================
 
 Expr* GraphBuilder::NewConstNumber( std::int32_t ivalue , const BytecodeLocation& pc ) {
   return Float64::New(graph_,static_cast<double>(ivalue),NewIRInfo(pc));
@@ -242,6 +293,16 @@ Expr* GraphBuilder::NewSSO( std::uint8_t ref , const BytecodeLocation& pc ) {
 Expr* GraphBuilder::NewSSO( std::uint8_t ref ) {
   const SSO& sso = *(func_info().prototype->GetSSO(ref)->sso);
   return SString::New(graph_,sso,NULL);
+}
+
+Str   GraphBuilder::NewStr( std::uint32_t ref , bool sso ) {
+  if(sso) {
+    auto sso = func_info().prototype->GetSSO(ref)->sso;
+    return Str(sso->data(),sso->size());
+  } else {
+    auto str = func_info().prototype->GetString(ref);
+    return Str(str->data(),str->size());
+  }
 }
 
 Expr* GraphBuilder::NewBoolean( bool value , const BytecodeLocation& pc ) {
@@ -613,7 +674,7 @@ Expr* GraphBuilder::NewPSet( Expr* object , Expr* key , Expr* value , IRInfo* ir
   // check if this pset node has side effect or not
   if(object->HasObservableSideEffect()) {
     // update itself as the new effect node
-    env()->UpdateEffect(this,ret);
+    env()->UpdateWriteEffect(ret);
     // treat it as statement as well
     region()->AddStatement(ret);
   }
@@ -625,8 +686,11 @@ Expr* GraphBuilder::NewPGet( Expr* object , Expr* key , IRInfo* ir_info ) {
   // and we just simply do a pget node test plus some guard if needed
   if((auto v = FoldObjectGet(graph_,object,key,[=](){ return ir_info; })))
     return v;
-  // when we reach here we needs to generate guard
-  return PGet::New(graph_,object,key,ir_info,region());
+  auto ret = PGet::New(graph_,object,key,ir_info,region());
+  if(object->HasObservableSideEffect()) {
+    env()->UpdateReadEffect(ret);
+  }
+  return ret;
 }
 
 // ====================================================================
@@ -661,7 +725,7 @@ Expr* GraphBuilder::NewISet( Expr* object, Expr* index, Expr* value, IRInfo* ir_
 
   auto ret = ISet::New(graph_,object,index,value,ir_info,region());
   if(object->HasObservableSideEffect()) {
-    env()->UpdateEffect(this,ret);
+    env()->UpdateWriteEffect(ret);
     region()->AddStatement(ret);
   }
   return ret;
@@ -679,7 +743,11 @@ Expr* GraphBuilder::NewIGet( Expr* object, Expr* index, IRInfo* ir_info ) {
     if(v) return v;
   }
 
-  return IGet::New(graph_,object,index,ir_info,region());
+  auto ret = IGet::New(graph_,object,index,ir_info,region());
+  if(object->HasObservableSideEffect()) {
+    env()->UpdateReadEffect(ret);
+  }
+  return ret;
 }
 
 // ========================================================================
@@ -689,21 +757,19 @@ Expr* GraphBuilder::NewIGet( Expr* object, Expr* index, IRInfo* ir_info ) {
 // ========================================================================
 void GraphBuilder::NewGGet( std::uint8_t a1 , std::uint8_t a2 , const BytecodeLocation& loc , bool sso ) {
   auto info = NewIRInfo(loc);
-  auto gget = GGet::New(graph_, (sso ? NewSSO(a2,info) : NewString(a2,info)) , info , region() );
-  // add effect chain since global variable must observe the side effect
-  gget->AddEffect(env()->effect());
-  // put it into the destination slot
-  StackSet(a1,gget);
+  auto str  = NewStr(a2,sso);
+  auto node = env()->GetGlobal( str.data , str.length ,
+                                           [=]() { return sso ? NewSSO(a2,info) : NewString(a2,info); },
+                                           [=]() { return info; } );
+  StackSet(a1,node);
 }
 
 void GraphBuilder::NewGSet( std::uint8_t a1 , std::uint8_t a2 , const BytecodeLocation& loc , bool sso ) {
   auto info = NewIRInfo(loc);
-  auto gset = GSet::New(graph_, (sso ? NewSSO(a1,info) : NewString(a1,info)) ,StackGet(a2) , info, region());
-  // update side effect field
-  gset->AddEffect(env()->effect());
-  env()->UpdateEffect(this,gset);
-  // GSet is a statement instead of expression
-  region()->AddStatement(gset);
+  auto str  = NewStr(a2,sso);
+  env()->SetGlobal( str.data , str.length , [=]() { return sso ? NewSSO(a1,info) : NewString(a1,info); } ,
+                                            StackGet(a2),
+                                            [=]() { return info; } );
 }
 
 // ========================================================================
@@ -712,19 +778,12 @@ void GraphBuilder::NewGSet( std::uint8_t a1 , std::uint8_t a2 , const BytecodeLo
 //
 // ========================================================================
 void GraphBuilder::NewUGet( std::uint8_t a1 , std::uint8_t a2 , const BytecodeLocation& pc ) {
-  auto uget = UGet::New(graph_,a2,method_index(),NewIRInfo(pc));
-  uget->AddEffect(env()->effect());
-  StackSet(a1,uget);
+  auto node = env()->GetUpValue(a2,[=]() { return NewIRInfo(pc); });
+  StackSet(a1,node);
 }
 
 void GraphBuilder::NewUSet( std::uint8_t a1, std::uint8_t a2 , const BytecodeLocation& pc ) {
-  auto arg  = StackGet(a2);
-  auto uset = USet::New(graph_,a1,method_index(),arg,NewIRInfo(pc));
-  // update side effect field
-  uset->AddEffect(env()->effect());
-  env()->UpdateEffect(this,uset);
-  // upvalue set is a statement
-  region()->AddStatement(uset);
+  env()->SetUpValue(a1,StackGet(a2),[=]() { return NewIRInfo(pc); });
 }
 
 // =========================================================================

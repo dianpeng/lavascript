@@ -105,6 +105,7 @@ inline bool Expr::IsSideEffectRead() const {
   switch(type()) {
     case IRTYPE_ARG : case IRTYPE_GGET: case IRTYPE_EFFECT_PHI: case IRTYPE_UGET:
     case IRTYPE_IGET: case IRTYPE_PGET: case IRTYPE_OBJECT_GET: case IRTYPE_LIST_GET:
+    case IRTYPE_NO_READ_EFFECT:
       return true;
     default:
       return false;
@@ -116,6 +117,7 @@ inline bool Expr::IsSideEffectWrite() const {
     case IRTYPE_GSET:       case IRTYPE_USET:
     case IRTYPE_ISET:       case IRTPYE_PSET:
     case IRTYPE_OBJECT_SET: case IRTPYE_LIST_SET:
+    case IRTPYE_NO_WRITE_EFFECT:
       return true;
     default:
       return false;
@@ -127,15 +129,6 @@ inline bool Expr::IsSideEffect() const { return IsSideEffectRead() || IsSideEffe
 inline bool Expr::HasObservableSideEffect() const {
   if(type() == IRTYPE_GGET || type() == IRTYPE_UGET || type() == IRTPYE_ARG)
     return true;
-  else if(type() == IRTPYE_EFFECT_PHI) {
-    auto p = AsEffectPhi();
-    // check all the input inside of the EffectPhi node , if any of the input has SideEffect,
-    // then the Phi node has side effect
-    for( auto itr(p->operand_list()->GetForwardIterator()); itr.HasNext(); itr.Move() ) {
-      if(itr.value()->HasObservableSideEffect())
-        return true;
-    }
-  }
   return false;
 }
 

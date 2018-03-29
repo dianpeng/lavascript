@@ -64,10 +64,6 @@ Expr* GraphBuilder::Environment::GetGlobal ( const void* key , std::size_t lengt
   return gget;
 }
 
-bool GraphBuilder::Environment::IsArgUsed( Arg* arg ) const {
-  return arg->HasRef();
-}
-
 void GraphBuilder::Environment::PropWriteEffectToArg( SideEffectWrite* write ) {
   // propogate the side effect of write to each argument if we need to
   // this function is called right after there're new side effects write
@@ -367,10 +363,7 @@ Expr* GraphBuilder::AddTypeFeedbackIfNeed( const StackSlot& idx ,
 Expr* GraphBuilder::NewUnary( const StackSlot& index , Unary::Operator op ,
                                                        const BytecodeLocation& pc ) {
   // 1. try to do a constant folding
-  auto new_node = FoldUnary(graph_,op,index.node,[this,pc]() {
-        return NewIRInfo(pc);
-      }
-  );
+  auto new_node = FoldUnary(graph_,op,index.node,[this,pc]() { return NewIRInfo(pc); });
   if(new_node) return new_node;
   // 2. now we know there's no way we can resolve the expression and
   //    we don't have any type information from static type inference.
@@ -817,6 +810,12 @@ Checkpoint* GraphBuilder::BuildCheckpoint( const BytecodeLocation& pc ) {
   }
   return cp;
 }
+
+// ====================================================================
+//
+// Branch Phi
+//
+// ====================================================================
 
 void GraphBuilder::GeneratePhi( ValueStack* dest , const ValueStack& lhs ,
                                                    const ValueStack& rhs ,

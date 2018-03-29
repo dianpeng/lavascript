@@ -119,7 +119,7 @@ class GraphBuilder {
     void AddRootWriteEffect( SideEffectWrite* );
    private:
     // check if a Arg node is in used or not
-    bool IsArgUsed( Arg* ) const;
+    bool IsArgUsed( Node* arg ) const { return arg->HasRef(); }
     void PropWriteEffectToArg( SideEffectWrite* );
    private:
     ValueStack stack_;          // register stack
@@ -127,7 +127,7 @@ class GraphBuilder {
     EffectGroupVector upvalue_; // upvalue's effect group
     GlobalMap global_;          // global's effect group
     GraphBuilder* gb_;          // graph builder
-    std::vector<Arg*> args_;    // tracked argument node
+    std::vector<Node*> args_;   // tracked argument node
   };
 
   // Data structure record the pending jump that happened inside of the loop

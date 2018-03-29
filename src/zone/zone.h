@@ -37,30 +37,24 @@ class Zone {
                                                HeapAllocator* allocator = NULL );
 
   void* Malloc( std::size_t size ) { return allocator_.Grab(Align(size,kAlignment)); }
-
   template< typename T >
   T* Malloc() { return static_cast<T*>(Malloc(sizeof(T))); }
-
   template< typename T , typename ... ARGS >
   T* New( ARGS ...args ) {
     void* mem = Malloc(sizeof(T));
     return ConstructFromBuffer<T>(mem,args...);
   }
-
  public:
   std::size_t size()             const { return allocator_.size(); }
   std::size_t maximum_size()     const { return allocator_.maximum_size(); }
   std::size_t segment_size()     const { return allocator_.segment_size(); }
   std::size_t current_capacity() const { return allocator_.current_capacity(); }
   std::size_t total_bytes()      const { return allocator_.total_bytes(); }
-
  public:
   // Reset the zone memory pool
   void Reset() { allocator_.Reset(); }
-
  private:
   BumpAllocator allocator_;   // internal bump allocator
-
   LAVA_DISALLOW_COPY_AND_ASSIGN(Zone);
 };
 
@@ -68,6 +62,15 @@ inline Zone::Zone( std::size_t minimum , std::size_t maximum ,
                                          HeapAllocator* allocator ):
   allocator_(minimum,maximum,allocator)
 {}
+
+// Small zone is just yet another zone object configuration that is good enough
+// for small temporary usage.
+class SmallZone : public Zone {
+ public:
+  static const std::size_t kMinimum = 64;
+  static const std::size_t kMaximum = 1024;
+  SmallZone(): Zone( kMinimum , kMaximum ) {}
+};
 
 // All object that is gonna allocated from *zone* must be derived from the *ZoneObject*.
 //

@@ -312,7 +312,13 @@ bool BytecodeAnalyze::BuildBytecode( BytecodeIterator* itr ) {
           key.data   = s->sso->data();
           key.length = s->sso->size();
         }
-        current_loop()->phi.glb.insert(key);
+
+        { // insert the globals if not existed
+          auto &g = current_loop()->phi.glb;
+          if(std::find(g.begin(),g.end(),key) == g.end()) {
+            g.push_back(key);
+          }
+        }
       }
       break;
     // bytecode that gonna terminate current basic block

@@ -126,12 +126,6 @@ inline bool Expr::IsSideEffectWrite() const {
 
 inline bool Expr::IsSideEffect() const { return IsSideEffectRead() || IsSideEffectWrite(); }
 
-inline bool Expr::HasObservableSideEffect() const {
-  if(type() == IRTYPE_GGET || type() == IRTYPE_UGET || type() == IRTPYE_ARG)
-    return true;
-  return false;
-}
-
 inline Arg* Arg::New( Graph* graph , std::uint32_t index ) {
   return graph->zone()->New<Arg>(graph,graph->AssignID(),index);
 }
@@ -183,6 +177,11 @@ inline Expr* NewString( Graph* graph , const zone::String* str , IRInfo* info ) 
 
 inline Expr* NewString( Graph* graph , const char* data , IRInfo* info ) {
   auto str = zone::String::New(graph->zone(),data);
+  return NewString(graph,str,info);
+}
+
+inline Expr* NewString( Graph* graph , const char* data , std::size_t size , IRInfo* info ) {
+  auto str = zone::String::New(graph->zone(),static_cast<const char*>(data),size);
   return NewString(graph,str,info);
 }
 
@@ -417,24 +416,44 @@ inline Phi* Phi::New( Graph* graph , ControlFlow* region , IRInfo* info ) {
   return graph->zone()->New<Phi>(graph,graph->AssignID(),region,info);
 }
 
-inline EffectPhi::EffectPhi( Graph* graph , std::uint32_t id , ControlFlow* region , IRInfo* info ):
+inline ReadEffectPhi::ReadEffectPhi( Graph* graph , std::uint32_t id , ControlFlow* region , IRInfo* info ):
   SideEffectRead(IRTYPE_EFFECT_PHI,id,graph,info),
   region_ (region)
 {
   region->AddOperand(this);
 }
 
-inline EffectPhi* EffectPhi::New( Graph* graph , SideEffect* lhs , SideEffect* rhs ,
-                                                                   ControlFlow* region ,
-                                                                   IRInfo* info ) {
-  auto ret = graph->zone()->New<EffectPhi>(graph,graph->AssignID(),region,info);
+inline ReadEffectPhi* ReadEffectPhi::New( Graph* graph , SideEffectRead* lhs , SideEffectRead* rhs ,
+                                                                               ControlFlow* region ,
+                                                                               IRInfo* info ) {
+  auto ret = graph->zone()->New<ReadEffectPhi>(graph,graph->AssignID(),region,info);
   ret->AddOperand(lhs);
   ret->AddOperand(rhs);
   return ret;
 }
 
-inline EffectPhi* EffectPhi::New( Graph* graph , ControlFlow* region , IRInfo* info ) {
-  return graph->zone()->New<EffectPhi>(graph,graph->AssignID(),region,info);
+inline ReadEffectPhi* ReadEffectPhi::New( Graph* graph , ControlFlow* region , IRInfo* info ) {
+  return graph->zone()->New<ReadEffectPhi>(graph,graph->AssignID(),region,info);
+}
+
+inline WriteEffectPhi::WriteEffectPhi( Graph* graph , std::uint32_t id , ControlFlow* region  , IRInfo* info ):
+  SideEffectWrite(IRTYPE_EFFECT_PHI,id,graph,info),
+  region_(region)
+{
+  region->AddOperand(this);
+}
+
+inline WriteEffectPhi* WriteEffectPhi::New( Graph* graph , SideEffectWrite* lhs , SideEffectWrite* rhs ,
+                                                                                  ControlFlow* region  ,
+                                                                                  IRInfo* info ) {
+  auto ret = graph->zone()->New<WriteEffectPhi>(graph,graph->AssignID(),region,info);
+  ret->AddOperand(lhs);
+  ret->AddOperand(rhs);
+  return ret;
+}
+
+inline WriteEffectPhi* WriteEffectPhi::New( Graph* graph , ControlFlow* region , IRInfo* info ) {
+  return graph->zone()->New<WriteEffectPhi>(graph,graph->AssignID(),region,info);
 }
 
 inline NoReadEffect* NoReadEffect::New( Graph* graph ) {

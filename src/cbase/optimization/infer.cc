@@ -91,8 +91,6 @@ class MultiValueRange : public zone::ZoneObject {
   // Construct a the value range based on the input node
   void Construct  ( ValueRange* , Expr* , Expr* );
   void DoConstruct( ValueRange* , Expr* , Expr* , bool );
-
-
  private:
   zone::Zone* zone_;
 

@@ -25,11 +25,7 @@ void GraphBuilder::Environment::EnterFunctionScope( const FuncInfo& func ) {
 void GraphBuilder::Environment::PopulateArgument ( const FuncInfo& func ) {
   auto sz = func.prototype->argument_size();
   for( std::size_t i = 0 ; i < sz ; ++i ) {
-    auto arg = Arg::New(gb_->graph_,static_cast<std::uint32_t>(i));
-    // add dummy write effect for this argument node
-    arg->AddEffect( root_.write_effect() );
-    stack_[0]= arg;
-    args_ .push_back(arg); // track them for effect chain
+    stack_[i] = Arg::New(gb_->graph_,static_cast<std::uint32_t>(i));
   }
 }
 
@@ -40,70 +36,34 @@ void GraphBuilder::Environment::ExitFunctionScope( const FuncInfo& func ) {
 }
 
 Expr* GraphBuilder::Environment::GetUpValue( std::uint8_t index , const IRInfoProvider& irinfo ) const {
-  {
-    lava_debug(NORMAL,lava_verify(index < upvalue_.size()));
-    auto v = upvalue_[index];
-    if(!v) return v;
+  lava_debug(NORMAL,lava_verify(index < upvalue_.size()));
+  auto v = upvalue_[index];
+  if(!v)
+    return v;
+  else {
+    auto uget = UGet::New(gb_->graph_,index,gb_->method_index(),irinfo());
+    upvalue_[index] = uget;
+    return uget;
   }
-  auto uget = UGet::New(gb_->graph_,index,gb_->method_index(),irinfo());
-  root_.AddReadEffect(uget);
-  return uget;
 }
 
 Expr* GraphBuilder::Environment::GetGlobal ( const void* key , std::size_t length ,
                                                                const KeyProvider& key_provider ,
                                                                const IRInfoProvider& irinfo ) const {
-  {
-    auto itr = std::find(global_.begin(),global_.end(),Str(key,length));
-    if(itr != global_.end()) {
-      return itr->value;
-    }
-  }
-  auto gget = GGet::New(gb_->graph_,key_provider(),irinfo(),gb_->region());
-  root_.AddReadEffect(gget);
-  return gget;
-}
-
-void GraphBuilder::Environment::PropWriteEffectToArg( SideEffectWrite* write ) {
-  // propogate the side effect of write to each argument if we need to
-  // this function is called right after there're new side effects write
-  // happened to the root of effect region. we use this function to proactively
-  // populate the write dependency of each argument
-  auto sz = gb_->input_argument_size();
-  for( std::size_t i = 0 ; i < sz ; ++i ) {
-    auto arg = args_[i];
-    // check whether this argument is actually referenced by other expression
-    if(IsArgUsed(arg)) {
-      // anti dependency, write after read
-      write->AddEffect(arg);
-    }
-    // check whether the argument has been modified or not
-    if(args_[i] == stack_[i]) {
-      auto a = Arg::New(gb_->graph_,static_cast<std::uint32_t>(i));
-      stack_[i] = a;
-      args_ [i] = a;
-      a->AddEffect(write);
-    }
+  auto itr = std::find(global_.begin(),global_.end(),Str(key,length));
+  if(itr != global_.end()) {
+    return itr->value;
+  } else {
+    auto gget = GGet::New(gb_->graph_,key_provider(),irinfo(),gb_->region());
+    *itr = gget;
+    return gget;
   }
 }
 
 void GraphBuilder::SetUpValue( std::uint8_t index , Expr* value , const IRInfoProvider& irinfo ) {
   auto uset = USet::New(gb_->graph_,index,gb_->method_index(),value,irinfo());
   gb_->region()->AddStatement(uset);
-  {
-    auto v = upvalue_[index];
-    if(!v) {
-      root_.AddReadEffectIf(uset,[=](SideEffectRead* node) {
-          if(node->IsUGet()) {
-            auto uget = e->AsUGet();
-            return uget->index() == index && get->method() == gb_->method_index();
-          }
-          return false;
-        }
-      );
-    }
-    upvalue_[index] = value;
-  }
+  upvalue_[index] = value;
 }
 
 void GraphBuilder::SetGlobal( const void* key , std::size_t length , const KeyProvider& key_provider ,
@@ -111,20 +71,12 @@ void GraphBuilder::SetGlobal( const void* key , std::size_t length , const KeyPr
                                                                      const IRInfoProvider& irinfo ) {
   auto gset = GSet::New(gb_->graph_,key_provider(),value,irinfo());
   gb_->region()->AddStatement(gset);
-  {
-    auto itr = std::find(global_.begin(),global_.end(),Str(key,length));
-    if(itr == global_.end()) {
-      root_.AddReadEffectIf(gset,[=](SideEffectRead* node) {
-          if(node->IsGGet()) {
-            auto gget = node->AsGGet();
-            auto &k   = gget->key()->AsZoneString();
-            return Str::Cmp(Str(k.data(),k.size()),Str(key,length)) == 0;
-          }
-          return false;
-        }
-      );
-    }
-    *itr = value;
+
+  auto itr = std::find(global_.begin(),global_.end(),Str(key,length));
+  if(itr == global_.end()) {
+    global_.push_back(GlobalVar(key,length,value));
+  } else {
+    itr->value = value;
   }
 }
 
@@ -134,7 +86,6 @@ void GraphBuilder::UpdateReadEffect( SideEffectRead* node ) {
 
 void GraphBuilder::UpdateWriteEffect( SideEffectWrite* node ) {
   root_.UpdateWriteEffect(node);
-  PropWriteEffectToArg   (node);
 }
 
 /* -------------------------------------------------------------
@@ -275,6 +226,14 @@ Expr* GraphBuilder::NewString( std::uint8_t ref , const BytecodeLocation& pc ) {
 
 Expr* GraphBuilder::NewString( std::uint8_t ref ) {
   return NewString(ref,NULL);
+}
+
+Expr* GraphBuilder::NewString( const Str& str , const BytecodeLocation& pc ) {
+  return NewString(str,NewIRInfo(pc));
+}
+
+Expr* GraphBuilder::NewString( const Str& str , IRInfo* info ) {
+  return NewString(graph_,str.data,str.length,info);
 }
 
 Expr* GraphBuilder::NewSSO( std::uint8_t ref , IRInfo* info ) {
@@ -761,8 +720,7 @@ void GraphBuilder::NewGSet( std::uint8_t a1 , std::uint8_t a2 , const BytecodeLo
   auto info = NewIRInfo(loc);
   auto str  = NewStr(a2,sso);
   env()->SetGlobal( str.data , str.length , [=]() { return sso ? NewSSO(a1,info) : NewString(a1,info); } ,
-                                            StackGet(a2),
-                                            [=]() { return info; } );
+                                            StackGet(a2), [=]() { return info; } );
 }
 
 // ========================================================================
@@ -817,11 +775,10 @@ Checkpoint* GraphBuilder::BuildCheckpoint( const BytecodeLocation& pc ) {
 //
 // ====================================================================
 
-void GraphBuilder::GeneratePhi( ValueStack* dest , const ValueStack& lhs ,
-                                                   const ValueStack& rhs ,
-                                                   std::size_t base ,
-                                                   ControlFlow* region ,
-                                                   IRInfo* info ) {
+void GraphBuilder::GeneratePhi( ValueStack* dest , const ValueStack& lhs , const ValueStack& rhs ,
+                                                                           std::size_t base ,
+                                                                           ControlFlow* region ,
+                                                                           IRInfo* info ) {
   const std::size_t sz = std::min(lhs.size() , rhs.size());
 
   for( std::size_t i = base ; i < sz ; ++i ) {
@@ -839,19 +796,54 @@ void GraphBuilder::GeneratePhi( ValueStack* dest , const ValueStack& lhs ,
   }
 }
 
+// key function to merge the effect and value from 2 environments. called at every region merge
 void GraphBuilder::InsertPhi( Environment* lhs , Environment* rhs , ControlFlow* region , IRInfo* info ) {
-  GeneratePhi(vstk() ,*lhs->stack()  ,*rhs->stack()  ,func_info().base   ,region,info);
-  if(lhs->effect() != rhs->effect()) {
-    // merge the effect node of both environment
-    auto ephi = EffectPhi::New(graph_, lhs->effect(), rhs->effect(), region , info);
-    // update the merged effect phi into current environment
-    env()->UpdateEffect(this,ephi);
+  // 1. generate merge for both region's root effect group
+  {
+    auto phi = WriteEffectPhi::New(graph_,region,lhs->root_.write_effect(),rhs->root_.write_effect(),info);
+    for( auto &e : lhs->root_.read_list() ) phi->AddEffect(e);
+    for( auto &e : rhs->root_.read_list() ) phi->AddEffect(e);
+    env()->root_.read_list_.clear();
+    env()->root_.write_effect_ = phi;
+  }
+  // 2. generate phi for all the stack value
+  GeneratePhi(vstk() ,*lhs->stack()  ,*rhs->stack()  ,func_info().base ,region,info);
+  // 3. generate phi for all the upvalue
+  GeneratePhi(upval(),*lhs->upvalue(),*rhs->upvalue(),0                ,region,info);
+  // 4. generate phi for all the global values
+  {
+    Environment::GlobalMap temp; temp.reserve( lhs->global()->size() );
+    // scanning the left hand side global variables
+    for( auto &e : *lhs->global() ) {
+      auto itr = std::find(rhs->global()->begin(),rhs->global()->end(),e.key);
+      Node* lnode = NULL;
+      Node* rnode = NULL;
+      if(itr == rhs->global()->end()) {
+        lnode = e.value;
+        rnode = GGet::New(graph_,NewString(e.key,info),info,region);
+      } else {
+        lnode = e.value;
+        rnode = itr->value;
+      }
+      auto phi = Phi::New(graph_,lnode,rnode,region,info);
+      // add it to the temporarily list
+      temp.push_back(phi);
+    }
+    // scanning the right hand side global variables
+    for( auto &e : *rhs->global() ) {
+      auto itr = std::find(lhs->global()->begin(),lhs->global()->end(),e.key);
+      if(itr == lhs->global()->end()) {
+        // add a node when it is not scanned by the lhs
+        temp.push_back(Phi::New(graph_,GGet::New(graph_,NewString(e.key,info),info,region),e.value,region,info));
+      }
+    }
+    // use the new global list
+    env()->global_ = std::move(temp);
   }
 }
 
-void GraphBuilder::PatchUnconditionalJump( UnconditionalJumpList* jumps ,
-                                           ControlFlow* region ,
-                                           const BytecodeLocation& pc ) {
+void GraphBuilder::PatchUnconditionalJump( UnconditionalJumpList* jumps , ControlFlow* region ,
+                                                                          const BytecodeLocation& pc ) {
   IRInfo* info = NULL;
   for( auto& e : *jumps ) {
     lava_debug(NORMAL,lava_verify(e.pc == pc.address()););
@@ -883,11 +875,9 @@ GraphBuilder::StopReason GraphBuilder::BuildLogic( BytecodeIterator* itr ) {
   Expr* rhs_expr = StackGet(rhs);
   lava_debug(NORMAL,lava_verify(rhs_expr););
   if(op_and)
-    StackSet(rhs,
-        NewBinary(StackSlot(lhs_expr,lhs),StackSlot(rhs_expr,rhs),Binary::AND,itr->bytecode_location()));
+    StackSet(rhs,NewBinary(StackSlot(lhs_expr,lhs),StackSlot(rhs_expr,rhs),Binary::AND,itr->bytecode_location()));
   else
-    StackSet(rhs,
-        NewBinary(StackSlot(lhs_expr,lhs),StackSlot(rhs_expr,rhs),Binary::OR ,itr->bytecode_location()));
+    StackSet(rhs,NewBinary(StackSlot(lhs_expr,lhs),StackSlot(rhs_expr,rhs),Binary::OR ,itr->bytecode_location()));
   return STOP_SUCCESS;
 }
 
@@ -988,7 +978,6 @@ GraphBuilder::BuildIf( BytecodeIterator* itr ) {
   if_region->set_merge(merge);
 
   Environment true_env(*env());
-
   std::uint16_t final_cursor;
   bool have_false_branch;
 
@@ -1073,17 +1062,56 @@ GraphBuilder::BuildLoopBlock( BytecodeIterator* itr ) {
   return STOP_BAILOUT;
 }
 
+// ===============================================================================
+//
+// Loop Phi
+//
+// ===============================================================================
+
 void GraphBuilder::GenerateLoopPhi( const BytecodeLocation& pc ) {
   auto ir_info = NewIRInfo(pc);
-  const std::size_t len = func_info().current_loop_header()->phi.var.size();
-  for( std::size_t i = 0 ; i < len ; ++i ) {
-    if(func_info().current_loop_header()->phi.var[i]) {
-      Expr* old = StackGet(static_cast<std::uint32_t>(i));
-      lava_debug(NORMAL,lava_verify(old););
-      Phi* phi = Phi::New(graph_,region(),ir_info);
-      phi->AddOperand(old);
-      StackSet(static_cast<std::uint32_t>(i),phi);
-      func_info().current_loop().AddPhi(static_cast<std::uint8_t>(i),phi);
+  // 1. stacked variables
+  {
+    const auto len = func_info().current_loop_header()->phi.var.size();
+    for( std::size_t i = 0 ; i < len ; ++i ) {
+      if(func_info().current_loop_header()->phi.var[i]) {
+        Expr* old = StackGet(static_cast<std::uint32_t>(i));
+        lava_debug(NORMAL,lava_verify(old););
+        Phi* phi = Phi::New(graph_,region(),ir_info);
+        phi->AddOperand(old);
+        StackSet(static_cast<std::uint32_t>(i),phi);
+        func_info().current_loop().AddPhi(LoopInfo::VAR,i,phi);
+      }
+    }
+  }
+  // 2. upvalue
+  {
+    const auto len = func_info().prototype->upvalue_size();
+    for( std::size_t i = 0 ; i < len ; ++i ) {
+      if(func_info().current_loop_header()->phi.uv[i]) {
+        auto uget = env()->GetUpValue(static_cast<std::uint32_t>(i),[=]() { return ir_info; });
+        auto phi  = Phi::New(graph_,region(),ir_info);
+        phi->AddOperand(uget);
+        env()->upvalue()->at(i) = phi; // modify the old value to be new Phi node
+        func_info().current_loop().AddPhi(LoopInfo::UPVALUE,i,phi);
+      }
+    }
+  }
+  // 3. globals
+  {
+    for( auto &e : func_info().current_loop_header()->phi.glb ) {
+      auto gget = env()->GetGlobal(e.data,e.length,[=](){ return NewString(e,ir_info); },[=](){ return ir_info; });
+      auto phi  = Phi::New(graph_,region(),ir_info);
+      phi->AddOperand(gget);
+      // find the exact places of the global variables in globs and then
+      // insert the new phi into the places
+      {
+        auto itr = std::find(env()->global()->begin(),env()->global()->end(),e);
+        lava_verify(itr != env()->global()->end());
+        itr->value = phi;
+      }
+      // add it back to the tracking phi list for later patching
+      func_info().current_loop().AddPhi(LoopInfo::Global,std::distance(env()->global()->begin(),itr),phi);
     }
   }
 }
@@ -1091,17 +1119,40 @@ void GraphBuilder::GenerateLoopPhi( const BytecodeLocation& pc ) {
 void GraphBuilder::PatchLoopPhi() {
   for( auto & e: func_info().current_loop().phi_list ) {
     Phi*  phi  = e.phi;
-    if(phi->IsUsed()) {
-      Expr* node = StackGet(e.idx);
-      lava_debug(NORMAL,lava_verify(phi != node););
-      phi->AddOperand(node);
-    } else {
-      Phi::RemovePhiFromRegion(phi);
+    switch(e.type) {
+      case LoopInfo::VAR:
+        if(phi->IsUsed()) {
+          Expr* node = StackGet(e.idx);
+          lava_debug(NORMAL,lava_verify(phi != node););
+          phi->AddOperand(node);
+        } else {
+          Phi::RemovePhiFromRegion(phi);
+        }
+        break;
+      case LoopInfo::GLOBAL:
+        {
+          auto v = env()->global()->at(e.index).value;
+          lava_debug(NORMAL,lava_verify(phi != v););
+          phi->AddOperand(v);
+        }
+        break;
+      default:
+        {
+          auto v = env()->upvalue()->at(e.index);
+          lava_debug(NORMAL,lava_verify(phi != v););
+          phi->AddOperand(v);
+        }
+        break;
     }
   }
   func_info().current_loop().phi_list.clear();
 }
 
+// ============================================================
+//
+// Loop
+//
+// ============================================================
 Expr* GraphBuilder::BuildLoopEndCondition( BytecodeIterator* itr , ControlFlow* body ) {
   // now we should stop at the FEND1/FEND2/FEEND instruction
   if(itr->opcode() == BC_FEND1) {
@@ -1188,8 +1239,8 @@ GraphBuilder::BuildLoopBody( BytecodeIterator* itr , ControlFlow* loop_header ) 
     PatchUnconditionalJump( &func_info().current_loop().pending_break    , after, brk_pc  );
     lava_debug(NORMAL,
         lava_verify(func_info().current_loop().pending_continue.empty());
-        lava_verify(func_info().current_loop().pending_break.empty());
-        lava_verify(func_info().current_loop().phi_list.empty());
+        lava_verify(func_info().current_loop().pending_break.empty   ());
+        lava_verify(func_info().current_loop().phi_list.empty        ());
     );
   }
   set_region(after);
@@ -1651,8 +1702,7 @@ void GraphBuilder::BuildOSRLocalVariable() {
   }
 }
 
-GraphBuilder::StopReason
-GraphBuilder::GotoOSRBlockEnd( BytecodeIterator* itr , const std::uint32_t* end_pc ) {
+GraphBuilder::StopReason GraphBuilder::GotoOSRBlockEnd( BytecodeIterator* itr , const std::uint32_t* end_pc ) {
   StopReason ret;
   lava_verify(itr->SkipTo(
     [end_pc,&ret]( BytecodeIterator* itr ) {
@@ -1671,8 +1721,7 @@ GraphBuilder::GotoOSRBlockEnd( BytecodeIterator* itr , const std::uint32_t* end_
   return ret;
 }
 
-GraphBuilder::StopReason
-GraphBuilder::BuildOSRLoop( BytecodeIterator* itr ) {
+GraphBuilder::StopReason GraphBuilder::BuildOSRLoop( BytecodeIterator* itr ) {
   lava_debug(NORMAL, lava_verify(func_info().IsOSR());
                      lava_verify(func_info().osr_start == itr->pc()););
   return BuildLoopBody(itr,region());
@@ -1716,32 +1765,26 @@ void GraphBuilder::SetupOSRLoopCondition( BytecodeIterator* itr ) {
   }
 }
 
-GraphBuilder::StopReason
-GraphBuilder::PeelOSRLoop( BytecodeIterator* itr ) {
+GraphBuilder::StopReason GraphBuilder::PeelOSRLoop( BytecodeIterator* itr ) {
   bool is_osr = true;
-
   UnconditionalJumpList temp_break;
+
   // check whether we have any parental loop , if so we peel everyone
   // until we hit the end
   do {
-
     if(is_osr) {
       // build the OSR loop
       if(BuildOSRLoop(itr) == STOP_BAILOUT) return STOP_BAILOUT;
-
       is_osr = false;
     } else {
-
       // rebuild the loop
       {
         StopReason reason = BuildLoop(itr);
         if(reason == STOP_BAILOUT) return STOP_BAILOUT;
       }
-
       // now we can link the peeled break part to here
       PatchUnconditionalJump(&temp_break,region(),itr->bytecode_location());
     }
-
     if(func_info().HasLoop()) {
       // now start to peel the parental loop's rest instructions/bytecodes
       // the input iterator should sits right after the loop end bytecode
@@ -1763,52 +1806,40 @@ GraphBuilder::PeelOSRLoop( BytecodeIterator* itr ) {
           break;
         }
       }
-
       // now we should end up with the loop end bytecode and this bytecode will
       // be ignored entirely since we will rewind the iterator back to the very
       // first instruction of the parental loop
       lava_debug(NORMAL,lava_verify(IsLoopEndBytecode(itr->opcode())););
-
       // setup osr-loop's initial condition
       SetupOSRLoopCondition(itr);
-
       // skip the last loop end bytecode
       itr->Move();
-
       // patch continue region inside of the peel part
       if(!func_info().current_loop().pending_continue.empty()) {
         // create a new region lazily
         Region* r = Region::New(graph_,region());
-
-        PatchUnconditionalJump(&(func_info().current_loop().pending_continue),
-                               r,
-                               itr->bytecode_location());
+        PatchUnconditionalJump(&(func_info().current_loop().pending_continue), r, itr->bytecode_location());
         set_region(r);
       }
-
       // save peeled part's all break
       temp_break.swap(func_info().current_loop().pending_break);
-
       // now we rewind the iterator to the start of this loop and regenerate everything
       // again as natural fallthrough
       //
       // The start instruction for current loop doesn't include BC_FSTART/FEVRSTART/FESTART
       // so we need to backward by 1
       itr->BranchTo( func_info().current_loop_header()->start - 1 );
-
       // leave the current loop
       func_info().LeaveLoop();
     } else {
       break;
     }
   } while(true);
-
   return STOP_SUCCESS;
 }
 
 GraphBuilder::StopReason
-GraphBuilder::BuildOSRStart( const Handle<Prototype>& entry ,  const std::uint32_t* pc ,
-                                                               Graph* graph ) {
+GraphBuilder::BuildOSRStart( const Handle<Prototype>& entry ,  const std::uint32_t* pc , Graph* graph ) {
   graph_ = graph;
   zone_  = graph->zone();
   // 1. create OSRStart node which is the entry of OSR compilation
@@ -1855,8 +1886,7 @@ GraphBuilder::BuildOSRStart( const Handle<Prototype>& entry ,  const std::uint32
   return STOP_SUCCESS;
 }
 
-bool GraphBuilder::BuildOSR( const Handle<Prototype>& entry , const std::uint32_t* osr_start ,
-                                                              Graph* graph ) {
+bool GraphBuilder::BuildOSR( const Handle<Prototype>& entry , const std::uint32_t* osr_start , Graph* graph ) {
   return BuildOSRStart(entry,osr_start,graph) == STOP_SUCCESS;
 }
 

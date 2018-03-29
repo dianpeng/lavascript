@@ -26,59 +26,60 @@ namespace hir {
 
 // High level HIR node. Used to describe unttyped polymorphic
 // operations
-#define CBASE_IR_EXPRESSION_HIGH(__)            \
-  /* const    */                                \
-  __(Float64,FLOAT64,"float64",true)            \
-  __(LString,LONG_STRING,"lstring",true)        \
-  __(SString,SMALL_STRING,"small_string",true)  \
-  __(Boolean,BOOLEAN,"boolean",true)            \
-  __(Nil,NIL,"null",true)                       \
-  /* compound */                                \
-  __(IRList,LIST,   "list",false)               \
-  __(IRObjectKV,OBJECT_KV,"object_kv",false)    \
-  __(IRObject,OBJECT, "object",false)           \
-  /* closure */                                 \
-  __(LoadCls,LOAD_CLS,"load_cls",true)          \
-  /* argument node */                           \
-  __(Arg,ARG,"arg",true)                        \
-  /* arithmetic/comparison node */              \
-  __(Unary,UNARY ,"unary",false)                \
-  __(Binary,BINARY,"binary",false)              \
-  __(Ternary,TERNARY,"ternary",false)           \
-  /* upvalue */                                 \
-  __(UGet,UGET,"uval",true)                     \
-  __(USet,USET  ,"uset",true)                   \
-  /* property/idx */                            \
-  __(PGet,PGET  ,"pget",false)                  \
-  __(PSet,PSET  ,"pset",false)                  \
-  __(IGet,IGET  ,"iget",false)                  \
-  __(ISet,ISET  ,"iset",false)                  \
-  /* gget */                                    \
-  __(GGet,GGET  , "gget",false)                 \
-  __(GSet,GSET  , "gset",false)                 \
-  /* iterator */                                \
-  __(ItrNew ,ITR_NEW ,"itr_new",false)          \
-  __(ItrNext,ITR_NEXT,"itr_next",false)         \
-  __(ItrTest,ITR_TEST,"itr_test",false)         \
-  __(ItrDeref,ITR_DEREF,"itr_deref",false)      \
-  /* call     */                                \
-  __(Call,CALL   ,"call",false)                 \
-  /* intrinsic call */                          \
-  __(ICall,ICALL ,"icall",false)                \
-  /* phi */                                     \
-  __(Phi,PHI,"phi",false)                       \
-  __(EffectPhi,EFFECT_PHI,"effect_phi",false)   \
-  __(NoReadEffect,NO_READ_EFFECT,"no_read_effect",true)    \
-  __(NoWriteEffect,NO_WRITE_EFFECT,"no_write_effect",true) \
-  /* statement */                               \
-  __(InitCls,INIT_CLS,"init_cls",false)         \
-  __(Projection,PROJECTION,"projection",false)  \
-  /* osr */                                     \
-  __(OSRLoad,OSR_LOAD,"osr_load",true)          \
-  /* alias */                                   \
-  __(Alias,ALIAS,"alias",false)                 \
-  /* checkpoints */                             \
-  __(Checkpoint,CHECKPOINT,"checkpoint",false)  \
+#define CBASE_IR_EXPRESSION_HIGH(__)                                   \
+  /* const    */                                                       \
+  __(Float64,FLOAT64,"float64",true)                                   \
+  __(LString,LONG_STRING,"lstring",true)                               \
+  __(SString,SMALL_STRING,"small_string",true)                         \
+  __(Boolean,BOOLEAN,"boolean",true)                                   \
+  __(Nil,NIL,"null",true)                                              \
+  /* compound */                                                       \
+  __(IRList,LIST,   "list",false)                                      \
+  __(IRObjectKV,OBJECT_KV,"object_kv",false)                           \
+  __(IRObject,OBJECT, "object",false)                                  \
+  /* closure */                                                        \
+  __(LoadCls,LOAD_CLS,"load_cls",true)                                 \
+  /* argument node */                                                  \
+  __(Arg,ARG,"arg",true)                                               \
+  /* arithmetic/comparison node */                                     \
+  __(Unary,UNARY ,"unary",false)                                       \
+  __(Binary,BINARY,"binary",false)                                     \
+  __(Ternary,TERNARY,"ternary",false)                                  \
+  /* upvalue */                                                        \
+  __(UGet,UGET,"uval",true)                                            \
+  __(USet,USET  ,"uset",true)                                          \
+  /* property/idx */                                                   \
+  __(PGet,PGET  ,"pget",false)                                         \
+  __(PSet,PSET  ,"pset",false)                                         \
+  __(IGet,IGET  ,"iget",false)                                         \
+  __(ISet,ISET  ,"iset",false)                                         \
+  /* gget */                                                           \
+  __(GGet,GGET  , "gget",false)                                        \
+  __(GSet,GSET  , "gset",false)                                        \
+  /* iterator */                                                       \
+  __(ItrNew ,ITR_NEW ,"itr_new",false)                                 \
+  __(ItrNext,ITR_NEXT,"itr_next",false)                                \
+  __(ItrTest,ITR_TEST,"itr_test",false)                                \
+  __(ItrDeref,ITR_DEREF,"itr_deref",false)                             \
+  /* call     */                                                       \
+  __(Call,CALL   ,"call",false)                                        \
+  /* intrinsic call */                                                 \
+  __(ICall,ICALL ,"icall",false)                                       \
+  /* phi */                                                            \
+  __(Phi,PHI,"phi",false)                                              \
+  __(WriteEffectPhi,WRITE_EFFECT_PHI,"write_effect_phi",false)         \
+  __(ReadEffectPhi, READ_EFFECT_PHI ,"read_effect_phi" ,false)         \
+  __(NoReadEffect,NO_READ_EFFECT,"no_read_effect",true)                \
+  __(NoWriteEffect,NO_WRITE_EFFECT,"no_write_effect",true)             \
+  /* statement */                                                      \
+  __(InitCls,INIT_CLS,"init_cls",false)                                \
+  __(Projection,PROJECTION,"projection",false)                         \
+  /* osr */                                                            \
+  __(OSRLoad,OSR_LOAD,"osr_load",true)                                 \
+  /* alias */                                                          \
+  __(Alias,ALIAS,"alias",false)                                        \
+  /* checkpoints */                                                    \
+  __(Checkpoint,CHECKPOINT,"checkpoint",false)                         \
   __(StackSlot ,STACK_SLOT, "stackslot",false)
 
 // Low level HIR node and they are fully typped or partially typped
@@ -151,7 +152,7 @@ namespace hir {
  * expect an type mismatch happened. This means a crash during execution.
  */
 
-#define CBASE_IR_GUARD(__)                       \
+#define CBASE_IR_GUARD(__)                                            \
   __(TypeGuard,TYPE_GUARD,"type_guard",false)
 
 
@@ -166,40 +167,40 @@ namespace hir {
  *
  * It is added after the lowering phase of the HIR
  */
-#define CBASE_IR_BOXOP(__)                      \
-  __(Box,BOX,"box",false)                       \
+#define CBASE_IR_BOXOP(__)                                            \
+  __(Box,BOX,"box",false)                                             \
   __(Unbox,UNBOX,"unbox",false)
 
 // All the expression IR nodes
-#define CBASE_IR_EXPRESSION(__)                 \
-  CBASE_IR_EXPRESSION_HIGH(__)                  \
-  CBASE_IR_EXPRESSION_LOW (__)                  \
-  CBASE_IR_EXPRESSION_TEST(__)                  \
-  CBASE_IR_BOXOP(__)                            \
+#define CBASE_IR_EXPRESSION(__)                                       \
+  CBASE_IR_EXPRESSION_HIGH(__)                                        \
+  CBASE_IR_EXPRESSION_LOW (__)                                        \
+  CBASE_IR_EXPRESSION_TEST(__)                                        \
+  CBASE_IR_BOXOP(__)                                                  \
   CBASE_IR_GUARD(__)
 
 // All the control flow IR nodes
-#define CBASE_IR_CONTROL_FLOW(__)               \
-  __(Start,START,"start",false)                 \
-  __(End,END  , "end" ,false)                   \
-  __(LoopHeader,LOOP_HEADER,"loop_header",false)\
-  __(Loop,LOOP ,"loop",false)                   \
-  __(LoopExit,LOOP_EXIT,"loop_exit",false)      \
-  __(If,IF,"if",false)                          \
-  __(IfTrue,IF_TRUE,"if_true",false)            \
-  __(IfFalse,IF_FALSE,"if_false",false)         \
-  __(Jump,JUMP,"jump",false)                    \
-  __(Fail ,FAIL,"fail" ,true)                   \
-  __(Success,SUCCESS,"success",false)           \
-  __(Return,RETURN,"return",false)              \
-  __(Region,REGION,"region",false)              \
-  __(Trap,TRAP, "trap",false)                   \
-  /* osr */                                     \
-  __(OSRStart,OSR_START,"osr_start",false)      \
+#define CBASE_IR_CONTROL_FLOW(__)                                     \
+  __(Start,START,"start",false)                                       \
+  __(End,END  , "end" ,false)                                         \
+  __(LoopHeader,LOOP_HEADER,"loop_header",false)                      \
+  __(Loop,LOOP ,"loop",false)                                         \
+  __(LoopExit,LOOP_EXIT,"loop_exit",false)                            \
+  __(If,IF,"if",false)                                                \
+  __(IfTrue,IF_TRUE,"if_true",false)                                  \
+  __(IfFalse,IF_FALSE,"if_false",false)                               \
+  __(Jump,JUMP,"jump",false)                                          \
+  __(Fail ,FAIL,"fail" ,true)                                         \
+  __(Success,SUCCESS,"success",false)                                 \
+  __(Return,RETURN,"return",false)                                    \
+  __(Region,REGION,"region",false)                                    \
+  __(Trap,TRAP, "trap",false)                                         \
+  /* osr */                                                           \
+  __(OSRStart,OSR_START,"osr_start",false)                            \
   __(OSREnd  ,OSR_END  ,"osr_end"  ,false)
 
-#define CBASE_IR_LIST(__)                       \
-  CBASE_IR_EXPRESSION(__)                       \
+#define CBASE_IR_LIST(__)                                             \
+  CBASE_IR_EXPRESSION(__)                                             \
   CBASE_IR_CONTROL_FLOW(__)
 
 enum IRType {
@@ -535,9 +536,15 @@ class Expr : public Node {
   inline bool IsSideEffectWrite() const;
   inline bool IsSideEffectRead () const;
   inline bool IsSideEffect     () const;
+
   // check if this expression node can be observed in other unit or basically
-  // has observable side effect
-  inline bool HasObservableSideEffect() const;
+  // has observable side effect.
+  // The node that has observable side effect are nodes as following :
+  // 1. Arg
+  // 2. UGet
+  // 3. GGet
+  // 4. Phi node that contains any nodes above
+  bool HasObservableSideEffect() const;
 
   // check if this expression is used by any other expression, basically
   // check whether ref_list is empty or not
@@ -582,6 +589,7 @@ class SideEffect : public Expr {
 // 3. GSet , in current implementation global are treated very simple it will
 //    generate a side effect so it is always ordered
 // 4. ISet/PSet/ObjectSet/ListSet
+// 5. WriteEffectPhi
 class SideEffectWrite : public SideEffect {
  public:
   SideEffectWrite( IRType type , std::uint32_t id , Graph* g , IRInfo* info ):
@@ -595,7 +603,7 @@ class SideEffectWrite : public SideEffect {
 // node. The following IR nodes are type of SideEffectRead node :
 // 1. UGet
 // 2. GGet
-// 3. EffectPhi
+// 3. ReadEffectPhi
 // 4. IGet/PGet/ObjectGet/ListGet
 class SideEffectRead : public SideEffect {
  public:
@@ -1265,16 +1273,26 @@ class Phi : public Expr {
 // A phi node that is used to merge effect right after the control flow. It
 // will only be used inside of some expression's effect list
 // -------------------------------------------------------------------------
-class EffectPhi : public SideEffectRead {
+class ReadEffectPhi : public SideEffectRead {
  public:
-  inline static EffectPhi* New( Graph* , ControlFlow* , IRInfo* );
-  inline static EffectPhi* New( Graph* , SideEffectWrite* , SideEffectWrite* , ControlFlow* , IRInfo* );
+  inline static ReadEffectPhi* New( Graph* , ControlFlow* , IRInfo* );
+  inline static ReadEffectPhi* New( Graph* , SideEffectRead* , SideEffectRead* , ControlFlow* , IRInfo* );
   ControlFlow* region() const { return region_; }
-
-  inline EffectPhi( Graph* , std::uint32_t , ControlFlow* , IRInfo* );
+  inline ReadEffectPhi( Graph* , std::uint32_t , ControlFlow* , IRInfo* );
  private:
   ControlFlow* region_;
-  LAVA_DISALLOW_COPY_AND_ASSIGN(EffectPhi);
+  LAVA_DISALLOW_COPY_AND_ASSIGN(ReadEffectPhi);
+};
+
+class WriteEffectPhi : public SideEffectWrite {
+ public:
+  inline static WriteEffectPhi* New( Graph* , ControlFlow* , IRInfo* );
+  inline static WriteEffectPhi* New( Graph* , SideEffectWrite* , SideEffectWrite* , ControlFlow* , IRInfo* );
+  ControlFlow* region() const { return region_; }
+  inline WriteEffectPhi( Graph* , std::uint32_t , ControlFlow* , IRInfo* );
+ private:
+  ControlFlow* region_;
+  LAVA_DISALLOW_COPY_AND_ASSIGN(WriteEffectPhi);
 };
 
 // placeholder for empty read/write effect to avoid checking NULL pointer
@@ -1608,10 +1626,7 @@ class Float64Arithmetic : public Binary , public detail::Float64BinaryGVNImpl<Fl
  public:
   using Binary::Operator;
   inline static Float64Arithmetic* New( Graph* , Expr*, Expr*, Operator, IRInfo* );
-  Float64Arithmetic( Graph* graph , std::uint32_t id , Expr* lhs,
-                                                       Expr* rhs,
-                                                       Operator op,
-                                                       IRInfo* info ):
+  Float64Arithmetic( Graph* graph , std::uint32_t id , Expr* lhs, Expr* rhs, Operator op, IRInfo* info ):
     Binary(IRTYPE_FLOAT64_ARITHMETIC,graph,id,lhs,rhs,op,info)
   {
     lava_debug(NORMAL,lava_verify(Binary::IsArithmeticOperator(op)););
@@ -1630,10 +1645,7 @@ class Float64Bitwise: public Binary , public detail::Float64BinaryGVNImpl<Float6
  public:
   using Binary::Operator;
   inline static Float64Bitwise* New( Graph* , Expr*, Expr*, Operator, IRInfo* );
-  Float64Bitwise( Graph* graph , std::uint32_t id , Expr* lhs,
-                                                    Expr* rhs,
-                                                    Operator op,
-                                                    IRInfo* info ):
+  Float64Bitwise( Graph* graph , std::uint32_t id , Expr* lhs, Expr* rhs, Operator op, IRInfo* info ):
     Binary(IRTYPE_FLOAT64_BITWISE,graph,id,lhs,rhs,op,info)
   {
     lava_debug(NORMAL,lava_verify(Binary::IsBitwiseOperator(op)););
@@ -1652,10 +1664,7 @@ class Float64Compare : public Binary , public detail::Float64BinaryGVNImpl<Float
  public:
   using Binary::Operator;
   inline static Float64Compare* New( Graph* , Expr* , Expr* , Operator, IRInfo* );
-  Float64Compare( Graph* graph , std::uint32_t id , Expr* lhs ,
-                                                    Expr* rhs ,
-                                                    Operator op ,
-                                                    IRInfo* info ):
+  Float64Compare( Graph* graph , std::uint32_t id , Expr* lhs , Expr* rhs , Operator op , IRInfo* info ):
     Binary(IRTYPE_FLOAT64_COMPARE,graph,id,lhs,rhs,op,info)
   {
     lava_debug(NORMAL,lava_verify(Binary::IsComparisonOperator(op)););
@@ -1673,10 +1682,7 @@ class StringCompare : public Binary , public detail::Float64BinaryGVNImpl<String
  public:
   using Binary::Operator;
   inline static StringCompare* New( Graph* , Expr* , Expr* , Operator , IRInfo* );
-  StringCompare( Graph* graph , std::uint32_t id , Expr* lhs ,
-                                                   Expr* rhs ,
-                                                   Operator op ,
-                                                   IRInfo* info ):
+  StringCompare( Graph* graph , std::uint32_t id , Expr* lhs , Expr* rhs , Operator op , IRInfo* info ):
     Binary(IRTYPE_STRING_COMPARE,graph,id,lhs,rhs,op,info)
   {
     lava_debug(NORMAL,lava_verify(Binary::IsComparisonOperator(op)););
@@ -1692,9 +1698,7 @@ class StringCompare : public Binary , public detail::Float64BinaryGVNImpl<String
 class SStringEq : public Binary , public detail::Float64BinaryGVNImpl<SStringEq> {
  public:
   inline static SStringEq* New( Graph* , Expr* , Expr* , IRInfo* );
-  SStringEq( Graph* graph , std::uint32_t id , Expr* lhs ,
-                                               Expr* rhs ,
-                                               IRInfo* info ):
+  SStringEq( Graph* graph , std::uint32_t id , Expr* lhs , Expr* rhs , IRInfo* info ):
     Binary(IRTYPE_SSTRING_EQ,graph,id,lhs,rhs,Binary::EQ,info)
   {}
 
@@ -1706,9 +1710,7 @@ class SStringEq : public Binary , public detail::Float64BinaryGVNImpl<SStringEq>
 class SStringNe : public Binary , public detail::Float64BinaryGVNImpl<SStringNe> {
  public:
   inline static SStringNe* New( Graph* , Expr* , Expr* , IRInfo* );
-  SStringNe( Graph* graph , std::uint32_t id , Expr* lhs ,
-                                               Expr* rhs ,
-                                               IRInfo* info ):
+  SStringNe( Graph* graph , std::uint32_t id , Expr* lhs , Expr* rhs , IRInfo* info ):
     Binary(IRTYPE_SSTRING_EQ,graph,id,lhs,rhs,Binary::NE,info)
   {}
 
@@ -2222,18 +2224,15 @@ class Success : public ControlFlow {
   LAVA_DISALLOW_COPY_AND_ASSIGN(Success)
 };
 
-
 class Return : public ControlFlow {
  public:
   inline static Return* New( Graph* , Expr* , ControlFlow* );
   Expr* value() const { return operand_list()->First(); }
-
   Return( Graph* graph , std::uint32_t id , Expr* value , ControlFlow* region ):
     ControlFlow(IRTYPE_RETURN,id,graph,region)
   {
     AddOperand(value);
   }
-
  private:
   LAVA_DISALLOW_COPY_AND_ASSIGN(Return)
 };
@@ -2242,11 +2241,7 @@ class Return : public ControlFlow {
 class Start : public ControlFlow {
  public:
   inline static Start* New( Graph* );
-
-  Start( Graph* graph , std::uint32_t id ):
-    ControlFlow(IRTYPE_START,id,graph)
-  {}
-
+  Start( Graph* graph , std::uint32_t id ): ControlFlow(IRTYPE_START,id,graph) {}
  private:
   LAVA_DISALLOW_COPY_AND_ASSIGN(Start)
 };
@@ -2254,17 +2249,14 @@ class Start : public ControlFlow {
 class End : public ControlFlow {
  public:
   inline static End* New( Graph* , Success* , Fail* );
-
   Success* success() const { return backward_edge()->First()->AsSuccess(); }
   Fail*    fail()    const { return backward_edge()->Last ()->AsFail   (); }
-
   End( Graph* graph , std::uint32_t id , Success* s , Fail* f ):
     ControlFlow(IRTYPE_END,id,graph)
   {
     AddBackwardEdge(s);
     AddBackwardEdge(f);
   }
-
  private:
   LAVA_DISALLOW_COPY_AND_ASSIGN(End)
 };
@@ -2272,16 +2264,13 @@ class End : public ControlFlow {
 class Trap : public ControlFlow {
  public:
   inline static Trap* New( Graph* , Checkpoint* , ControlFlow* );
-
   Checkpoint* checkpoint() const { return operand_list()->First()->AsCheckpoint(); }
-
   Trap( Graph* graph , std::uint32_t id , Checkpoint* cp ,
                                           ControlFlow* region ):
     ControlFlow(IRTYPE_TRAP,id,graph,region)
   {
     AddOperand(cp);
   }
-
  private:
   LAVA_DISALLOW_COPY_AND_ASSIGN(Trap)
 };
@@ -2330,51 +2319,40 @@ class Graph {
   void Initialize( OSRStart* start , OSREnd* end  );
 
  public: // placeholder nodes
-  NoReadEffect*  no_read_effect() const { return no_read_effect_; }
+  NoReadEffect*  no_read_effect()  const { return no_read_effect_; }
   NoWriteEffect* no_write_effect() const { return no_write_effect_; }
 
  public: // getter and setter
-  ControlFlow* start() const { return start_; }
-  ControlFlow* end  () const { return end_;   }
-
-  zone::Zone* zone()   { return &zone_; }
-  const zone::Zone* zone() const { return &zone_; }
-
-  std::uint32_t MaxID() const { return id_; }
-  std::uint32_t AssignID() { return id_++; }
-
+  ControlFlow*      start() const { return start_; }
+  ControlFlow*      end  () const { return end_;   }
+  zone::Zone*       zone()        { return &zone_; }
+  const zone::Zone* zone()  const { return &zone_; }
+  std::uint32_t     MaxID() const { return id_; }
+  std::uint32_t AssignID()        { return id_++; }
   // check whether the graph is OSR construction graph
   bool IsOSR() const {
     lava_debug(NORMAL,lava_verify(start_););
     return start_->IsOSRStart();
   }
-
   // Get all control flow nodes
   void GetControlFlowNode( std::vector<ControlFlow*>* ) const;
-
  public:
   std::uint32_t AddPrototypeInfo( const Handle<Prototype>& proto ,
       std::uint32_t base ) {
     prototype_info_.Add(zone(),PrototypeInfo(base,proto));
     return static_cast<std::uint32_t>(prototype_info_.size()-1);
   }
-
   const PrototypeInfo& GetProrotypeInfo( std::uint32_t index ) const {
     return prototype_info_[index];
   }
-
  public: // static helper function
-
   struct DotFormatOption {
     bool checkpoint;
     DotFormatOption() : checkpoint(false) {}
   };
-
   // Print the graph into dot graph representation which can be visualized by
   // using graphviz or other similar tools
-  static std::string PrintToDotFormat( const Graph& ,
-                                       const DotFormatOption& opt = DotFormatOption() );
-
+  static std::string PrintToDotFormat( const Graph& , const DotFormatOption& opt = DotFormatOption() );
  private:
   zone::Zone                  zone_;
   ControlFlow*                start_;
@@ -2588,6 +2566,7 @@ class ExprDFSIterator : public ExprIterator {
 // Helper
 //
 // -------------------------------------------------------------------------
+inline Expr* NewString           ( Graph* , const void* , std::size_t length , IRInfo* );
 inline Expr* NewString           ( Graph* , const char* , IRInfo* );
 inline Expr* NewString           ( Graph* , const zone::String* , IRInfo* );
 inline Expr* NewStringFromBoolean( Graph* , bool , IRInfo* );

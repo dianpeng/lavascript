@@ -15,7 +15,6 @@ namespace hir        {
 class Infer : public HIRPass {
  public:
   virtual bool Perform( Graph* , HIRPass::Flag );
-
   Infer() : HIRPass( "infer" ) {}
 };
 

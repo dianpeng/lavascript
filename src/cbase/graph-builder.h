@@ -69,10 +69,6 @@ class GraphBuilder {
     inline void UpdateWriteEffect( SideEffectWrite* effect );
     // list of read happened at this point
     const std::vector<SideEffectRead*>& read_list() const { return read_list_; }
-    // helper to add an effect when predicate is true
-    void AddReadEffectIf( Node* node , const std::function< bool (SideEffectRead*) >& pre ) {
-      for( auto &e : read_list_ ) if(pre(e)) node->AddEffect(e);
-    }
    private:
     SideEffectWrite* write_effect_;          // an effect node indicates the previous write
     std::vector<SideEffectRead*> read_list_; // list of read happend *after* the write_effect_ issued
@@ -91,6 +87,7 @@ class GraphBuilder {
     struct GlobalVar {
       Str name; Expr* value;
       GlobalVar( const void* k , std::size_t l , Expr* v ): name(k,l), value(v) {}
+      GlobalVar( const Str& k , Expr* v ) : name(k) , value(v) {}
       bool operator == ( const Str& k ) const { return Str::Cmp(name,k) == 0; }
     };
     typedef std::vector<GlobalVar>         GlobalMap;
@@ -118,16 +115,11 @@ class GraphBuilder {
     void AddRootReadEffect ( SideEffectRead* );
     void AddRootWriteEffect( SideEffectWrite* );
    private:
-    // check if a Arg node is in used or not
-    bool IsArgUsed( Node* arg ) const { return arg->HasRef(); }
-    void PropWriteEffectToArg( SideEffectWrite* );
-   private:
     ValueStack stack_;          // register stack
     UnknownEffect root_;        // root's unknown effect tracking region
     EffectGroupVector upvalue_; // upvalue's effect group
     GlobalMap global_;          // global's effect group
     GraphBuilder* gb_;          // graph builder
-    std::vector<Node*> args_;   // tracked argument node
   };
 
   // Data structure record the pending jump that happened inside of the loop
@@ -151,11 +143,14 @@ class GraphBuilder {
     UnconditionalJumpList pending_continue;
     // a pointer points to a LoopHeaderInfo object
     const BytecodeAnalyze::LoopHeaderInfo* loop_header_info;
+    // type of the PhiVar
+    enum PhiVarType { GLOBAL , UPVALUE , VAR };
     // pending PHIs in this loop's body
     struct PhiVar {
-      std::uint8_t idx;  // register index
-      Phi*         phi;  // phi node
-      PhiVar( std::uint8_t i , Phi* p ): idx(i), phi(p) {}
+      PhiVarType    type; // type of the var
+      std::uint32_t idx;  // register index
+      Phi*         phi;   // phi node
+      PhiVar( PhiVarType t , std::uint32_t i , Phi* p ): type(t), idx(i), phi(p) {}
     };
     std::vector<PhiVar> phi_list;
    public:
@@ -167,8 +162,8 @@ class GraphBuilder {
     void AddContinue( Jump* node , const std::uint32_t* target , const Environment& e ) {
       pending_continue.push_back(UnconditionalJump(node,target,e));
     }
-    void AddPhi( std::uint8_t index , Phi* phi ) {
-      phi_list.push_back(PhiVar(index,phi));
+    void AddPhi( PhiVarType type , std::uint32_t index , Phi* phi ) {
+      phi_list.push_back(PhiVar(type,index,phi));
     }
     LoopInfo( const BytecodeAnalyze::LoopHeaderInfo* info ):
       pending_break(),
@@ -251,10 +246,7 @@ class GraphBuilder {
   }
 
  public: // Current FuncInfo
-  std::uint32_t method_index() const {
-    return static_cast<std::uint32_t>(func_info_.size());
-  }
-
+  std::uint32_t method_index()         const { return static_cast<std::uint32_t>(func_info_.size()); }
   FuncInfo& func_info()                      { return func_info_.back(); }
   const FuncInfo& func_info()          const { return func_info_.back(); }
   bool IsTopFunction()                 const { return func_info_.size() == 1; }
@@ -264,6 +256,7 @@ class GraphBuilder {
   void set_region( ControlFlow* new_region ) { func_info().region = new_region; }
   Environment* env()                   const { return env_; }
   ValueStack*  vstk()                  const { return env_->stack(); }
+  ValueStack*  upval()                 const { return env_->upvalue();}
   // input argument size , the input argument size is the argument size that
   // is belong to the top most function since this function's input argument
   // remains as input argument, rest of the nested inlined function's input
@@ -281,6 +274,8 @@ class GraphBuilder {
   Expr* NewString     ( std::uint8_t , const interpreter::BytecodeLocation& );
   Expr* NewString     ( std::uint8_t );
 
+  Expr* NewString     ( const Str& , const interpreter::BytecodeLocation& );
+  Expr* NewString     ( const Str& , IRInfo* );
   Str   NewStr        ( std::uint32_t ref , bool sso );
 
   Expr* NewSSO        ( std::uint8_t , IRInfo* );
@@ -353,11 +348,8 @@ class GraphBuilder {
   StopReason BuildBasicBlock( interpreter::BytecodeIterator* itr , const std::uint32_t* end_pc = NULL );
 
   // Build branch IR graph
-  void InsertPhi( Environment* lhs , Environment* rhs , ControlFlow* , IRInfo* );
-  void GeneratePhi( ValueStack* dest , const ValueStack& lhs , const ValueStack& rhs ,
-                                                               std::size_t base ,
-                                                               ControlFlow* region ,
-                                                               IRInfo* );
+  void InsertPhi( Environment* , Environment* , ControlFlow* , IRInfo* );
+  void GeneratePhi( ValueStack* , const ValueStack& , const ValueStack& , std::size_t , ControlFlow* , IRInfo* );
 
   StopReason GotoIfEnd   ( interpreter::BytecodeIterator* , const std::uint32_t* );
   StopReason BuildIf     ( interpreter::BytecodeIterator* itr );

@@ -6,8 +6,8 @@
 #include "src/interpreter/bytecode.h"
 #include "src/interpreter/bytecode-iterator.h"
 
-#include <unordered_set>
 #include <map>
+#include <vector>
 #include <bitset>
 
 namespace lavascript {
@@ -18,7 +18,7 @@ namespace cbase      {
 // TODO:: All use Zone ADT ??
 typedef std::bitset<::lavascript::interpreter::kRegisterSize>   InterpreterRegisterSet;
 typedef std::bitset<::lavascript::interpreter::kMaxUpValueSize> InterpreterUpValueSet ;
-typedef std::unordered_set<Str>                                 GlobalVariableSet;
+typedef std::vector<Str>                                        GlobalVariableSet;
 
 /**
  * This is a pre-pass before ir graph construction and it holds

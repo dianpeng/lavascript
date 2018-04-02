@@ -188,6 +188,13 @@ struct Str {
   std::size_t length;
   Str() : data(NULL) , length() {}
   Str( const void* d , std::size_t l ) : data(d), length(l) {}
+  bool operator == ( const Str& that ) const { return Str::Cmp(*this,that) == 0; }
+  bool operator != ( const Str& that ) const { return Str::Cmp(*this,that) != 0; }
+  bool operator <  ( const Str& that ) const { return Str::Cmp(*this,that) <  0; }
+  bool operator <= ( const Str& that ) const { return Str::Cmp(*this,that) <= 0; }
+  bool operator >  ( const Str& that ) const { return Str::Cmp(*this,that) >  0; }
+  bool operator >= ( const Str& that ) const { return Str::Cmp(*this,that) >= 0; }
+ public:
   // do a comparison of two chunk of memory/Str
   static inline int Cmp( const Str& , const Str& );
   static inline std::uint32_t Hash( const Str& str ) { return Hasher::Hash(str.data,str.length); }

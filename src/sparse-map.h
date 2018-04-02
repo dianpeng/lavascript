@@ -1,7 +1,7 @@
-#ifndef CBASE_SPARSE_MAP_H_
-#define CBASE_SPARSE_MAP_H_
-#include "src/trace.h"
-#include "src/stl-helper.h"
+#ifndef SPARSE_MAP_H_
+#define SPARSE_MAP_H_
+#include "trace.h"
+#include "stl-helper.h"
 
 #include <algorithm>
 #include <map>
@@ -9,7 +9,6 @@
 #include <variant>
 
 namespace lavascript {
-namespace cbase      {
 
 template< typename K , typename T > class BalanceTree;
 
@@ -81,7 +80,6 @@ class BalanceTree {
   bool     Remove( const K& value );
   bool     Insert( const K& , const T& );
   bool     Insert( K&&, T&& );
-
   void     Clear() { map_.clear(); }
   void     Swap( BalanceTree* bt ) { bt->map_.swap(map_); }
 
@@ -416,7 +414,6 @@ void SparseMap<K,T>::Clear() {
   }
 }
 
-} // namespace cbase
 } // namespace lavascript
 
-#endif // CBASE_SPARSE_MAP_H_
+#endif // SPARSE_MAP_H_

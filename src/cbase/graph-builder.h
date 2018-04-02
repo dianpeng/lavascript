@@ -1,6 +1,7 @@
 #ifndef CBASE_GRAPH_BUILDER_H_
 #define CBASE_GRAPH_BUILDER_H_
 #include "hir.h"
+#include "ool-vector.h"
 
 #include "src/interpreter/intrinsic-call.h"
 #include "src/objects.h"
@@ -26,7 +27,7 @@ typedef std::vector<Expr*> ValueStack;
 //
 // The builder can build 1) normal function call 2) OSR style function IR
 class GraphBuilder {
- private:
+ public:
   // all intenral class forward declaration
   struct FuncInfo;
 
@@ -43,7 +44,7 @@ class GraphBuilder {
     }
   };
 
-  // UnknownEffect represents an effect region that is used as default effect tracking
+  // EffectGroup represents an effect region that is used as default effect tracking
   // group whenever we don't know what's the value of certain names.
   // The names we care about are as following :
   // 1. globals
@@ -58,20 +59,22 @@ class GraphBuilder {
   // 2) anti dependency ( write after read ).
   //
   // for write after write we don't need to track and read is always free to reschedule.
-  class UnknownEffect {
+  class EffectGroup {
    public:
-    UnknownEffect( Graph* g ): write_effect_(g->no_write_effect()) , read_list_() {}
+    EffectGroup( Graph* g ): write_effect_(g->no_write_effect()) , read_list_() {}
     // current write_effect node
-    SideEffectWrite* write_effect() const { return write_effect_; }
+    MemoryWrite* write_effect() const { return write_effect_; }
     // add a read effect , does correct side effect dependency
-    inline void AddReadEffect( SideEffectRead* effect);
+    inline void AddReadEffect( MemoryRead* effect);
     // update write effect
-    inline void UpdateWriteEffect( SideEffectWrite* effect );
+    inline void UpdateWriteEffect( MemoryWrite* effect );
     // list of read happened at this point
-    const std::vector<SideEffectRead*>& read_list() const { return read_list_; }
+    const std::vector<MemoryRead*>& read_list() const { return read_list_; }
    private:
-    SideEffectWrite* write_effect_;          // an effect node indicates the previous write
-    std::vector<SideEffectRead*> read_list_; // list of read happend *after* the write_effect_ issued
+    MemoryWrite* write_effect_;          // an effect node indicates the previous write
+    std::vector<MemoryRead*> read_list_; // list of read happend *after* the write_effect_ issued
+
+    friend class GraphBuilder;
   };
 
   // Environment --------------------------------------------------------------
@@ -83,43 +86,43 @@ class GraphBuilder {
   // 3. global variables
   class Environment {
    public:
-    typedef std::vector<Expr*>             UpValueVector;
     struct GlobalVar {
       Str name; Expr* value;
       GlobalVar( const void* k , std::size_t l , Expr* v ): name(k,l), value(v) {}
       GlobalVar( const Str& k , Expr* v ) : name(k) , value(v) {}
       bool operator == ( const Str& k ) const { return Str::Cmp(name,k) == 0; }
     };
-    typedef std::vector<GlobalVar>         GlobalMap;
-    typedef std::function<Expr* ()>        KeyProvider;
+    typedef std::vector<GlobalVar>     GlobalMap;
+    typedef std::vector<Expr*>         UpValueVector;
+    typedef std::function<Expr* ()>    KeyProvider;
+    typedef std::function<IRInfo* ()>  IRInfoProvider;
 
     Environment( GraphBuilder* );
+    // root effect group
+    EffectGroup* root()    { return &root_; }
     // init environment object from prototype object
     void EnterFunctionScope( const FuncInfo& );
     void PopulateArgument  ( const FuncInfo& );
     void ExitFunctionScope ( const FuncInfo& );
     // getter/setter
-    Expr*  GetUpValue( std::uint8_t , const IRInfoProvider& ) const;
-    Expr*  GetGlobal ( const void* , std::size_t , const KeyProvider& , const IRInfoProvider& ) const;
+    Expr*  GetUpValue( std::uint8_t , const IRInfoProvider& );
+    Expr*  GetGlobal ( const void* , std::size_t , const KeyProvider& , const IRInfoProvider& );
     void   SetUpValue( std::uint8_t , Expr* , const IRInfoProvider& );
     void   SetGlobal ( const void* , std::size_t , const KeyProvider& , Expr* , const IRInfoProvider& );
-    // update read effect
-    void   UpdateReadEffect  ( SideEffectRead* node );
-    // update write effect
-    void   UpdateWriteEffect ( SideEffectWrite* node );
     // accessor
     ValueStack*      stack()    { return &stack_;  }
     UpValueVector*   upvalue()  { return &upvalue_;}
     GlobalMap*       global()   { return &global_; }
-    // root side effect
-    void AddRootReadEffect ( SideEffectRead* );
-    void AddRootWriteEffect( SideEffectWrite* );
+    // update a node appear in the environment with another node
+    void UpdateNode        ( Expr* , Expr* );
    private:
     ValueStack stack_;          // register stack
-    UnknownEffect root_;        // root's unknown effect tracking region
-    EffectGroupVector upvalue_; // upvalue's effect group
+    EffectGroup root_;          // root's unknown effect tracking region
+    UpValueVector upvalue_;     // upvalue's effect group
     GlobalMap global_;          // global's effect group
     GraphBuilder* gb_;          // graph builder
+
+    friend class GraphBuilder;
   };
 
   // Data structure record the pending jump that happened inside of the loop
@@ -285,6 +288,10 @@ class GraphBuilder {
   Expr* NewBoolean    ( bool         , const interpreter::BytecodeLocation& );
   Expr* NewBoolean    ( bool );
 
+ private: // IRList/IRObject
+  IRList*   NewIRList   ( std::size_t , IRInfo* );
+  IRObject* NewIRObject ( std::size_t , IRInfo* );
+
  private: // Guard handling
   // Add a type feedback with TypeKind into the stack slot pointed by index
   Expr* AddTypeFeedbackIfNeed( const StackSlot& , TypeKind     , const interpreter::BytecodeLocation& );
@@ -299,27 +306,27 @@ class GraphBuilder {
   Expr* NewUnaryFallback    ( const StackSlot& , Unary::Operator , const interpreter::BytecodeLocation& );
 
   // Binary
-  Expr* NewBinary            ( const StackSlot& , const StackSlot& , Binary::Operator ,
+  Expr* NewBinary           ( const StackSlot& , const StackSlot& , Binary::Operator ,
                                                                      const interpreter::BytecodeLocation& );
-  Expr* TrySpecialTestBinary ( const StackSlot& , const StackSlot& , Binary::Operator ,
+  Expr* TrySpecialTestBinary( const StackSlot& , const StackSlot& , Binary::Operator ,
                                                                      const interpreter::BytecodeLocation& );
-  Expr* TrySpeculativeBinary ( const StackSlot& , const StackSlot& , Binary::Operator ,
+  Expr* TrySpeculativeBinary( const StackSlot& , const StackSlot& , Binary::Operator ,
                                                                      const interpreter::BytecodeLocation& );
-  Expr* NewBinaryFallback    ( const StackSlot& , const StackSlot& , Binary::Operator ,
+  Expr* NewBinaryFallback   ( const StackSlot& , const StackSlot& , Binary::Operator ,
                                                                      const interpreter::BytecodeLocation& );
 
   // Ternary
-  Expr* NewTernary           ( const StackSlot& , Expr* , Expr* , const interpreter::BytecodeLocation& );
+  Expr* NewTernary( const StackSlot& , Expr* , Expr* , const interpreter::BytecodeLocation& );
 
   // Intrinsic
-  Expr* NewICall      ( std::uint8_t ,std::uint8_t ,std::uint8_t ,bool ,const interpreter::BytecodeLocation& );
-  Expr* LowerICall    ( ICall* );
+  Expr* NewICall  ( std::uint8_t ,std::uint8_t ,std::uint8_t ,bool ,const interpreter::BytecodeLocation& );
+  Expr* LowerICall( ICall* );
 
  private: // Property/Index Get/Set
-  Expr* NewPSet       ( Expr* , Expr* , Expr* , IRInfo* );
-  Expr* NewPGet       ( Expr* , Expr* , IRInfo* );
-  Expr* NewISet       ( Expr* , Expr* , Expr* , IRInfo* );
-  Expr* NewIGet       ( Expr* , Expr* , IRInfo* );
+  Expr* NewPSet( Expr* , Expr* , Expr* , IRInfo* );
+  Expr* NewPGet( Expr* , Expr* , IRInfo* );
+  Expr* NewISet( Expr* , Expr* , Expr* , IRInfo* );
+  Expr* NewIGet( Expr* , Expr* , IRInfo* );
 
  private: // Global variables
   void NewGGet( std::uint8_t , std::uint8_t , const interpreter::BytecodeLocation& , bool sso = false );
@@ -382,15 +389,32 @@ class GraphBuilder {
   IRInfo* NewIRInfo( const interpreter::BytecodeLocation& loc );
   IRInfo* NewIRInfo( interpreter::BytecodeIterator* );
 
+ private: // Effect analyzing
+  typedef std::function< void (Expr*,EffectGroup*) > EffectVisitor;
+
+  // Analyze the input expression node and find *all* its satisfied effect group
+  // in our effect group list and call the EffectVisitor callback function on each
+  // group found
+  void VisitEffect     ( Expr* node , const EffectVisitor& visitor );
+  void VisitEffectRead ( Expr* node , MemoryRead* );
+  void VisitEffectWrite( Expr* node , MemoryWrite*);
+  // New a new effect group object inside of our internal zone object
+  EffectGroup* NewEffectGroup();
  private:
-  zone::Zone*           zone_;
-  Handle<Script>        script_;
-  Graph*                graph_;
+  zone::Zone*             zone_;
+  Handle<Script>          script_;
+  Graph*                  graph_;
   // Working set data , used when doing inline and other stuff
-  Environment*          env_;
-  std::vector<FuncInfo> func_info_;
+  Environment*            env_;
+  std::vector<FuncInfo>   func_info_;
   // Type trace for speculative operation generation
-  const TypeTrace&      type_trace_;
+  const TypeTrace&        type_trace_;
+  // All tracked effect group except the root effect group
+  OOLVector<EffectGroup*> effect_group_;
+  // this zone is used to allocate effect group during graph building phase
+  // TODO:: have a temporary zone and replace std::xxx with wrapper around
+  //        temporary zone object
+  zone::Zone              effect_group_pool_;
 
  private:
   class OSRScope ;
@@ -450,7 +474,9 @@ inline GraphBuilder::GraphBuilder( const Handle<Script>& script , const TypeTrac
   script_           (script),
   graph_            (NULL),
   func_info_        (),
-  type_trace_       (tt)
+  type_trace_       (tt),
+  effect_group_     (),
+  effect_group_pool_()
 {}
 
 inline void GraphBuilder::FuncInfo::EnterLoop( const std::uint32_t* pc ) {
@@ -459,13 +485,13 @@ inline void GraphBuilder::FuncInfo::EnterLoop( const std::uint32_t* pc ) {
   loop_info.push_back(LoopInfo(info));
 }
 
-inline GraphBuilder::UnknownEffect::AddReadEffect( SideEffectRead* read ) {
+inline void GraphBuilder::EffectGroup::AddReadEffect( MemoryRead* read ) {
   // this is a read after write effect or *true* effect
   read->AddEffect(write_effect_);
   read_list_.push_back(read);
 }
 
-inline GraphBuilder::UnknownEffect::UpdateWriteEffect( SideEffectWrite* write ) {
+inline void GraphBuilder::EffectGroup::UpdateWriteEffect( MemoryWrite* write ) {
   // this is a write after read effect or *anti* effect
   for( auto &e : read_list_ ) write->AddEffect(e);
   // new write barrier will be setup, just clear the read list

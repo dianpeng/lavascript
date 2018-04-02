@@ -295,6 +295,7 @@ bool BytecodeAnalyze::BuildBytecode( BytecodeIterator* itr ) {
         std::uint8_t a1,a2; itr->GetOperand(&a1,&a2);
         current_loop()->phi.uv[a1] = true;
       }
+      itr->Move();
       break;
     // global variables
     case BC_GSET: case BC_GSETSSO:
@@ -320,6 +321,7 @@ bool BytecodeAnalyze::BuildBytecode( BytecodeIterator* itr ) {
           }
         }
       }
+      itr->Move();
       break;
     // bytecode that gonna terminate current basic block
     case BC_CONT: case BC_BRK: case BC_RET: case BC_RETNULL:

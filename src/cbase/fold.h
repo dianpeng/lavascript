@@ -25,8 +25,6 @@ Expr* FoldTernary( Graph* , Expr* , Expr* , Expr* , const IRInfoProvider& );
 // Helper to simplify the logic, it is used mainly after 1) type guard generated 2) inference succeeded
 Expr* SimplifyLogic( Graph* , Expr* , Expr* , Binary::Operator , const IRInfoProvider& );
 Expr* FoldIntrinsicCall( Graph* , ICall* );
-Expr* FoldObjectSet( Graph* , Expr* , Expr* , Expr* , const IRInfoProvider& );
-Expr* FoldObjectGet( Graph* , Expr* , Expr* , const IRInfoProvider& );
 
 } // namespace hir
 } // namespace cbase

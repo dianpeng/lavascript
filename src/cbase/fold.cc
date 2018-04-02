@@ -622,6 +622,7 @@ Expr* FoldTernary( Graph* graph , Expr* cond , Expr* lhs , Expr* rhs ,
 Expr* FoldIntrinsicCall( Graph* graph , ICall* icall ) {
   return FoldICall(graph,icall);
 }
+
 Expr* SimplifyLogic ( Graph* graph , Expr* lhs , Expr* rhs , Binary::Operator op,
                                                              const IRInfoProvider& irinfo ) {
   if(op == Binary::AND) {
@@ -638,53 +639,6 @@ Expr* SimplifyLogic ( Graph* graph , Expr* lhs , Expr* rhs , Binary::Operator op
                                   rhs,
                                   irinfo);
   }
-}
-
-Expr* FoldObjectSet( Graph* graph , Expr* obj , Expr* k , Expr* value ,
-                                                          const IRInfoProvider& irinfo ) {
-  if(obj->IsIRObject()) {
-    auto object = obj->AsIRObject();
-    auto key    = k->AsZoneString();
-    auto itr    = object->operand_list()->FindIf(
-        [key]( const OperandList::ConstForwardIterator& itr ) {
-        auto v = itr.value()->AsIRObjectKV();
-        return (v->key()->IsString() && v->key()->AsZoneString() == key);
-      }
-    );
-    auto ir_info = irinfo();
-    if(itr.HasNext()) {
-      auto new_obj = IRObject::New(graph,object->Size(),ir_info);
-      for(auto i(object->operand_list()->GetForwardIterator());i.HasNext(); i.Move()) {
-        auto kv = i.value()->AsIRObjectKV();
-        if(kv == itr.value()) {
-          new_obj->Add(kv->key(),value,ir_info);
-        } else {
-          new_obj->AddOperand(kv);
-        }
-      }
-      return new_obj;
-    }
-  }
-  return NULL;
-}
-
-Expr* FoldObjectGet( Graph* graph , Expr* obj , Expr* k , const IRInfoProvider& irinfo ) {
-  (void)irinfo;
-  if(obj->IsIRObject()) {
-    auto object = obj->AsIRObject();
-    auto key    = k->AsZoneString();
-    auto itr = object->operand_list()->FindIf(
-        [key]( const OperandList::ConstForwardIterator& itr ) {
-          auto v = itr.value()->AsIRObjectKV();
-          return (v->key()->IsString() && v->key()->AsZoneString() == key);
-        }
-      );
-
-    if(itr.HasNext()) {
-      return itr.value()->AsIRObjectKV()->value(); // forward the value
-    }
-  }
-  return NULL;
 }
 
 } // namespace hir

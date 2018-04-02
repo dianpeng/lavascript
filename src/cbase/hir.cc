@@ -16,35 +16,16 @@ const char* IRTypeGetName( IRType type ) {
 #undef __ // __
 }
 
-inline bool Expr::HasObservableSideEffect() const {
-  if(type() == IRTYPE_GGET || type() == IRTYPE_UGET || type() == IRTPYE_ARG) {
-    return true;
-  } else if(type() == IRTYPE_PHI) {
-    auto phi = AsPhi();
-    // go through each operands of Phi node to check whether one of them has side effect
-    for( auto itr(phi->operand_list()->GetForwardIterator()) ; itr.HasNext(); itr.Move() ) {
-      if(itr.value->HasObservableSideEffect()) {
-        return true;
-      }
-    }
-  }
-  return false;
-}
-
-
 void Expr::Replace( Expr* another ) {
   // 1. check all the operand_list and patch each operands reference
   //    list to be new one
   for( auto itr = ref_list_.GetForwardIterator(); itr.HasNext() ; itr.Move() ) {
     itr.value().id.set_value( another );
   }
-
   // 2. modify *this* if the node is a statement
   if(IsStatement()) {
     auto region = statement_edge().region;
-
     region->RemoveStatement(statement_edge());
-
     region->AddStatement(another);
   }
 }
@@ -164,8 +145,8 @@ Graph::Graph():
   no_write_effect_      ()
 {
   // initialize placeholders
-  no_read_effect_ = NoReadEffect::New(*this);
-  no_write_effect_= NoWriteEffect::New(*this);
+  no_read_effect_ = NoReadEffect ::New(this);
+  no_write_effect_= NoWriteEffect::New(this);
 }
 
 Graph::~Graph() {}

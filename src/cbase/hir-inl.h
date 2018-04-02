@@ -101,30 +101,36 @@ inline bool Expr::IsLeaf() const {
 #undef __ // __
 }
 
-inline bool Expr::IsSideEffectRead() const {
+inline bool Expr::IsMemoryRead() const {
   switch(type()) {
-    case IRTYPE_ARG : case IRTYPE_GGET: case IRTYPE_EFFECT_PHI: case IRTYPE_UGET:
     case IRTYPE_IGET: case IRTYPE_PGET: case IRTYPE_OBJECT_GET: case IRTYPE_LIST_GET:
-    case IRTYPE_NO_READ_EFFECT:
+      return true;
+    case IRTYPE_READ_EFFECT_PHI:
       return true;
     default:
       return false;
   }
 }
 
-inline bool Expr::IsSideEffectWrite() const {
+inline bool Expr::IsMemoryWrite() const {
   switch(type()) {
-    case IRTYPE_GSET:       case IRTYPE_USET:
-    case IRTYPE_ISET:       case IRTPYE_PSET:
-    case IRTYPE_OBJECT_SET: case IRTPYE_LIST_SET:
-    case IRTPYE_NO_WRITE_EFFECT:
+    case IRTYPE_ISET: case IRTYPE_PSET: case IRTYPE_OBJECT_SET: case IRTYPE_LIST_SET:
+      return true;
+    case IRTYPE_WRITE_EFFECT_PHI:
       return true;
     default:
       return false;
   }
 }
 
-inline bool Expr::IsSideEffect() const { return IsSideEffectRead() || IsSideEffectWrite(); }
+inline bool Expr::IsMemoryOp() const { return IsMemoryRead() || IsMemoryWrite(); }
+
+inline bool Expr::IsMemoryNode() const {
+  switch(type()) {
+    case IRTYPE_ARG: case IRTYPE_GGET: case IRTYPE_UGET: case IRTYPE_LIST: case IRTYPE_OBJECT: return true;
+    default: return false;
+  }
+}
 
 inline Arg* Arg::New( Graph* graph , std::uint32_t index ) {
   return graph->zone()->New<Arg>(graph,graph->AssignID(),index);
@@ -180,7 +186,7 @@ inline Expr* NewString( Graph* graph , const char* data , IRInfo* info ) {
   return NewString(graph,str,info);
 }
 
-inline Expr* NewString( Graph* graph , const char* data , std::size_t size , IRInfo* info ) {
+inline Expr* NewString( Graph* graph , const void* data , std::size_t size , IRInfo* info ) {
   auto str = zone::String::New(graph->zone(),static_cast<const char*>(data),size);
   return NewString(graph,str,info);
 }
@@ -417,13 +423,13 @@ inline Phi* Phi::New( Graph* graph , ControlFlow* region , IRInfo* info ) {
 }
 
 inline ReadEffectPhi::ReadEffectPhi( Graph* graph , std::uint32_t id , ControlFlow* region , IRInfo* info ):
-  SideEffectRead(IRTYPE_EFFECT_PHI,id,graph,info),
+  MemoryRead(IRTYPE_READ_EFFECT_PHI,id,graph,info),
   region_ (region)
 {
   region->AddOperand(this);
 }
 
-inline ReadEffectPhi* ReadEffectPhi::New( Graph* graph , SideEffectRead* lhs , SideEffectRead* rhs ,
+inline ReadEffectPhi* ReadEffectPhi::New( Graph* graph , MemoryRead* lhs , MemoryRead* rhs ,
                                                                                ControlFlow* region ,
                                                                                IRInfo* info ) {
   auto ret = graph->zone()->New<ReadEffectPhi>(graph,graph->AssignID(),region,info);
@@ -437,13 +443,13 @@ inline ReadEffectPhi* ReadEffectPhi::New( Graph* graph , ControlFlow* region , I
 }
 
 inline WriteEffectPhi::WriteEffectPhi( Graph* graph , std::uint32_t id , ControlFlow* region  , IRInfo* info ):
-  SideEffectWrite(IRTYPE_EFFECT_PHI,id,graph,info),
+  MemoryWrite(IRTYPE_WRITE_EFFECT_PHI,id,graph,info),
   region_(region)
 {
   region->AddOperand(this);
 }
 
-inline WriteEffectPhi* WriteEffectPhi::New( Graph* graph , SideEffectWrite* lhs , SideEffectWrite* rhs ,
+inline WriteEffectPhi* WriteEffectPhi::New( Graph* graph , MemoryWrite* lhs , MemoryWrite* rhs ,
                                                                                   ControlFlow* region  ,
                                                                                   IRInfo* info ) {
   auto ret = graph->zone()->New<WriteEffectPhi>(graph,graph->AssignID(),region,info);

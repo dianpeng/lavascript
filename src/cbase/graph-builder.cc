@@ -15,6 +15,14 @@ namespace cbase {
 namespace hir    {
 using namespace ::lavascript::interpreter;
 
+GraphBuilder::Environment::Environment( GraphBuilder* gb ):
+  stack_  (),
+  root_   (gb->graph_),
+  upvalue_(),
+  global_ (),
+  gb_     (gb)
+{}
+
 void GraphBuilder::Environment::EnterFunctionScope( const FuncInfo& func ) {
   // resize the stack to have 256 slots for new prototype
   stack_.resize( stack_.size() + interpreter::kRegisterSize );
@@ -35,8 +43,8 @@ void GraphBuilder::Environment::ExitFunctionScope( const FuncInfo& func ) {
   stack_.resize( func.base );
 }
 
-Expr* GraphBuilder::Environment::GetUpValue( std::uint8_t index , const IRInfoProvider& irinfo ) const {
-  lava_debug(NORMAL,lava_verify(index < upvalue_.size()));
+Expr* GraphBuilder::Environment::GetUpValue( std::uint8_t index , const IRInfoProvider& irinfo ) {
+  lava_debug(NORMAL,lava_verify(index < upvalue_.size()););
   auto v = upvalue_[index];
   if(!v)
     return v;
@@ -49,27 +57,27 @@ Expr* GraphBuilder::Environment::GetUpValue( std::uint8_t index , const IRInfoPr
 
 Expr* GraphBuilder::Environment::GetGlobal ( const void* key , std::size_t length ,
                                                                const KeyProvider& key_provider ,
-                                                               const IRInfoProvider& irinfo ) const {
+                                                               const IRInfoProvider& irinfo ) {
   auto itr = std::find(global_.begin(),global_.end(),Str(key,length));
   if(itr != global_.end()) {
     return itr->value;
   } else {
     auto gget = GGet::New(gb_->graph_,key_provider(),irinfo(),gb_->region());
-    *itr = gget;
+    global_.push_back(GlobalVar(key,length,gget));
     return gget;
   }
 }
 
-void GraphBuilder::SetUpValue( std::uint8_t index , Expr* value , const IRInfoProvider& irinfo ) {
+void GraphBuilder::Environment::SetUpValue( std::uint8_t index , Expr* value , const IRInfoProvider& irinfo ) {
   auto uset = USet::New(gb_->graph_,index,gb_->method_index(),value,irinfo());
   gb_->region()->AddStatement(uset);
   upvalue_[index] = value;
 }
 
-void GraphBuilder::SetGlobal( const void* key , std::size_t length , const KeyProvider& key_provider ,
-                                                                     Expr* value,
-                                                                     const IRInfoProvider& irinfo ) {
-  auto gset = GSet::New(gb_->graph_,key_provider(),value,irinfo());
+void GraphBuilder::Environment::SetGlobal( const void* key , std::size_t length , const KeyProvider& key_provider ,
+                                                                                  Expr* value,
+                                                                                  const IRInfoProvider& irinfo ) {
+  auto gset = GSet::New(gb_->graph_,key_provider(),value,irinfo(),gb_->region());
   gb_->region()->AddStatement(gset);
 
   auto itr = std::find(global_.begin(),global_.end(),Str(key,length));
@@ -80,12 +88,18 @@ void GraphBuilder::SetGlobal( const void* key , std::size_t length , const KeyPr
   }
 }
 
-void GraphBuilder::UpdateReadEffect( SideEffectRead* node ) {
-  root_.AddReadEffect(node);
-}
-
-void GraphBuilder::UpdateWriteEffect( SideEffectWrite* node ) {
-  root_.UpdateWriteEffect(node);
+void GraphBuilder::Environment::UpdateNode( Expr* node , Expr* nnode ) {
+  // 1. search against the value stack
+  {
+    auto sz = gb_->func_info().prototype->argument_size() + gb_->func_info().base;
+    for( std::size_t i = 0 ; i < sz ; ++i ) {
+      if(stack_[i] == node) stack_[i] = nnode;
+    }
+  }
+  // 2. search agasint the upvalue stack
+  for( auto& e : upvalue_ ) if(e == node) e = nnode;
+  // 3. search against the global
+  for( auto& e : global_  ) if(e.value == node) e.value = nnode;
 }
 
 /* -------------------------------------------------------------
@@ -140,7 +154,6 @@ GraphBuilder::OSRScope::OSRScope( GraphBuilder* gb , const Handle<Prototype>& pr
                                                      ControlFlow* region ,
                                                      const std::uint32_t* osr_start ):
   gb_(gb) {
-
   // initialize FuncInfo for OSR compilation entry
   FuncInfo temp(proto,region,osr_start);
   // get the loop header information and recursively register all its needed
@@ -233,7 +246,7 @@ Expr* GraphBuilder::NewString( const Str& str , const BytecodeLocation& pc ) {
 }
 
 Expr* GraphBuilder::NewString( const Str& str , IRInfo* info ) {
-  return NewString(graph_,str.data,str.length,info);
+  return ::lavascript::cbase::hir::NewString(graph_,str.data,str.length,info);
 }
 
 Expr* GraphBuilder::NewSSO( std::uint8_t ref , IRInfo* info ) {
@@ -266,6 +279,18 @@ Expr* GraphBuilder::NewBoolean( bool value , const BytecodeLocation& pc ) {
 
 Expr* GraphBuilder::NewBoolean( bool value ) {
   return Boolean::New(graph_,value,NULL);
+}
+
+IRList* GraphBuilder::NewIRList( std::size_t size , IRInfo* info ) {
+  auto ret = IRList::New(graph_,size,info);
+  effect_group_[ret->id()] = NewEffectGroup();
+  return ret;
+}
+
+IRObject* GraphBuilder::NewIRObject( std::size_t size , IRInfo* info ) {
+  auto ret = IRObject::New(graph_,size,info);
+  effect_group_[ret->id()] = NewEffectGroup();
+  return ret;
 }
 
 Expr* GraphBuilder::AddTypeFeedbackIfNeed( const StackSlot& idx ,
@@ -619,29 +644,14 @@ Expr* GraphBuilder::LowerICall( ICall* node ) {
 //
 // ====================================================================
 Expr* GraphBuilder::NewPSet( Expr* object , Expr* key , Expr* value , IRInfo* ir_info ) {
-  // try to fold the object if object is a literal
-  if((auto v = FoldObjectSet(graph_,object,key,value,[=](){ return ir_info; })))
-      return v;
   auto ret = PSet::New(graph_,object,key,value,ir_info,region());
-  // check if this pset node has side effect or not
-  if(object->HasObservableSideEffect()) {
-    // update itself as the new effect node
-    env()->UpdateWriteEffect(ret);
-    // treat it as statement as well
-    region()->AddStatement(ret);
-  }
+  VisitEffectWrite( object , ret );
   return ret;
 }
 
 Expr* GraphBuilder::NewPGet( Expr* object , Expr* key , IRInfo* ir_info ) {
-  // here we *do not* do any folding operations and let the later on pass handle it
-  // and we just simply do a pget node test plus some guard if needed
-  if((auto v = FoldObjectGet(graph_,object,key,[=](){ return ir_info; })))
-    return v;
   auto ret = PGet::New(graph_,object,key,ir_info,region());
-  if(object->HasObservableSideEffect()) {
-    env()->UpdateReadEffect(ret);
-  }
+  VisitEffectRead( object, ret );
   return ret;
 }
 
@@ -651,54 +661,14 @@ Expr* GraphBuilder::NewPGet( Expr* object , Expr* key , IRInfo* ir_info ) {
 //
 // ====================================================================
 Expr* GraphBuilder::NewISet( Expr* object, Expr* index, Expr* value, IRInfo* ir_info ) {
-  if(object->IsIRList() && index->IsFloat64()) {
-    auto iidx = static_cast<std::uint32_t>(index->AsFloat64()->value());
-    auto list = object->AsIRList();
-    if(iidx < list->Size()) {
-      auto new_list = IRList::New(graph_,list->Size(),ir_info);
-      // create a new list
-      std::uint32_t count = 0;
-      for( auto itr(list->operand_list()->GetForwardIterator()) ;
-           itr.HasNext() ; itr.Move() ) {
-        if(iidx != count ) {
-          new_list->AddOperand(itr.value());
-        } else {
-          new_list->AddOperand(value);
-        }
-        ++count;
-      }
-      lava_debug(NORMAL,lava_verify(count == list->operand_list()->size()););
-      return new_list;
-    }
-  } else if(index->IsString()) {
-    auto v = FoldObjectSet(graph_,object,index,value,[=](){ return ir_info; });
-    if(v) return v;
-  }
-
   auto ret = ISet::New(graph_,object,index,value,ir_info,region());
-  if(object->HasObservableSideEffect()) {
-    env()->UpdateWriteEffect(ret);
-    region()->AddStatement(ret);
-  }
+  VisitEffectWrite( object, ret );
   return ret;
 }
 
 Expr* GraphBuilder::NewIGet( Expr* object, Expr* index, IRInfo* ir_info ) {
-  if(object->IsIRList() && index->IsFloat64()) {
-    auto iidx = static_cast<std::uint32_t>(index->AsFloat64()->value());
-    auto list = object->AsIRList();
-    if(iidx < list->Size()) {
-      return list->operand_list()->Index(iidx);
-    }
-  } else if(index->IsString()) {
-    auto v = FoldObjectGet(graph_,object,index,[=](){ return ir_info;});
-    if(v) return v;
-  }
-
   auto ret = IGet::New(graph_,object,index,ir_info,region());
-  if(object->HasObservableSideEffect()) {
-    env()->UpdateReadEffect(ret);
-  }
+  VisitEffectRead( object, ret );
   return ret;
 }
 
@@ -800,7 +770,7 @@ void GraphBuilder::GeneratePhi( ValueStack* dest , const ValueStack& lhs , const
 void GraphBuilder::InsertPhi( Environment* lhs , Environment* rhs , ControlFlow* region , IRInfo* info ) {
   // 1. generate merge for both region's root effect group
   {
-    auto phi = WriteEffectPhi::New(graph_,region,lhs->root_.write_effect(),rhs->root_.write_effect(),info);
+    auto phi = WriteEffectPhi::New(graph_,lhs->root_.write_effect(),rhs->root_.write_effect(),region,info);
     for( auto &e : lhs->root_.read_list() ) phi->AddEffect(e);
     for( auto &e : rhs->root_.read_list() ) phi->AddEffect(e);
     env()->root_.read_list_.clear();
@@ -815,26 +785,27 @@ void GraphBuilder::InsertPhi( Environment* lhs , Environment* rhs , ControlFlow*
     Environment::GlobalMap temp; temp.reserve( lhs->global()->size() );
     // scanning the left hand side global variables
     for( auto &e : *lhs->global() ) {
-      auto itr = std::find(rhs->global()->begin(),rhs->global()->end(),e.key);
-      Node* lnode = NULL;
-      Node* rnode = NULL;
+      auto itr = std::find(rhs->global()->begin(),rhs->global()->end(),e.name);
+      Expr* lnode = NULL;
+      Expr* rnode = NULL;
       if(itr == rhs->global()->end()) {
         lnode = e.value;
-        rnode = GGet::New(graph_,NewString(e.key,info),info,region);
+        rnode = GGet::New(graph_,NewString(e.name,info),info,region);
       } else {
         lnode = e.value;
         rnode = itr->value;
       }
       auto phi = Phi::New(graph_,lnode,rnode,region,info);
       // add it to the temporarily list
-      temp.push_back(phi);
+      temp.push_back(Environment::GlobalVar(e.name,phi));
     }
     // scanning the right hand side global variables
     for( auto &e : *rhs->global() ) {
-      auto itr = std::find(lhs->global()->begin(),lhs->global()->end(),e.key);
+      auto itr = std::find(lhs->global()->begin(),lhs->global()->end(),e.name);
       if(itr == lhs->global()->end()) {
         // add a node when it is not scanned by the lhs
-        temp.push_back(Phi::New(graph_,GGet::New(graph_,NewString(e.key,info),info,region),e.value,region,info));
+        temp.push_back(Environment::GlobalVar(e.name,
+              Phi::New(graph_,GGet::New(graph_,NewString(e.name,info),info,region),e.value,region,info)));
       }
     }
     // use the new global list
@@ -1105,13 +1076,15 @@ void GraphBuilder::GenerateLoopPhi( const BytecodeLocation& pc ) {
       phi->AddOperand(gget);
       // find the exact places of the global variables in globs and then
       // insert the new phi into the places
+      std::uint32_t index = 0;
       {
         auto itr = std::find(env()->global()->begin(),env()->global()->end(),e);
         lava_verify(itr != env()->global()->end());
         itr->value = phi;
+        index = std::distance(env()->global()->begin(),itr);
       }
       // add it back to the tracking phi list for later patching
-      func_info().current_loop().AddPhi(LoopInfo::Global,std::distance(env()->global()->begin(),itr),phi);
+      func_info().current_loop().AddPhi(LoopInfo::GLOBAL,index,phi);
     }
   }
 }
@@ -1131,14 +1104,14 @@ void GraphBuilder::PatchLoopPhi() {
         break;
       case LoopInfo::GLOBAL:
         {
-          auto v = env()->global()->at(e.index).value;
+          auto v = env()->global()->at(e.idx).value;
           lava_debug(NORMAL,lava_verify(phi != v););
           phi->AddOperand(v);
         }
         break;
       default:
         {
-          auto v = env()->upvalue()->at(e.index);
+          auto v = env()->upvalue()->at(e.idx);
           lava_debug(NORMAL,lava_verify(phi != v););
           phi->AddOperand(v);
         }
@@ -1352,8 +1325,7 @@ GraphBuilder::StopReason GraphBuilder::BuildBytecode( BytecodeIterator* itr ) {
       {
         std::uint8_t dest, src;
         itr->GetOperand(&dest,&src);
-        auto node = NewUnary(StackGetSlot(src), Unary::BytecodeToOperator(itr->opcode()) ,
-                                                itr->bytecode_location());
+        auto node = NewUnary(StackGetSlot(src), Unary::BytecodeToOperator(itr->opcode()) , itr->bytecode_location());
         StackSet(dest,node);
       }
       break;
@@ -1666,7 +1638,7 @@ bool GraphBuilder::Build( const Handle<Prototype>& entry , Graph* graph ) {
   // 2. start the basic block building
   {
     // setup the main environment object
-    Environment root_env(graph_);
+    Environment root_env(this);
     BackupEnvironment backup(&root_env,this);
     // enter into the top level function
     FuncScope scope(this,entry,region,0);
@@ -1732,33 +1704,22 @@ void GraphBuilder::SetupOSRLoopCondition( BytecodeIterator* itr ) {
   if(itr->opcode() == BC_FEND1) {
     std::uint8_t a1,a2,a3; std::uint32_t a4;
     itr->GetOperand(&a1,&a2,&a3,&a4);
-
-    auto comparison = NewBinary(StackGetSlot(a1), StackGetSlot(a2),
-                                                  Binary::LT ,
-                                                  itr->bytecode_location());
-
+    auto comparison = NewBinary(StackGetSlot(a1), StackGetSlot(a2), Binary::LT , itr->bytecode_location());
     StackSet(interpreter::kAccRegisterIndex,comparison);
   } else if(itr->opcode() == BC_FEND2) {
     std::uint8_t a1,a2,a3; std::uint32_t a4;
     itr->GetOperand(&a1,&a2,&a3,&a4);
 
     // the addition node will use the PHI node as its left hand side
-    auto addition = NewBinary(StackGetSlot(a1),StackGetSlot(a3),
-                                               Binary::ADD,
-                                               itr->bytecode_location());
+    auto addition = NewBinary(StackGetSlot(a1),StackGetSlot(a3), Binary::ADD, itr->bytecode_location());
     StackSet(a1,addition);
-
-    auto comparison = NewBinary(StackGetSlot(a1),StackGetSlot(a2),
-                                                 Binary::LT,
-                                                 itr->bytecode_location());
-
+    auto comparison = NewBinary(StackGetSlot(a1),StackGetSlot(a2), Binary::LT, itr->bytecode_location());
     StackSet(interpreter::kAccRegisterIndex,comparison);
   } else if(itr->opcode() == BC_FEEND) {
     std::uint8_t a1;
     std::uint16_t pc;
     itr->GetOperand(&a1,&pc);
     ItrNext* comparison = ItrNext::New(graph_,StackGet(a1),NewIRInfo(itr->bytecode_location()),region());
-
     StackSet(a1,comparison);
   } else {
     lava_debug(NORMAL,lava_verify(itr->opcode() == BC_FEVREND););
@@ -1852,7 +1813,7 @@ GraphBuilder::BuildOSRStart( const Handle<Prototype>& entry ,  const std::uint32
   Success* succ = Success::New(graph);
   {
     // set up the value stack/expression stack
-    Environment root_env(graph);
+    Environment root_env(this);
     BackupEnvironment backup(&root_env,this);
     // set up the OSR scope
     OSRScope scope(this,entry,header,pc);
@@ -1890,6 +1851,65 @@ bool GraphBuilder::BuildOSR( const Handle<Prototype>& entry , const std::uint32_
   return BuildOSRStart(entry,osr_start,graph) == STOP_SUCCESS;
 }
 
+// ===============================================================================
+//
+// Effect Analyze
+//
+// ===============================================================================
+void GraphBuilder::VisitEffect( Expr* node , const EffectVisitor& visitor ) {
+  // TODO:: remove recursive version and replace it with explicit stack
+  if(node->IsMemoryNode()) {
+    switch(node->type()) {
+      case IRTYPE_ARG: case IRTYPE_GGET: case IRTYPE_UGET:
+        visitor(node,env()->root());
+        break;
+      case IRTYPE_LIST: case IRTYPE_OBJECT:
+        lava_debug(NORMAL,lava_verify(effect_group_[node->id()]););
+        visitor(node,effect_group_[node->id()]);
+        break;
+      default: lava_die();
+    }
+  } else {
+    // memory read node
+    if(node->IsMemoryRead()) {
+      switch(node->type()) {
+        case IRTYPE_PGET:       VisitEffect(node->AsPGet()->object(),visitor);      break;
+        case IRTYPE_IGET:       VisitEffect(node->AsIGet()->object(),visitor);      break;
+        case IRTYPE_OBJECT_GET: VisitEffect(node->AsObjectGet()->object(),visitor); break;
+        case IRTYPE_LIST_GET:   VisitEffect(node->AsListGet()->object(),visitor);   break;
+        default:                lava_die();
+      }
+    } else if(node->IsPhi()) {
+      // need to visit phi node as well since it may contain sub expression
+      // which is a memory read operation or a memory node
+      for( auto itr(node->operand_list()->GetForwardIterator()); itr.HasNext(); itr.Move() ) {
+        VisitEffect(itr.value(),visitor);
+      }
+    }
+  }
+}
+
+void GraphBuilder::VisitEffectRead( Expr* node , MemoryRead* read ) {
+  VisitEffect(node,[=](Expr* n,EffectGroup* grp) {
+    (void)n;
+    grp->AddReadEffect(read);
+  });
+}
+
+void GraphBuilder::VisitEffectWrite( Expr* node , MemoryWrite* write ) {
+  VisitEffect(node,[=](Expr* n,EffectGroup* grp) {
+    if(n->IsIRList() || n->IsIRObject()) {
+      env()->UpdateNode(n,write);
+    } else {
+      region()->AddStatement(write);
+    }
+    grp->UpdateWriteEffect(write);
+  });
+}
+
+EffectGroup* GraphBuilder::NewEffectGroup() {
+  return effect_group_pool_.New<EffectGroup>(graph_);
+}
 
 } // namespace hir
 } // namespace cbase

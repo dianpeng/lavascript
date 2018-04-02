@@ -250,8 +250,9 @@ class GraphBuilder;
 class ValueRange;
 class Node;
 class Expr;
-class SideEffectWrite;
-class SideEffectRead ;
+class MemoryWrite;
+class MemoryRead ;
+class MemoryNode;
 class ControlFlow;
 
 /**
@@ -533,18 +534,12 @@ class Expr : public Node {
 
  public:
   // check if this expression node has side effect if it is used as operand
-  inline bool IsSideEffectWrite() const;
-  inline bool IsSideEffectRead () const;
-  inline bool IsSideEffect     () const;
+  inline bool IsMemoryWrite() const;
+  inline bool IsMemoryRead () const;
+  inline bool IsMemoryOp     () const;
 
-  // check if this expression node can be observed in other unit or basically
-  // has observable side effect.
-  // The node that has observable side effect are nodes as following :
-  // 1. Arg
-  // 2. UGet
-  // 3. GGet
-  // 4. Phi node that contains any nodes above
-  bool HasObservableSideEffect() const;
+  // check if this expression node is a memory node
+  inline bool IsMemoryNode     () const;
 
   // check if this expression is used by any other expression, basically
   // check whether ref_list is empty or not
@@ -575,14 +570,35 @@ class Expr : public Node {
   StatementEdge  stmt_;
 };
 
-class SideEffect : public Expr {
+// MemoryNode
+// This node represents those nodes that is 1) mutable and 2) stay on heap or potentially
+// stay on heap.
+// 1. Arg
+// 2. GGet
+// 3. UGet
+// 4. IRList
+// 5. IRObject
+//
+// The above nodes are memory node since the mutation on these objects generates a observable
+// side effect which must be serialized. For each operation , we will find its memory node
+// if applicable and then all the operations will be serialized during graph building phase to
+// ensure correct program behavior
+class MemoryNode : public Expr {
  public:
-  SideEffect( IRType type , std::uint32_t id , Graph* g , IRInfo* info ): Expr(type,id,g,info){}
-}
+  MemoryNode( IRType type , std::uint32_t id , Graph* g , IRInfo* info ): Expr(type,id,g,info){}
+};
 
-// SideEffectWrite
+// MemoryOp
+// This node demonstrats those operations which can cause side effect from perspectives of
+// 1) read and 2) write.
+class MemoryOp : public Expr {
+ public:
+  MemoryOp( IRType type , std::uint32_t id , Graph* g , IRInfo* info ): Expr(type,id,g,info){}
+};
+
+// MemoryWrite
 // this node represents all possible memory store operation which essentially
-// can cause observable side effect inside of program. The node that is SideEffectWrite
+// can cause observable side effect inside of program. The node that is MemoryWrite
 // are :
 // 1. USet, this node will have side effect since we don't know its alias situation
 // 2. Arg , same as UGet
@@ -590,25 +606,25 @@ class SideEffect : public Expr {
 //    generate a side effect so it is always ordered
 // 4. ISet/PSet/ObjectSet/ListSet
 // 5. WriteEffectPhi
-class SideEffectWrite : public SideEffect {
+class MemoryWrite : public MemoryOp {
  public:
-  SideEffectWrite( IRType type , std::uint32_t id , Graph* g , IRInfo* info ):
-    SideEffect(type,id,g,info){}
+  MemoryWrite( IRType type , std::uint32_t id , Graph* g , IRInfo* info ):
+    MemoryOp(type,id,g,info){}
 };
 
-// SideEffectRead
+// MemoryRead
 //
 // this node represents all possible memory load operation which needs to depend
 // on certain memory read node and also *be* depended on by other memory write
-// node. The following IR nodes are type of SideEffectRead node :
-// 1. UGet
-// 2. GGet
-// 3. ReadEffectPhi
-// 4. IGet/PGet/ObjectGet/ListGet
-class SideEffectRead : public SideEffect {
+// node. The following IR nodes are type of MemoryRead node :
+// 1. IGet
+// 2. PGet
+// 3. ObjectGet
+// 4. ListGet
+class MemoryRead : public MemoryOp {
  public:
-  SideEffectRead( IRType type , std::uint32_t id , Graph* g , IRInfo* info ):
-    SideEffect(type,id,g,info) {}
+  MemoryRead( IRType type , std::uint32_t id , Graph* g , IRInfo* info ):
+    MemoryOp(type,id,g,info) {}
 };
 
 /* ---------------------------------------------------
@@ -617,13 +633,13 @@ class SideEffectRead : public SideEffect {
  *
  * --------------------------------------------------*/
 
-class Arg : public Expr {
+class Arg : public MemoryNode {
  public:
   inline static Arg* New( Graph* , std::uint32_t );
   std::uint32_t index() const { return index_; }
 
   Arg( Graph* graph , std::uint32_t id , std::uint32_t index ):
-    Expr  (IRTYPE_ARG,id,graph,NULL),
+    MemoryNode (IRTYPE_ARG,id,graph,NULL),
     index_(index)
   {}
 
@@ -731,13 +747,13 @@ class Nil : public Expr {
   LAVA_DISALLOW_COPY_AND_ASSIGN(Nil)
 };
 
-class IRList : public Expr {
+class IRList : public MemoryNode {
  public:
   inline static IRList* New( Graph* , std::size_t size , IRInfo* );
   void Add( Expr* node ) { AddOperand(node); }
   std::size_t Size() const { return operand_list()->size(); }
   IRList( Graph* graph , std::uint32_t id , std::size_t size , IRInfo* info ):
-    Expr  (IRTYPE_LIST,id,graph,info)
+    MemoryNode(IRTYPE_LIST,id,graph,info)
   {
     (void)size; // implicit indicated by the size of operand_list()
   }
@@ -754,8 +770,7 @@ class IRObjectKV : public Expr {
   inline static IRObjectKV* New( Graph* , Expr* , Expr* ,IRInfo* );
   Expr* key  () const { return operand_list()->First(); }
   Expr* value() const { return operand_list()->Last(); }
-  IRObjectKV( Graph* graph , std::uint32_t id , Expr* key , Expr* val ,
-                                                            IRInfo* info ):
+  IRObjectKV( Graph* graph , std::uint32_t id , Expr* key , Expr* val , IRInfo* info ):
     Expr(IRTYPE_OBJECT_KV,id,graph,info)
   {
     AddOperand(key);
@@ -766,7 +781,7 @@ class IRObjectKV : public Expr {
   LAVA_DISALLOW_COPY_AND_ASSIGN(IRObjectKV)
 };
 
-class IRObject : public Expr {
+class IRObject : public MemoryNode {
  public:
   inline static IRObject* New( Graph* , std::size_t size , IRInfo* );
   void Add( Expr* key , Expr* val , IRInfo* info ) {
@@ -774,7 +789,7 @@ class IRObject : public Expr {
   }
   std::size_t Size() const { return operand_list()->size(); }
   IRObject( Graph* graph , std::uint32_t id , std::size_t size , IRInfo* info ):
-    Expr  (IRTYPE_OBJECT,id,graph,info)
+    MemoryNode(IRTYPE_OBJECT,id,graph,info)
   {
     (void)size;
   }
@@ -905,14 +920,14 @@ class Ternary: public Expr {
 // -------------------------------------------------------------------------
 // upvalue get/set
 // -------------------------------------------------------------------------
-class UGet : public SideEffectRead {
+class UGet : public MemoryNode {
  public:
   inline static UGet* New( Graph* , std::uint8_t , std::uint32_t , IRInfo* );
   std::uint8_t index()   const { return index_;  }
   std::uint32_t method() const { return method_; }
 
   UGet( Graph* graph , std::uint32_t id , std::uint8_t index , std::uint32_t method , IRInfo* info ):
-    SideEffectRead (IRTYPE_UGET,id,graph,info),
+    MemoryNode (IRTYPE_UGET,id,graph,info),
     index_ (index),
     method_(method)
   {}
@@ -929,7 +944,7 @@ class UGet : public SideEffectRead {
   LAVA_DISALLOW_COPY_AND_ASSIGN(UGet)
 };
 
-class USet : public SideEffectWrite {
+class USet : public Expr {
  public:
   inline static USet* New( Graph* , std::uint8_t , std::uint32_t , Expr* opr , IRInfo* );
   std::uint32_t method() const { return method_; }
@@ -949,9 +964,9 @@ class USet : public SideEffectWrite {
   }
 
   USet( Graph* graph , std::uint8_t id , std::uint8_t index , std::uint32_t method , Expr* value, IRInfo* info ):
-    SideEffectWrite (IRTYPE_USET,id,graph,info),
-    index_     (index),
-    method_    (method)
+    Expr    (IRTYPE_USET,id,graph,info),
+    index_  (index),
+    method_ (method)
   {
     AddOperand(value);
   }
@@ -963,7 +978,7 @@ class USet : public SideEffectWrite {
 // -------------------------------------------------------------------------
 // property set/get (side effect)
 // -------------------------------------------------------------------------
-class PGet : public SideEffectRead {
+class PGet : public MemoryRead {
  public:
   inline static PGet* New( Graph* , Expr* , Expr* , IRInfo* , ControlFlow* );
   Expr* object() const { return operand_list()->First(); }
@@ -979,14 +994,14 @@ class PGet : public SideEffectRead {
     return false;
   }
   PGet( Graph* graph , std::uint32_t id , Expr* object , Expr* index , IRInfo* info ):
-    SideEffectRead (IRTYPE_PGET,id,graph,info)
+    MemoryRead (IRTYPE_PGET,id,graph,info)
   {
     AddOperand(object);
     AddOperand(index );
   }
  protected:
   PGet( IRType type , Graph* graph , std::uint32_t id , Expr* object , Expr* index  , IRInfo* info ):
-    SideEffectRead(type,id,graph,info)
+    MemoryRead(type,id,graph,info)
   {
     AddOperand(object);
     AddOperand(index );
@@ -996,7 +1011,7 @@ class PGet : public SideEffectRead {
   LAVA_DISALLOW_COPY_AND_ASSIGN(PGet)
 };
 
-class PSet : public SideEffectWrite {
+class PSet : public MemoryWrite {
  public:
   inline static PSet* New( Graph* , Expr* , Expr* , Expr* , IRInfo* , ControlFlow* );
   Expr* object() const { return operand_list()->First(); }
@@ -1017,7 +1032,7 @@ class PSet : public SideEffectWrite {
     return false;
   }
   PSet( Graph* graph , std::uint32_t id , Expr* object , Expr* index , Expr* value , IRInfo* info ):
-    SideEffectWrite(IRTYPE_PSET,id,graph,info)
+    MemoryWrite(IRTYPE_PSET,id,graph,info)
   {
     AddOperand(object);
     AddOperand(index );
@@ -1026,7 +1041,7 @@ class PSet : public SideEffectWrite {
 
  protected:
   PSet(IRType type,Graph* graph,std::uint32_t id,Expr* object,Expr* index,Expr* value,IRInfo* info):
-    SideEffectWrite(type,id,graph,info)
+    MemoryWrite(type,id,graph,info)
   {
     AddOperand(object);
     AddOperand(index );
@@ -1037,14 +1052,14 @@ class PSet : public SideEffectWrite {
   LAVA_DISALLOW_COPY_AND_ASSIGN(PSet)
 };
 
-class IGet : public SideEffectRead {
+class IGet : public MemoryRead {
  public:
   inline static IGet* New( Graph* , Expr* , Expr* , IRInfo* , ControlFlow* );
   Expr* object() const { return operand_list()->First(); }
   Expr* index () const { return operand_list()->Last (); }
 
   IGet( Graph* graph , std::uint32_t id , Expr* object , Expr* index , IRInfo* info ):
-    Expr  (IRTYPE_IGET,id,graph,info)
+    MemoryRead (IRTYPE_IGET,id,graph,info)
   {
     AddOperand(object);
     AddOperand(index );
@@ -1065,7 +1080,7 @@ class IGet : public SideEffectRead {
 
  protected:
   IGet( IRType type , Graph* graph , std::uint32_t id , Expr* object , Expr* index , IRInfo* info ):
-    SideEffectRead(type,id,graph,info)
+    MemoryRead(type,id,graph,info)
   {
     AddOperand(object);
     AddOperand(index );
@@ -1075,7 +1090,7 @@ class IGet : public SideEffectRead {
   LAVA_DISALLOW_COPY_AND_ASSIGN(IGet)
 };
 
-class ISet : public SideEffectWrite {
+class ISet : public MemoryWrite {
  public:
   inline static ISet* New( Graph* , Expr* , Expr* , Expr* , IRInfo* , ControlFlow* );
   Expr* object() const { return operand_list()->First(); }
@@ -1097,7 +1112,7 @@ class ISet : public SideEffectWrite {
   }
 
   ISet( Graph* graph , std::uint32_t id , Expr* object , Expr* index , Expr* value , IRInfo* info ):
-    SideEffectWrite(IRTYPE_ISET,id,graph,info)
+    MemoryWrite(IRTYPE_ISET,id,graph,info)
   {
     AddOperand(object);
     AddOperand(index );
@@ -1106,7 +1121,7 @@ class ISet : public SideEffectWrite {
 
  protected:
   ISet(IRType type,Graph* graph,std::uint32_t id,Expr* object,Expr* index,Expr* value,IRInfo* info):
-    SideEffectWrite(type,id,graph,info)
+    MemoryWrite(type,id,graph,info)
   {
     AddOperand(object);
     AddOperand(index );
@@ -1120,13 +1135,13 @@ class ISet : public SideEffectWrite {
 // -------------------------------------------------------------------------
 // global set/get (side effect)
 // -------------------------------------------------------------------------
-class GGet : public SideEffectRead {
+class GGet : public MemoryNode {
  public:
   inline static GGet* New( Graph* , Expr* , IRInfo* , ControlFlow* );
   Expr* key() const { return operand_list()->First(); }
 
   GGet( Graph* graph , std::uint32_t id , Expr* name , IRInfo* info ):
-    SideEffectRead (IRTYPE_GGET,id,graph,info)
+    MemoryNode (IRTYPE_GGET,id,graph,info)
   {
     AddOperand(name);
   }
@@ -1135,14 +1150,14 @@ class GGet : public SideEffectRead {
   LAVA_DISALLOW_COPY_AND_ASSIGN(GGet)
 };
 
-class GSet : public SideEffectWrite {
+class GSet : public Expr {
  public:
   inline static GSet* New( Graph* , Expr* key , Expr* value , IRInfo* , ControlFlow* );
   Expr* key () const { return operand_list()->First(); }
   Expr* value()const { return operand_list()->Last() ; }
 
   GSet( Graph* graph , std::uint32_t id , Expr* key , Expr* value , IRInfo* info ):
-    SideEffectWrite(IRTYPE_GSET,id,graph,info)
+    Expr(IRTYPE_GSET,id,graph,info)
   {
     AddOperand(key);
     AddOperand(value);
@@ -1273,10 +1288,10 @@ class Phi : public Expr {
 // A phi node that is used to merge effect right after the control flow. It
 // will only be used inside of some expression's effect list
 // -------------------------------------------------------------------------
-class ReadEffectPhi : public SideEffectRead {
+class ReadEffectPhi : public MemoryRead {
  public:
   inline static ReadEffectPhi* New( Graph* , ControlFlow* , IRInfo* );
-  inline static ReadEffectPhi* New( Graph* , SideEffectRead* , SideEffectRead* , ControlFlow* , IRInfo* );
+  inline static ReadEffectPhi* New( Graph* , MemoryRead* , MemoryRead* , ControlFlow* , IRInfo* );
   ControlFlow* region() const { return region_; }
   inline ReadEffectPhi( Graph* , std::uint32_t , ControlFlow* , IRInfo* );
  private:
@@ -1284,10 +1299,10 @@ class ReadEffectPhi : public SideEffectRead {
   LAVA_DISALLOW_COPY_AND_ASSIGN(ReadEffectPhi);
 };
 
-class WriteEffectPhi : public SideEffectWrite {
+class WriteEffectPhi : public MemoryWrite {
  public:
   inline static WriteEffectPhi* New( Graph* , ControlFlow* , IRInfo* );
-  inline static WriteEffectPhi* New( Graph* , SideEffectWrite* , SideEffectWrite* , ControlFlow* , IRInfo* );
+  inline static WriteEffectPhi* New( Graph* , MemoryWrite* , MemoryWrite* , ControlFlow* , IRInfo* );
   ControlFlow* region() const { return region_; }
   inline WriteEffectPhi( Graph* , std::uint32_t , ControlFlow* , IRInfo* );
  private:
@@ -1296,18 +1311,18 @@ class WriteEffectPhi : public SideEffectWrite {
 };
 
 // placeholder for empty read/write effect to avoid checking NULL pointer
-class NoReadEffect: public SideEffectRead {
+class NoReadEffect: public MemoryRead {
  public:
   inline static NoReadEffect* New( Graph* );
-  NoReadEffect( Graph* graph , std::uint32_t id ): SideEffectRead(IRTYPE_NO_READ_EFFECT,id,graph,NULL) {}
+  NoReadEffect( Graph* graph , std::uint32_t id ): MemoryRead(IRTYPE_NO_READ_EFFECT,id,graph,NULL) {}
  private:
   LAVA_DISALLOW_COPY_AND_ASSIGN(NoReadEffect);
 };
 
-class NoWriteEffect: public SideEffectWrite {
+class NoWriteEffect: public MemoryWrite {
  public:
   inline static NoWriteEffect* New( Graph* );
-  NoWriteEffect( Graph* graph , std::uint32_t id ): SideEffectWrite(IRTYPE_NO_WRITE_EFFECT,id,graph,NULL) {}
+  NoWriteEffect( Graph* graph , std::uint32_t id ): MemoryWrite(IRTYPE_NO_WRITE_EFFECT,id,graph,NULL) {}
  private:
   LAVA_DISALLOW_COPY_AND_ASSIGN(NoWriteEffect);
 };
@@ -1335,27 +1350,21 @@ class Call : public Expr {
 // intrinsic function call
 class ICall : public Expr {
  public:
-  inline static ICall* New( Graph* , interpreter::IntrinsicCall , bool tail ,
-                                                                  IRInfo* );
+  inline static ICall* New( Graph* , interpreter::IntrinsicCall , bool tail , IRInfo* );
   // add argument back to the ICall's argument list
   void AddArgument( Expr* expr ) {
     lava_debug(NORMAL,lava_verify(
           operand_list()->size() < interpreter::GetIntrinsicCallArgumentSize(ic_)););
-
     AddOperand(expr);
   }
-
   Expr* GetArgument( std::uint8_t arg ) {
     lava_debug(NORMAL,lava_verify(arg < operand_list()->size()););
     return operand_list()->Index(arg);
   }
-
   // intrinsic call method index
   interpreter::IntrinsicCall ic() const { return ic_; }
-
   // whether this call is a tail call
   bool tail_call() const { return tail_call_; }
-
   // Global value numbering
   virtual std::uint64_t GVNHash() const;
   virtual bool Equal( const Expr* ) const;
@@ -1365,11 +1374,9 @@ class ICall : public Expr {
     ic_ (ic),
     tail_call_(tail)
   {}
-
  private:
   interpreter::IntrinsicCall ic_;
   bool tail_call_;
-
   LAVA_DISALLOW_COPY_AND_ASSIGN(ICall)
 };
 
@@ -1383,28 +1390,22 @@ class ICall : public Expr {
 class Projection : public Expr {
  public:
   inline static Projection* New( Graph* , Expr* , std::uint32_t index , IRInfo* );
-
   Expr* operand() const { return operand_list()->First(); }
-
   // a specific value to indicate which part of the input operand
   // needs to be projected
   std::uint32_t index() const { return index_; }
-
   Projection( Graph* graph , std::uint32_t id , Expr* operand , std::uint32_t index , IRInfo* info ):
     Expr  (IRTYPE_PROJECTION,id,graph,info),
     index_(index)
   {
     AddOperand(operand);
   }
-
   virtual std::uint64_t GVNHash() const {
     return GVNHash1(type_name(),index());
   }
-
   virtual bool Equal( const Expr* that ) const {
     return that->IsProjection() && (that->AsProjection()->index() == index());
   }
-
  private:
   std::uint32_t index_;
   LAVA_DISALLOW_COPY_AND_ASSIGN(Projection)
@@ -1413,15 +1414,12 @@ class Projection : public Expr {
 class InitCls : public Expr {
  public:
   inline static InitCls* New( Graph* , Expr* , IRInfo* );
-
   InitCls( Graph* graph , std::uint32_t id , Expr* key , IRInfo* info ):
     Expr (IRTYPE_INIT_CLS,id,graph,info)
   {
     AddOperand(key);
   }
-
   Expr* key() const { return operand_list()->First(); }
-
  private:
   LAVA_DISALLOW_COPY_AND_ASSIGN(InitCls)
 };

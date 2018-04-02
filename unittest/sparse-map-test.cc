@@ -1,11 +1,10 @@
 #include <src/trace.h>
-#include <src/cbase/sparse-map.h>
+#include <src/sparse-map.h>
 #include <gtest/gtest.h>
 #include <iostream>
 #include <cassert>
 
 namespace lavascript {
-namespace cbase      {
 
 TEST(LinearList,Basic) {
   {
@@ -171,7 +170,6 @@ TEST(SparseMap,Basic) {
   }
 }
 
-} // namespace cbase
 } // namespace lavascript
 
 int main( int argc, char* argv[] ) {

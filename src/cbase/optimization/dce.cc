@@ -1,7 +1,5 @@
 #include "dce.h"
-
 #include "src/cbase/dominators.h"
-#include "src/cbase/hir-helper.h"
 #include "src/cbase/hir-visitor.h"
 
 #include <vector>

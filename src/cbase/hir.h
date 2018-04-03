@@ -610,6 +610,12 @@ class MemoryWrite : public MemoryOp {
  public:
   MemoryWrite( IRType type , std::uint32_t id , Graph* g , IRInfo* info ):
     MemoryOp(type,id,g,info){}
+
+  // Function return where the memory will be written to
+  virtual Expr* Memory() const = 0;
+
+  // Function return what value will be written
+  virtual Expr* Value() const = 0;
 };
 
 // MemoryRead
@@ -625,6 +631,9 @@ class MemoryRead : public MemoryOp {
  public:
   MemoryRead( IRType type , std::uint32_t id , Graph* g , IRInfo* info ):
     MemoryOp(type,id,g,info) {}
+
+  // Function return which memory will be readed from
+  virtual Expr* Memory() const = 0;
 };
 
 /* ---------------------------------------------------
@@ -983,6 +992,8 @@ class PGet : public MemoryRead {
   inline static PGet* New( Graph* , Expr* , Expr* , IRInfo* , ControlFlow* );
   Expr* object() const { return operand_list()->First(); }
   Expr* key   () const { return operand_list()->Last (); }
+  virtual Expr* Memory() const { return object(); }
+
   virtual std::uint64_t GVNHash() const {
     return GVNHash2(type_name(),object()->GVNHash(),key()->GVNHash());
   }
@@ -1017,6 +1028,10 @@ class PSet : public MemoryWrite {
   Expr* object() const { return operand_list()->First(); }
   Expr* key   () const { return operand_list()->Index(1);}
   Expr* value () const { return operand_list()->Last (); }
+
+  virtual Expr* Memory() const { return object(); }
+  virtual Expr* Value () const { return value();  }
+ public:
   virtual std::uint64_t GVNHash() const {
     return GVNHash3(type_name(),object()->GVNHash(),
                                 key()->GVNHash(),
@@ -1057,6 +1072,7 @@ class IGet : public MemoryRead {
   inline static IGet* New( Graph* , Expr* , Expr* , IRInfo* , ControlFlow* );
   Expr* object() const { return operand_list()->First(); }
   Expr* index () const { return operand_list()->Last (); }
+  virtual Expr* Memory() const { return object(); }
 
   IGet( Graph* graph , std::uint32_t id , Expr* object , Expr* index , IRInfo* info ):
     MemoryRead (IRTYPE_IGET,id,graph,info)
@@ -1096,6 +1112,9 @@ class ISet : public MemoryWrite {
   Expr* object() const { return operand_list()->First(); }
   Expr* index () const { return operand_list()->Index(1);}
   Expr* value () const { return operand_list()->Last (); }
+  virtual Expr* Memory() const { return object(); }
+  virtual Expr* Value () const { return value() ; }
+
   virtual std::uint64_t GVNHash() const {
     return GVNHash3(type_name(),object()->GVNHash(),
                                 index ()->GVNHash(),
@@ -1287,8 +1306,12 @@ class Phi : public Expr {
 //
 // A phi node that is used to merge effect right after the control flow. It
 // will only be used inside of some expression's effect list
+//
+// NOTES: they are not inherited from MemoryXXX node but directly from Expr
+//        and they are not treated as MemoryOp since it is *only* used in
+//        effect dependency list
 // -------------------------------------------------------------------------
-class ReadEffectPhi : public MemoryRead {
+class ReadEffectPhi : public Expr {
  public:
   inline static ReadEffectPhi* New( Graph* , ControlFlow* , IRInfo* );
   inline static ReadEffectPhi* New( Graph* , MemoryRead* , MemoryRead* , ControlFlow* , IRInfo* );
@@ -1299,7 +1322,7 @@ class ReadEffectPhi : public MemoryRead {
   LAVA_DISALLOW_COPY_AND_ASSIGN(ReadEffectPhi);
 };
 
-class WriteEffectPhi : public MemoryWrite {
+class WriteEffectPhi : public Expr {
  public:
   inline static WriteEffectPhi* New( Graph* , ControlFlow* , IRInfo* );
   inline static WriteEffectPhi* New( Graph* , MemoryWrite* , MemoryWrite* , ControlFlow* , IRInfo* );
@@ -1315,6 +1338,9 @@ class NoReadEffect: public MemoryRead {
  public:
   inline static NoReadEffect* New( Graph* );
   NoReadEffect( Graph* graph , std::uint32_t id ): MemoryRead(IRTYPE_NO_READ_EFFECT,id,graph,NULL) {}
+
+  virtual Expr* Memory() const { lava_die(); return NULL; }
+  virtual Expr* Value () const { lava_die(); return NULL; }
  private:
   LAVA_DISALLOW_COPY_AND_ASSIGN(NoReadEffect);
 };
@@ -1323,6 +1349,9 @@ class NoWriteEffect: public MemoryWrite {
  public:
   inline static NoWriteEffect* New( Graph* );
   NoWriteEffect( Graph* graph , std::uint32_t id ): MemoryWrite(IRTYPE_NO_WRITE_EFFECT,id,graph,NULL) {}
+
+  virtual Expr* Memory() const { lava_die(); return NULL; }
+  virtual Expr* Value () const { lava_die(); return NULL; }
  private:
   LAVA_DISALLOW_COPY_AND_ASSIGN(NoWriteEffect);
 };

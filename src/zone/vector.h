@@ -159,6 +159,19 @@ class Vector : ZoneObject {
   LAVA_DISALLOW_COPY_AND_ASSIGN(Vector);
 };
 
+// An OOLVector that is based on Zone object
+template< typename T > class OOLVector : public Vector<T> {
+ public:
+  OOLVector( Zone* zone , std::size_t size = 0 ): Vector<T>(zone,size) {}
+  template< typename IDX > T& Get( Zone* zone , const IDX& idx ) {
+    if(size() <= idx) Resize(zone,static_cast<std::size_t>(idx)+1);
+    return Index(static_cast<int>(idx));
+  }
+  template< typename IDX > const T& Get( Zone* zone , const IDX& idx ) const {
+    return const_cast<OOLVector*>(this)->Get(zone,idx);
+  }
+};
+
 template< typename T > Vector<T>::Vector() :
   ptr_(NULL),
   size_(0),

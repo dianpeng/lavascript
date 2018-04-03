@@ -1383,14 +1383,14 @@ GraphBuilder::StopReason GraphBuilder::BuildBytecode( BytecodeIterator* itr ) {
       {
         std::uint8_t a1;
         itr->GetOperand(&a1);
-        StackSet(a1,IRList::New(graph_,0,NewIRInfo(itr->bytecode_location())));
+        StackSet(a1,NewIRList(0,NewIRInfo(itr->bytecode_location())));
       }
       break;
     case BC_LOADLIST1:
       {
         std::uint8_t a1,a2;
         itr->GetOperand(&a1,&a2);
-        IRList* list = IRList::New(graph_,1,NewIRInfo(itr->bytecode_location()));
+        auto list = NewIRList(0,NewIRInfo(itr->bytecode_location()));
         list->Add(StackGet(a2));
         StackSet(a1,list);
       }
@@ -1399,7 +1399,7 @@ GraphBuilder::StopReason GraphBuilder::BuildBytecode( BytecodeIterator* itr ) {
       {
         std::uint8_t a1,a2,a3;
         itr->GetOperand(&a1,&a2,&a3);
-        IRList* list = IRList::New(graph_,2,NewIRInfo(itr->bytecode_location()));
+        auto list = NewIRList(0,NewIRInfo(itr->bytecode_location()));
         list->Add(StackGet(a2));
         list->Add(StackGet(a3));
         StackSet(a1,list);
@@ -1409,7 +1409,7 @@ GraphBuilder::StopReason GraphBuilder::BuildBytecode( BytecodeIterator* itr ) {
       {
         std::uint8_t a1,a2;
         itr->GetOperand(&a1,&a2);
-        IRList* list = IRList::New(graph_,a2,NewIRInfo(itr->bytecode_location()));
+        auto list = NewIRList(a2,NewIRInfo(itr->bytecode_location()));
         StackSet(a1,list);
       }
       break;
@@ -1428,7 +1428,7 @@ GraphBuilder::StopReason GraphBuilder::BuildBytecode( BytecodeIterator* itr ) {
       {
         std::uint8_t a1;
         itr->GetOperand(&a1);
-        StackSet(a1,IRObject::New(graph_,0,NewIRInfo(itr->bytecode_location())));
+        StackSet(a1,NewIRObject(0,NewIRInfo(itr->bytecode_location())));
       }
       break;
     case BC_LOADOBJ1:
@@ -1436,7 +1436,7 @@ GraphBuilder::StopReason GraphBuilder::BuildBytecode( BytecodeIterator* itr ) {
         std::uint8_t a1,a2,a3;
         auto ir_info = NewIRInfo(itr->bytecode_location());
         itr->GetOperand(&a1,&a2,&a3);
-        IRObject* obj = IRObject::New(graph_,1,ir_info);
+        auto obj = NewIRObject(1,ir_info);
         obj->Add(StackGet(a2),StackGet(a3),ir_info);
         StackSet(a1,obj);
       }
@@ -1445,7 +1445,7 @@ GraphBuilder::StopReason GraphBuilder::BuildBytecode( BytecodeIterator* itr ) {
       {
         std::uint8_t a1,a2;
         itr->GetOperand(&a1,&a2);
-        StackSet(a1,IRObject::New(graph_,a2,NewIRInfo(itr->bytecode_location())));
+        StackSet(a1,NewIRObject(a2,NewIRInfo(itr->bytecode_location())));
       }
       break;
     case BC_ADDOBJ:
@@ -1858,12 +1858,13 @@ bool GraphBuilder::BuildOSR( const Handle<Prototype>& entry , const std::uint32_
 // ===============================================================================
 void GraphBuilder::VisitEffect( Expr* node , const EffectVisitor& visitor ) {
   // TODO:: remove recursive version and replace it with explicit stack
-  if(node->IsMemoryNode()) {
+  if(node->IsMemoryNode() || node->IsMemoryWrite()) {
     switch(node->type()) {
       case IRTYPE_ARG: case IRTYPE_GGET: case IRTYPE_UGET:
         visitor(node,env()->root());
         break;
-      case IRTYPE_LIST: case IRTYPE_OBJECT:
+      case IRTYPE_LIST: case IRTYPE_OBJECT:     case IRTYPE_PSET:
+      case IRTYPE_ISET: case IRTYPE_OBJECT_SET: case IRTYPE_LIST_SET:
         lava_debug(NORMAL,lava_verify(effect_group_[node->id()]););
         visitor(node,effect_group_[node->id()]);
         break;
@@ -1871,12 +1872,17 @@ void GraphBuilder::VisitEffect( Expr* node , const EffectVisitor& visitor ) {
     }
   } else {
     // memory read node
-    if(node->IsMemoryRead()) {
+    if(node->IsMemoryOp()) {
       switch(node->type()) {
         case IRTYPE_PGET:       VisitEffect(node->AsPGet()->object(),visitor);      break;
         case IRTYPE_IGET:       VisitEffect(node->AsIGet()->object(),visitor);      break;
         case IRTYPE_OBJECT_GET: VisitEffect(node->AsObjectGet()->object(),visitor); break;
         case IRTYPE_LIST_GET:   VisitEffect(node->AsListGet()->object(),visitor);   break;
+
+        case IRTYPE_PSET:       VisitEffect(node->AsPSet()->object(),visitor);      break;
+        case IRTYPE_ISET:       VisitEffect(node->AsISet()->object(),visitor);      break;
+        case IRTYPE_OBJECT_SET: VisitEffect(node->AsObjectSet()->object(),visitor); break;
+        case IRTYPE_LIST_SET:   VisitEffect(node->AsListSet()->object(),visitor);   break;
         default:                lava_die();
       }
     } else if(node->IsPhi()) {
@@ -1898,17 +1904,16 @@ void GraphBuilder::VisitEffectRead( Expr* node , MemoryRead* read ) {
 
 void GraphBuilder::VisitEffectWrite( Expr* node , MemoryWrite* write ) {
   VisitEffect(node,[=](Expr* n,EffectGroup* grp) {
-    if(n->IsIRList() || n->IsIRObject()) {
-      env()->UpdateNode(n,write);
-    } else {
-      region()->AddStatement(write);
-    }
+    region()->AddStatement(write);
     grp->UpdateWriteEffect(write);
   });
 }
 
-EffectGroup* GraphBuilder::NewEffectGroup() {
-  return effect_group_pool_.New<EffectGroup>(graph_);
+GraphBuilder::EffectGroup* GraphBuilder::NewEffectGroup( MemoryWrite* write ) {
+  if(!write)
+    return temp_zone_.New<EffectGroup>(graph_);
+  else
+    return temp_zone_.New<EffectGroup>(write);
 }
 
 } // namespace hir

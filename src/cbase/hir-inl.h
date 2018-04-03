@@ -105,7 +105,7 @@ inline bool Expr::IsMemoryRead() const {
   switch(type()) {
     case IRTYPE_IGET: case IRTYPE_PGET: case IRTYPE_OBJECT_GET: case IRTYPE_LIST_GET:
       return true;
-    case IRTYPE_READ_EFFECT_PHI:
+    case IRTYPE_NO_READ_EFFECT:
       return true;
     default:
       return false;
@@ -116,7 +116,7 @@ inline bool Expr::IsMemoryWrite() const {
   switch(type()) {
     case IRTYPE_ISET: case IRTYPE_PSET: case IRTYPE_OBJECT_SET: case IRTYPE_LIST_SET:
       return true;
-    case IRTYPE_WRITE_EFFECT_PHI:
+    case IRTYPE_NO_WRITE_EFFECT:
       return true;
     default:
       return false;
@@ -423,15 +423,15 @@ inline Phi* Phi::New( Graph* graph , ControlFlow* region , IRInfo* info ) {
 }
 
 inline ReadEffectPhi::ReadEffectPhi( Graph* graph , std::uint32_t id , ControlFlow* region , IRInfo* info ):
-  MemoryRead(IRTYPE_READ_EFFECT_PHI,id,graph,info),
+  Expr(IRTYPE_READ_EFFECT_PHI,id,graph,info),
   region_ (region)
 {
   region->AddOperand(this);
 }
 
 inline ReadEffectPhi* ReadEffectPhi::New( Graph* graph , MemoryRead* lhs , MemoryRead* rhs ,
-                                                                               ControlFlow* region ,
-                                                                               IRInfo* info ) {
+                                                                           ControlFlow* region ,
+                                                                           IRInfo* info ) {
   auto ret = graph->zone()->New<ReadEffectPhi>(graph,graph->AssignID(),region,info);
   ret->AddOperand(lhs);
   ret->AddOperand(rhs);
@@ -443,15 +443,15 @@ inline ReadEffectPhi* ReadEffectPhi::New( Graph* graph , ControlFlow* region , I
 }
 
 inline WriteEffectPhi::WriteEffectPhi( Graph* graph , std::uint32_t id , ControlFlow* region  , IRInfo* info ):
-  MemoryWrite(IRTYPE_WRITE_EFFECT_PHI,id,graph,info),
+  Expr(IRTYPE_WRITE_EFFECT_PHI,id,graph,info),
   region_(region)
 {
   region->AddOperand(this);
 }
 
 inline WriteEffectPhi* WriteEffectPhi::New( Graph* graph , MemoryWrite* lhs , MemoryWrite* rhs ,
-                                                                                  ControlFlow* region  ,
-                                                                                  IRInfo* info ) {
+                                                                              ControlFlow* region  ,
+                                                                              IRInfo* info ) {
   auto ret = graph->zone()->New<WriteEffectPhi>(graph,graph->AssignID(),region,info);
   ret->AddOperand(lhs);
   ret->AddOperand(rhs);

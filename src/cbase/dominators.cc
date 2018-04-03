@@ -1,6 +1,6 @@
 #include "dominators.h"
 #include "hir.h"
-#include "ool-vector.h"
+#include "src/ool-vector.h"
 
 #include <sstream>
 #include <utility>
@@ -10,7 +10,7 @@ namespace lavascript {
 namespace cbase      {
 namespace hir        {
 
-using ::lavascript::cbase::OOLVector;
+using ::lavascript::OOLVector;
 
 void Dominators::AddSet( DominatorSet* set , ControlFlow* node ) const {
   auto itr = std::upper_bound(set->begin(),set->end(),node);

@@ -61,7 +61,8 @@ class GraphBuilder {
   // for write after write we don't need to track and read is always free to reschedule.
   class EffectGroup {
    public:
-    EffectGroup( Graph* g ): write_effect_(g->no_write_effect()) , read_list_() {}
+    EffectGroup( Graph* g       ): write_effect_(g->no_write_effect()) , read_list_() {}
+    EffectGroup( MemoryWrite* w ): write_effect_(w)                    , read_list_() {}
     // current write_effect node
     MemoryWrite* write_effect() const { return write_effect_; }
     // add a read effect , does correct side effect dependency
@@ -71,7 +72,7 @@ class GraphBuilder {
     // list of read happened at this point
     const std::vector<MemoryRead*>& read_list() const { return read_list_; }
    private:
-    MemoryWrite* write_effect_;          // an effect node indicates the previous write
+    Expr* write_effect_;                 // an effect node indicates the previous write
     std::vector<MemoryRead*> read_list_; // list of read happend *after* the write_effect_ issued
 
     friend class GraphBuilder;
@@ -114,7 +115,7 @@ class GraphBuilder {
     UpValueVector*   upvalue()  { return &upvalue_;}
     GlobalMap*       global()   { return &global_; }
     // update a node appear in the environment with another node
-    void UpdateNode        ( Expr* , Expr* );
+    void UpdateNode  ( Expr* , Expr* );
    private:
     ValueStack stack_;          // register stack
     EffectGroup root_;          // root's unknown effect tracking region
@@ -399,7 +400,7 @@ class GraphBuilder {
   void VisitEffectRead ( Expr* node , MemoryRead* );
   void VisitEffectWrite( Expr* node , MemoryWrite*);
   // New a new effect group object inside of our internal zone object
-  EffectGroup* NewEffectGroup();
+  EffectGroup* NewEffectGroup( MemoryWrite* op = NULL );
  private:
   zone::Zone*             zone_;
   Handle<Script>          script_;
@@ -411,10 +412,8 @@ class GraphBuilder {
   const TypeTrace&        type_trace_;
   // All tracked effect group except the root effect group
   OOLVector<EffectGroup*> effect_group_;
-  // this zone is used to allocate effect group during graph building phase
-  // TODO:: have a temporary zone and replace std::xxx with wrapper around
-  //        temporary zone object
-  zone::Zone              effect_group_pool_;
+  // This zone is used for other transient memory costs during graph construction
+  zone::Zone              temp_zone_;
 
  private:
   class OSRScope ;
@@ -476,7 +475,7 @@ inline GraphBuilder::GraphBuilder( const Handle<Script>& script , const TypeTrac
   func_info_        (),
   type_trace_       (tt),
   effect_group_     (),
-  effect_group_pool_()
+  temp_zone_        ()
 {}
 
 inline void GraphBuilder::FuncInfo::EnterLoop( const std::uint32_t* pc ) {

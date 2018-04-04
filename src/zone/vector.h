@@ -73,16 +73,12 @@ class Vector : ZoneObject {
   Vector();
   Vector( Zone* , std::size_t size );
   Vector( Zone* , const Vector& );
-
   static Vector* New( Zone* zone )
   { return ::new (zone->Malloc<Vector>()) Vector(); }
-
   static Vector* New( Zone* zone , std::size_t length )
   { return ::new (zone->Malloc<Vector>()) Vector(zone,length); }
-
   static Vector* New( Zone* zone , const Vector& that )
   { return ::new (zone->Malloc<Vector>()) Vector(zone,that); }
-
  public:
   std::size_t size() const { return size_; }
   std::size_t capacity() const { return capacity_; }
@@ -159,24 +155,43 @@ class Vector : ZoneObject {
   LAVA_DISALLOW_COPY_AND_ASSIGN(Vector);
 };
 
-// An OOLVector that is based on Zone object
-template< typename T > class OOLVector : public Vector<T> {
+// ===============================================================================
+// OOLVector
+
+// A default enlarge policy. basically whenever we need to enlarge the array
+// size, we multiply by 2
+template< typename T >
+struct OOLVectorDefaultEnlargePolicy {
+ public:
+  // return enlarged size number
+  T GetSize( const T& value ) { auto idx = value ? value : 1 ; return idx*2; }
+};
+
+// A vector that will automatically enlarge array when an random index is provided.
+// Used for helping node tracking and construction
+template< typename T , typename Policy = OOLVectorDefaultEnlargePolicy<T>>
+class OOLVector : public Vector<T> {
  public:
   OOLVector( Zone* zone , std::size_t size = 0 ): Vector<T>(zone,size) {}
   template< typename IDX > T& Get( Zone* zone , const IDX& idx ) {
-    if(size() <= idx) Resize(zone,static_cast<std::size_t>(idx)+1);
+    if(size() <= idx) Resize(zone,Policy().GetSize(idx));
     return Index(static_cast<int>(idx));
   }
   template< typename IDX > const T& Get( Zone* zone , const IDX& idx ) const {
     return const_cast<OOLVector*>(this)->Get(zone,idx);
   }
+  template< typename IDX > void Set( Zone* zone , const IDX& idx , const T& val ) {
+    if(size() <= idx) Resize(zone,Policy().GetSize(idx));
+    Index(static_cast<int>(idx)) = val;
+  }
 };
 
-template< typename T > Vector<T>::Vector() :
-  ptr_(NULL),
-  size_(0),
-  capacity_(0)
-{}
+// =============================================================================
+//
+// Function definition
+//
+// =============================================================================
+template< typename T > Vector<T>::Vector() : ptr_(NULL), size_(0), capacity_(0) {}
 
 template< typename T > Vector<T>::Vector( Zone* zone , std::size_t size ):
   ptr_(NULL),

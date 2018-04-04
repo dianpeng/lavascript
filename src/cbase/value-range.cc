@@ -92,8 +92,7 @@ int Float64ValueRange::Range::Test( const Range& range ) const {
   }
 }
 
-int Float64ValueRange::Scan( const Range& range , std::int64_t* lower ,
-                                                  std::int64_t* upper ) const {
+int Float64ValueRange::Scan( const Range& range , std::int64_t* lower , std::int64_t* upper ) const {
   std::int64_t start = -1;
   std::int64_t end   = -1;
   int  rcode = -1;
@@ -231,18 +230,15 @@ void Float64ValueRange::UnionRange( const Range& range ) {
     std::int64_t lower, upper;
     auto ret = Scan(range,&lower,&upper);
     std::int64_t modify_pos;
-
     switch(ret) {
       case ValueRange::SAME:
       case ValueRange::INCLUDE:
         lava_debug(NORMAL,lava_verify(lower == upper-1););
         break;
-
       case ValueRange::REXCLUDE:
         lava_debug(NORMAL,lava_verify(lower == upper););
         modify_pos = sets_.Insert(zone_,lower,range).cursor();
         break;
-
       case ValueRange::LEXCLUDE:
         lava_debug(NORMAL,lava_verify(lower == upper););
         lava_debug(NORMAL,lava_verify(lower == static_cast<int>(sets_.size())););
@@ -262,10 +258,7 @@ void Float64ValueRange::UnionRange( const Range& range ) {
 
       default: lava_die(); break;
     }
-
-    if(ret == ValueRange::REXCLUDE ||
-       ret == ValueRange::LEXCLUDE ||
-       ret == ValueRange::OVERLAP) {
+    if(ret == ValueRange::REXCLUDE || ret == ValueRange::LEXCLUDE || ret == ValueRange::OVERLAP) {
       Merge(modify_pos);
     }
   }

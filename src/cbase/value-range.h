@@ -115,7 +115,6 @@ class UnknownValueRange : public ValueRange {
   UnknownValueRange(): ValueRange( UNKNOWN_VALUE_RANGE ) {}
 };
 
-
 // Float64 value range object represents value range with type float64
 class Float64ValueRange : public ValueRange {
  static const std::size_t kInitSize = 8;
@@ -142,19 +141,10 @@ class Float64ValueRange : public ValueRange {
   struct Range : zone::ZoneObject {
     NumberPoint lower;
     NumberPoint upper;
-
     Range() : lower() , upper() {} // undefined
-
-    Range( double l , bool cl , double u , bool cu ):
-      lower(NumberPoint(l,cl)) , upper(NumberPoint(u,cu))
-    {}
-
-    Range( const NumberPoint& l , const NumberPoint& u ):
-      lower(l) , upper(u)
-    {}
-
+    Range( double l , bool cl , double u , bool cu ): lower(NumberPoint(l,cl)) , upper(NumberPoint(u,cu)) {}
+    Range( const NumberPoint& l , const NumberPoint& u ): lower(l) , upper(u) {}
     inline bool IsSingleton () const;
-
     int  Test       ( const Range&       ) const;
     bool IsInclude  ( const Range& range ) const { return Test(range) == ValueRange::INCLUDE;  }
     bool IsOverlap  ( const Range& range ) const { return Test(range) == ValueRange::OVERLAP;  }
@@ -164,7 +154,6 @@ class Float64ValueRange : public ValueRange {
   };
 
   typedef zone::Vector<Range> RangeSet;
-
  public:
   Float64ValueRange( zone::Zone* zone ):
     ValueRange(FLOAT64_VALUE_RANGE),

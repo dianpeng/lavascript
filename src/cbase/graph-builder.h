@@ -44,40 +44,6 @@ class GraphBuilder {
     }
   };
 
-  // EffectGroup represents an effect region that is used as default effect tracking
-  // group whenever we don't know what's the value of certain names.
-  // The names we care about are as following :
-  // 1. globals
-  // 2. upvalue
-  // 3. function arg
-  //
-  // These 3 types of arguments are default to the this UnkownEffect object which can
-  // help to establish correct dependency chain of each node
-  //
-  // In fact we only track
-  // 1) true dependency ( read after write )
-  // 2) anti dependency ( write after read ).
-  //
-  // for write after write we don't need to track and read is always free to reschedule.
-  class EffectGroup {
-   public:
-    EffectGroup( Graph* g       ): write_effect_(g->no_write_effect()) , read_list_() {}
-    EffectGroup( MemoryWrite* w ): write_effect_(w)                    , read_list_() {}
-    // current write_effect node
-    MemoryWrite* write_effect() const { return write_effect_; }
-    // add a read effect , does correct side effect dependency
-    inline void AddReadEffect( MemoryRead* effect);
-    // update write effect
-    inline void UpdateWriteEffect( MemoryWrite* effect );
-    // list of read happened at this point
-    const std::vector<MemoryRead*>& read_list() const { return read_list_; }
-   private:
-    Expr* write_effect_;                 // an effect node indicates the previous write
-    std::vector<MemoryRead*> read_list_; // list of read happend *after* the write_effect_ issued
-
-    friend class GraphBuilder;
-  };
-
   // Environment --------------------------------------------------------------
   // this object records all the side effect that can be observed by the
   // function or its nested inline functions.
@@ -402,6 +368,8 @@ class GraphBuilder {
   // New a new effect group object inside of our internal zone object
   EffectGroup* NewEffectGroup( MemoryWrite* op = NULL );
  private:
+  // Zone owned by the Graph object, and it is supposed to be stay around while the
+  // optimization happenened
   zone::Zone*             zone_;
   Handle<Script>          script_;
   Graph*                  graph_;
@@ -413,7 +381,7 @@ class GraphBuilder {
   // All tracked effect group except the root effect group
   OOLVector<EffectGroup*> effect_group_;
   // This zone is used for other transient memory costs during graph construction
-  zone::Zone              temp_zone_;
+  zone::SmallZone         temp_zone_;
 
  private:
   class OSRScope ;

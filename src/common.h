@@ -6,6 +6,9 @@
   void operator = (const X&) = delete;   \
   X(const X&) = delete;
 
+#define LAVA_DISALLOW_ASSIGN(X)          \
+  void operator = (const X&) = delete;
+
 #ifdef __GNUG__
 #define LAVA_ALWAYS_INLINE inline __attribute__((always_inline))
 #define LAVA_NOT_INLINE    __attribute__((noinline))

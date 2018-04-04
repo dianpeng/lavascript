@@ -51,9 +51,6 @@ bool Compile( Context* context ,const char* source ,
 
 void PrintHeap( const Graph& graph ) {
   std::cerr<<"size:"            <<graph.zone()->size()<<std::endl;
-  std::cerr<<"maximum-size:"    <<graph.zone()->maximum_size()<<std::endl;
-  std::cerr<<"segment-size:"    <<graph.zone()->segment_size()<<std::endl;
-  std::cerr<<"current-capacity:"<<graph.zone()->current_capacity()<<std::endl;
   std::cerr<<"total-bytes:"     <<graph.zone()->total_bytes()<<std::endl;
 }
 

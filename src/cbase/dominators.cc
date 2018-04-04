@@ -1,6 +1,7 @@
 #include "dominators.h"
 #include "hir.h"
-#include "src/ool-vector.h"
+#include "src/zone/zone.h"
+#include "src/zone/vector.h"
 
 #include <sstream>
 #include <utility>
@@ -9,8 +10,6 @@
 namespace lavascript {
 namespace cbase      {
 namespace hir        {
-
-using ::lavascript::OOLVector;
 
 void Dominators::AddSet( DominatorSet* set , ControlFlow* node ) const {
   auto itr = std::upper_bound(set->begin(),set->end(),node);
@@ -50,10 +49,11 @@ Dominators::DominatorSet* Dominators::GetDomSet( const Graph& graph ,
 void Dominators::Build( const Graph& graph ) {
   dominators_.clear();
   imm_dominators_.clear();
-
-  OOLVector<std::int32_t>   ts(graph.MaxID());
+  // temporary zone object and OOLVector object
+  ::lavascript::zone::SmallZone zone;
+  ::lavascript::zone::OOLVector<std::int32_t>   ts(&zone,graph.MaxID());
+  // current timestamp
   std::int32_t cur_ts = 0;
-
   // do a timestamp mark using a DFS iteration algorithm
   for( ControlFlowPOIterator itr(graph); itr.HasNext() ; itr.Move() ) {
     auto n = itr.value();

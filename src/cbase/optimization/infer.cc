@@ -3,7 +3,7 @@
 #include "src/stl-helper.h"
 #include "src/cbase/dominators.h"
 #include "src/cbase/value-range.h"
-#include "src/ool-vector.h"
+#include "src/zone/vector.h"
 #include "src/zone/zone.h"
 #include "src/zone/table.h"
 
@@ -548,7 +548,7 @@ bool Infer::Perform( Graph* graph , HIRPass::Flag flag ) {
   // setup temporarily allocation zone
   zone::Zone zone;
   // setup tracking vector
-  OOLVector<ConditionGroup*> cg_vec(graph->MaxID());
+  zone::OOLVector<ConditionGroup*> cg_vec(&zone,graph->MaxID());
   // setup dominator information
   Dominators dom; dom.Build(*graph);
   // traversal the control flow graph via RPO order

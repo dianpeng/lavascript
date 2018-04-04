@@ -545,7 +545,7 @@ bool SimpleConstraintChecker::Check( Expr* node , Expr** variable , TypeKind* tp
 
 bool Infer::Perform( Graph* graph , HIRPass::Flag flag ) {
   (void)flag;
-  // setup temporarily allocation zone
+  // temporary zone object, use normal zone since it will cost some memory
   zone::Zone zone;
   // setup tracking vector
   zone::OOLVector<ConditionGroup*> cg_vec(&zone,graph->MaxID());

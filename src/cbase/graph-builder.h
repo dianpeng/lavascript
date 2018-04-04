@@ -20,11 +20,9 @@ namespace hir    {
 typedef std::vector<Expr*> ValueStack;
 
 // -------------------------------------------------------------------------------------
-//
-// This is a HIR/MIR graph consturction , the LIR is essentially a traditionaly CFG
+// This is a HIR/MIR graph consturction , the LIR is essentially a traditional CFG
 // The graph is a sea of nodes style and it is responsible for all optimization before
 // scheduling
-//
 // The builder can build 1) normal function call 2) OSR style function IR
 class GraphBuilder {
  public:
@@ -306,7 +304,10 @@ class GraphBuilder {
  private: // Checkpoint generation
   Checkpoint* BuildCheckpoint( const interpreter::BytecodeLocation& );
 
- private: // OSR
+ private:
+  // ----------------------------------------------------------------------------------
+  // OSR compilation
+  // ----------------------------------------------------------------------------------
   StopReason BuildOSRStart( const Handle<Prototype>& , const std::uint32_t* , Graph* );
   void BuildOSRLocalVariable();
   void SetupOSRLoopCondition( interpreter::BytecodeIterator* );
@@ -381,7 +382,7 @@ class GraphBuilder {
   // All tracked effect group except the root effect group
   OOLVector<EffectGroup*> effect_group_;
   // This zone is used for other transient memory costs during graph construction
-  zone::SmallZone         temp_zone_;
+  zone::Zone              temp_zone_;
 
  private:
   class OSRScope ;

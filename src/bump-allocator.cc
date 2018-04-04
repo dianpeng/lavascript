@@ -29,11 +29,7 @@ void* BumpAllocator::Grab( std::size_t size ) {
     if(new_cap < size ) new_cap = size;
     RefillPool(new_cap);
   }
-
-  lava_debug(NORMAL,
-      lava_verify( current_capacity_ - used_ >= size );
-      );
-
+  lava_debug(NORMAL, lava_verify( current_capacity_ - used_ >= size ););
   void* ret = pool_;
   pool_ = reinterpret_cast<void*>(static_cast<char*>(pool_) + size);
   used_ += size;
@@ -58,7 +54,7 @@ void BumpAllocator::Reset() {
   used_ = 0;
   segment_size_ = 0;
 
-  RefillPool(init_capacity_);
+  if(init_capacity_) RefillPool(init_capacity_);
 }
 
 } // namespace lavascript

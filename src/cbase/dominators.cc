@@ -18,19 +18,16 @@ void Dominators::AddSet( DominatorSet* set , ControlFlow* node ) const {
 
 void Dominators::IntersectSet( DominatorSet* set , const DominatorSet& another ) const {
   DominatorSet temp;
-  std::set_intersection(set->begin(),set->end(),another.begin(),another.end(),
-                                                                std::back_inserter(temp));
+  std::set_intersection(set->begin(),set->end(),another.begin(),another.end(), std::back_inserter(temp));
   *set = std::move(temp);
 }
 
-void Dominators::IntersectSet( DominatorSet* set , const DominatorSet& l ,
-                                               const DominatorSet& r ) const {
+void Dominators::IntersectSet( DominatorSet* set , const DominatorSet& l , const DominatorSet& r ) const {
   std::set_intersection(l.begin(),l.end(),r.begin(),r.end(),std::back_inserter(*set));
 }
 
-Dominators::DominatorSet* Dominators::GetDomSet( const Graph& graph ,
-                                                 const std::vector<ControlFlow*>& cf ,
-                                                 ControlFlow* node ) {
+Dominators::DominatorSet* Dominators::GetDomSet( const Graph& graph , const std::vector<ControlFlow*>& cf ,
+                                                                      ControlFlow* node ) {
   auto i = dominators_.find(node);
   if(i == dominators_.end()) {
     auto ret = dominators_.insert(std::make_pair(node,DominatorSet()));
@@ -49,9 +46,8 @@ Dominators::DominatorSet* Dominators::GetDomSet( const Graph& graph ,
 void Dominators::Build( const Graph& graph ) {
   dominators_.clear();
   imm_dominators_.clear();
-  // temporary zone object and OOLVector object
-  ::lavascript::zone::SmallZone zone;
-  ::lavascript::zone::OOLVector<std::int32_t>   ts(&zone,graph.MaxID());
+  // timestamp recorder
+  std::vector<std::int32_t> ts(graph.MaxID());
   // current timestamp
   std::int32_t cur_ts = 0;
   // do a timestamp mark using a DFS iteration algorithm
@@ -74,7 +70,6 @@ void Dominators::Build( const Graph& graph ) {
     for( ControlFlowRPOIterator itr(graph) ; itr.HasNext() ; itr.Move() ) {
       ControlFlow* n = itr.value();
       DominatorSet* set = GetDomSet(graph,all_cf,n);
-
       // iterate against this node's predecessor's
       {
         temp.clear();
@@ -87,7 +82,6 @@ void Dominators::Build( const Graph& graph ) {
           }
         }
         AddSet(&temp,n);
-
         // check dominator set is same or not
         bool c = (temp != *set);
         if(c) has_change = true;
@@ -102,7 +96,6 @@ void Dominators::Build( const Graph& graph ) {
     auto n = e.first;
     auto&s = e.second;
     if(n == graph.start()) continue;
-
     ControlFlow* imm = NULL;
     for( auto &dom : s ) {
       if(dom == n) continue;
@@ -114,7 +107,6 @@ void Dominators::Build( const Graph& graph ) {
         imm = dom;
       }
     }
-
     if(imm) imm_dominators_[n] = imm;
   }
 }

@@ -54,7 +54,7 @@ class BumpAllocator {
   Segment* segment_;                       // First segment list
   void* pool_;                             // Starting position of the current pool
   std::size_t init_capacity_;              // Initialized capacity
-  std::size_t size_;                       // How many times the Grab has been called
+  std::size_t size_;                       // How many bytes has been allocated by Grab function call
   std::size_t current_capacity_;           // Current capacity
   std::size_t used_;                       // Used size for the current pool
   std::size_t segment_size_;               // Size of all the segment
@@ -79,7 +79,7 @@ inline BumpAllocator::BumpAllocator( std::size_t init_capacity ,
   total_bytes_     (0),
   allocator_       (allocator)
 {
-  RefillPool(init_capacity);
+  if(init_capacity) RefillPool(init_capacity);
 }
 
 } // namespace lavascript

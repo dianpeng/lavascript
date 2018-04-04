@@ -7,6 +7,7 @@
 
 #include <type_traits>
 #include <cstddef>
+#include <variant>
 
 namespace lavascript {
 namespace zone {
@@ -61,6 +62,16 @@ class Zone {
   LAVA_DISALLOW_COPY_AND_ASSIGN(Zone);
 };
 
+// ==============================================================================
+// Small zone is just yet another zone object configuration that is good enough
+// for small temporary usage.
+class SmallZone : public BumpZone {
+ public:
+  static const std::size_t kMinimum = 0;  // start as empty zone so no heap allocation is needed
+  static const std::size_t kMaximum = 1024;
+  SmallZone(): Zone( kMinimum , kMaximum ) {}
+};
+
 // ===============================================================================
 // StackZone
 //
@@ -69,17 +80,29 @@ class Zone {
 template< std::size_t Size >
 class StackZone : public Zone {
  public:
-  StackZone( Zone* fallback ): fallback_(fallback), buffer_() , size_(0) {}
+  // specify a fallback zone allocator if you want to have one
+  explicit StackZone( Zone* fallback ): fallback_(fallback), buffer_() , size_(0) { lava_verify(fallback); }
+  // use default zone allocator for this stack zone object
+  StackZone() : fallback_(), buffer_(), size_(0) {}
+  inline Zone* fallback();
   bool UseFallback() const { return size_ == Size; }
-  Zone* fallback  () const { return fallback_; }
  protected:
   virtual inline void* Malloc( std::size_t );
   virtual std::size_t size() const { return size_ + fallback_->size(); }
  private:
-  Zone* fallback_;
+  std::variant<SmallZone,Zone*> fallback_;
   char  buffer_[Size];
   std::size_t size_  ;
 };
+
+template< std::size_t Size >
+inline Zone* StackZone<Size>::fallback() {
+  if(fallback_.index() == 0) {
+    return &(std::get<SmallZone>(fallback_));
+  } else {
+    return std::get<Zone*>(fallback_);
+  }
+}
 
 template< std::size_t Size >
 inline void* StackZone::Malloc( std::size_t size ) {
@@ -89,19 +112,9 @@ inline void* StackZone::Malloc( std::size_t size ) {
     return ret;
   } else {
     size_ = Size;
-    return fallback_->Malloc(size);
+    return fallback()->Malloc(size);
   }
 }
-
-// ==============================================================================
-// Small zone is just yet another zone object configuration that is good enough
-// for small temporary usage.
-class SmallZone : public BumpZone {
- public:
-  static const std::size_t kMinimum = 64;
-  static const std::size_t kMaximum = 1024;
-  SmallZone(): Zone( kMinimum , kMaximum ) {}
-};
 
 // =====================================================================================
 // All object that is gonna allocated from *zone* must be derived from the *ZoneObject*.

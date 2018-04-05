@@ -514,9 +514,16 @@ class Expr : public Node {
   // Effect list
   // Used to develop dependency between expression which cannot be expressed
   // as data flow operation. Mainly used to order certain operations
+  //
+  // Effect list is essentially loosed and it will have duplicated node. To
+  // avoid too much duplicated node we can use AddEffectIfNotExist to check
+  // whether we have that value added ; but it does a linear search so it is
+  // not performant. The effect list maintain is a best effort in terms of
+  // dedup.
   EffectList* effect_list() { return &effect_list_; }
   const EffectList* effect_list() const { return &effect_list_; }
   inline void AddEffect ( Expr* node );
+  void AddEffectIfNotExist( Expr* );
 
   // Reference list
   //

@@ -93,7 +93,7 @@ class Vector : ZoneObject {
   }
   void Del() { lava_assert(!empty(),"Del() on empty vector!"); --size_; }
   void Clear() { size_ = 0; }
-
+  void CopyFrom( Zone*, const Vector& );
  public:
   T& First() { lava_assert(!empty(),"First() on empty vector!"); return ptr_[0]; }
   const T& First() const { return const_cast<Vector*>(this)->First(); }
@@ -141,7 +141,17 @@ class Vector : ZoneObject {
     auto iend(GetForwardIterator()); iend.Advance(end);
     return Remove(itr,iend);
   }
-
+ public: // Find
+  ConstForwardIterator Find  ( const T& value ) const {
+    return FindIf([=](const T& that) { return value == that; });
+  }
+  ForwardIterator Find       ( const T& value ) {
+    return FindIf([=](const T& that) { return value == that; });
+  }
+  ConstForwradIterator FindIf( const std::function<bool(const T&)>& predicate ) const {
+    return const_cast<ConstForwardIterator>(const_cast<Vector*>(this)->FindIf(predicate));
+  }
+  ForwardIterator      FindIf( const std::function<bool(const T&)>& );
  private:
   std::int64_t IterToCursor( ConstForwardIterator& itr ) {
     auto cursor = static_cast<std::size_t>(itr.cursor_);
@@ -205,19 +215,39 @@ template< typename T > Vector<T>::Vector( Zone* zone , const Vector& that ):
   capacity_(0)
 {
   Reserve(zone,that.size());
-  MemCopy<T>(ptr_,that.ptr_,that.size());
+  // initialize every object via copy constructor
+  for( std::size_t i = 0 ; i < that.size(); ++i ) {
+    ConstructFromBuffer<T>(ptr_+i,that.Index(i));
+  }
   size_ = that.size();
 }
 
 template< typename T > void Vector<T>::Add( Zone* zone , const T& value ) {
   if( size_ == capacity_ ) Reserve( zone , size_ ? size_ * 2 : 2 );
-  ptr_[size_++] = value;
+  ConstructFromBuffer<T>(ptr_+size_,value);
+  ++size_;
+}
+
+template< typename T > void Vector<T>::CopyFrom( Zone* zone , const Vector& that ) {
+  Vector<T> temp(zone,that);
+  Swap(&temp);
 }
 
 template< typename T > void Vector<T>::Reserve( Zone* zone , std::size_t length ) {
   if(length > capacity_) {
     void* new_buffer = zone->Malloc( length * sizeof(T) );
-    if(ptr_) MemCopy<T>(static_cast<T*>(new_buffer),ptr_,size_);
+    // We use to do bitwise copy but it works except situation that the object has
+    // pointer points to itself or partially itself. The move operation will leave
+    // these pointers dangling. Now we do a real move, basically tries to call std::move
+    // and then destruct the old one
+    {
+      T* new_ptr = static_cast<T*>(new_buffer);
+      // Do a move semantic operation transfer , if no move copy constructor it will invoke
+      // copy constructor by default since rvalue reference can be captured by const reference
+      for( std::size_t i = 0 ; i < size_ ; ++i ) ConstructFromBuffer<T>(new_ptr+i,std::move(ptr_[i]));
+      // Destruct old object since new object has been created
+      for( std::size_t i = 0 ; i < size_ ; ++i ) Destruct<T>(ptr_+i);
+    }
     ptr_ = static_cast<T*>(new_buffer);
     capacity_ = length;
   }
@@ -277,6 +307,15 @@ Vector<T>::Remove( ConstForwardIterator& start , ConstForwardIterator& end ) {
 
   size_ -= (pos_end - pos_start);
   return ConstForwardIterator(this,pos_start);
+}
+
+template< typename T > typename Vector<T>::ForwardIterator
+Vector<T>::FindIf( const std::function<bool (const T&)>& predicate ) {
+  auto itr(GetForwardIterator());
+  for( ; itr.HasNext(); itr.Move() ) {
+    if(predicate(itr.value())) return itr;
+  }
+  return itr;
 }
 
 namespace detail {

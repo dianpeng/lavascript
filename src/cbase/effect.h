@@ -51,6 +51,10 @@ namespace cbase      {
 // propogate to lower level effect group but not vise versa.
 class EffectGroup : public ::lavascript::zone::ZoneObject {
  public:
+  // Numbering effect group, used to track visiting status of each EffectGroup object
+  std::uint32_t id() const { return id_; }
+
+ public:
   // Add a read effect for this memory read operation. This operation should typically
   // properly configure the input read node's dependency and also add it into internal
   // read list to ensure later anti-dependency is setup correctly
@@ -58,13 +62,10 @@ class EffectGroup : public ::lavascript::zone::ZoneObject {
   // Update the bounded write effect internally
   virtual void UpdateWriteEffect( MemoryWrite* ) = 0;
  public: // Chaining effect group
-
   // Used when an assignment to a sub field of this effect group represented memory
   virtual void AssignEffectGroup( Expr* , EffectGroup* ) = 0;
-
   // Used to resolve an effect group based on the key to select a Slice object
   virtual EffectGroup* Resolve( Expr*) const = 0;
-
  public: // raw setters/getters , help to do clone when COW is used
   virtual ::lavascript::zone::Zone*                 zone()         const = 0;
   virtual MemoryWrite*                              write_effect() const = 0;
@@ -84,7 +85,12 @@ class EffectGroup : public ::lavascript::zone::ZoneObject {
   };
   virtual ::lavascript::zone::Vector<Slice>& chilren  ()    const = 0;
 
+ public:
+  EffectGroup ( std::uint32_t id ) : id_(id) {}
   virtual ~EffectGroup() {}
+
+ private:
+  std::uint32_t id_;
 };
 
 // The most basica effect group and it doesn't support effcient copy mechanism which is required
@@ -109,16 +115,17 @@ class NaiveEffectGroup : public EffectGroup {
   // Copy an effect group to this effect group
   void CopyFrom( const EffectGroup& );
  private:
-  MemoryWrite* write_effect_;
+  typedef std::function<void (EffectGroup*)> Visitor;
+  // Recursively visiting effect group start from *this* , this function will track cycle to
+  // avoid dead loop
+  void Visit  ( const Visitor& );
+  void DoVisit( ::lavascript::zone::Zone* , ::lavascript::zone::OOLVector<bool>* , EffectGroup* ,
+                                                                                   const Visitor& );
+ private:
+  MemoryWrite*                            write_effect_;
   ::lavascript::zone::Vector<MemoryRead*> read_list_;
   ::lavascript::zone::Vector<Slice>       children_;
-  ::lavascript::zone::Zone* zone_;
-  // this list cached all the propogated read effect node happened at this NaiveEffectGroup to
-  // avoid too much redundant read node added inside of the dependency list of write node, whenever
-  // a write node is assigned, after set up the write after read dependency, this list will be
-  // cleared
-  ::lavascript::zone::Vector<std::uint32_t> cached_;
-
+  ::lavascript::zone::Zone*               zone_;
   LAVA_DISALLOW_ASSIGN(NaiveEffectGroup)
 };
 

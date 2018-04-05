@@ -30,10 +30,16 @@ void Expr::Replace( Expr* another ) {
   }
 }
 
+void Expr::AddEffectIfNotExist( Expr* node ) {
+  for( auto itr(effect_list()->GetForwardIterator()); itr.HasNext(); itr.Move() ) {
+    if(itr.value() == node) return;
+  }
+  AddEffect(node);
+}
+
 IRList* IRList::Clone( Graph* graph , const IRList& that ) {
   auto ret = IRList::New(graph,that.Size(),that.ir_info());
-  for( auto itr(that.operand_list()->GetForwardIterator());
-       itr.HasNext(); itr.Move() ) {
+  for( auto itr(that.operand_list()->GetForwardIterator()); itr.HasNext(); itr.Move() ) {
     ret->Add(itr.value());
   }
   return ret;

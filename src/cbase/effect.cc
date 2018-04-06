@@ -5,37 +5,15 @@ namespace cbase      {
 
 using namespace ::lavascript;
 
-NaiveEffectGroup::NaiveEffectGroup( zone::Zone* zone , MemoryWrite* w ):
+BasicEffectGroup::BasicEffectGroup( std::uint32_t id , zone::Zone* zone , MemoryWrite* w ):
+  EffectGroup  (id),
   write_effect_(w),
   read_list_   (),
   children_    (),
   zone_        (zone)
 {}
 
-NaiveEffectGroup::NaiveEffectGroup( const NaiveEffectGroup& that ):
-  write_effect_(that.write_effect_),
-  read_list_   (that.zone_,that.read_list_),
-  children_    (that.zone_,that.children_ ),
-  zone_        (that.zone_)
-{}
-
-// Recursively visiting effect group starts at *this* effect group. Use id()
-// value as a key to index to an OOLVector to track whether a node is visited
-// or not.
-void NaiveEffectGroup::DoVisit( zone::Zone* zone , zone::OOLVector<bool>* visited , EffectGroup* grp ,
-                                                                                    const Visitor& visitor ) {
-  visited->Set(zone,grp->id(),true); // mark it as visited before
-  visitor(this);
-  // recursively visit all children inside of this EffectGroup
-  for( auto itr(children_.GetForwardIterator()); itr.HasNext(); itr.Move() ) {
-    auto grp = itr.value().grp;
-    if(!visited->Get(grp->id())) {
-      DoVisit(zone,visited,grp,visitor);
-    }
-  }
-}
-
-void NaiveEffectGroup::Visit( const std::function< void(EffectGroup*) >& visitor ) {
+void BasicEffectGroup::Visit( const std::function< void(EffectGroup*) >& visitor ) {
   static const std::size_t kDefaultStackSize = 1024;
 
   // for at least 1024 node recording will be on stack, rest of them will be
@@ -43,31 +21,43 @@ void NaiveEffectGroup::Visit( const std::function< void(EffectGroup*) >& visitor
   zone::StackZone<kDefaultStackSize> stack_zone(zone_);
   zone::OOLVector<bool>              visited   (&stack_zone,kDefaultStackSize);
   // start visiting recursively
-  DoVisit(&stack_zone,&visited,this,visitor);
+  EffectGroup::DoVisit(&stack_zone,&visited,this,visitor);
 }
 
-void NaiveEffectGroup::AddReadEffect( MemoryRead* read ) {
-  Visit([=](EffectGroup* grp) { read->AddEffect(grp->write_effect_); grp->read_list_.Add(zone_,read); });
-}
-
-void NaiveEffectGroup::UpdateWriteEffect( MemoryWrite* write ) {
+void BasicEffectGroup::AddReadEffect( MemoryRead* read ) {
   Visit([=](EffectGroup* grp) {
-      // make this write happened at every read previously happend and observable from this
-      // effect group. Basically maintains the write after read (anti) dependency
-      for( auto itr(grp->read_list_.GetForwardIterator()); itr.HasNext(); itr.Move() ) {
-        // tries to dedup the effect list since in current phase this is the most likely
-        // place to introduce duplication which may hurt us in memory usage and runtime cost
-        write->AddEffectIfNotExist(itr.value());
-      }
-      // clear its read list since all the reader happened previously has been properly
-      // linearlized in terms of effect order
-      grp->read_list_.Clear();
-      // update itself to be the new write effect object
-      grp->write_effect_ = write;
+    // try to dedup the effect list, maybe slow here
+    read->AddEffectIfNotExit(grp->write_effect_);
+    grp->read_list_.Add(zone_,read);
   });
 }
 
-void NaiveEffectGroup::AssignEffectGroup( Expr* key , EffectGroup* grp ) {
+void BasicEffectGroup::UpdateWriteEffect( MemoryWrite* write ) {
+  Visit([=](EffectGroup* grp) {
+    // make this write happened at every read previously happend and observable from this
+    // effect group. Basically maintains the write after read (anti) dependency
+    grp->VisitRead([=](MemoryRead* effect) { write->AddEffectIfNotExist(effect); });
+    // clear its read list since all the reader happened previously has been properly
+    // linearlized in terms of effect order
+    grp->read_list_.Clear();
+    // update itself to be the new write effect object
+    grp->write_effect_ = write;
+  });
+}
+
+void BasicEffectGroup::VisitRead( const ReadVisitor& visitor ) {
+  for( auto itr(read_list_.GetForwardIterator()); itr.HasNext(); itr.Move() ) {
+    visitor(itr.value());
+  }
+}
+
+void BasicEffectGroup::VisitChildren( const ChildrenVisitor& visitor ) {
+  for( auto itr(children_.GetForwardIterator()); itr.HasNext(); itr.Move() ) {
+    visitor(itr.value());
+  }
+}
+
+void BasicEffectGroup::AssignEffectGroup( Expr* key , EffectGroup* grp ) {
   // avoid obviously cycle effect group since if we don't assign cyclic effect group it
   // won't hurt any body since we already track it
   if(grp != this) {
@@ -83,7 +73,7 @@ void NaiveEffectGroup::AssignEffectGroup( Expr* key , EffectGroup* grp ) {
   }
 }
 
-EffectGroup* NaiveEffectGroup::Resolve( Expr* key ) {
+EffectGroup* BasicEffectGroup::Resolve( Expr* key ) {
   auto itr = children_.FindIf([=](const Slice& slice) { return slice.key->IsEqual(key); });
   if(itr.HasNext()) {
     return itr.value().grp;
@@ -91,15 +81,89 @@ EffectGroup* NaiveEffectGroup::Resolve( Expr* key ) {
   return this; // top most effect group, represent the most blur way to do effect analyze
 }
 
-void NaiveEffectGroup::CopyFrom( const EffectGroup& grp ) {
+void BasicEffectGroup::CopyFrom( const EffectGroup& grp ) {
   read_list_.Clear();
   children_.Clear();
-  zone_         = grp.zone_;
-  write_effect_ = grp.write_effect_;
-  read_list_.CopyFrom(zone_,grp.read_list_);
-  children_.CopyFrom (zone_,grp.children_ );
+  zone_         = grp.zone();
+  read_list_.Reserve(zone_,grp.read_size());
+  children_.Reserve(zone_,grp.children_size());
+  grp.VisitRead    ([=](MemoryRead* effect) { read_list_.Add(zone_,effect);       });
+  grp.VisitChildren([=](Slice* slice      ) { children_.Add(zone_,Slice(*slice)); });
 }
 
+// This constructor initialize an COWEffectGroup with copy semantic initially
+COWEffectGroup::COWEffectGroup( std::uint32_t id , zone::Zone* zone , MemoryWrite* write ):
+  EffectGroup(id),
+  native_(zone,write),
+  prev_  (NULL),
+  copy_  (true)
+{}
 
+// Copy on write setup
+COWEffectGroup::COWEffectGroup( std::uint32_t id , const EffectGroup* grp ) :
+  EffectGroup(id),
+  native_(zone,NULL),
+  prev_  (grp),
+  copy_  (false)
+{}
 
+MergeEffectGroup::MergeEffectGroup( ::lavascript::zone::Zone* zone , NoWriteEffect* no_write_effect ,
+                                                                     EffectGroup* lhs,
+                                                                     EffectGroup* rhs ) :
+  no_write_effect_(no_write_effect),
+  lhs_            (lhs),
+  rhs_            (rhs),
+  zone_           (zone)
+{}
 
+void MergeEffectGroup::VisitRead( const ReadVisitor& visitor ) const {
+  lhs_->VisitRead(visitor);
+  rhs_->VisitRead(visitor);
+}
+
+void MergeEffectGroup::Visit( const Visitor& visitor ) {
+  static const std::size_t kDefaultStackSize = 1024;
+
+  // for at least 1024 node recording will be on stack, rest of them will be
+  // resides on heap
+  zone::StackZone<kDefaultStackSize> stack_zone(zone_);
+  zone::OOLVector<bool>              visited   (&stack_zone,kDefaultStackSize);
+
+  visited[id()] = true; // mark itself visited before to avoid cycle and also we don't have
+                        // anything inside of this node
+
+ // Visit both lhs/rhs for code
+ EffectGroup::DoVisit(&stack_zone,&visited,lhs,visitor);
+ EffectGroup::DoVisit(&stack_zone,&visited,rhs,visitor);
+}
+
+void MergeEffectGroup::AddReadEffect( MemoryRead* read ) {
+  Visit([=](EffectGroup* grp) {
+    // try to dedup the effect list, maybe slow here
+    read->AddEffectIfNotExit(grp->write_effect_);
+    grp->read_list_.Add(zone_,read);
+  });
+}
+
+void MergeEffectGroup::UpdateWriteEffect( MemoryWrite* write ) {
+  Visit([=](EffectGroup* grp) {
+    grp->VisitRead([=](MemoryRead* effect) { write->AddEffectIfNotExist(effect); });
+    grp->read_list_.Clear();
+    grp->write_effect_ = write;
+  });
+}
+
+EffectGroupList::EffectGroupList( const EffectGroupList& that ):
+  factory_(that.factory_),
+  ool_    (that.zone())
+{
+  // reserve enough memory, and then do the allocation
+  ool_.Reserve(zone(),that.ool_.size());
+  // create bunch of COWEffectGroup
+  for( auto itr(that.ool_.GetForwardIterator()); itr.HasNext(); itr.Move() ) {
+    ool_.Add(zone(),factory_->NewCOWEffectGroup(itr.value()));
+  }
+}
+
+} // namespace lavascript
+} // namespace cbase

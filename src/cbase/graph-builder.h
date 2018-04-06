@@ -1,7 +1,7 @@
 #ifndef CBASE_GRAPH_BUILDER_H_
 #define CBASE_GRAPH_BUILDER_H_
 #include "hir.h"
-#include "ool-vector.h"
+#include "effect.h"
 
 #include "src/interpreter/intrinsic-call.h"
 #include "src/objects.h"
@@ -43,12 +43,9 @@ class GraphBuilder {
   };
 
   // Environment --------------------------------------------------------------
-  // this object records all the side effect that can be observed by the
-  // function or its nested inline functions.
-  // In general, we can observe side effect via three categories:
-  // 1. input argument
-  // 2. return value (if inlined)
-  // 3. global variables
+  //
+  // Track *all* program states in each lexical scope and created on the fly when
+  // we enter into a new scope and merge it back when we exit the lexical scope.
   class Environment {
    public:
     struct GlobalVar {
@@ -61,14 +58,14 @@ class GraphBuilder {
     typedef std::vector<Expr*>         UpValueVector;
     typedef std::function<Expr* ()>    KeyProvider;
     typedef std::function<IRInfo* ()>  IRInfoProvider;
-
+   public:
     Environment( GraphBuilder* );
-    // root effect group
-    EffectGroup* root()    { return &root_; }
+    Environment( const Environment& );
+   public:
     // init environment object from prototype object
-    void EnterFunctionScope( const FuncInfo& );
-    void PopulateArgument  ( const FuncInfo& );
-    void ExitFunctionScope ( const FuncInfo& );
+    void EnterFunctionScope  ( const FuncInfo& );
+    void PopulateArgument    ( const FuncInfo& );
+    void ExitFunctionScope   ( const FuncInfo& );
     // getter/setter
     Expr*  GetUpValue( std::uint8_t , const IRInfoProvider& );
     Expr*  GetGlobal ( const void* , std::size_t , const KeyProvider& , const IRInfoProvider& );
@@ -80,14 +77,21 @@ class GraphBuilder {
     GlobalMap*       global()   { return &global_; }
     // update a node appear in the environment with another node
     void UpdateNode  ( Expr* , Expr* );
+   public:
+    // root effect group
+    BasicEffectGroup* root() { return &root_; }
+    // effect group list
+    EffectGroupList* effect() { return &effect_; }
    private:
-    ValueStack stack_;          // register stack
-    EffectGroup root_;          // root's unknown effect tracking region
-    UpValueVector upvalue_;     // upvalue's effect group
-    GlobalMap global_;          // global's effect group
-    GraphBuilder* gb_;          // graph builder
+    ValueStack stack_;        // register stack
+    EffectGroup root_;        // root's effect , ARG/GGET/UGET's node's corresponding effect group
+    UpValueVector upvalue_;   // upvalue's effect group
+    GlobalMap global_;        // global's effect group
+    GraphBuilder* gb_;        // graph builder
+    EffectGroupList effect_;  // a list of tracked effect group
 
     friend class GraphBuilder;
+    LAVA_DISALLOW_ASSIGN(Environment);
   };
 
   // Data structure record the pending jump that happened inside of the loop
@@ -185,6 +189,8 @@ class GraphBuilder {
     STOP_END ,
     STOP_SUCCESS
   };
+ public:
+  EffectGroupFactory* effect_group_factory() { return &eg_factory_; }
 
  public:
   inline GraphBuilder( const Handle<Script>& , const TypeTrace& );
@@ -194,24 +200,12 @@ class GraphBuilder {
   bool BuildOSR( const Handle<Prototype>& , const std::uint32_t* , Graph* );
 
  public: // Stack accessing
-  std::uint32_t StackIndex( std::uint32_t index ) const {
-    return func_info().base+index;
-  }
-  void StackSet( std::uint32_t index , Expr* value ) {
-    vstk()->at(StackIndex(index)) = value;
-  }
-  void StackReset( std::uint32_t index ) {
-    vstk()->at(StackIndex(index)) = NULL;
-  }
-  Expr* StackGet( std::uint32_t index ) {
-    return vstk()->at(StackIndex(index));
-  }
-  Expr* StackGet( std::uint32_t index , std::uint32_t base ) {
-    return vstk()->at(base+index);
-  }
-  StackSlot StackGetSlot( std::uint32_t index ) {
-    return StackSlot(StackGet(index),index);
-  }
+  std::uint32_t StackIndex( std::uint32_t index ) const      { return func_info().base+index; }
+  void StackSet( std::uint32_t index , Expr* value )         { vstk()->at(StackIndex(index)) = value; }
+  void StackReset( std::uint32_t index )                     { vstk()->at(StackIndex(index)) = NULL; }
+  Expr* StackGet( std::uint32_t index )                      { return vstk()->at(StackIndex(index)); }
+  Expr* StackGet( std::uint32_t index , std::uint32_t base ) { return vstk()->at(base+index); }
+  StackSlot StackGetSlot( std::uint32_t index )              { return StackSlot(StackGet(index),index); }
 
  public: // Current FuncInfo
   std::uint32_t method_index()         const { return static_cast<std::uint32_t>(func_info_.size()); }
@@ -368,6 +362,7 @@ class GraphBuilder {
   void VisitEffectWrite( Expr* node , MemoryWrite*);
   // New a new effect group object inside of our internal zone object
   EffectGroup* NewEffectGroup( MemoryWrite* op = NULL );
+
  private:
   // Zone owned by the Graph object, and it is supposed to be stay around while the
   // optimization happenened
@@ -379,10 +374,10 @@ class GraphBuilder {
   std::vector<FuncInfo>   func_info_;
   // Type trace for speculative operation generation
   const TypeTrace&        type_trace_;
-  // All tracked effect group except the root effect group
-  OOLVector<EffectGroup*> effect_group_;
   // This zone is used for other transient memory costs during graph construction
   zone::Zone              temp_zone_;
+  // Factory class to create effect group
+  EffectGroupFactory      eg_factory_;
 
  private:
   class OSRScope ;
@@ -444,7 +439,8 @@ inline GraphBuilder::GraphBuilder( const Handle<Script>& script , const TypeTrac
   func_info_        (),
   type_trace_       (tt),
   effect_group_     (),
-  temp_zone_        ()
+  temp_zone_        (),
+  eg_factory_       (&temp_zone_,[=]() { return env()->root(); })
 {}
 
 inline void GraphBuilder::FuncInfo::EnterLoop( const std::uint32_t* pc ) {

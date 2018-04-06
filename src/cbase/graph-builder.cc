@@ -20,7 +20,17 @@ GraphBuilder::Environment::Environment( GraphBuilder* gb ):
   root_   (gb->graph_),
   upvalue_(),
   global_ (),
-  gb_     (gb)
+  gb_     (gb),
+  effect_ (gb->effect_group_factory())
+{}
+
+GraphBuilder::Environment::Environment( const Environment& env ):
+  stack_  (env.stack_),
+  root_   (env.root_),
+  upvalue_(env.upvalue_),
+  global_ (env.global_),
+  gb_     (env.gb_)
+  effect_ (env.effect_)
 {}
 
 void GraphBuilder::Environment::EnterFunctionScope( const FuncInfo& func ) {
@@ -559,10 +569,8 @@ Expr* GraphBuilder::NewBinaryFallback( const StackSlot& lidx , const StackSlot& 
 // ========================================================================
 Expr* GraphBuilder::NewTernary ( const StackSlot& cidx, Expr* lhs, Expr* rhs, const BytecodeLocation& pc ) {
   auto cond = cidx.node;
-  auto new_node = FoldTernary(graph_,cond,lhs,rhs,[this,pc]() {
-        return NewIRInfo(pc);
-      }
-  );
+  auto new_node = FoldTernary(graph_,cond,lhs,rhs,[this,pc]() { return NewIRInfo(pc); });
+
   if(new_node) return new_node;
   { // do a guess based on type trace
     auto tt = type_trace_.GetTrace(pc.address());
@@ -863,9 +871,7 @@ GraphBuilder::StopReason GraphBuilder::BuildTernary( BytecodeIterator* itr ) {
   { // evaluate the fall through branch
     for( itr->Move() ; itr->HasNext() ; ) {
       if(itr->opcode() == BC_JMP) break; // end of the first ternary fall through branch
-
-      if(BuildBytecode(itr) == STOP_BAILOUT)
-        return STOP_BAILOUT;
+      if(BuildBytecode(itr) == STOP_BAILOUT) return STOP_BAILOUT;
     }
 
     lava_debug(NORMAL,lava_verify(itr->opcode() == BC_JMP););
@@ -1478,7 +1484,7 @@ GraphBuilder::StopReason GraphBuilder::BuildBytecode( BytecodeIterator* itr ) {
         std::uint8_t a1,a2,a3;
         itr->GetOperand(&a1,&a2,&a3);
         Expr* key = (itr->opcode() == BC_PROPSET ? NewString(a2): NewSSO   (a2));
-        StackSet(a1,NewPSet(StackGet(a1),key,StackGet(a3),NewIRInfo(itr)));
+        NewPSet(StackGet(a1),key,StackGet(a3),NewIRInfo(itr));
       }
       break;
     case BC_IDXGET: case BC_IDXGETI:
@@ -1494,7 +1500,7 @@ GraphBuilder::StopReason GraphBuilder::BuildBytecode( BytecodeIterator* itr ) {
         std::uint8_t a1,a2,a3;
         itr->GetOperand(&a1,&a2,&a3);
         Expr* key = (itr->opcode() == BC_IDXSET ? StackGet(a2) : NewConstNumber(a2));
-        StackSet(a1,NewISet(StackGet(a1),key,StackGet(a3),NewIRInfo(itr)));
+        NewISet(StackGet(a1),key,StackGet(a3),NewIRInfo(itr));
       }
       break;
 
@@ -1857,7 +1863,11 @@ bool GraphBuilder::BuildOSR( const Handle<Prototype>& entry , const std::uint32_
 //
 // ===============================================================================
 void GraphBuilder::VisitEffect( Expr* node , const EffectVisitor& visitor ) {
-  // TODO:: remove recursive version and replace it with explicit stack
+  // This function recursively visit each component inside of the node to find out
+  // a node that has corresponding effect group. The node that *can* has effect group
+  // are node that is 1) memory node 2) memory-write node. The memory node's effect
+  // group are stored inside of the effect list ; the memory-write node's effect list
+  // are stored inside of its stored object's effect group's children field.
   if(node->IsMemoryNode() || node->IsMemoryWrite()) {
     switch(node->type()) {
       case IRTYPE_ARG: case IRTYPE_GGET: case IRTYPE_UGET:
@@ -1895,7 +1905,7 @@ void GraphBuilder::VisitEffect( Expr* node , const EffectVisitor& visitor ) {
   }
 }
 
-void GraphBuilder::VisitEffectRead( Expr* node , MemoryRead* read ) {
+void GraphBuilder::VisitEffectRead ( Expr* node , MemoryRead* read ) {
   VisitEffect(node,[=](Expr* n,EffectGroup* grp) {
     (void)n;
     grp->AddReadEffect(read);

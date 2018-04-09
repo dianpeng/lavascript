@@ -840,8 +840,8 @@ class Unary : public Expr {
   inline static Operator BytecodeToOperator( interpreter::Bytecode bc );
   inline static const char* GetOperatorName( Operator op );
  public:
-  Expr* operand() const { return operand_list()->First(); }
-  Operator op  () const { return op_;      }
+  Expr*       operand() const { return operand_list()->First(); }
+  Operator       op  () const { return op_;      }
   const char* op_name() const { return GetOperatorName(op()); }
 
   Unary( Graph* graph , std::uint32_t id , Expr* opr , Operator op , IRInfo* info ):
@@ -858,8 +858,6 @@ class Unary : public Expr {
   {
     AddOperand(opr);
   }
-
-
  private:
   Operator   op_;
   LAVA_DISALLOW_COPY_AND_ASSIGN(Unary)
@@ -882,25 +880,24 @@ class Binary : public Expr {
   inline static bool        IsArithmeticOperator( Operator );
   inline static bool        IsBitwiseOperator   ( Operator );
   inline static bool        IsLogicOperator     ( Operator );
-  inline static Operator    BytecodeToOperator( interpreter::Bytecode );
-  inline static const char* GetOperatorName( Operator );
+  inline static Operator    BytecodeToOperator  ( interpreter::Bytecode );
+  inline static const char* GetOperatorName     ( Operator );
 
  public:
   // Create a binary node
   inline static Binary* New( Graph* , Expr* , Expr* , Operator , IRInfo* );
-  Expr*   lhs() const { return operand_list()->First(); }
-  Expr*   rhs() const { return operand_list()->Last (); }
-  Operator op() const { return op_;  }
+  Expr*           lhs() const { return operand_list()->First(); }
+  Expr*           rhs() const { return operand_list()->Last (); }
+  Operator         op() const { return op_;  }
   const char* op_name() const { return GetOperatorName(op()); }
-  Binary( Graph* graph , std::uint32_t id , Expr* lhs , Expr* rhs , Operator op ,
-                                                                    IRInfo* info ):
+
+  Binary( Graph* graph , std::uint32_t id , Expr* lhs , Expr* rhs , Operator op , IRInfo* info ):
     Expr  (IRTYPE_BINARY,id,graph,info),
     op_   (op)
   {
     AddOperand(lhs);
     AddOperand(rhs);
   }
-
  protected:
   Binary( IRType irtype ,Graph* graph ,std::uint32_t id ,Expr* lhs ,Expr* rhs ,Operator op,IRInfo* info ):
     Expr  (irtype,id,graph,info),
@@ -909,7 +906,6 @@ class Binary : public Expr {
     AddOperand(lhs);
     AddOperand(rhs);
   }
-
  private:
   Operator op_;
   LAVA_DISALLOW_COPY_AND_ASSIGN(Binary)

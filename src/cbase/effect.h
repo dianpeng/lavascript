@@ -357,7 +357,6 @@ class EffectGroupList {
 // order maintains correct effect serialization.
 void VisitEffect( Expr* , EffectGroupList* , BasicEffectGroup* , const ExprEffectVisitor& );
 
-
 // ============================================================================================
 //
 // Inline Definition

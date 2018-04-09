@@ -15,7 +15,6 @@ BasicEffectGroup::BasicEffectGroup( std::uint32_t id , zone::Zone* zone , Memory
 
 void BasicEffectGroup::Visit( const std::function< void(EffectGroup*) >& visitor ) {
   static const std::size_t kDefaultStackSize = 1024;
-
   // for at least 1024 node recording will be on stack, rest of them will be
   // resides on heap
   zone::StackZone<kDefaultStackSize> stack_zone(zone_);
@@ -34,13 +33,8 @@ void BasicEffectGroup::AddReadEffect( MemoryRead* read ) {
 
 void BasicEffectGroup::UpdateWriteEffect( MemoryWrite* write ) {
   Visit([=](EffectGroup* grp) {
-    // make this write happened at every read previously happend and observable from this
-    // effect group. Basically maintains the write after read (anti) dependency
     grp->VisitRead([=](MemoryRead* effect) { write->AddEffectIfNotExist(effect); });
-    // clear its read list since all the reader happened previously has been properly
-    // linearlized in terms of effect order
     grp->read_list_.Clear();
-    // update itself to be the new write effect object
     grp->write_effect_ = write;
   });
 }
@@ -164,6 +158,63 @@ EffectGroupList::EffectGroupList( const EffectGroupList& that ):
     ool_.Add(zone(),factory_->NewCOWEffectGroup(itr.value()));
   }
 }
+
+namespace {
+
+enum { EFFECT_GROUP , PHI , NONE };
+
+int ResolveExpr( Expr* node ,  EffectGroupList* list , BasicEffectGroup* root ,
+                                                       Phi**         phi ,
+                                                       EffectGroup** grp ) {
+  zone::StackZone<1024>      zone;
+  zone::Vector<MemoryWrite*> vec(&zone);
+  EffectGroup* eg = NULL;
+
+  // find out the deepst node that has a tracking effect group
+  do {
+    switch(node->type()) {
+      case IRTYPE_ARG : case IRTYPE_GGET  : case IRTYPE_UGET:
+      case IRTYPE_LIST: case IRTYPE_OBJECT:
+        eg = list->Get(node->id());
+        lava_debug(NORMAL,lava_verify(eg););
+        goto done;
+
+      case IRTYPE_GGET: case IRTYPE_IGET: case IRTYPE_OBJECT_GET: case IRTYPE_LIST_GET:
+        { // do a deeper probing
+          auto mem = static_cast<MemoryWrite*>(node);
+          node     = mem->Memory();
+          // record this memory node for later usage
+          vec.Add(&zone,mem);
+        }
+        break;
+      case IRTYPE_PHI: *phi = node; return PHI;
+      default:         return NONE;
+    }
+  } while(true);
+
+done:
+  // unwind the stack and then get the smallest effect group for resolution purpose
+  for( auto itr(vec.GetBackwardIterator()); itr.HasNext(); itr.Move() ) {
+    auto    n = itr.value();
+    Expr* key = NULL;
+    switch(n->type()) {
+      case IRTYPE_GGET       : key = n->AsGGet()->key();      break;
+      case IRTYPE_IGET       : key = n->AsIGet()->index();    break;
+      case IRTYPE_OBJECT_GGET: key = n->AsObjectGet()->key(); break;
+      case IRTYPE_OBJCT_IGET : key = n->AsListGet()->index(); break;
+      default: lava_die(); break;
+    }
+    auto sub_eg = eg->Resolve(key);
+    if(sub_eg == eg) break;
+    eg = sub_eg;
+  }
+
+  *grp = eg;
+  return EFFECT_GROUP;
+}
+
+
+} // namespace
 
 } // namespace lavascript
 } // namespace cbase

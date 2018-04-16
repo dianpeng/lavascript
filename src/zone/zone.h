@@ -34,7 +34,7 @@ class Zone {
     LAVA_ZONE_MINIMUM_SIZE;
 #endif // LAVA_ZONE_MINIMUM_SIZE
 
-  BumpZone( std::size_t minimum = kMinimum, std::size_t maximum = kMaximum, HeapAllocator* allocator = NULL ):
+  Zone( std::size_t minimum = kMinimum, std::size_t maximum = kMaximum, HeapAllocator* allocator = NULL ):
     allocator_(minimum,maximum,allocator)
   {}
 
@@ -65,7 +65,7 @@ class Zone {
 // ==============================================================================
 // Small zone is just yet another zone object configuration that is good enough
 // for small temporary usage.
-class SmallZone : public BumpZone {
+class SmallZone : public Zone {
  public:
   static const std::size_t kMinimum = 0;  // start as empty zone so no heap allocation is needed
   static const std::size_t kMaximum = 1024;
@@ -88,7 +88,7 @@ class StackZone : public Zone {
   bool UseFallback() const { return size_ == Size; }
  protected:
   virtual inline void* Malloc( std::size_t );
-  virtual std::size_t size() const { return size_ + fallback_->size(); }
+  virtual std::size_t size() const { return size_ + fallback()->size(); }
  private:
   std::variant<SmallZone,Zone*> fallback_;
   char  buffer_[Size];
@@ -105,7 +105,7 @@ inline Zone* StackZone<Size>::fallback() {
 }
 
 template< std::size_t Size >
-inline void* StackZone::Malloc( std::size_t size ) {
+inline void* StackZone<Size>::Malloc( std::size_t size ) {
   if((Size - size_) >= size) {
     void* ret = static_cast<void*>(buffer_ + size_);
     size_ += size;

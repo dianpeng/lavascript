@@ -89,12 +89,12 @@ template< typename T > class List : ZoneObject {
   typedef detail::NodeBase<NodeType> NodeBaseType;
  public:
   static List* New( Zone* zone ) { return zone->New<List<T>>(); }
-  static void CopyFrom( Zone* , List* , const List& );
+  static void Assign( Zone* , List* , const List& );
 
   List() : end_ () , size_(0) {}
 
   List( Zone* zone , const List& that ) : end_() , size_(0) {
-    CopyFrom(zone,this,that);
+    Assign(zone,this,that);
   }
 
  public:
@@ -243,7 +243,7 @@ void List<T>::Append( List<T>* another , ConstForwardIterator& pos ) {
 }
 
 template< typename T >
-void List<T>::CopyFrom( Zone* zone , List<T>* dest , const List<T>& that ) {
+void List<T>::Assign( Zone* zone , List<T>* dest , const List<T>& that ) {
   if(dest != &that) {
     dest->Clear();
     ConstForwardIterator itr(that.GetIterator());

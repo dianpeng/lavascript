@@ -543,10 +543,14 @@ class Expr : public Node {
   // check if this expression node has side effect if it is used as operand
   inline bool IsMemoryWrite() const;
   inline bool IsMemoryRead () const;
-  inline bool IsMemoryOp     () const;
+  inline bool IsMemoryOp   () const;
 
   // check if this expression node is a memory node
-  inline bool IsMemoryNode     () const;
+  inline bool IsMemoryNode () const;
+
+  // check if this node is any sort of Phi node , this includes normal expression
+  // phi , ie Phi or read/write effect phi node
+  inline bool IsPhiNode    () const;
 
   // check if this expression is used by any other expression, basically
   // check whether ref_list is empty or not
@@ -617,12 +621,6 @@ class MemoryWrite : public MemoryOp {
  public:
   MemoryWrite( IRType type , std::uint32_t id , Graph* g , IRInfo* info ):
     MemoryOp(type,id,g,info){}
-
-  // Function return where the memory will be written to
-  virtual Expr* Memory() const = 0;
-
-  // Function return what value will be written
-  virtual Expr* Value() const = 0;
 };
 
 // MemoryRead
@@ -638,9 +636,6 @@ class MemoryRead : public MemoryOp {
  public:
   MemoryRead( IRType type , std::uint32_t id , Graph* g , IRInfo* info ):
     MemoryOp(type,id,g,info) {}
-
-  // Function return which memory will be readed from
-  virtual Expr* Memory() const = 0;
 };
 
 /* ---------------------------------------------------
@@ -1031,9 +1026,6 @@ class PSet : public MemoryWrite {
   Expr* object() const { return operand_list()->First(); }
   Expr* key   () const { return operand_list()->Index(1);}
   Expr* value () const { return operand_list()->Last (); }
-
-  virtual Expr* Memory() const { return object(); }
-  virtual Expr* Value () const { return value();  }
  public:
   virtual std::uint64_t GVNHash() const {
     return GVNHash3(type_name(),object()->GVNHash(),
@@ -1115,8 +1107,6 @@ class ISet : public MemoryWrite {
   Expr* object() const { return operand_list()->First(); }
   Expr* index () const { return operand_list()->Index(1);}
   Expr* value () const { return operand_list()->Last (); }
-  virtual Expr* Memory() const { return object(); }
-  virtual Expr* Value () const { return value() ; }
 
   virtual std::uint64_t GVNHash() const {
     return GVNHash3(type_name(),object()->GVNHash(),
@@ -1284,15 +1274,18 @@ class Phi : public Expr {
   // so its ref_list will still have its belonged region's reference there and
   // it is invalid. This function should be used under strict condition.
   static inline void RemovePhiFromRegion( Phi* );
-
+  // Get the boundede region
   ControlFlow* region() const { return region_; }
-
   // Check if this Phi node is not used. We cannot use HasRef function since
   // a Phi node may added to a region during setup time and there will be one
   // ref inside of the RefList. We just need to check that
   bool IsUsed() const {
     return !(region() ? ref_list()->size() == 1 : (ref_list()->empty()));
   }
+  // Check if this Phi node is in intermediate state. A phi node will generated
+  // at the front the loop and it will only have on operand then. If phi is in
+  // this stage, then it is an intermediate state
+  bool IsIntermediateState() const { return operand_list()->size() == 1; }
 
   // Bounded control flow region node.
   // Each phi node is bounded to a control flow regional node
@@ -1310,11 +1303,8 @@ class Phi : public Expr {
 // A phi node that is used to merge effect right after the control flow. It
 // will only be used inside of some expression's effect list
 //
-// NOTES: they are not inherited from MemoryXXX node but directly from Expr
-//        and they are not treated as MemoryOp since it is *only* used in
-//        effect dependency list
 // -------------------------------------------------------------------------
-class ReadEffectPhi : public Expr {
+class ReadEffectPhi : public MemoryRead {
  public:
   inline static ReadEffectPhi* New( Graph* , ControlFlow* , IRInfo* );
   inline static ReadEffectPhi* New( Graph* , MemoryRead* , MemoryRead* , ControlFlow* , IRInfo* );
@@ -1325,7 +1315,7 @@ class ReadEffectPhi : public Expr {
   LAVA_DISALLOW_COPY_AND_ASSIGN(ReadEffectPhi);
 };
 
-class WriteEffectPhi : public Expr {
+class WriteEffectPhi : public MemoryWrite {
  public:
   inline static WriteEffectPhi* New( Graph* , ControlFlow* , IRInfo* );
   inline static WriteEffectPhi* New( Graph* , MemoryWrite* , MemoryWrite* , ControlFlow* , IRInfo* );
@@ -1341,9 +1331,6 @@ class NoReadEffect: public MemoryRead {
  public:
   inline static NoReadEffect* New( Graph* );
   NoReadEffect( Graph* graph , std::uint32_t id ): MemoryRead(IRTYPE_NO_READ_EFFECT,id,graph,NULL) {}
-
-  virtual Expr* Memory() const { lava_die(); return NULL; }
-  virtual Expr* Value () const { lava_die(); return NULL; }
  private:
   LAVA_DISALLOW_COPY_AND_ASSIGN(NoReadEffect);
 };
@@ -1352,9 +1339,6 @@ class NoWriteEffect: public MemoryWrite {
  public:
   inline static NoWriteEffect* New( Graph* );
   NoWriteEffect( Graph* graph , std::uint32_t id ): MemoryWrite(IRTYPE_NO_WRITE_EFFECT,id,graph,NULL) {}
-
-  virtual Expr* Memory() const { lava_die(); return NULL; }
-  virtual Expr* Value () const { lava_die(); return NULL; }
  private:
   LAVA_DISALLOW_COPY_AND_ASSIGN(NoWriteEffect);
 };

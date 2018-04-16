@@ -17,19 +17,17 @@ using namespace ::lavascript::interpreter;
 
 GraphBuilder::Environment::Environment( GraphBuilder* gb ):
   stack_  (),
-  root_   (gb->graph_),
   upvalue_(),
   global_ (),
   gb_     (gb),
-  effect_ (gb->effect_group_factory())
+  effect_ (gb->temp_zone(),gb->graph()->no_write_effect())
 {}
 
 GraphBuilder::Environment::Environment( const Environment& env ):
   stack_  (env.stack_),
-  root_   (env.root_),
   upvalue_(env.upvalue_),
   global_ (env.global_),
-  gb_     (env.gb_)
+  gb_     (env.gb_),
   effect_ (env.effect_)
 {}
 
@@ -96,20 +94,6 @@ void GraphBuilder::Environment::SetGlobal( const void* key , std::size_t length 
   } else {
     itr->value = value;
   }
-}
-
-void GraphBuilder::Environment::UpdateNode( Expr* node , Expr* nnode ) {
-  // 1. search against the value stack
-  {
-    auto sz = gb_->func_info().prototype->argument_size() + gb_->func_info().base;
-    for( std::size_t i = 0 ; i < sz ; ++i ) {
-      if(stack_[i] == node) stack_[i] = nnode;
-    }
-  }
-  // 2. search agasint the upvalue stack
-  for( auto& e : upvalue_ ) if(e == node) e = nnode;
-  // 3. search against the global
-  for( auto& e : global_  ) if(e.value == node) e.value = nnode;
 }
 
 /* -------------------------------------------------------------
@@ -293,38 +277,30 @@ Expr* GraphBuilder::NewBoolean( bool value ) {
 
 IRList* GraphBuilder::NewIRList( std::size_t size , IRInfo* info ) {
   auto ret = IRList::New(graph_,size,info);
-  effect_group_[ret->id()] = NewEffectGroup();
   return ret;
 }
 
 IRObject* GraphBuilder::NewIRObject( std::size_t size , IRInfo* info ) {
   auto ret = IRObject::New(graph_,size,info);
-  effect_group_[ret->id()] = NewEffectGroup();
   return ret;
 }
 
-Expr* GraphBuilder::AddTypeFeedbackIfNeed( const StackSlot& idx ,
-                                           TypeKind tp,
-                                           const BytecodeLocation& pc ) {
+Expr* GraphBuilder::AddTypeFeedbackIfNeed( const StackSlot& idx , TypeKind tp,
+                                                                  const BytecodeLocation& pc ) {
   return AddTypeFeedbackIfNeed(idx,tp,NewIRInfo(pc));
 }
 
-Expr* GraphBuilder::AddTypeFeedbackIfNeed( const StackSlot& idx ,
-                                           const Value& value ,
-                                           const BytecodeLocation& pc ) {
+Expr* GraphBuilder::AddTypeFeedbackIfNeed( const StackSlot& idx , const Value& value ,
+                                                                  const BytecodeLocation& pc ) {
   return AddTypeFeedbackIfNeed(idx,value,NewIRInfo(pc));
 }
 
 
-Expr* GraphBuilder::AddTypeFeedbackIfNeed( const StackSlot& idx ,
-                                           const Value& value ,
-                                           IRInfo* info ) {
+Expr* GraphBuilder::AddTypeFeedbackIfNeed( const StackSlot& idx , const Value& value , IRInfo* info ) {
   return AddTypeFeedbackIfNeed(idx,MapValueToTypeKind(value),info);
 }
 
-Expr* GraphBuilder::AddTypeFeedbackIfNeed( const StackSlot& idx ,
-                                           TypeKind tp,
-                                           IRInfo* info ) {
+Expr* GraphBuilder::AddTypeFeedbackIfNeed( const StackSlot& idx , TypeKind tp, IRInfo* info ) {
   auto n   = idx.node;
   auto stp = GetTypeInference(n);
   if(stp != TPKIND_UNKNOWN) {
@@ -398,7 +374,6 @@ Expr* GraphBuilder::TrySpeculativeUnary( const StackSlot& index , Unary::Operato
       }
     }
   }
-
   // Fallback:
   // okay, we are not able to get *any* types of type information, fallback to
   // generate a fully dynamic dispatch node
@@ -593,9 +568,8 @@ Expr* GraphBuilder::NewTernary ( const StackSlot& cidx, Expr* lhs, Expr* rhs, co
 // Intrinsic Call Node
 //
 // ========================================================================
-Expr* GraphBuilder::NewICall   ( std::uint8_t a1 , std::uint8_t a2 , std::uint8_t a3 ,
-                                                                     bool tcall ,
-                                                                     const BytecodeLocation& pc ) {
+Expr* GraphBuilder::NewICall( std::uint8_t a1 , std::uint8_t a2 , std::uint8_t a3 , bool tcall ,
+                                                                                    const BytecodeLocation& pc ) {
   IntrinsicCall ic = static_cast<IntrinsicCall>(a1);
   auto base = a2; // new base to get value from current stack
   auto node = ICall::New(graph_,ic,tcall,NewIRInfo(pc));
@@ -615,34 +589,31 @@ Expr* GraphBuilder::NewICall   ( std::uint8_t a1 , std::uint8_t a2 , std::uint8_
 
 Expr* GraphBuilder::LowerICall( ICall* node ) {
   switch(node->ic()) {
-    case INTRINSIC_CALL_UPDATE: {
-      auto k = node->GetArgument(1);
-      if(k->IsString()) {
-        return NewPSet(node->GetArgument(0),k,node->GetArgument(2),node->ir_info());
-      } else {
-        return NewISet(node->GetArgument(0),k,node->GetArgument(2),node->ir_info());
+    case INTRINSIC_CALL_UPDATE:
+      {
+        auto k = node->GetArgument(1);
+        if(k->IsString()) {
+          return NewPSet(node->GetArgument(0),k,node->GetArgument(2),node->ir_info());
+        } else {
+          return NewISet(node->GetArgument(0),k,node->GetArgument(2),node->ir_info());
+        }
       }
-    }
-    break;
-
-    case INTRINSIC_CALL_GET: {
-      auto k = node->GetArgument(1);
-      if(k->IsString()) {
-        return NewPGet(node->GetArgument(0),k,node->ir_info());
-      } else {
-        return NewIGet(node->GetArgument(0),k,node->ir_info());
+      break;
+    case INTRINSIC_CALL_GET:
+      {
+        auto k = node->GetArgument(1);
+        if(k->IsString()) {
+          return NewPGet(node->GetArgument(0),k,node->ir_info());
+        } else {
+          return NewIGet(node->GetArgument(0),k,node->ir_info());
+        }
       }
-    }
-    break;
-
-    case INTRINSIC_CALL_ITER: {
+      break;
+    case INTRINSIC_CALL_ITER:
       return ItrNew::New(graph_,node->GetArgument(0),node->ir_info(),region());
-    }
-    break;
-
+      break;
     default: break;
   }
-
   return NULL;
 }
 
@@ -653,13 +624,14 @@ Expr* GraphBuilder::LowerICall( ICall* node ) {
 // ====================================================================
 Expr* GraphBuilder::NewPSet( Expr* object , Expr* key , Expr* value , IRInfo* ir_info ) {
   auto ret = PSet::New(graph_,object,key,value,ir_info,region());
-  VisitEffectWrite( object , ret );
+  env()->effect()->UpdateWriteEffect(ret);
+  region()->AddStatement(ret);
   return ret;
 }
 
 Expr* GraphBuilder::NewPGet( Expr* object , Expr* key , IRInfo* ir_info ) {
   auto ret = PGet::New(graph_,object,key,ir_info,region());
-  VisitEffectRead( object, ret );
+  env()->effect()->AddReadEffect(ret);
   return ret;
 }
 
@@ -670,13 +642,14 @@ Expr* GraphBuilder::NewPGet( Expr* object , Expr* key , IRInfo* ir_info ) {
 // ====================================================================
 Expr* GraphBuilder::NewISet( Expr* object, Expr* index, Expr* value, IRInfo* ir_info ) {
   auto ret = ISet::New(graph_,object,index,value,ir_info,region());
-  VisitEffectWrite( object, ret );
+  env()->effect()->UpdateWriteEffect(ret);
+  region()->AddStatement(ret);
   return ret;
 }
 
 Expr* GraphBuilder::NewIGet( Expr* object, Expr* index, IRInfo* ir_info ) {
   auto ret = IGet::New(graph_,object,index,ir_info,region());
-  VisitEffectRead( object, ret );
+  env()->effect()->AddReadEffect(ret);
   return ret;
 }
 
@@ -777,13 +750,7 @@ void GraphBuilder::GeneratePhi( ValueStack* dest , const ValueStack& lhs , const
 // key function to merge the effect and value from 2 environments. called at every region merge
 void GraphBuilder::InsertPhi( Environment* lhs , Environment* rhs , ControlFlow* region , IRInfo* info ) {
   // 1. generate merge for both region's root effect group
-  {
-    auto phi = WriteEffectPhi::New(graph_,lhs->root_.write_effect(),rhs->root_.write_effect(),region,info);
-    for( auto &e : lhs->root_.read_list() ) phi->AddEffect(e);
-    for( auto &e : rhs->root_.read_list() ) phi->AddEffect(e);
-    env()->root_.read_list_.clear();
-    env()->root_.write_effect_ = phi;
-  }
+  Effect::Merge(*lhs->effect(),*rhs->effect(),env()->effect(),graph_,region,info);
   // 2. generate phi for all the stack value
   GeneratePhi(vstk() ,*lhs->stack()  ,*rhs->stack()  ,func_info().base ,region,info);
   // 3. generate phi for all the upvalue
@@ -1179,7 +1146,6 @@ GraphBuilder::BuildLoopBody( BytecodeIterator* itr , ControlFlow* loop_header ) 
 
   BytecodeLocation cont_pc;
   BytecodeLocation brk_pc ;
-
   {
     // backup the old environment and use a temporary environment
     BackupEnvironment backup(&loop_env,this);
@@ -1217,9 +1183,9 @@ GraphBuilder::BuildLoopBody( BytecodeIterator* itr , ControlFlow* loop_header ) 
     PatchUnconditionalJump( &func_info().current_loop().pending_continue , exit , cont_pc );
     PatchUnconditionalJump( &func_info().current_loop().pending_break    , after, brk_pc  );
     lava_debug(NORMAL,
-        lava_verify(func_info().current_loop().pending_continue.empty());
-        lava_verify(func_info().current_loop().pending_break.empty   ());
-        lava_verify(func_info().current_loop().phi_list.empty        ());
+      lava_verify(func_info().current_loop().pending_continue.empty());
+      lava_verify(func_info().current_loop().pending_break.empty   ());
+      lava_verify(func_info().current_loop().phi_list.empty        ());
     );
   }
   set_region(after);
@@ -1855,75 +1821,6 @@ GraphBuilder::BuildOSRStart( const Handle<Prototype>& entry ,  const std::uint32
 
 bool GraphBuilder::BuildOSR( const Handle<Prototype>& entry , const std::uint32_t* osr_start , Graph* graph ) {
   return BuildOSRStart(entry,osr_start,graph) == STOP_SUCCESS;
-}
-
-// ===============================================================================
-//
-// Effect Analyze
-//
-// ===============================================================================
-void GraphBuilder::VisitEffect( Expr* node , const EffectVisitor& visitor ) {
-  // This function recursively visit each component inside of the node to find out
-  // a node that has corresponding effect group. The node that *can* has effect group
-  // are node that is 1) memory node 2) memory-write node. The memory node's effect
-  // group are stored inside of the effect list ; the memory-write node's effect list
-  // are stored inside of its stored object's effect group's children field.
-  if(node->IsMemoryNode() || node->IsMemoryWrite()) {
-    switch(node->type()) {
-      case IRTYPE_ARG: case IRTYPE_GGET: case IRTYPE_UGET:
-        visitor(node,env()->root());
-        break;
-      case IRTYPE_LIST: case IRTYPE_OBJECT:     case IRTYPE_PSET:
-      case IRTYPE_ISET: case IRTYPE_OBJECT_SET: case IRTYPE_LIST_SET:
-        lava_debug(NORMAL,lava_verify(effect_group_[node->id()]););
-        visitor(node,effect_group_[node->id()]);
-        break;
-      default: lava_die();
-    }
-  } else {
-    // memory read node
-    if(node->IsMemoryOp()) {
-      switch(node->type()) {
-        case IRTYPE_PGET:       VisitEffect(node->AsPGet()->object(),visitor);      break;
-        case IRTYPE_IGET:       VisitEffect(node->AsIGet()->object(),visitor);      break;
-        case IRTYPE_OBJECT_GET: VisitEffect(node->AsObjectGet()->object(),visitor); break;
-        case IRTYPE_LIST_GET:   VisitEffect(node->AsListGet()->object(),visitor);   break;
-
-        case IRTYPE_PSET:       VisitEffect(node->AsPSet()->object(),visitor);      break;
-        case IRTYPE_ISET:       VisitEffect(node->AsISet()->object(),visitor);      break;
-        case IRTYPE_OBJECT_SET: VisitEffect(node->AsObjectSet()->object(),visitor); break;
-        case IRTYPE_LIST_SET:   VisitEffect(node->AsListSet()->object(),visitor);   break;
-        default:                lava_die();
-      }
-    } else if(node->IsPhi()) {
-      // need to visit phi node as well since it may contain sub expression
-      // which is a memory read operation or a memory node
-      for( auto itr(node->operand_list()->GetForwardIterator()); itr.HasNext(); itr.Move() ) {
-        VisitEffect(itr.value(),visitor);
-      }
-    }
-  }
-}
-
-void GraphBuilder::VisitEffectRead ( Expr* node , MemoryRead* read ) {
-  VisitEffect(node,[=](Expr* n,EffectGroup* grp) {
-    (void)n;
-    grp->AddReadEffect(read);
-  });
-}
-
-void GraphBuilder::VisitEffectWrite( Expr* node , MemoryWrite* write ) {
-  VisitEffect(node,[=](Expr* n,EffectGroup* grp) {
-    region()->AddStatement(write);
-    grp->UpdateWriteEffect(write);
-  });
-}
-
-GraphBuilder::EffectGroup* GraphBuilder::NewEffectGroup( MemoryWrite* write ) {
-  if(!write)
-    return temp_zone_.New<EffectGroup>(graph_);
-  else
-    return temp_zone_.New<EffectGroup>(write);
 }
 
 } // namespace hir

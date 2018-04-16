@@ -75,20 +75,14 @@ class GraphBuilder {
     ValueStack*      stack()    { return &stack_;  }
     UpValueVector*   upvalue()  { return &upvalue_;}
     GlobalMap*       global()   { return &global_; }
-    // update a node appear in the environment with another node
-    void UpdateNode  ( Expr* , Expr* );
-   public:
-    // root effect group
-    BasicEffectGroup* root() { return &root_; }
     // effect group list
-    EffectGroupList* effect() { return &effect_; }
+    Effect* effect()   { return &effect_; }
    private:
     ValueStack stack_;        // register stack
-    EffectGroup root_;        // root's effect , ARG/GGET/UGET's node's corresponding effect group
     UpValueVector upvalue_;   // upvalue's effect group
     GlobalMap global_;        // global's effect group
     GraphBuilder* gb_;        // graph builder
-    EffectGroupList effect_;  // a list of tracked effect group
+    Effect        effect_;    // a list of tracked effect group
 
     friend class GraphBuilder;
     LAVA_DISALLOW_ASSIGN(Environment);
@@ -189,8 +183,6 @@ class GraphBuilder {
     STOP_END ,
     STOP_SUCCESS
   };
- public:
-  EffectGroupFactory* effect_group_factory() { return &eg_factory_; }
 
  public:
   inline GraphBuilder( const Handle<Script>& , const TypeTrace& );
@@ -219,6 +211,11 @@ class GraphBuilder {
   Environment* env()                   const { return env_; }
   ValueStack*  vstk()                  const { return env_->stack(); }
   ValueStack*  upval()                 const { return env_->upvalue();}
+
+ public:
+  Graph*                    graph()     const { return graph_; }
+  ::lavascript::zone::Zone* temp_zone()       { return &temp_zone_; }
+  ::lavascript::zone::Zone* zone     () const { return zone_; }
   // input argument size , the input argument size is the argument size that
   // is belong to the top most function since this function's input argument
   // remains as input argument, rest of the nested inlined function's input
@@ -351,18 +348,6 @@ class GraphBuilder {
   IRInfo* NewIRInfo( const interpreter::BytecodeLocation& loc );
   IRInfo* NewIRInfo( interpreter::BytecodeIterator* );
 
- private: // Effect analyzing
-  typedef std::function< void (Expr*,EffectGroup*) > EffectVisitor;
-
-  // Analyze the input expression node and find *all* its satisfied effect group
-  // in our effect group list and call the EffectVisitor callback function on each
-  // group found
-  void VisitEffect     ( Expr* node , const EffectVisitor& visitor );
-  void VisitEffectRead ( Expr* node , MemoryRead* );
-  void VisitEffectWrite( Expr* node , MemoryWrite*);
-  // New a new effect group object inside of our internal zone object
-  EffectGroup* NewEffectGroup( MemoryWrite* op = NULL );
-
  private:
   // Zone owned by the Graph object, and it is supposed to be stay around while the
   // optimization happenened
@@ -376,8 +361,6 @@ class GraphBuilder {
   const TypeTrace&        type_trace_;
   // This zone is used for other transient memory costs during graph construction
   zone::Zone              temp_zone_;
-  // Factory class to create effect group
-  EffectGroupFactory      eg_factory_;
 
  private:
   class OSRScope ;
@@ -438,30 +421,13 @@ inline GraphBuilder::GraphBuilder( const Handle<Script>& script , const TypeTrac
   graph_            (NULL),
   func_info_        (),
   type_trace_       (tt),
-  effect_group_     (),
-  temp_zone_        (),
-  eg_factory_       (&temp_zone_,[=]() { return env()->root(); })
+  temp_zone_        ()
 {}
 
 inline void GraphBuilder::FuncInfo::EnterLoop( const std::uint32_t* pc ) {
   const BytecodeAnalyze::LoopHeaderInfo* info = bc_analyze.LookUpLoopHeader(pc);
   lava_debug(NORMAL,lava_verify(info););
   loop_info.push_back(LoopInfo(info));
-}
-
-inline void GraphBuilder::EffectGroup::AddReadEffect( MemoryRead* read ) {
-  // this is a read after write effect or *true* effect
-  read->AddEffect(write_effect_);
-  read_list_.push_back(read);
-}
-
-inline void GraphBuilder::EffectGroup::UpdateWriteEffect( MemoryWrite* write ) {
-  // this is a write after read effect or *anti* effect
-  for( auto &e : read_list_ ) write->AddEffect(e);
-  // new write barrier will be setup, just clear the read list
-  read_list_.clear();
-  // update the new write effect
-  write_effect_ = write;
 }
 
 } // namespace hir

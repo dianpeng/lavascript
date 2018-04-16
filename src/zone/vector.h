@@ -57,7 +57,7 @@ template< typename T > struct VectorForwardTraits {
 
 template< typename T > struct VectorBackwardTraits {
  public:
-  typedef const Vector<T> VectorType;
+  typedef Vector<T> VectorType;
   inline static std::int64_t InitCursor( VectorType* vec );
   inline static bool HasNext( VectorType* vec , std::int64_t cursor );
   inline static bool Move   ( VectorType* vec , std::int64_t* cursor );
@@ -93,7 +93,7 @@ class Vector : ZoneObject {
   }
   void Del() { lava_assert(!empty(),"Del() on empty vector!"); --size_; }
   void Clear() { size_ = 0; }
-  void CopyFrom( Zone*, const Vector& );
+  void Assign( Zone*, const Vector& );
  public:
   T& First() { lava_assert(!empty(),"First() on empty vector!"); return ptr_[0]; }
   const T& First() const { return const_cast<Vector*>(this)->First(); }
@@ -115,10 +115,10 @@ class Vector : ZoneObject {
   typedef detail::IteratorBase<T,detail::VectorBackwardTraits<T>> BackwardIterator;
   typedef const BackwardIterator ConstBackwardIterator;
 
-  ForwardIterator  GetForwardIterator()  { return ForwardIterator(this); }
-  BackwardIterator GetBackwardIterator() { return BackwardIterator(this); }
-  ConstForwardIterator  GetForwardIterator()  const { return ConstForwardIterator(this); }
-  ConstBackwardIterator GetBackwardIterator() const { return ConstBackwardIterator(this); }
+  ForwardIterator       GetForwardIterator()        { return ForwardIterator      (this); }
+  BackwardIterator      GetBackwardIterator()       { return BackwardIterator     (this); }
+  ConstForwardIterator  GetForwardIterator()  const { return ConstForwardIterator (mutable_this()); }
+  ConstBackwardIterator GetBackwardIterator() const { return ConstBackwardIterator(mutable_this()); }
 
  public: // Remove or Insert
   // Insert an element *before* this iterator
@@ -148,11 +148,13 @@ class Vector : ZoneObject {
   ForwardIterator Find       ( const T& value ) {
     return FindIf([=](const T& that) { return value == that; });
   }
-  ConstForwradIterator FindIf( const std::function<bool(const T&)>& predicate ) const {
+  ConstForwardIterator FindIf( const std::function<bool(const T&)>& predicate ) const {
     return const_cast<ConstForwardIterator>(const_cast<Vector*>(this)->FindIf(predicate));
   }
   ForwardIterator      FindIf( const std::function<bool(const T&)>& );
  private:
+  Vector* mutable_this() const { return const_cast<Vector*>(this); }
+
   std::int64_t IterToCursor( ConstForwardIterator& itr ) {
     auto cursor = static_cast<std::size_t>(itr.cursor_);
     return static_cast<std::int64_t>(cursor > size_ ? size_ : cursor);
@@ -181,18 +183,19 @@ struct OOLVectorDefaultEnlargePolicy {
 // Used for helping node tracking and construction
 template< typename T , typename Policy = OOLVectorDefaultEnlargePolicy<T>>
 class OOLVector : public Vector<T> {
+  typedef Vector<T> Base;
  public:
   OOLVector( Zone* zone , std::size_t size = 0 ): Vector<T>(zone,size) {}
   template< typename IDX > T& Get( Zone* zone , const IDX& idx ) {
-    if(size() <= idx) Resize(zone,Policy().GetSize(idx));
-    return Index(static_cast<int>(idx));
+    if(Base::size() <= idx) Resize(zone,Policy().GetSize(idx));
+    return Base::Index(static_cast<int>(idx));
   }
   template< typename IDX > const T& Get( Zone* zone , const IDX& idx ) const {
     return const_cast<OOLVector*>(this)->Get(zone,idx);
   }
   template< typename IDX > void Set( Zone* zone , const IDX& idx , const T& val ) {
-    if(size() <= idx) Resize(zone,Policy().GetSize(idx));
-    Index(static_cast<int>(idx)) = val;
+    if(Base::size() <= idx) Base::Resize(zone,Policy().GetSize(idx));
+    Base::Index(static_cast<int>(idx)) = val;
   }
 };
 
@@ -228,7 +231,7 @@ template< typename T > void Vector<T>::Add( Zone* zone , const T& value ) {
   ++size_;
 }
 
-template< typename T > void Vector<T>::CopyFrom( Zone* zone , const Vector& that ) {
+template< typename T > void Vector<T>::Assign( Zone* zone , const Vector& that ) {
   Vector<T> temp(zone,that);
   Swap(&temp);
 }

@@ -105,7 +105,7 @@ inline bool Expr::IsMemoryRead() const {
   switch(type()) {
     case IRTYPE_IGET: case IRTYPE_PGET: case IRTYPE_OBJECT_GET: case IRTYPE_LIST_GET:
       return true;
-    case IRTYPE_NO_READ_EFFECT:
+    case IRTYPE_NO_READ_EFFECT: case IRTYPE_READ_EFFECT_PHI:
       return true;
     default:
       return false;
@@ -116,7 +116,7 @@ inline bool Expr::IsMemoryWrite() const {
   switch(type()) {
     case IRTYPE_ISET: case IRTYPE_PSET: case IRTYPE_OBJECT_SET: case IRTYPE_LIST_SET:
       return true;
-    case IRTYPE_NO_WRITE_EFFECT:
+    case IRTYPE_NO_WRITE_EFFECT: case IRTYPE_WRITE_EFFECT_PHI:
       return true;
     default:
       return false;
@@ -127,8 +127,19 @@ inline bool Expr::IsMemoryOp() const { return IsMemoryRead() || IsMemoryWrite();
 
 inline bool Expr::IsMemoryNode() const {
   switch(type()) {
-    case IRTYPE_ARG: case IRTYPE_GGET: case IRTYPE_UGET: case IRTYPE_LIST: case IRTYPE_OBJECT: return true;
-    default: return false;
+    case IRTYPE_ARG: case IRTYPE_GGET: case IRTYPE_UGET: case IRTYPE_LIST: case IRTYPE_OBJECT:
+      return true;
+    default:
+      return false;
+  }
+}
+
+inline bool Expr::IsPhiNode() const {
+  switch(type()) {
+    case IRTYPE_PHI: case IRTYPE_READ_EFFECT_PHI: case IRTYPE_WRITE_EFFECT_PHI:
+      return true;
+    default:
+      return false;
   }
 }
 
@@ -423,8 +434,8 @@ inline Phi* Phi::New( Graph* graph , ControlFlow* region , IRInfo* info ) {
 }
 
 inline ReadEffectPhi::ReadEffectPhi( Graph* graph , std::uint32_t id , ControlFlow* region , IRInfo* info ):
-  Expr(IRTYPE_READ_EFFECT_PHI,id,graph,info),
-  region_ (region)
+  MemoryRead(IRTYPE_READ_EFFECT_PHI,id,graph,info),
+  region_   (region)
 {
   region->AddOperand(this);
 }
@@ -443,8 +454,8 @@ inline ReadEffectPhi* ReadEffectPhi::New( Graph* graph , ControlFlow* region , I
 }
 
 inline WriteEffectPhi::WriteEffectPhi( Graph* graph , std::uint32_t id , ControlFlow* region  , IRInfo* info ):
-  Expr(IRTYPE_WRITE_EFFECT_PHI,id,graph,info),
-  region_(region)
+  MemoryWrite(IRTYPE_WRITE_EFFECT_PHI,id,graph,info),
+  region_    (region)
 {
   region->AddOperand(this);
 }

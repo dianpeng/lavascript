@@ -39,7 +39,7 @@ template< typename T > class TableIterator {
 // Default builtin traits
 //
 // =====================================================================
-template < typename T >struct DefaultTrait {
+template < typename T > struct DefaultTrait {
   static std::uint32_t Hash( const T& val ) {
     static_assert( std::is_integral<T>::value );
     static const std::uint32_t kMagic = 2654435761;

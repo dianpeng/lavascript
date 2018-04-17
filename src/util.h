@@ -26,6 +26,12 @@
 
 namespace lavascript {
 
+// Boost foreach style foreach statement for support customized iterator type.
+// Requires C++ 17 if statement
+#define lava_foreach(T,ITR)                                \
+  for( auto itr(ITR); itr.HasNext(); itr.Move() )          \
+    if( T = itr.value() ; true )
+
 // template function to get the size of an C array
 template< std::size_t N , typename T >
 size_t ArraySize( const T (&arr)[N] ) { (void)arr; return N; }

@@ -344,35 +344,27 @@ inline UGet* UGet::New( Graph* graph , std::uint8_t index , std::uint32_t method
   return graph->zone()->New<UGet>(graph,graph->AssignID(),index,method,info);
 }
 
-inline USet* USet::New( Graph* graph , std::uint8_t index , std::uint32_t method ,
-                                                            Expr* opr ,
-                                                            IRInfo* info ) {
+inline USet* USet::New( Graph* graph , std::uint8_t index , std::uint32_t method , Expr* opr , IRInfo* info ) {
   auto ret = graph->zone()->New<USet>(graph,graph->AssignID(),index,method,opr,info);
   return ret;
 }
 
-inline PGet* PGet::New( Graph* graph , Expr* obj , Expr* key , IRInfo* info ,
-                                                               ControlFlow* region ) {
+inline PGet* PGet::New( Graph* graph , Expr* obj , Expr* key , IRInfo* info , ControlFlow* region ) {
   auto ret = graph->zone()->New<PGet>(graph,graph->AssignID(),obj,key,info);
   return ret;
 }
 
-inline PSet* PSet::New( Graph* graph , Expr* obj , Expr* key , Expr* value ,
-                                                               IRInfo* info,
-                                                               ControlFlow* region ) {
+inline PSet* PSet::New( Graph* graph , Expr* obj , Expr* key , Expr* value , IRInfo* info, ControlFlow* region ) {
   auto ret = graph->zone()->New<PSet>(graph,graph->AssignID(),obj,key,value,info);
   return ret;
 }
 
-inline IGet* IGet::New( Graph* graph , Expr* obj, Expr* key , IRInfo* info ,
-                                                              ControlFlow* region ) {
+inline IGet* IGet::New( Graph* graph , Expr* obj, Expr* key , IRInfo* info , ControlFlow* region ) {
   auto ret = graph->zone()->New<IGet>(graph,graph->AssignID(),obj,key,info);
   return ret;
 }
 
-inline ISet* ISet::New( Graph* graph , Expr* obj , Expr* key , Expr* val ,
-                                                               IRInfo* info ,
-                                                               ControlFlow* region ) {
+inline ISet* ISet::New( Graph* graph , Expr* obj , Expr* key , Expr* val , IRInfo* info , ControlFlow* region ) {
   auto ret = graph->zone()->New<ISet>(graph,graph->AssignID(),obj,key,val,info);
   return ret;
 }
@@ -489,18 +481,12 @@ inline LoadCls* LoadCls::New( Graph* graph , std::uint32_t ref , IRInfo* info ) 
   return graph->zone()->New<LoadCls>(graph,graph->AssignID(),ref,info);
 }
 
-inline Projection* Projection::New( Graph* graph , Expr* operand , std::uint32_t index ,
-                                                                   IRInfo* info ) {
+inline Projection* Projection::New( Graph* graph , Expr* operand , std::uint32_t index , IRInfo* info ) {
   return graph->zone()->New<Projection>(graph,graph->AssignID(),operand,index,info);
 }
 
 inline OSRLoad* OSRLoad::New( Graph* graph , std::uint32_t index ) {
   return graph->zone()->New<OSRLoad>(graph,graph->AssignID(),index);
-}
-
-inline Alias* Alias::New( Graph* graph , Expr* receiver , Expr* applier ,
-                                                          IRInfo* info ) {
-  return graph->zone()->New<Alias>(graph,graph->AssignID(),receiver,applier,info);
 }
 
 inline Checkpoint* Checkpoint::New( Graph* graph ) {
@@ -511,13 +497,11 @@ inline void Checkpoint::AddStackSlot( Expr* val , std::uint32_t index ) {
   AddOperand(StackSlot::New(graph(),val,index));
 }
 
-inline TestType* TestType::New( Graph* graph , TypeKind tc , Expr* object ,
-                                                                 IRInfo* info ) {
+inline TestType* TestType::New( Graph* graph , TypeKind tc , Expr* object , IRInfo* info ) {
   return graph->zone()->New<TestType>(graph,graph->AssignID(),tc,object,info);
 }
 
-inline TestListOOB* TestListOOB::New( Graph* graph , Expr* object , Expr* key ,
-                                                                      IRInfo* info ) {
+inline TestListOOB* TestListOOB::New( Graph* graph , Expr* object , Expr* key , IRInfo* info ) {
   return graph->zone()->New<TestListOOB>(graph,graph->AssignID(),object,key,info);
 }
 
@@ -525,24 +509,16 @@ inline Float64Negate* Float64Negate::New( Graph* graph , Expr* opr , IRInfo* inf
   return graph->zone()->New<Float64Negate>(graph,graph->AssignID(),opr,info);
 }
 
-inline Float64Arithmetic* Float64Arithmetic::New( Graph* graph , Expr* lhs ,
-                                                                 Expr* rhs ,
-                                                                 Operator op,
-                                                                 IRInfo* info ) {
+inline Float64Arithmetic* Float64Arithmetic::New( Graph* graph , Expr* lhs , Expr* rhs , Operator op,
+                                                                                         IRInfo* info ) {
   return graph->zone()->New<Float64Arithmetic>(graph,graph->AssignID(),lhs,rhs,op,info);
 }
 
-inline Float64Bitwise* Float64Bitwise::New( Graph* graph , Expr* lhs ,
-                                                           Expr* rhs ,
-                                                           Operator op,
-                                                           IRInfo* info ) {
+inline Float64Bitwise* Float64Bitwise::New( Graph* graph , Expr* lhs , Expr* rhs , Operator op, IRInfo* info ) {
   return graph->zone()->New<Float64Bitwise>(graph,graph->AssignID(),lhs,rhs,op,info);
 }
 
-inline Float64Compare* Float64Compare::New( Graph* graph , Expr* lhs ,
-                                                           Expr* rhs ,
-                                                           Operator op,
-                                                           IRInfo* info ) {
+inline Float64Compare* Float64Compare::New( Graph* graph , Expr* lhs , Expr* rhs , Operator op, IRInfo* info ) {
   return graph->zone()->New<Float64Compare>(graph,graph->AssignID(),lhs,rhs,op,info);
 }
 
@@ -550,15 +526,11 @@ inline BooleanNot* BooleanNot::New( Graph* graph , Expr* opr , IRInfo* info ) {
   return graph->zone()->New<BooleanNot>(graph,graph->AssignID(),opr,info);
 }
 
-inline BooleanLogic* BooleanLogic::New( Graph* graph , Expr* lhs , Expr* rhs ,
-                                                                   Operator op,
-                                                                   IRInfo* info ) {
+inline BooleanLogic* BooleanLogic::New( Graph* graph , Expr* lhs , Expr* rhs , Operator op, IRInfo* info ) {
   return graph->zone()->New<BooleanLogic>(graph,graph->AssignID(),lhs,rhs,op,info);
 }
 
-inline StringCompare* StringCompare::New( Graph* graph , Expr* lhs , Expr* rhs ,
-                                                                     Operator op ,
-                                                                     IRInfo* info ) {
+inline StringCompare* StringCompare::New( Graph* graph , Expr* lhs , Expr* rhs , Operator op , IRInfo* info ) {
   return graph->zone()->New<StringCompare>(graph,graph->AssignID(),lhs,rhs,op,info);
 }
 
@@ -574,8 +546,7 @@ inline ListGet* ListGet::New( Graph* graph , Expr* obj , Expr* index , IRInfo* i
   return graph->zone()->New<ListGet>(graph,graph->AssignID(),obj,index,info);
 }
 
-inline ListSet* ListSet::New( Graph* graph , Expr* obj , Expr* index , Expr* value ,
-                                                                       IRInfo* info ) {
+inline ListSet* ListSet::New( Graph* graph , Expr* obj , Expr* index , Expr* value , IRInfo* info ) {
   return graph->zone()->New<ListSet>(graph,graph->AssignID(),obj,index,value,info);
 }
 
@@ -583,8 +554,7 @@ inline ObjectGet* ObjectGet::New( Graph* graph , Expr* obj , Expr* key , IRInfo*
   return graph->zone()->New<ObjectGet>(graph,graph->AssignID(),obj,key,info);
 }
 
-inline ObjectSet* ObjectSet::New( Graph* graph , Expr* obj , Expr* key , Expr* value ,
-                                                                         IRInfo* info ) {
+inline ObjectSet* ObjectSet::New( Graph* graph , Expr* obj , Expr* key , Expr* value , IRInfo* info ) {
   return graph->zone()->New<ObjectSet>(graph,graph->AssignID(),obj,key,value,info);
 }
 
@@ -620,14 +590,21 @@ inline LoopExit* LoopExit::New( Graph* graph , Expr* condition ) {
   return graph->zone()->New<LoopExit>(graph,graph->AssignID(),condition);
 }
 
+inline Guard* Guard::New( Graph* graph , Expr* test , Checkpoint* cp , ControlFlow* region ) {
+  return graph->zone()->New<Guard>(graph,graph->AssignID(),test,cp,region);
+}
+
 inline If* If::New( Graph* graph , Expr* condition , ControlFlow* parent ) {
   return graph->zone()->New<If>(graph,graph->AssignID(),condition,parent);
 }
 
-inline TypeGuard* TypeGuard::New( Graph* graph , Expr* node , TypeKind type ,
-                                                              Checkpoint* cp,
-                                                              IRInfo*  info ) {
-  return graph->zone()->New<TypeGuard>(graph,graph->AssignID(),node,type,cp,info);
+inline TypeAnnotation::TypeAnnotation( Graph* graph , std::uint32_t id , Guard* node , IRInfo* info ):
+  Expr      (IRTYPE_TYPE_ANNOTATION,id,graph,info),
+  type_kind_(node->test()->AsTestType()->type_kind())
+{}
+
+inline TypeAnnotation* TypeAnnotation::New( Graph* graph , Guard* node , IRInfo* info ) {
+  return graph->zone()->New<TypeAnnotation>(graph,graph->AssignID(),node,info);
 }
 
 inline IfTrue* IfTrue::New( Graph* graph , ControlFlow* parent ) {
@@ -697,27 +674,20 @@ inline OSREnd* OSREnd::New( Graph* graph , Success* s , Fail* f ) {
   return graph->zone()->New<OSREnd>(graph,graph->AssignID(),s,f);
 }
 
+// ----------------------------------------------------------------------------
+// Hash adapter for using zone::Table object
+// ----------------------------------------------------------------------------
+struct HIRExprHasher {
+  static std::uint32_t Hash( const Expr* expr ) {
+    return static_cast<std::size_t>(expr->GVNHash());
+  }
+  static bool Equal( const Expr* left , const Expr* right ) {
+    return left->Equal(right);
+  }
+};
+
 } // namespace hir
 } // namespace cbase
 } // namespace lavascript
-
-namespace std {
-
-// Helper template to make hir::Expr to be able to be used with std::unordered_map
-template<> struct hash<::lavascript::cbase::hir::Expr*> {
-  typedef ::lavascript::cbase::hir::Expr* type;
-  std::size_t operator () ( const type& expr ) const {
-    return static_cast<std::size_t>(expr->GVNHash());
-  }
-};
-
-template<> struct equal_to<::lavascript::cbase::hir::Expr*> {
-  typedef ::lavascript::cbase::hir::Expr* type;
-  bool operator () ( const type& lhs , const type& rhs ) const {
-    return lhs->Equal(rhs);
-  }
-};
-
-} // namespace std
 
 #endif // CBASE_HIR_INL_H_

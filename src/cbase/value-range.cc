@@ -12,7 +12,6 @@ namespace hir        {
  * Float64ValueRange Implementation
  *
  * -------------------------------------------------------------------------*/
-
 Float64ValueRange::NumberPoint Float64ValueRange::NumberPoint::kPosInf(Double::PosInf(),false);
 Float64ValueRange::NumberPoint Float64ValueRange::NumberPoint::kNegInf(Double::NegInf(),false);
 
@@ -62,6 +61,7 @@ inline Float64ValueRange::NumberPoint UpperMax( const Float64ValueRange::NumberP
 
 } // namespace
 
+// TODO:: Refactory ? This code is so so messy
 int Float64ValueRange::Range::Test( const Range& range ) const {
   if(lower == range.lower && upper == range.upper) {
     return Float64ValueRange::SAME;
@@ -112,38 +112,29 @@ int Float64ValueRange::Scan( const Range& range , std::int64_t* lower , std::int
           rcode = ValueRange::INCLUDE;
         }
         goto done;
-
       case ValueRange::OVERLAP:
         if(start == -1) {
           start = i;
           rcode = ValueRange::OVERLAP;
         }
-
         break;
-
       case ValueRange::REXCLUDE:
         if(start == -1) {
           start = i;
           rcode = ValueRange::REXCLUDE;
         }
-
         end = i;
         goto done;
-
       case ValueRange::LEXCLUDE:
         lava_debug(NORMAL,lava_verify(start == -1););
         break; // continue search
-
       case ValueRange::SAME:
         start = i; end = i + 1;
         rcode = ValueRange::SAME;
         goto done;
-
       default: lava_die(); break;
     }
-
   }
-
 done:
   if(start == -1 && end == -1) {
     lava_debug(NORMAL,lava_verify(rcode == -1););
@@ -170,12 +161,9 @@ done:
 
 void Float64ValueRange::Merge( std::int64_t index ) {
   std::int64_t pitr = 0 , nitr = 0;
-
   bool has_pitr = false;
   bool has_nitr = false;
-
   auto &rng= sets_[index];
-
   // check left hand side range
   if(index >0) {
     auto prev = index - 1;
@@ -187,7 +175,6 @@ void Float64ValueRange::Merge( std::int64_t index ) {
       rng.lower  = lhs.lower;
     }
   }
-
   // check right hand side range
   {
     auto next = index + 1;
@@ -201,7 +188,6 @@ void Float64ValueRange::Merge( std::int64_t index ) {
       }
     }
   }
-
   if(has_pitr) sets_.Remove(pitr);
   if(has_nitr) sets_.Remove(nitr);
 }
@@ -551,13 +537,11 @@ void UnknownValueRange::Dump( DumpWriter* writer ) const {
   writer->WriteL("-----------------------------------------------");
 }
 
-
 /* --------------------------------------------------------------------------
  *
  * BooleanValueRange Implementation
  *
  * -------------------------------------------------------------------------*/
-
 void BooleanValueRange::Union( bool value ) {
   switch(state_) {
     case TRUE:  state_ = value ? TRUE : ANY  ; break;
@@ -573,8 +557,8 @@ void BooleanValueRange::Union( const ValueRange& range ) {
 
   auto &r = static_cast<const BooleanValueRange&>(range);
   switch(state_) {
-    case TRUE: state_ = (r.state_ == FALSE || r.state_ == ANY) ? ANY : TRUE; break;
-    case FALSE:state_ = (r.state_ == TRUE  || r.state_ == ANY) ? ANY : FALSE;break;
+    case TRUE: state_ = (r.state_ == FALSE || r.state_ == ANY) ? ANY : TRUE ; break;
+    case FALSE:state_ = (r.state_ == TRUE  || r.state_ == ANY) ? ANY : FALSE; break;
     case EMPTY:state_ =  r.state_; break;
     case ANY:  break;
     default: lava_die(); break;
@@ -635,12 +619,8 @@ int BooleanValueRange::Infer( Binary::Operator op , bool value ) const {
   value = (op == Binary::EQ) ? value : !value;
 
   switch(state_) {
-    case TRUE:  return value ? ValueRange::ALWAYS_TRUE :
-                               ValueRange::ALWAYS_FALSE;
-
-    case FALSE: return value ? ValueRange::ALWAYS_FALSE :
-                               ValueRange::ALWAYS_TRUE;
-
+    case TRUE:  return value ? ValueRange::ALWAYS_TRUE : ValueRange::ALWAYS_FALSE;
+    case FALSE: return value ? ValueRange::ALWAYS_FALSE : ValueRange::ALWAYS_TRUE;
     case EMPTY: return ValueRange::UNKNOWN;
     case ANY:   return ValueRange::UNKNOWN;
 
@@ -652,15 +632,10 @@ int BooleanValueRange::Infer( const ValueRange& range ) const {
   if(range.IsBooleanValueRange()) {
     auto &r = static_cast<const BooleanValueRange&>(range);
     switch(state_) {
-      case ANY:
-      case EMPTY:
+      case ANY: case EMPTY:
         return ValueRange::UNKNOWN;
-
-      case TRUE:
-      case FALSE:
-        return (state_ == r.state_ || r.state_ == ANY ) ?
-          ValueRange::ALWAYS_TRUE : ValueRange::ALWAYS_FALSE;
-
+      case TRUE: case FALSE:
+        return (state_ == r.state_ || r.state_ == ANY ) ?  ValueRange::ALWAYS_TRUE : ValueRange::ALWAYS_FALSE;
       default:
         lava_die();
         return ValueRange::UNKNOWN;
@@ -701,6 +676,55 @@ void BooleanValueRange::Dump( DumpWriter* writer ) const {
   }
   writer->WriteL("-----------------------------------------------");
 }
+
+#if 0
+
+/* --------------------------------------------------------------------------
+ *
+ * TypeValueRange Implementation
+ *
+ * -------------------------------------------------------------------------*/
+void TypeValueRange::Union( TypeKind tp ) {
+  auto itr = set_.Find(tp);
+  if(!itr.HasNext()) set_.Add(zone_,tp);
+}
+
+void TypeValueRange::Union( Binary::Operator op , Expr* node ) {
+  (void)op;
+  lava_debug(NORMAL,lava_verify(node->IsTestType()););
+  auto tt = node->AsTestType();
+  Union(tt->type_kind());
+}
+
+void TypeValueRange::Union( const ValueRange& range ) {
+  lava_debug(NORMAL,lava_verify(range.IsTypeValueRange()););
+  auto rng = static_cast<const TypeValueRange&>(range);
+  for( auto itr = rng.set_.GetForwardIterator(); itr.HasNext(); itr.Move() ) {
+    Union(itr.value());
+  }
+}
+
+void TypeValueRange::Intersect( TypeKind tp ) {
+  auto itr = set_.Find(tp);
+  if(itr.HasNext()) { set_.Clear(); set_.Add(zone_,tp); }
+  else set_.Clear();
+}
+
+void TypeValueRange::Intersect( Binary::Operator op , Expr* node ) {
+  (void)op;
+  lava_debug(NORMAL,lava_verify(node->IsTestType()););
+  auto tt = node->AsTestType();
+  Intersect(tt->type_kind());
+}
+
+void TypeValueRange::Intersect( const ValueRange& range ) {
+  lava_debug(NORMAL,lava_verify(range.IsTypeValueRange()););
+  auto rng = static_cast<const TypeValueRange&>(range);
+  {
+  }
+}
+
+#endif
 
 } // namespace hir
 } // namespace cbase

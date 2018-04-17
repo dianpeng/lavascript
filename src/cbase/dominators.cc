@@ -87,7 +87,6 @@ void Dominators::Build( const Graph& graph ) {
         if(c) has_change = true;
         if(c) set->swap(temp);
       }
-
     }
   } while(has_change);
 

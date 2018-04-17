@@ -1,6 +1,7 @@
 #include "graph-builder.h"
-#include "fold.h"
 #include "type-inference.h"
+#include "fold-arith.h"
+#include "fold-intrinsic.h"
 
 #include "src/interpreter/bytecode.h"
 #include "src/interpreter/bytecode-iterator.h"
@@ -285,16 +286,26 @@ IRObject* GraphBuilder::NewIRObject( std::size_t size , IRInfo* info ) {
   return ret;
 }
 
-Expr* GraphBuilder::AddTypeFeedbackIfNeed( const StackSlot& idx , TypeKind tp,
-                                                                  const BytecodeLocation& pc ) {
+// Type Guard ---------------------------------------------------------------------
+Guard* GraphBuilder::NewGuard( Expr* test , Checkpoint* cp ) {
+  auto guard = Guard::New(graph_,test,cp,region());
+  // add this guard back to the guard_list , later on we can patch the guard
+  func_info().guard_list.push_back(guard);
+  // modify current region to be a new region that link back to a guard
+  auto region= Region::New(graph_,guard);
+  // modify the current region back to be the region just created
+  set_region(region);
+  // return the newly created region node
+  return guard;
+}
+
+Expr* GraphBuilder::AddTypeFeedbackIfNeed( const StackSlot& idx , TypeKind tp, const BytecodeLocation& pc ) {
   return AddTypeFeedbackIfNeed(idx,tp,NewIRInfo(pc));
 }
 
-Expr* GraphBuilder::AddTypeFeedbackIfNeed( const StackSlot& idx , const Value& value ,
-                                                                  const BytecodeLocation& pc ) {
+Expr* GraphBuilder::AddTypeFeedbackIfNeed( const StackSlot& idx , const Value& value , const BytecodeLocation& pc ) {
   return AddTypeFeedbackIfNeed(idx,value,NewIRInfo(pc));
 }
-
 
 Expr* GraphBuilder::AddTypeFeedbackIfNeed( const StackSlot& idx , const Value& value , IRInfo* info ) {
   return AddTypeFeedbackIfNeed(idx,MapValueToTypeKind(value),info);
@@ -315,14 +326,19 @@ Expr* GraphBuilder::AddTypeFeedbackIfNeed( const StackSlot& idx , TypeKind tp, I
                            GetTypeKindName(stp), GetTypeKindName(tp));
     return n;
   }
-
   lava_debug(NORMAL,lava_verify(tp != TPKIND_UNKNOWN););
-  auto cp = BuildCheckpoint(info->bc());
-  auto guard = TypeGuard::New(graph_,n,tp,cp,info);
+  // generate checkpoint
+  auto cp  = BuildCheckpoint(info->bc());
+  // generate type test node
+  auto tt  = TestType::New(graph_,tp,n,info);
+  // generate guard node
+  auto gd  = NewGuard(tt,cp);
+  // generate type annotation node
+  auto ann = TypeAnnotation::New(graph_,gd,info);
   // set the modified node back to where the stack slot is put
-  if(idx.HasIndex()) StackSet(idx.index,guard);
+  if(idx.HasIndex()) StackSet(idx.index,ann);
   // return the new guarded node
-  return guard;
+  return ann;
 }
 
 // ========================================================================
@@ -330,8 +346,7 @@ Expr* GraphBuilder::AddTypeFeedbackIfNeed( const StackSlot& idx , TypeKind tp, I
 // Unary Node
 //
 // ========================================================================
-Expr* GraphBuilder::NewUnary( const StackSlot& index , Unary::Operator op ,
-                                                       const BytecodeLocation& pc ) {
+Expr* GraphBuilder::NewUnary( const StackSlot& index , Unary::Operator op , const BytecodeLocation& pc ) {
   // 1. try to do a constant folding
   auto new_node = FoldUnary(graph_,op,index.node,[this,pc]() { return NewIRInfo(pc); });
   if(new_node) return new_node;
@@ -341,8 +356,7 @@ Expr* GraphBuilder::NewUnary( const StackSlot& index , Unary::Operator op ,
   return TrySpeculativeUnary(index,op,pc);
 }
 
-Expr* GraphBuilder::TrySpeculativeUnary( const StackSlot& index , Unary::Operator op ,
-                                                                  const BytecodeLocation& pc ) {
+Expr* GraphBuilder::TrySpeculativeUnary( const StackSlot& index , Unary::Operator op , const BytecodeLocation& pc ) {
   auto node = index.node;
   // try to get the value feedback from type trace operations
   auto tt = type_trace_.GetTrace( pc.address() );
@@ -380,8 +394,7 @@ Expr* GraphBuilder::TrySpeculativeUnary( const StackSlot& index , Unary::Operato
   return NewUnaryFallback(index,op,pc);
 }
 
-Expr* GraphBuilder::NewUnaryFallback( const StackSlot& index , Unary::Operator op ,
-                                                               const BytecodeLocation& pc ) {
+Expr* GraphBuilder::NewUnaryFallback( const StackSlot& index , Unary::Operator op , const BytecodeLocation& pc ) {
   return Unary::New(graph_,index.node,op,NewIRInfo(pc));
 }
 
@@ -718,6 +731,28 @@ Checkpoint* GraphBuilder::BuildCheckpoint( const BytecodeLocation& pc ) {
     if(node) cp->AddStackSlot(node,i);
   }
   return cp;
+}
+
+// ====================================================================
+//
+// Misc
+//
+// ====================================================================
+void GraphBuilder::PatchExitNode( ControlFlow* succ , ControlFlow* fail ) {
+  // patch succuess node and return value
+  {
+    auto return_value = Phi::New(graph_,succ,NULL);
+    for( auto &e : func_info().return_list ) {
+      return_value->AddOperand(e->AsReturn()->value());
+      succ->AddBackwardEdge(e);
+    }
+  }
+  // patch all the failed node
+  {
+    for( auto &e : func_info().guard_list ) {
+      fail->AddBackwardEdge(e);
+    }
+  }
 }
 
 // ====================================================================
@@ -1621,15 +1656,9 @@ bool GraphBuilder::Build( const Handle<Prototype>& entry , Graph* graph ) {
     // start to execute the build basic block
     if(BuildBasicBlock(&itr) == STOP_BAILOUT)
       return false;
-    // finish return value Phi generation
-    {
-      Phi* return_value = Phi::New(graph_,succ,NULL);
-      for( auto &e : func_info().return_list ) {
-        return_value->AddOperand(e->AsReturn()->value());
-        succ->AddBackwardEdge(e);
-      }
-      end = End::New(graph_,succ,fail);
-    }
+    // finish all the exit node work
+    PatchExitNode(succ,fail);
+    end = End::New(graph_,succ,fail);
   }
   // initialize the graph
   graph->Initialize(start,end);
@@ -1801,16 +1830,13 @@ GraphBuilder::BuildOSRStart( const Handle<Prototype>& entry ,  const std::uint32
     lava_debug(NORMAL,lava_verify(itr.HasNext()););
     // peel all nested loop until hit the outermost one
     if(PeelOSRLoop(&itr) == STOP_BAILOUT) return STOP_BAILOUT;
-    // create trap for current region since once we abort from the loop we should
-    // fallback to interpreter
     {
+      // create a manual trap node to make sure after OSR we fallback to the interpreter
       Trap* trap = Trap::New(graph_,BuildCheckpoint(itr.bytecode_location()),region());
       fail->AddBackwardEdge(trap);
     }
-    // link each return node back to the success node
-    for( auto & e : func_info().return_list ) {
-      succ->AddBackwardEdge(e);
-    }
+    // finish all exit node work
+    PatchExitNode(succ,fail);
     // lastly create the end node for the osr graph
     end = OSREnd::New(graph_,succ,fail);
   }

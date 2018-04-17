@@ -150,6 +150,7 @@ class GraphBuilder {
     std::uint8_t              max_local_var_size;
     std::vector<LoopInfo>     loop_info;
     std::vector<ControlFlow*> return_list;
+    std::vector<Guard*>       guard_list ;
     BytecodeAnalyze           bc_analyze;
     const std::uint32_t*      osr_start;
 
@@ -224,23 +225,18 @@ class GraphBuilder {
  private: // Constant handling
   Expr* NewConstNumber( std::int32_t , const interpreter::BytecodeLocation& );
   Expr* NewConstNumber( std::int32_t );
-
   Expr* NewNumber     ( std::uint8_t , IRInfo* );
   Expr* NewNumber     ( std::uint8_t , const interpreter::BytecodeLocation& );
   Expr* NewNumber     ( std::uint8_t );
-
   Expr* NewString     ( std::uint8_t , IRInfo* );
   Expr* NewString     ( std::uint8_t , const interpreter::BytecodeLocation& );
   Expr* NewString     ( std::uint8_t );
-
   Expr* NewString     ( const Str& , const interpreter::BytecodeLocation& );
   Expr* NewString     ( const Str& , IRInfo* );
   Str   NewStr        ( std::uint32_t ref , bool sso );
-
   Expr* NewSSO        ( std::uint8_t , IRInfo* );
   Expr* NewSSO        ( std::uint8_t , const interpreter::BytecodeLocation& );
   Expr* NewSSO        ( std::uint8_t );
-
   Expr* NewBoolean    ( bool         , const interpreter::BytecodeLocation& );
   Expr* NewBoolean    ( bool );
 
@@ -254,6 +250,8 @@ class GraphBuilder {
   Expr* AddTypeFeedbackIfNeed( const StackSlot& , const Value& , const interpreter::BytecodeLocation& );
   Expr* AddTypeFeedbackIfNeed( const StackSlot& , TypeKind     , IRInfo* );
   Expr* AddTypeFeedbackIfNeed( const StackSlot& , const Value& , IRInfo* );
+  // Create a guard node and linked it back to the current graph
+  Guard* NewGuard            ( Expr* , Checkpoint* );
 
  private: // Arithmetic
   // Unary
@@ -270,14 +268,12 @@ class GraphBuilder {
                                                                      const interpreter::BytecodeLocation& );
   Expr* NewBinaryFallback   ( const StackSlot& , const StackSlot& , Binary::Operator ,
                                                                      const interpreter::BytecodeLocation& );
-
   // Ternary
   Expr* NewTernary( const StackSlot& , Expr* , Expr* , const interpreter::BytecodeLocation& );
 
   // Intrinsic
   Expr* NewICall  ( std::uint8_t ,std::uint8_t ,std::uint8_t ,bool ,const interpreter::BytecodeLocation& );
   Expr* LowerICall( ICall* );
-
  private: // Property/Index Get/Set
   Expr* NewPSet( Expr* , Expr* , Expr* , IRInfo* );
   Expr* NewPGet( Expr* , Expr* , IRInfo* );
@@ -295,6 +291,10 @@ class GraphBuilder {
  private: // Checkpoint generation
   Checkpoint* BuildCheckpoint( const interpreter::BytecodeLocation& );
 
+ private: // Misc
+  // Helper function to generate exit Phi node and also link the return and guard nodes to the
+  // success and fail node of the HIR graph
+  void PatchExitNode( ControlFlow* , ControlFlow* );
  private:
   // ----------------------------------------------------------------------------------
   // OSR compilation
@@ -388,6 +388,7 @@ inline GraphBuilder::FuncInfo::FuncInfo( const Handle<Prototype>& proto , Contro
   max_local_var_size(proto->max_local_var_size()),
   loop_info         (),
   return_list       (),
+  guard_list        (),
   bc_analyze        (proto),
   osr_start         (NULL)
 {}
@@ -400,6 +401,7 @@ inline GraphBuilder::FuncInfo::FuncInfo( const Handle<Prototype>& proto , Contro
   max_local_var_size(proto->max_local_var_size()),
   loop_info         (),
   return_list       (),
+  guard_list        (),
   bc_analyze        (proto),
   osr_start         (ostart)
 {}
@@ -411,6 +413,7 @@ inline GraphBuilder::FuncInfo::FuncInfo( FuncInfo&& that ):
   max_local_var_size(that.max_local_var_size),
   loop_info         (std::move(that.loop_info)),
   return_list       (std::move(that.return_list)),
+  guard_list        (std::move(that.guard_list)),
   bc_analyze        (std::move(that.bc_analyze)),
   osr_start         (that.osr_start)
 {}

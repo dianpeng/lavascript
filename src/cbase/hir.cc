@@ -19,8 +19,8 @@ const char* IRTypeGetName( IRType type ) {
 void Expr::Replace( Expr* another ) {
   // 1. check all the operand_list and patch each operands reference
   //    list to be new one
-  for( auto itr = ref_list_.GetForwardIterator(); itr.HasNext() ; itr.Move() ) {
-    itr.value().id.set_value( another );
+  lava_foreach( auto &v , ref_list()->GetForwardIterator() ) {
+    v.id.set_value(another);
   }
   // 2. modify *this* if the node is a statement
   if(IsStatement()) {
@@ -31,16 +31,16 @@ void Expr::Replace( Expr* another ) {
 }
 
 void Expr::AddEffectIfNotExist( Expr* node ) {
-  for( auto itr(effect_list()->GetForwardIterator()); itr.HasNext(); itr.Move() ) {
-    if(itr.value() == node) return;
+  lava_foreach( auto &v , effect_list()->GetForwardIterator() ) {
+    if(v == node) return;
   }
   AddEffect(node);
 }
 
 IRList* IRList::Clone( Graph* graph , const IRList& that ) {
   auto ret = IRList::New(graph,that.Size(),that.ir_info());
-  for( auto itr(that.operand_list()->GetForwardIterator()); itr.HasNext(); itr.Move() ) {
-    ret->Add(itr.value());
+  lava_foreach( auto &v , that.operand_list()->GetForwardIterator() ) {
+    ret->Add(v);
   }
   return ret;
 }
@@ -52,9 +52,9 @@ IRList* IRList::CloneExceptLastOne( Graph* graph , const IRList& that ) {
   else {
     std::size_t count = 0;
     std::size_t end   = that.Size() - 1;
-    for( auto itr(that.operand_list()->GetForwardIterator());
-        itr.HasNext() && (count < end); itr.Move() ) {
-      ret->Add(itr.value());
+    lava_foreach( auto &v , that.operand_list()->GetForwardIterator() ) {
+      if(count >= end) break;
+      ret->Add(v);
     }
     return ret;
   }
@@ -63,8 +63,8 @@ IRList* IRList::CloneExceptLastOne( Graph* graph , const IRList& that ) {
 std::uint64_t ICall::GVNHash() const {
   GVNHashN hasher(type_name());
   hasher.Add(static_cast<std::uint32_t>(ic()));
-  for( auto itr(operand_list()->GetForwardIterator()); itr.HasNext(); itr.Move() ) {
-    hasher.Add(itr.value()->GVNHash());
+  lava_foreach( auto &v , operand_list()->GetForwardIterator() ) {
+    hasher.Add(v->GVNHash());
   }
   return hasher.value();
 }
@@ -73,14 +73,13 @@ bool ICall::Equal( const Expr* that ) const {
   if(that->IsICall()) {
     auto tic = that->AsICall();
     if(ic() == tic->ic()) {
-      lava_debug(NORMAL,
-        lava_verify(operand_list()->size() == tic->operand_list()->size()););
+      lava_debug(NORMAL, lava_verify(operand_list()->size() == tic->operand_list()->size()););
+
       auto this_itr(operand_list()->GetForwardIterator());
       auto that_itr(that->operand_list()->GetForwardIterator());
-      for( ; this_itr.HasNext() ; this_itr.Move() , that_itr.Move() ) {
-        if(!this_itr.value()->Equal(that_itr.value())) {
-          return false;
-        }
+      lava_foreach( auto &v , this_itr ) {
+        that_itr.Move();
+        if(!v->Equal(that_itr.value())) return false;
       }
       return true;
     }
@@ -90,8 +89,8 @@ bool ICall::Equal( const Expr* that ) const {
 
 void ControlFlow::Replace( ControlFlow* node ) {
   // 1. transfer all *use* node
-  for( auto itr = ref_list_.GetForwardIterator(); itr.HasNext() ; itr.Move() ) {
-    itr.value().id.set_value(node);
+  lava_foreach( auto &v , ref_list()->GetForwardIterator() ) {
+    v.id.set_value(node);
   }
 
   // 2. transfer all the backward and forward edge to |node|
@@ -134,10 +133,8 @@ void ControlFlow::RemoveForwardEdge( std::size_t index ) {
 }
 
 void ControlFlow::MoveStatement( ControlFlow* cf ) {
-  for( auto itr(cf->statement_list()->GetForwardIterator());
-       itr.HasNext(); itr.Move() ) {
-    auto n = itr.value();
-    AddStatement(n);
+  lava_foreach( auto &v , cf->statement_list()->GetForwardIterator() ) {
+    AddStatement(v);
   }
 }
 
@@ -169,8 +166,8 @@ void Graph::Initialize( OSRStart* start , OSREnd* end ) {
 
 void Graph::GetControlFlowNode( std::vector<ControlFlow*>* output ) const {
   output->clear();
-  for( ControlFlowBFSIterator itr(*this) ; itr.HasNext() ; itr.Move() ) {
-    output->push_back(itr.value());
+  lava_foreach( auto v , ControlFlowBFSIterator(*this) ) {
+    output->push_back(v);
   }
 }
 
@@ -251,15 +248,9 @@ ControlFlow* ControlFlowDFSIterMove( OnceList* stack ) {
   while(!stack->empty()) {
 recursion:
     ControlFlow* top = stack->Top()->AsControlFlow();
-
-    for( auto itr(GETTER(top).Get()->GetForwardIterator()) ;
-         itr.HasNext() ; itr.Move() ) {
-
-      ControlFlow* pre = itr.value();
-
-      if(stack->Push(pre)) goto recursion;
+    lava_foreach( auto &v , GETTER(top).Get()->GetForwardIterator() ) {
+      if(stack->Push(v)) goto recursion;
     }
-
     // when we reach here it means we scan through all its predecessor nodes and
     // don't see any one not visited , or maybe this node is a singleton/leaf.
     stack->Pop();

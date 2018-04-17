@@ -1,11 +1,12 @@
 #include "infer.h"
-#include "src/cbase/fold.h"
-#include "src/stl-helper.h"
+
+#include "src/cbase/fold-arith.h"
 #include "src/cbase/dominators.h"
 #include "src/cbase/value-range.h"
 #include "src/zone/vector.h"
 #include "src/zone/zone.h"
 #include "src/zone/table.h"
+#include "src/stl-helper.h"
 
 namespace lavascript {
 namespace cbase      {
@@ -69,16 +70,12 @@ class SimpleConstraintChecker {
 class MultiValueRange : public zone::ZoneObject {
  public:
   inline MultiValueRange( zone::Zone* );
-
   // Inherit this empty object from another object typically comes from its
   // immediate dominator node's value range.
   void Inherit      ( MultiValueRange* );
-
   // Call this function to setup the node's value range
   void SetCondition ( Expr* , Expr* , TypeKind );
-
   void Clear() { table_.Clear(); }
-
  public:
   // Helper to lookup the correct value range for inference
   ValueRange* LookUp( Expr* );
@@ -435,7 +432,8 @@ bool ConditionGroup::Process( Expr* node , bool is_first ) {
 
   SimpleConstraintChecker checker;
   if(!checker.Check(node,&variable_,&type_kind_)) {
-    return !dead_;
+    Bailout();
+    return false;
   }
 
   // Do a check whether the dominator condition group has same
@@ -499,10 +497,8 @@ bool SimpleConstraintChecker::CheckExpr( Expr* expr ) {
   } else {
     if(GetTypeInference(expr) == TPKIND_BOOLEAN && type_ != TPKIND_FLOAT64) {
       type_ = TPKIND_BOOLEAN;
-
       // do a dereference if the node is a ! operation
       expr = expr->IsBooleanNot() ? expr->AsBooleanNot()->operand() : expr;
-
       if(variable_) {
         return (variable_ == expr);
       } else {

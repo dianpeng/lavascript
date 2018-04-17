@@ -15,7 +15,6 @@ class Graph;
 class GVN: public HIRPass {
  public:
   virtual bool Perform( Graph* , HIRPass::Flag );
-
   GVN() : HIRPass("global-value-numbering") {}
 };
 

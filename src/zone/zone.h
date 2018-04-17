@@ -85,6 +85,7 @@ class StackZone : public Zone {
   // use default zone allocator for this stack zone object
   StackZone() : fallback_(), buffer_(), size_(0) {}
   inline Zone* fallback();
+  inline const Zone* fallback() const { return const_cast<StackZone*>(this)->fallback(); }
   bool UseFallback() const { return size_ == Size; }
  protected:
   virtual inline void* Malloc( std::size_t );

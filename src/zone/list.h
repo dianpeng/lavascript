@@ -28,6 +28,8 @@ template< typename T > struct Node : public NodeBase<Node<T>> {
 
 template< typename T , typename Traits > class Iterator {
  public:
+  typedef T ValueType;
+
   Iterator( Node<T>* iter , Node<T>* end ): iter_(iter), end_(end) {}
   Iterator(): iter_(NULL) , end_(NULL) {}
 

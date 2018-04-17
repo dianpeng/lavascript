@@ -76,8 +76,6 @@ namespace hir {
   __(Projection,PROJECTION,"projection",false)                         \
   /* osr */                                                            \
   __(OSRLoad,OSR_LOAD,"osr_load",true)                                 \
-  /* alias */                                                          \
-  __(Alias,ALIAS,"alias",false)                                        \
   /* checkpoints */                                                    \
   __(Checkpoint,CHECKPOINT,"checkpoint",false)                         \
   __(StackSlot ,STACK_SLOT, "stackslot",false)
@@ -122,39 +120,16 @@ namespace hir {
   __(TestListOOB ,TEST_LISTOOB   ,"test_listobb"   , false)
 
 /**
- * Guard
+ * Annotation
  *
- * I don't remember how many times I have refactoried this piece of code.
+ * An anntiona is an *expression* node that attaches to an expression
+ * annotate the expression's certain aspects. Usually this is for type
+ * annotation node to decorate the expression's type
  *
- * The initial guard design is make guard as a control flow node and then
- * later on it is easy for us to do control flow optimizaiton like DCE on
- * it but this ends up with many guards when the graph is generated because
- * the type information is propoagted along with control flow as well.
- * However we don't really have a clear picture of control flow graph when
- * we do graph generation.
- *
- * Finally I decide to make guard as an expression . As an expression, it
- * means the node can be used in any expression optimization and it is
- * flowed inside of the bytecode register simulation which implicitly
- * propogate along the control flow. So we could end up saving many guard
- * node generation.
- *
- * Another thing is GVN can help to elminiate redundancy. Only one thing is
- * hard to achieve is this :
- *
- * if( type(a) == "string" ) guard(a,"string")
- *
- * This sort of redundancy needs an extra pass to solve because in general,
- * expression node doesn't participate in control flow node optimization.
- *
- *
- * A Unbox operation/node should always follow a guard node since it doesn't
- * expect an type mismatch happened. This means a crash during execution.
  */
 
-#define CBASE_IR_GUARD(__)                                            \
-  __(TypeGuard,TYPE_GUARD,"type_guard",false)
-
+#define CBASE_IR_ANNOTATION(__)                                       \
+  __(TypeAnnotation,TYPE_ANNOTATION,"type_annotation",false)
 
 /**
  * Box operation will wrap a value into the internal box representation
@@ -177,7 +152,7 @@ namespace hir {
   CBASE_IR_EXPRESSION_LOW (__)                                        \
   CBASE_IR_EXPRESSION_TEST(__)                                        \
   CBASE_IR_BOXOP(__)                                                  \
-  CBASE_IR_GUARD(__)
+  CBASE_IR_ANNOTATION(__)
 
 // All the control flow IR nodes
 #define CBASE_IR_CONTROL_FLOW(__)                                     \
@@ -186,6 +161,7 @@ namespace hir {
   __(LoopHeader,LOOP_HEADER,"loop_header",false)                      \
   __(Loop,LOOP ,"loop",false)                                         \
   __(LoopExit,LOOP_EXIT,"loop_exit",false)                            \
+  __(Guard,GUARD,"guard",false)                                       \
   __(If,IF,"if",false)                                                \
   __(IfTrue,IF_TRUE,"if_true",false)                                  \
   __(IfFalse,IF_FALSE,"if_false",false)                               \
@@ -344,13 +320,12 @@ struct StatementEdge {
  *    this EffectPhi node.
  */
 
-typedef zone::List<Expr*>               DependencyList;
-typedef DependencyList::ForwardIterator DependencyIterator;
 // OperandList
-typedef DependencyList OperandList;
+typedef zone::List<Expr*>               OperandList;
 typedef OperandList::ForwardIterator    OperandIterator;
+
 // EffectList
-typedef DependencyList EffectList;
+typedef zone::List<Expr*>               EffectList;
 typedef EffectList::ForwardIterator     EffectIterator;
 
 template< typename ITR >
@@ -522,7 +497,7 @@ class Expr : public Node {
   // dedup.
   EffectList* effect_list() { return &effect_list_; }
   const EffectList* effect_list() const { return &effect_list_; }
-  inline void AddEffect ( Expr* node );
+  inline void AddEffect   ( Expr* node );
   void AddEffectIfNotExist( Expr* );
 
   // Reference list
@@ -1466,39 +1441,6 @@ class OSRLoad : public Expr {
   LAVA_DISALLOW_COPY_AND_ASSIGN(OSRLoad)
 };
 
-// Alias
-//
-// A alias node will represents a certain operations's alias effect towards
-// the receiver. It is used to guard certain optimization cross boundary.
-// Example like this:
-//
-// var a = [1,2,3,4];
-//
-// g = a; // set a to g as a global variable , this gset has a alias effect
-//        // and potentially this operation can mutate a's value since it is
-//        // in C++ side and the global variable supports introspection
-//
-// return a[0] + 10; // the optimizer may *incorrectly* fold a[0] + 10 => 11 due
-//                   // to we don't know the potential effect
-//
-// With alias node, the node a will be guarded by this alias which prevents any
-// optimization happened
-class Alias : public Expr {
- public:
-  inline static Alias* New( Graph* , Expr* , Expr* , IRInfo* );
-  Expr* alias() const { return operand_list()->First(); }
-  Expr* value() const { return operand_list()->Last (); }
-  Alias ( Graph* graph , std::uint32_t id , Expr* alias, Expr* value, IRInfo* info ):
-    Expr(IRTYPE_ALIAS,id,graph,info)
-  {
-    AddOperand(alias);
-    AddOperand(value);
-  }
-
- private:
-  LAVA_DISALLOW_COPY_AND_ASSIGN(Alias)
-};
-
 // Checkpoint node
 //
 // A checkpoint node will capture the VM/Interpreter state. When an irnode
@@ -1554,15 +1496,17 @@ class StackSlot : public Expr {
 };
 
 /* -------------------------------------------------------
- * Low level operations
+ * Testing node , used with Guard node or If node
  * ------------------------------------------------------*/
 
 class TestType : public Expr {
  public:
   inline static TestType* New( Graph* , TypeKind , Expr* , IRInfo* );
+
   TypeKind type_kind() const { return type_kind_; }
   const char* type_kind_name() const { return GetTypeKindName(type_kind_); }
   Expr* object() const { return operand_list()->First(); }
+
   TestType( Graph* graph , std::uint32_t id , TypeKind tc , Expr* obj, IRInfo* info ):
     Expr(IRTYPE_TEST_TYPE,id,graph,info),
     type_kind_(tc)
@@ -1896,41 +1840,18 @@ class Unbox : public Expr {
 
 // -----------------------------------------------------------------------
 //
-// Guard
+// Annotation
 //
 // -----------------------------------------------------------------------
-class TypeGuard : public Expr {
+class TypeAnnotation : public Expr {
  public:
-  inline static TypeGuard* New( Graph* , Expr* , TypeKind , Checkpoint* , IRInfo* );
-  Expr*       node      () const { return operand_list()->First(); }
-  Checkpoint* checkpoint() const { return operand_list()->Last()->AsCheckpoint(); }
-  TypeKind    type_kind () const { return type_kind_; }
-  TypeGuard( Graph* graph , std::uint32_t id , Expr* node , TypeKind type,
-                                                            Checkpoint* checkpoint ,
-                                                            IRInfo* info ):
-    Expr      (IRTYPE_TYPE_GUARD,id,graph,info),
-    type_kind_(type)
-  {
-    AddOperand(node);
-    AddOperand(checkpoint);
-  }
+  inline static TypeAnnotation* New( Graph* , Guard* , IRInfo* );
+  TypeKind type_kind () const { return type_kind_; }
 
- public:
-  virtual std::uint64_t GVNHash() const {
-    return GVNHash2(type_name(),type_kind(),node()->GVNHash());
-  }
-
-  virtual bool Equal( const Expr* that ) const {
-    if(that->IsTypeGuard()) {
-      auto n = that->AsTypeGuard();
-      return type_kind() == n->type_kind() && node()->Equal(n->node());
-    }
-    return false;
-  }
-
+  inline TypeAnnotation( Graph* , std::uint32_t , Guard* , IRInfo* );
  private:
   TypeKind type_kind_;
-  LAVA_DISALLOW_COPY_AND_ASSIGN(TypeGuard)
+  LAVA_DISALLOW_COPY_AND_ASSIGN(TypeAnnotation)
 };
 
 
@@ -2092,7 +2013,6 @@ class LoopHeader : public ControlFlow {
   inline static LoopHeader* New( Graph* , ControlFlow* );
 
   Expr* condition() const { return operand_list()->First(); }
-
   void set_condition( Expr* condition ) {
     lava_debug(NORMAL,lava_verify(operand_list()->empty()););
     AddOperand(condition);
@@ -2104,7 +2024,6 @@ class LoopHeader : public ControlFlow {
   LoopHeader( Graph* graph , std::uint32_t id , ControlFlow* region ):
     ControlFlow(IRTYPE_LOOP_HEADER,id,graph,region)
   {}
-
  private:
   ControlFlow* merge_;
   LAVA_DISALLOW_COPY_AND_ASSIGN(LoopHeader);
@@ -2141,7 +2060,20 @@ class LoopExit : public ControlFlow {
 //
 // Branch
 //
+// Branch node in HIR basically has 3 types :
+//
+// 1) If related node , which basically represents a normal written if else
+//    branch
+//
+// 2) Guard node , which is used to generate *guard* during the execution,
+//    an assertion is a single pass node which will *not* have any else branch.
+//    An assertion failed will trigger a bailout operation which basically
+//    fallback to the interpreter
+//
+// 3) Unconditional jump
 // -----------------------------------------------------------------------
+
+
 class If : public ControlFlow {
  public:
   inline static If* New( Graph* , Expr* , ControlFlow* );
@@ -2192,6 +2124,30 @@ class IfFalse: public ControlFlow {
   LAVA_DISALLOW_COPY_AND_ASSIGN(IfFalse)
 };
 
+// --------------------------------------------------------------------------
+// Guard
+//
+// This node is mainly generated for type assertion or other assertion to do
+// speculative optimization against the source code. The assert node doesn't
+// introduce any other basic block except the fall through part. An assertion
+// failed during runtime means *bailout* back to interpreter
+class Guard : public ControlFlow {
+ public:
+  inline static Guard* New( Graph* , Expr* , Checkpoint* , ControlFlow* );
+
+  Expr*             test() const { return operand_list()->First(); }
+  Checkpoint* checkpoint() const { return operand_list()->Last()->AsCheckpoint(); }
+
+  Guard( Graph* graph , std::uint32_t id , Expr* test , Checkpoint* cp , ControlFlow* region ):
+    ControlFlow(IRTYPE_GUARD,id,graph,region)
+  {
+    AddOperand(test);
+    AddOperand(cp);
+  }
+ private:
+  LAVA_DISALLOW_COPY_AND_ASSIGN(Guard)
+};
+
 class Jump : public ControlFlow {
  public:
   inline static Jump* New( Graph* , const std::uint32_t* , ControlFlow* );
@@ -2199,8 +2155,7 @@ class Jump : public ControlFlow {
   ControlFlow* target() const { return target_; }
   inline bool TrySetTarget( const std::uint32_t* , ControlFlow* );
 
-  Jump( Graph* graph , std::uint32_t id , ControlFlow* region ,
-                                          const std::uint32_t* bytecode_bc ):
+  Jump( Graph* graph , std::uint32_t id , ControlFlow* region , const std::uint32_t* bytecode_bc ):
     ControlFlow(IRTYPE_JUMP,id,graph,region),
     target_(NULL),
     bytecode_pc_(bytecode_bc)
@@ -2212,14 +2167,28 @@ class Jump : public ControlFlow {
   LAVA_DISALLOW_COPY_AND_ASSIGN(Jump)
 };
 
+// Represent fallback to interpreter, manually generate this node means we want to
+// abort at current stage in the graph.
+class Trap : public ControlFlow {
+ public:
+  inline static Trap* New( Graph* , Checkpoint* , ControlFlow* );
+  Checkpoint* checkpoint() const { return operand_list()->First()->AsCheckpoint(); }
+  Trap( Graph* graph , std::uint32_t id , Checkpoint* cp ,
+                                          ControlFlow* region ):
+    ControlFlow(IRTYPE_TRAP,id,graph,region)
+  {
+    AddOperand(cp);
+  }
+ private:
+  LAVA_DISALLOW_COPY_AND_ASSIGN(Trap)
+};
+
+// Fail node represents abnormal way to abort the execution. The most common reason
+// is because we failed at type guard or obviouse code bug.
 class Fail : public ControlFlow {
  public:
   inline static Fail* New( Graph* );
-
-  Fail( Graph* graph , std::uint32_t id ):
-    ControlFlow(IRTYPE_FAIL,id,graph)
-  {}
-
+  Fail( Graph* graph , std::uint32_t id ): ControlFlow(IRTYPE_FAIL,id,graph) {}
  private:
   LAVA_DISALLOW_COPY_AND_ASSIGN(Fail)
 };
@@ -2273,20 +2242,6 @@ class End : public ControlFlow {
   }
  private:
   LAVA_DISALLOW_COPY_AND_ASSIGN(End)
-};
-
-class Trap : public ControlFlow {
- public:
-  inline static Trap* New( Graph* , Checkpoint* , ControlFlow* );
-  Checkpoint* checkpoint() const { return operand_list()->First()->AsCheckpoint(); }
-  Trap( Graph* graph , std::uint32_t id , Checkpoint* cp ,
-                                          ControlFlow* region ):
-    ControlFlow(IRTYPE_TRAP,id,graph,region)
-  {
-    AddOperand(cp);
-  }
- private:
-  LAVA_DISALLOW_COPY_AND_ASSIGN(Trap)
 };
 
 class OSRStart : public ControlFlow {
@@ -2439,6 +2394,8 @@ constexpr bool IsExprIterator() {
 // goal is to tell which control flow nodes are inside of the graph
 class ControlFlowBFSIterator: public ControlFlowIterator {
  public:
+  typedef ControlFlow* ValueType;
+
   ControlFlowBFSIterator( const Graph& graph ):
     stack_(graph),
     graph_(&graph),
@@ -2464,6 +2421,8 @@ class ControlFlowBFSIterator: public ControlFlowIterator {
 // edge output
 class ControlFlowPOIterator : public ControlFlowIterator {
  public:
+  typedef ControlFlow* ValueType;
+
   ControlFlowPOIterator( const Graph& graph ):
     stack_(graph),
     graph_(&graph),
@@ -2488,6 +2447,8 @@ class ControlFlowPOIterator : public ControlFlowIterator {
 // then this node will be visited. The loop's back edge is ignored
 class ControlFlowRPOIterator : public ControlFlowIterator {
  public:
+  typedef ControlFlow* ValueType;
+
   ControlFlowRPOIterator( const Graph& graph ):
     mark_ (graph.MaxID()),
     stack_(graph),
@@ -2522,6 +2483,8 @@ class ControlFlowEdgeIterator {
     void Clear() { from = NULL; to = NULL; }
     bool empty() const { return from == NULL; }
   };
+
+  typedef Edge ValueType;
  public:
   ControlFlowEdgeIterator( const Graph& graph ):
     stack_  (graph),
@@ -2547,6 +2510,7 @@ class ControlFlowEdgeIterator {
 // An expression iterator. It will visit a expression in DFS order
 class ExprDFSIterator : public ExprIterator {
  public:
+  typedef Expr* ValueType;
   ExprDFSIterator( const Graph& graph , Expr* node ):
     root_(node),
     next_(NULL),

@@ -17,8 +17,8 @@ Effect::Effect( const Effect& that ):
 {}
 
 void Effect::UpdateWriteEffect( MemoryWrite* node ) {
-  for( auto itr(read_list_.GetForwardIterator()); itr.HasNext(); itr.Move() ) {
-    node->AddEffect(itr.value());
+  lava_foreach(MemoryRead* read,read_list_.GetForwardIterator()) {
+    node->AddEffect(read);
   }
   write_effect_ = node;
   read_list_.Clear();
@@ -33,12 +33,13 @@ void Effect::Merge( const Effect& lhs, const Effect& rhs, Effect* output , Graph
                                                                            ControlFlow* region,
                                                                            IRInfo* info ) {
   auto effect_phi = WriteEffectPhi::New(graph,lhs.write_effect_,rhs.write_effect_,region,info);
+
   // merge all the read effect
-  for( auto itr(lhs.read_list_.GetForwardIterator()); itr.HasNext(); itr.Move() ) {
-    effect_phi->AddEffect(itr.value());
+  lava_foreach( MemoryRead* read , lhs.read_list_.GetForwardIterator() ) {
+    effect_phi->AddEffect(read);
   }
-  for( auto itr(rhs.read_list_.GetForwardIterator()); itr.HasNext(); itr.Move() ) {
-    effect_phi->AddEffectIfNotExist(itr.value());
+  lava_foreach( MemoryRead* read , rhs.read_list_.GetForwardIterator() ) {
+    effect_phi->AddEffectIfNotExist(read);
   }
   output->write_effect_ = effect_phi;
   output->read_list_.Clear();

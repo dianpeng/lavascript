@@ -19,6 +19,8 @@ namespace detail {
 template< typename T , typename Traits >
 class IteratorBase {
  public:
+  typedef T ValueType;
+
   bool HasNext() const { return Traits::HasNext(vec_,cursor_); }
   bool Move   ()       { return Traits::Move(vec_,&cursor_);   }
   void Advance( std::size_t offset ) { Traits::Advance(vec_,offset,&cursor_); }
@@ -94,6 +96,11 @@ class Vector : ZoneObject {
   void Del() { lava_assert(!empty(),"Del() on empty vector!"); --size_; }
   void Clear() { size_ = 0; }
   void Assign( Zone*, const Vector& );
+  template< typename ITR >
+  void Assign( Zone*, const ITR& itr );
+  void Append( Zone*, const Vector& );
+  template< typename ITR >
+  void Append( Zone* , const ITR& itr );
  public:
   T& First() { lava_assert(!empty(),"First() on empty vector!"); return ptr_[0]; }
   const T& First() const { return const_cast<Vector*>(this)->First(); }
@@ -152,6 +159,11 @@ class Vector : ZoneObject {
     return const_cast<ConstForwardIterator>(const_cast<Vector*>(this)->FindIf(predicate));
   }
   ForwardIterator      FindIf( const std::function<bool(const T&)>& );
+ public: // Set operation helper functions
+  static void Union     ( Zone* , const Vector<T>& , const Vector<T>& , Vector<T>* );
+  static void Intersect ( Zone* , const Vector<T>& , const Vector<T>& , Vector<T>* );
+  static void Difference( Zone* , const Vector<T>& , const Vector<T>& , Vector<T>* );
+
  private:
   Vector* mutable_this() const { return const_cast<Vector*>(this); }
 
@@ -234,6 +246,28 @@ template< typename T > void Vector<T>::Add( Zone* zone , const T& value ) {
 template< typename T > void Vector<T>::Assign( Zone* zone , const Vector& that ) {
   Vector<T> temp(zone,that);
   Swap(&temp);
+}
+
+template< typename T >
+template< typename ITR >
+void Vector<T>::Assign( Zone* zone , const ITR& itr ) {
+  Reserve(zone,size() + 16);
+  for( ; itr.HasNext(); itr.Move() ) Add(zone,itr.value());
+}
+
+template< typename T >
+void Vector<T>::Append( Zone* zone , const Vector<T>& that ) {
+  Reserve( zone , that.size() + size() );
+  for( auto itr(that.GetForwardIterator()); itr.HasNext(); itr.Move() ) {
+    Add(zone,itr.value());
+  }
+}
+
+template< typename T >
+template< typename ITR >
+void Vector<T>::Append( Zone* zone , const ITR& itr ) {
+  Reserve(zone,size() + 16);
+  for( ; itr.HasNext(); itr.Move() ) Add(zone,itr.value());
 }
 
 template< typename T > void Vector<T>::Reserve( Zone* zone , std::size_t length ) {
@@ -319,6 +353,39 @@ Vector<T>::FindIf( const std::function<bool (const T&)>& predicate ) {
     if(predicate(itr.value())) return itr;
   }
   return itr;
+}
+
+// Set operations ---------------------------------------------------------
+template< typename T > void Vector<T>::Union( Zone* zone , const Vector<T>& lhs , const Vector<T>& rhs ,
+                                                                                  Vector<T>* output ) {
+  // take care of the case that output is the alias of lhs or rhs
+  Vector<T> temp(zone); temp.Reserve(zone,lhs.size());
+  // assign the full lhs to temp vector
+  temp.Assign(zone,lhs);
+  // insert rhs selectively
+  for( auto itr(rhs.GetForwardIterator()); itr.HasNext(); itr.Move() ) {
+    if(!lhs.Find(itr.value()).HasNext()) temp.Add(zone,itr.value());
+  }
+  // set to the output
+  output->Swap(&temp);
+}
+
+template< typename T > void Vector<T>::Intersect( Zone* zone , const Vector<T>& lhs , const Vector<T>& rhs ,
+                                                                                      Vector<T>* output ) {
+  Vector<T> temp(zone); temp.Reserve(zone,lhs.size());
+  for( auto itr(rhs.GetForwardIterator()); itr.HasNext(); itr.Move() ) {
+    if(lhs.Find(itr.value()).HasNext()) temp.Add(zone,itr.value());
+  }
+  output->Swap(&temp);
+}
+
+template< typename T > void Vector<T>::Difference( Zone* zone , const Vector<T>& lhs , const Vector<T>& rhs ,
+                                                                                       Vector<T>* output ) {
+  Vector<T> temp(zone); temp.Reserve(zone,lhs.size());
+  for( auto itr(lhs.GetForwardIterator()); itr.HasNext(); itr.Move() ) {
+    if(!rhs.Find(itr.value()).HasNext()) temp.Add(zone,itr.value());
+  }
+  output->Swap(&temp);
 }
 
 namespace detail {

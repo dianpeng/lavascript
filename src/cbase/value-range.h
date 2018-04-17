@@ -1,6 +1,8 @@
 #ifndef CBASE_VALUE_RANGE_H_
 #define CBASE_VALUE_RANGE_H_
 #include "hir.h"
+#include "type.h"
+
 #include "src/zone/zone.h"
 #include "src/zone/vector.h"
 
@@ -15,7 +17,8 @@ namespace hir        {
 enum ValueRangeType {
   UNKNOWN_VALUE_RANGE,
   FLOAT64_VALUE_RANGE,
-  BOOLEAN_VALUE_RANGE
+  BOOLEAN_VALUE_RANGE,
+  TYPE_VALUE_RANGE
 };
 
 // ValueRange object represents a set of values and it supports set operations like
@@ -32,6 +35,7 @@ class ValueRange : public zone::ZoneObject {
   bool IsUnknownValueRange() const { return type() == UNKNOWN_VALUE_RANGE; }
   bool IsFloat64ValueRange() const { return type() == FLOAT64_VALUE_RANGE; }
   bool IsBooleanValueRange() const { return type() == BOOLEAN_VALUE_RANGE; }
+  bool IsTypeValueRange   () const { return type() == TYPE_VALUE_RANGE;    }
 
   // Test whether a range's relationship with regards to another value range
   //
@@ -278,6 +282,38 @@ class BooleanValueRange : public ValueRange {
   FRIEND_TEST(ValueRange,BoolIntersect);
   FRIEND_TEST(ValueRange,BoolAll);
 };
+
+#if 0
+
+// Type value range basically represents a simple disjoint set. Basically for any node,
+// since the type is none-overlapping (we don't support overlapped type currently ),the
+// value range of type can only be disjoint.
+class TypeValueRange : public ValueRange {
+ public:
+  // A type value range initialized as an *empty* set
+  TypeValueRange( ::lavascript::zone::Zone* );
+  TypeValueRange( ::lavascript::zone::Zone* , TypeKind );
+
+  // For TypeValueRange , all the Binary::Operator argument is ignored , only based on
+  // the input Expr's node we are able to tell which kind of operation we need to do
+  virtual void  Union    ( Binary::Operator , Expr* );
+  virtual void  Union    ( const ValueRange& );
+  virtual void  Intersect( Binary::Operator , Expr* );
+  virtual void  Intersect( const ValueRange& );
+  virtual int   Infer    ( Binary::Operator , Expr* ) const;
+  virtual int   Infer    ( const ValueRange& ) const;
+  virtual Expr* Collpase( Graph* , IRInfo* ) const;
+  virtual void  Dump    ( DumpWriter* ) const;
+  virtual bool  IsEmpty  () const { return set_.empty(); }
+ private:
+  void Union   ( TypeKind );
+  void Intersect( TypeKind );
+ private:
+  ::lavascript::zone::Zone*            zone_;
+  ::lavascript::zone::Vector<TypeKind> set_;
+};
+
+#endif
 
 inline
 bool Float64ValueRange::NumberPoint::operator ==( const NumberPoint& that ) const {

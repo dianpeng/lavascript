@@ -19,9 +19,9 @@ namespace hir {
 
 typedef std::function<IRInfo*()> IRInfoProvider;
 
-Expr* FoldUnary  ( Graph* , Unary::Operator , Expr* , const IRInfoProvider& );
-Expr* FoldBinary ( Graph* , Binary::Operator, Expr* , Expr* , const IRInfoProvider& );
-Expr* FoldTernary( Graph* , Expr* , Expr* , Expr* , const IRInfoProvider& );
+Expr* FoldUnary    ( Graph* , Unary::Operator , Expr* , const IRInfoProvider& );
+Expr* FoldBinary   ( Graph* , Binary::Operator, Expr* , Expr* , const IRInfoProvider& );
+Expr* FoldTernary  ( Graph* , Expr* , Expr* , Expr* , const IRInfoProvider& );
 Expr* SimplifyLogic( Graph* , Expr* , Expr* , Binary::Operator , const IRInfoProvider& );
 
 } // namespace hir

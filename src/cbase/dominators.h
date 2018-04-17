@@ -43,7 +43,7 @@ class Dominators {
   std::string PrintToDotFormat() const;
 
  private: // Helper to mainpulate the std::vector
-  void AddSet  ( DominatorSet* , ControlFlow* ) const;
+  void AddSet      ( DominatorSet* , ControlFlow* ) const;
   void IntersectSet( DominatorSet* , const DominatorSet& ) const;
   void IntersectSet( DominatorSet* , const DominatorSet& , const DominatorSet& ) const;
   DominatorSet* GetDomSet( const Graph& , const std::vector<ControlFlow*>& , ControlFlow* );

@@ -20,15 +20,24 @@ template< typename T > class TableIterator {
  public:
   typedef typename T::KeyType   KeyType;
   typedef typename T::ValueType ValueType;
+  typedef            ValueType& ReferenceType;
+  typedef      const ValueType& ConstReferenceType;
   friend T;
-
+ public:
   TableIterator( T* table , std::size_t cursor = 0 );
   bool HasNext() const;
   bool Move   () const;
-  const KeyType&   key  () const;
-  const ValueType& value() const;
-  void  set_value( const ValueType& );
+  const KeyType&     key  () const;
+  ConstReferenceType value() const;
+  void  set_value( ConstReferenceType );
   void  set_value( ValueType&& );
+
+  bool operator == ( const TableIterator& that ) const {
+    return table_ == that.table_ && cursor_ == that.cursor_;
+  }
+  bool operator != ( const TableIterator& that ) const {
+    return !(*this == that);
+  }
  private:
   mutable T*          table_;
   mutable std::size_t cursor_;
@@ -220,7 +229,7 @@ const typename TableIterator<T>::ValueType& TableIterator<T>::value() const {
 }
 
 template< typename T >
-void TableIterator<T>::set_value( const ValueType& v ) {
+void TableIterator<T>::set_value( ConstReferenceType v ) {
   lava_debug(NORMAL,lava_verify(HasNext()););
   auto e = table_->entry_ + cursor_;
   lava_debug(NORMAL,lava_verify(e->IsUse()););

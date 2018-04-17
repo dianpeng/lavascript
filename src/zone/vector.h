@@ -1,6 +1,7 @@
 #ifndef ZONE_VECTOR_H_
 #define ZONE_VECTOR_H_
 #include "zone.h"
+
 #include "src/util.h"
 
 #include <cstdint>
@@ -19,15 +20,17 @@ namespace detail {
 template< typename T , typename Traits >
 class IteratorBase {
  public:
-  typedef T ValueType;
+  typedef                T ValueType;
+  typedef       ValueType& ReferenceType;
+  typedef const ValueType& ConstReferenceType;
 
   bool HasNext() const { return Traits::HasNext(vec_,cursor_); }
   bool Move   ()       { return Traits::Move(vec_,&cursor_);   }
   void Advance( std::size_t offset ) { Traits::Advance(vec_,offset,&cursor_); }
   std::int64_t cursor() const { return cursor_; }
-  inline const T& value() const;
-  inline T& value();
-  inline void set_value( const T& value );
+  inline ConstReferenceType value() const;
+  inline ReferenceType      value();
+  inline void set_value( ConstReferenceType value );
   inline bool operator == ( const IteratorBase& that ) const {
     return vec_ == that.vec_ && cursor_ == that.cursor_;
   }
@@ -54,7 +57,7 @@ template< typename T > struct VectorForwardTraits {
   inline static std::int64_t InitCursor( VectorType* vec );
   inline static bool HasNext( VectorType* vec , std::int64_t cursor );
   inline static bool Move   ( VectorType* vec , std::int64_t* cursor );
-  inline static void Advance( VectorType* vec , std::size_t     , std::int64_t* cursor );
+  inline static void Advance( VectorType* vec , std::size_t , std::int64_t* cursor );
 };
 
 template< typename T > struct VectorBackwardTraits {
@@ -267,7 +270,7 @@ template< typename T >
 template< typename ITR >
 void Vector<T>::Append( Zone* zone , const ITR& itr ) {
   Reserve(zone,size() + 16);
-  for( ; itr.HasNext(); itr.Move() ) Add(zone,itr.value());
+  lava_foreach( const T& v , itr ) Add(zone,v);
 }
 
 template< typename T > void Vector<T>::Reserve( Zone* zone , std::size_t length ) {
@@ -348,11 +351,7 @@ Vector<T>::Remove( ConstForwardIterator& start , ConstForwardIterator& end ) {
 
 template< typename T > typename Vector<T>::ForwardIterator
 Vector<T>::FindIf( const std::function<bool (const T&)>& predicate ) {
-  auto itr(GetForwardIterator());
-  for( ; itr.HasNext(); itr.Move() ) {
-    if(predicate(itr.value())) return itr;
-  }
-  return itr;
+  return ::lavascript::FindIf(GetForwardIterator(),predicate);
 }
 
 // Set operations ---------------------------------------------------------
@@ -363,8 +362,8 @@ template< typename T > void Vector<T>::Union( Zone* zone , const Vector<T>& lhs 
   // assign the full lhs to temp vector
   temp.Assign(zone,lhs);
   // insert rhs selectively
-  for( auto itr(rhs.GetForwardIterator()); itr.HasNext(); itr.Move() ) {
-    if(!lhs.Find(itr.value()).HasNext()) temp.Add(zone,itr.value());
+  lava_foreach(const T& v, rhs.GetForwardIterator()) {
+    if(!lhs.Find(v).HasNext()) temp.Add(zone,v);
   }
   // set to the output
   output->Swap(&temp);
@@ -373,8 +372,8 @@ template< typename T > void Vector<T>::Union( Zone* zone , const Vector<T>& lhs 
 template< typename T > void Vector<T>::Intersect( Zone* zone , const Vector<T>& lhs , const Vector<T>& rhs ,
                                                                                       Vector<T>* output ) {
   Vector<T> temp(zone); temp.Reserve(zone,lhs.size());
-  for( auto itr(rhs.GetForwardIterator()); itr.HasNext(); itr.Move() ) {
-    if(lhs.Find(itr.value()).HasNext()) temp.Add(zone,itr.value());
+  lava_foreach(const T& v, rhs.GetForwardIterator()) {
+    if(lhs.Find(v).HasNext()) temp.Add(zone,v);
   }
   output->Swap(&temp);
 }
@@ -382,8 +381,8 @@ template< typename T > void Vector<T>::Intersect( Zone* zone , const Vector<T>& 
 template< typename T > void Vector<T>::Difference( Zone* zone , const Vector<T>& lhs , const Vector<T>& rhs ,
                                                                                        Vector<T>* output ) {
   Vector<T> temp(zone); temp.Reserve(zone,lhs.size());
-  for( auto itr(lhs.GetForwardIterator()); itr.HasNext(); itr.Move() ) {
-    if(!rhs.Find(itr.value()).HasNext()) temp.Add(zone,itr.value());
+  lava_foreach( const T& v , lhs.GetForwardIterator() ) {
+    if(!rhs.Find(v).HasNext()) temp.Add(zone,v);
   }
   output->Swap(&temp);
 }
@@ -442,12 +441,14 @@ inline void VectorBackwardTraits<T>::Advance( VectorType* vec , std::size_t offs
 }
 
 template< typename T , typename Traits >
-inline const T& IteratorBase<T,Traits>::value() const {
+inline typename IteratorBase<T,Traits>::ConstReferenceType
+IteratorBase<T,Traits>::value() const {
   return vec_->Index(cursor_);
 }
 
 template< typename T , typename Traits >
-inline T& IteratorBase<T,Traits>::value() {
+inline typename IteratorBase<T,Traits>::ReferenceType
+IteratorBase<T,Traits>::value() {
   // Super ugly, but we need to get the none const type out and const
   // cast the vec_ back to none const pointer to be able to call the
   // correct Index, this is really a hack for const iterator , since
@@ -460,7 +461,8 @@ inline T& IteratorBase<T,Traits>::value() {
 }
 
 template< typename T , typename Traits >
-inline void IteratorBase<T,Traits>::set_value( const T& value ) {
+inline void IteratorBase<T,Traits>::set_value(
+    typename IteratorBase<T,Traits>::ConstReferenceType value ) {
   vec_->Index(cursor_) = value;
 }
 

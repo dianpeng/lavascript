@@ -51,12 +51,10 @@ void Dominators::Build( const Graph& graph ) {
   // current timestamp
   std::int32_t cur_ts = 0;
   // do a timestamp mark using a DFS iteration algorithm
-  for( ControlFlowPOIterator itr(graph); itr.HasNext() ; itr.Move() ) {
-    auto n = itr.value();
+  lava_foreach( auto n , ControlFlowPOIterator(graph) ) {
     lava_debug(NORMAL,lava_verify(ts[n->id()] == 0););
     ts[n->id()] = ++cur_ts;
   }
-
   // do a dominator set generation using data flow algorithm
   std::vector<ControlFlow*> all_cf;
   bool has_change = false;
@@ -67,18 +65,16 @@ void Dominators::Build( const Graph& graph ) {
 
   do {
     has_change = false;
-    for( ControlFlowRPOIterator itr(graph) ; itr.HasNext() ; itr.Move() ) {
-      ControlFlow* n = itr.value();
+    lava_foreach( auto n , ControlFlowRPOIterator(graph) ) {
       DominatorSet* set = GetDomSet(graph,all_cf,n);
       // iterate against this node's predecessor's
       {
         temp.clear();
-        for( auto pitr(n->backward_edge()->GetForwardIterator());
-             pitr.HasNext() ; pitr.Move() ) {
+        lava_foreach( auto pn , n->backward_edge()->GetForwardIterator() ) {
           if(temp.empty()) {
-            temp = *GetDomSet(graph,all_cf,pitr.value());
+            temp = *GetDomSet(graph,all_cf,pn);
           } else {
-            IntersectSet(&temp,*GetDomSet(graph,all_cf,pitr.value()));
+            IntersectSet(&temp,*GetDomSet(graph,all_cf,pn));
           }
         }
         AddSet(&temp,n);

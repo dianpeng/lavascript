@@ -21,14 +21,15 @@ struct NodeBase {
 
 template< typename T > struct Node : public NodeBase<Node<T>> {
   typedef NodeBase<Node> Parent;
-
   T value;
   Node( const T& v ): Parent(NULL,NULL), value(v) {}
 };
 
 template< typename T , typename Traits > class Iterator {
  public:
-  typedef T ValueType;
+  typedef                T ValueType;
+  typedef       ValueType& ReferenceType;
+  typedef const ValueType& ConstReferenceType;
 
   Iterator( Node<T>* iter , Node<T>* end ): iter_(iter), end_(end) {}
   Iterator(): iter_(NULL) , end_(NULL) {}
@@ -38,19 +39,18 @@ template< typename T , typename Traits > class Iterator {
   bool Advance( std::size_t times ) const;
   bool Move() const    { return Traits::Move(&iter_,end_); }
 
-  const T& value() const { lava_debug(NORMAL,lava_verify(HasNext());); return iter_->value; }
-  T& value() { lava_debug(NORMAL,lava_verify(HasNext());); return iter_->value; }
-
-  void set_value( const T& val ) { lava_debug(NORMAL,lava_verify(HasNext());); iter_->value = val;  }
+  ConstReferenceType value() const { lava_debug(NORMAL,lava_verify(HasNext());); return iter_->value; }
+  ReferenceType      value() { lava_debug(NORMAL,lava_verify(HasNext());); return iter_->value; }
+  void set_value( ConstReferenceType val ) {
+    lava_debug(NORMAL,lava_verify(HasNext());); iter_->value = val;
+  }
 
   bool operator == ( const Iterator& that ) const {
     return iter_ == that.iter_ && end_ == that.end_;
   }
-
   bool operator != ( const Iterator& that ) const {
     return !(*this == that);
   }
-
  private:
   mutable Node<T>* iter_;
   Node<T>* end_ ;
@@ -91,14 +91,8 @@ template< typename T > class List : ZoneObject {
   typedef detail::NodeBase<NodeType> NodeBaseType;
  public:
   static List* New( Zone* zone ) { return zone->New<List<T>>(); }
-  static void Assign( Zone* , List* , const List& );
-
   List() : end_ () , size_(0) {}
-
-  List( Zone* zone , const List& that ) : end_() , size_(0) {
-    Assign(zone,this,that);
-  }
-
+  List( Zone* zone , const List& that ) : end_() , size_(0) { Assign(zone,this,that); }
  public:
   typedef detail::Iterator<T,detail::ListForwardTraits<T>> ForwardIterator;
   typedef const ForwardIterator ConstForwardIterator;
@@ -138,11 +132,17 @@ template< typename T > class List : ZoneObject {
   }
 
   void Clear() { size_ = 0; end_.Reset(); }
-
  public:
-  void Append( List* , ConstForwardIterator& );
-  void Append( List* list ) { Append(list,ConstForwardIterator(end(),end())); }
+  void Assign( Zone* , const List& );
+  template< typename ITR >
+  void Assign( Zone* , const ITR& );
 
+  void Append( Zone* , const List& );
+  template< typename ITR >
+  void Append( Zone* , const ITR& );
+  // merge another list into this list, after the merging the input list becomes empty
+  void Merge( List* list ) { Merge(list,ConstForwardIterator(end(),end())); }
+  void Merge( List* , ConstForwardIterator );
  public:
   // resize the linked list to hold certain size/amount of nodes
   void Resize( Zone* , std::size_t );
@@ -154,16 +154,16 @@ template< typename T > class List : ZoneObject {
   // set a certain value to an index
   void Set( std::size_t , const T& );
 
-  ForwardIterator      FindIf( const std::function<bool (ConstForwardIterator&) >& );
+  ForwardIterator      FindIf( const std::function<bool (const T&) >& );
 
-  ConstForwardIterator FindIf( const std::function<bool (ConstForwardIterator&) >& ) const;
+  ConstForwardIterator FindIf( const std::function<bool (const T&) >& ) const;
 
   ForwardIterator      Find( const T& value ) {
-    return FindIf([value]( ConstForwardIterator& itr ) { return itr.value() == value; });
+    return FindIf([value]( const T& v ) { return v == value; });
   }
 
   ConstForwardIterator Find( const T& value ) const {
-    return FindIf([value]( ConstForwardIterator& itr ) { return itr.value() == value; });
+    return FindIf([value]( const T& v ) { return v == value; });
   }
 
  public:
@@ -232,26 +232,45 @@ typename List<T>::ForwardIterator List<T>::Remove( ConstForwardIterator& iter ) 
 }
 
 template< typename T >
-void List<T>::Append( List<T>* another , ConstForwardIterator& pos ) {
+void List<T>::Assign( Zone* zone , const List<T>& that ) {
+  if(this != &that ) {
+    return Assign(zone,GetForwardIterator());
+  }
+}
+
+template< typename T >
+template< typename ITR >
+void List<T>::Assign( Zone* zone , const ITR& itr ) {
+  Clear();
+  lava_foreach( const T& v , itr ) {
+    PushBack(zone,v);
+  }
+}
+
+template< typename T >
+void List<T>::Append( Zone* zone , const List<T>& that ) {
+  if(this != &that) {
+    return Append(zone,that.GetForwardIterator());
+  }
+}
+
+template< typename T >
+template< typename ITR >
+void List<T>::Append( Zone* zone , const ITR& itr ) {
+  lava_foreach( const T& v , itr ) {
+    PushBack(zone,v);
+  }
+}
+
+template< typename T >
+void List<T>::Merge( List* another , ConstForwardIterator pos ) {
   auto p = pos;
   auto itr(another->GetForwardIterator());
   while( itr.HasNext() ) {
     auto node = itr.iter_;
     itr.Move(); // move first since node will be relinked
-
     p = InsertNode(p,node);
     p.Move();
-  }
-}
-
-template< typename T >
-void List<T>::Assign( Zone* zone , List<T>* dest , const List<T>& that ) {
-  if(dest != &that) {
-    dest->Clear();
-    ConstForwardIterator itr(that.GetIterator());
-    for( ; itr.HasNext(); itr.Move() ) {
-      dest->PushBack(zone,itr.value());
-    }
   }
 }
 
@@ -283,23 +302,13 @@ void List<T>::Set( std::size_t index , const T& value ) {
 }
 
 template< typename T >
-typename List<T>::ForwardIterator List<T>::FindIf(
-    const std::function<bool (const ConstForwardIterator&)>& predicate ) {
-  auto i(GetForwardIterator());
-  for( ; i.HasNext(); i.Move() ) {
-    if(predicate(i)) break;
-  }
-  return i;
+typename List<T>::ForwardIterator List<T>::FindIf( const std::function<bool (const T&)>& predicate ) {
+  return ::lavascript::FindIf(GetForwardIterator(),predicate);
 }
 
 template< typename T >
-typename List<T>::ConstForwardIterator List<T>::FindIf(
-    const std::function<bool (const ConstForwardIterator&)>& predicate ) const {
-  auto i(GetForwardIterator());
-  for( ; i.HasNext(); i.Move() ) {
-    if(predicate(i)) break;
-  }
-  return i;
+typename List<T>::ConstForwardIterator List<T>::FindIf( const std::function<bool (const T&)>& predicate ) const {
+  return ::lavascript::FindIf(GetForwardIterator(),predicate);
 }
 
 namespace detail {

@@ -92,22 +92,19 @@ void ControlFlow::Replace( ControlFlow* node ) {
   lava_foreach( auto &v , ref_list()->GetForwardIterator() ) {
     v.id.set_value(node);
   }
-
   // 2. transfer all the backward and forward edge to |node|
-  node->forward_edge ()->Append(forward_edge());
-  node->backward_edge()->Append(backward_edge());
+  node->forward_edge ()->Merge(forward_edge());
+  node->backward_edge()->Merge(backward_edge());
 }
 
 void ControlFlow::RemoveBackwardEdge( ControlFlow* node ) {
   auto itr = backward_edge()->Find(node);
   lava_verify(itr.HasNext());
-
   {
     auto i = node->forward_edge()->Find(this);
     lava_verify(i.HasNext());
     node->forward_edge()->Remove(i);
   }
-
   backward_edge()->Remove(itr);
 }
 
@@ -118,13 +115,11 @@ void ControlFlow::RemoveBackwardEdge( std::size_t index ) {
 void ControlFlow::RemoveForwardEdge( ControlFlow* node ) {
   auto itr = forward_edge()->Find(node);
   lava_verify(itr.HasNext());
-
   {
     auto i = node->backward_edge()->Find(this);
     lava_verify(i.HasNext());
     node->backward_edge()->Remove(i);
   }
-
   forward_edge()->Remove(itr);
 }
 
@@ -214,10 +209,8 @@ bool ControlFlowBFSIterator::Move() {
   while(!stack_.empty()) {
     auto top = stack_.Top()->AsControlFlow();
     stack_.Pop();
-
-    for( auto itr(top->forward_edge()->GetForwardIterator());
-         itr.HasNext() ; itr.Move() ) {
-      stack_.Push(itr.value());
+    lava_foreach( ControlFlow* cf , top->forward_edge()->GetForwardIterator() ) {
+      stack_.Push(cf);
     }
     next_ = top;
     return true;
@@ -270,14 +263,11 @@ bool ControlFlowRPOIterator::Move() {
 recursion:
     ControlFlow* top = stack_.Top()->AsControlFlow();
     // 1. check whether all its predecessuor has been visited or not
-    for( auto itr(top->backward_edge()->GetForwardIterator());
-         itr.HasNext() ; itr.Move() ) {
-      auto value = itr.value();
-      if(!mark_[value->id()] && stack_.Push(value)) {
+    lava_foreach( ControlFlow* cf , top->backward_edge()->GetForwardIterator() ) {
+      if(!mark_[cf->id()] && stack_.Push(cf)) {
         goto recursion;
       }
     }
-
     // 2. visit the top node
     lava_debug(NORMAL,lava_verify(!mark_[top->id()]););
     mark_[top->id()] = true;
@@ -285,7 +275,6 @@ recursion:
     next_ = top;
     return true;
   }
-
   next_ = NULL;
   return false;
 }
@@ -294,15 +283,11 @@ bool ControlFlowEdgeIterator::Move() {
   if(!stack_.empty()) {
     ControlFlow* top = stack_.Top()->AsControlFlow();
     stack_.Pop();
-
-    for( auto itr = top->backward_edge()->GetBackwardIterator();
-         itr.HasNext(); itr.Move() ) {
-      ControlFlow* pre = itr.value();
-      stack_.Push(pre);
-      results_.push_back(Edge(top,pre));
+    lava_foreach( ControlFlow* cf , top->backward_edge()->GetBackwardIterator() ) {
+      stack_.Push(cf);
+      results_.push_back(Edge(top,cf));
     }
   }
-
   if(results_.empty()) {
     next_.Clear();
     return false;
@@ -317,11 +302,9 @@ bool ExprDFSIterator::Move() {
   if(!stack_.empty()) {
 recursion:
     Expr* top = stack_.Top()->AsExpr();
-    for( std::size_t i = 0 ; i < top->operand_list()->size() ; ++i ) {
-      Expr* val = top->operand_list()->Index(i);
+    lava_foreach( Expr* val , top->operand_list()->GetForwardIterator() ) {
       if(stack_.Push(val)) goto recursion;
     }
-
     next_ = top;
     stack_.Pop();
     return true;

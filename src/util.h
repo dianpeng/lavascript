@@ -5,6 +5,7 @@
 #define __STDC_FORMAT_MACROS
 #endif // __STDC_FORMAT_MACROS
 
+#include <memory>
 #include <functional>
 #include <optional>
 #include <cstdint>
@@ -28,17 +29,51 @@ namespace lavascript {
 
 // Boost foreach style foreach statement for support customized iterator type.
 // Requires C++ 17 if statement
-#define lava_foreach(T,ITR)                                \
-  for( auto itr(ITR); itr.HasNext(); itr.Move() )          \
-    if( T = itr.value() ; true )
+#define lava_foreach(T,ITR)                                   \
+  for( auto __itr = (ITR); __itr.HasNext(); __itr.Move() )    \
+    if( T = __itr.value() ; true )
 
-// template function to get the size of an C array
+// A iterator adpater to limit how many steps this iterator should have
+template< typename ITR > class CountedIterator {
+ public:
+  typedef typename ITR::ValueType ValueType;
+  CountedIterator( const ITR& itr , std::size_t limit ) : itr_(itr), limit_(limit) {}
+  const ValueType& value() const { return itr_.value(); }
+  bool  HasNext         () const { return limit_ == 0 || itr_.HasNext(); }
+  bool  Move            () const {
+    lava_debug(NORMAL,lava_verify(HasNext()););
+    if(--limit_ == 0) return false;
+    return itr_.Move();
+  }
+ private:
+  ITR itr_;
+  mutable std::size_t limit_;
+};
+
+// ----------------------------------------------------------------
+// Iterator Algorithm
+// ----------------------------------------------------------------
+template< typename ITR >
+ITR FindIf( ITR itr , const std::function< bool ( typename ITR::ConstReferenceType ) >& predicate ) {
+  lava_foreach( typename ITR::ConstReferenceType v , itr ) {
+    if(predicate(v)) break;
+  }
+  return itr;
+}
+
+template< typename ITR >
+ITR Find( ITR itr , typename ITR::ConstReferenceType value ) {
+  return FindIf(itr,[=]( typename ITR::ConstReferenceType v ) { return v == value; });
+}
+
+// Get the array's size
 template< std::size_t N , typename T >
 size_t ArraySize( const T (&arr)[N] ) { (void)arr; return N; }
 
-// format a vararg into a std::string
+// ----------------------------------------------------------------
+// String Formatting
+// ----------------------------------------------------------------
 void FormatV( std::string* , const char*  , va_list );
-
 inline std::string FormatV( const char* format , va_list vl ) {
   std::string temp;
   FormatV(&temp,format,vl);
@@ -53,23 +88,25 @@ inline void Format( std::string* buffer , const char* format , ... ) {
   FormatV(buffer,format,vl);
 }
 
-// convert std::string to a raw c buffer
+// ----------------------------------------------------------------
+// Misc
+// ----------------------------------------------------------------
 inline char* AsBuffer( std::string* output , std::size_t off )
 { return &(*output->begin()) + off; }
 
-// convert std::vector to raw c buffer
 template< typename T >
 inline T* AsBuffer( std::vector<T>* output , std::size_t off ) {
   lava_verify(!output->empty());
   return &(*output->begin()) + off;
 }
+
 template< typename T >
 inline const T* AsBuffer( const std::vector<T>* output , std::size_t off ) {
   lava_verify(!output->empty());
   return &(*output->begin()) + off;
 }
 
-// object level memcpy/memmove/memset functions
+// Object level memcpy and memmove wrapper
 template< typename T >
 inline T* MemCopy( T* dest , const T* from , std::size_t size ) {
   return static_cast<T*>(std::memcpy(dest,from,size*sizeof(T)));
@@ -91,11 +128,12 @@ inline T* ZeroOut( T* dest , std::size_t size ) {
 // object oriented buffer offset
 template< typename T >
 inline void* BufferOffset( void* buffer , std::size_t offset ) {
-  return reinterpret_cast<void*>(
-      static_cast<T*>(buffer) + offset);
+  return reinterpret_cast<void*>(static_cast<T*>(buffer) + offset);
 }
 
-// lexcial cast to convert string representation of number into primitive type
+// ---------------------------------------------------------------------
+// lexical cast style conversion
+// ---------------------------------------------------------------------
 inline bool LexicalCast( const char* , std::int32_t* );
 inline bool LexicalCast( const char* , std::uint32_t* );
 inline bool LexicalCast( const char* , std::int64_t* );
@@ -104,6 +142,9 @@ inline bool LexicalCast( const char* , double* );
 inline bool LexicalCast( double , std::string* output );
 inline bool LexicalCast( bool   , std::string* output );
 
+// ---------------------------------------------------------------------
+// Real number cast
+// ---------------------------------------------------------------------
 // Try to narrow a real number into a 32 bits integer. It will fail
 // if the double has exponent part , and also fail if its size cannot
 // be put into the int32_t value.
@@ -136,38 +177,38 @@ template< typename T >
 T CastReal( double real ) { return static_cast<T>(real); }
 
 template< typename T >
-double CastRealAndStoreAsReal( double real ) { return static_cast<double>( CastReal<T>(real) ); }
+double CastRealAndStoreAsReal( double real ) {
+  return static_cast<double>( CastReal<T>(real) );
+}
 
-// align a number against another number std::align is kind of hard to use
+// ---------------------------------------------------------------------
+// Memory
+// ---------------------------------------------------------------------
 template< typename T > T Align( T value , T alignment ) {
   return (value + (alignment-1)) & ~(alignment-1);
 }
 
-// placement new wrapper , use c++11 perfect forwarding mechanism
+// Placement new
 template< typename T , typename Allocator , typename ... ARGS >
 T* Construct( Allocator* allocator , ARGS ...args ) {
   return ::new (allocator->Grab(sizeof(T))) T(std::forward(args)...);
 }
 
 template< typename T , typename Allocator >
-T* Construct( Allocator* allocator ) {
-  return ::new (allocator->Grab(sizeof(T))) T();
-}
+T* Construct( Allocator* allocator ) { return ::new (allocator->Grab(sizeof(T))) T(); }
 
 template< typename T , typename ... ARGS >
-T* ConstructFromBuffer( void* buffer , ARGS ...args ) {
-  return ::new (buffer) T(args...);
-}
+T* ConstructFromBuffer( void* buffer , ARGS ...args ) { return ::new (buffer) T(args...); }
 
 template< typename T >
-T* ConstructFromBuffer( void* buffer ) {
-  return ::new (buffer) T();
-}
+T* ConstructFromBuffer( void* buffer ) { return ::new (buffer) T(); }
 
-template< typename T > void Destruct( T* object ) {
-  object->~T();
-}
+// Destructor , wrapper aroud std::destroy_at now
+template< typename T > void Destruct( T* object ) { std::destroy_at(object); }
 
+// ----------------------------------------------------------------------
+// Optional
+// ----------------------------------------------------------------------
 // Old legacy code, before std::optional we do have a implementation, now it is just
 // a wrapper around std::optional. For any future code, we should just use std::optional
 template< typename T >
@@ -187,6 +228,9 @@ class Optional {
   std::optional<T> val_;
 };
 
+// ----------------------------------------------------------------------
+// Raw C-Style string
+// ----------------------------------------------------------------------
 // Wrapper of Slice style string, basically a const char* and a length field
 // No memory ownership is managed with this wrapper
 struct Str {

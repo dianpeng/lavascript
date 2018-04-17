@@ -2394,7 +2394,9 @@ constexpr bool IsExprIterator() {
 // goal is to tell which control flow nodes are inside of the graph
 class ControlFlowBFSIterator: public ControlFlowIterator {
  public:
-  typedef ControlFlow* ValueType;
+  typedef     ControlFlow* ValueType;
+  typedef       ValueType& ReferenceType;
+  typedef ValueType const& ConstReferenceType;
 
   ControlFlowBFSIterator( const Graph& graph ):
     stack_(graph),
@@ -2406,7 +2408,7 @@ class ControlFlowBFSIterator: public ControlFlowIterator {
   }
   bool HasNext() const { return next_ != NULL; }
   bool Move();
-  ControlFlow* value() const { lava_debug(NORMAL,lava_verify(HasNext());); return next_; }
+  ConstReferenceType value() const { lava_debug(NORMAL,lava_verify(HasNext());); return next_; }
  private:
   OnceList     stack_;
   const Graph* graph_;
@@ -2421,7 +2423,9 @@ class ControlFlowBFSIterator: public ControlFlowIterator {
 // edge output
 class ControlFlowPOIterator : public ControlFlowIterator {
  public:
-  typedef ControlFlow* ValueType;
+  typedef     ControlFlow* ValueType;
+  typedef       ValueType& ReferenceType;
+  typedef ValueType const& ConstReferenceType;
 
   ControlFlowPOIterator( const Graph& graph ):
     stack_(graph),
@@ -2433,7 +2437,7 @@ class ControlFlowPOIterator : public ControlFlowIterator {
   }
   bool HasNext() const { return next_ != NULL; }
   bool Move();
-  ControlFlow* value() const { lava_debug(NORMAL,lava_verify(HasNext());); return next_; }
+  ConstReferenceType value() const { lava_debug(NORMAL,lava_verify(HasNext());); return next_; }
  private:
   OnceList     stack_;
   const Graph* graph_;
@@ -2447,7 +2451,9 @@ class ControlFlowPOIterator : public ControlFlowIterator {
 // then this node will be visited. The loop's back edge is ignored
 class ControlFlowRPOIterator : public ControlFlowIterator {
  public:
-  typedef ControlFlow* ValueType;
+  typedef     ControlFlow* ValueType;
+  typedef       ValueType& ReferenceType;
+  typedef ValueType const& ConstReferenceType;
 
   ControlFlowRPOIterator( const Graph& graph ):
     mark_ (graph.MaxID()),
@@ -2460,7 +2466,7 @@ class ControlFlowRPOIterator : public ControlFlowIterator {
   }
   bool HasNext() const { return next_ != NULL; }
   bool Move();
-  ControlFlow* value() const { lava_debug(NORMAL,lava_verify(HasNext());); return next_; }
+  ConstReferenceType value() const { lava_debug(NORMAL,lava_verify(HasNext());); return next_; }
  private:
   DynamicBitSet mark_;
   OnceList     stack_;
@@ -2484,7 +2490,9 @@ class ControlFlowEdgeIterator {
     bool empty() const { return from == NULL; }
   };
 
-  typedef Edge ValueType;
+  typedef       Edge  ValueType;
+  typedef       Edge& ReferenceType;
+  typedef const Edge& ConstReferenceType;
  public:
   ControlFlowEdgeIterator( const Graph& graph ):
     stack_  (graph),
@@ -2498,7 +2506,7 @@ class ControlFlowEdgeIterator {
 
   bool HasNext() const { return !next_.empty(); }
   bool Move();
-  const Edge& value() const { lava_debug(NORMAL,lava_verify(HasNext());); return next_; }
+  ConstReferenceType value() const { lava_debug(NORMAL,lava_verify(HasNext());); return next_; }
  private:
   OnceList stack_;
   std::deque<Edge> results_;
@@ -2510,7 +2518,10 @@ class ControlFlowEdgeIterator {
 // An expression iterator. It will visit a expression in DFS order
 class ExprDFSIterator : public ExprIterator {
  public:
-  typedef Expr* ValueType;
+  typedef            Expr* ValueType;
+  typedef       ValueType& ReferenceType;
+  typedef ValueType const& ConstReferenceType;
+
   ExprDFSIterator( const Graph& graph , Expr* node ):
     root_(node),
     next_(NULL),
@@ -2532,7 +2543,7 @@ class ExprDFSIterator : public ExprIterator {
   }
   bool HasNext() const { return next_ != NULL; }
   bool Move();
-  Expr* value() const { lava_debug(NORMAL,lava_verify(HasNext());); return next_; }
+  ConstReferenceType value() const { lava_debug(NORMAL,lava_verify(HasNext());); return next_; }
  private:
   Expr* root_;
   Expr* next_;

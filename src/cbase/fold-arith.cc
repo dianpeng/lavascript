@@ -40,8 +40,9 @@ inline bool IsNumber( Expr* node , T value ) {
   return node->IsFloat64() ?
          (static_cast<double>(value) == node->AsFloat64()->value()) : false;
 }
-Expr* Fold( Graph* graph , Unary::Operator op , Expr* expr ,
-                                                const IRInfoProvider& irinfo ) {
+
+// Fold the unary operations
+Expr* Fold( Graph* graph , Unary::Operator op , Expr* expr , const IRInfoProvider& irinfo ) {
   if(op == Unary::MINUS) {
     if(expr->IsFloat64()) {
       return Float64::New(graph,-expr->AsFloat64()->value(),irinfo());
@@ -114,81 +115,60 @@ Expr* Float64Reassociate( Graph* graph , Binary::Operator op , Expr* lhs ,
   if(IsUnaryMinus(lhs) && op == Binary::ADD) {
     // 1. (-a) + b  => b - a
     auto info = irinfo();
-    return NewBoxNode<Float64Arithmetic>( graph ,
-                                          TPKIND_FLOAT64 ,
-                                          info,
+    return NewBoxNode<Float64Arithmetic>( graph , TPKIND_FLOAT64 , info,
                                           NewUnboxNode(graph,rhs,TPKIND_FLOAT64,info),
                                           NewUnboxNode(graph,lhs->AsUnary()->operand(),TPKIND_FLOAT64,info),
-                                          Binary::SUB,
-                                          info );
+                                          Binary::SUB, info );
   } else if(IsUnaryMinus(rhs) && op == Binary::ADD) {
     // 2. a + (-b) => a - b
     auto info = irinfo();
-    return NewBoxNode<Float64Arithmetic>( graph ,
-                                          TPKIND_FLOAT64 ,
-                                          info,
+    return NewBoxNode<Float64Arithmetic>( graph , TPKIND_FLOAT64 , info,
                                           NewUnboxNode(graph,lhs,TPKIND_FLOAT64,info),
                                           NewUnboxNode(graph,rhs->AsUnary()->operand(),TPKIND_FLOAT64,info),
-                                          Binary::SUB,
-                                          info );
+                                          Binary::SUB, info );
   } else if(IsUnaryMinus(lhs) && op == Binary::SUB) {
     // 3. -a - b => -b - a
     auto info = irinfo();
-    auto new_lhs = Float64Negate::New( graph ,
-                                       NewUnboxNode(graph,rhs,TPKIND_FLOAT64,info) ,
-                                       info );
-    return NewBoxNode<Float64Arithmetic>( graph ,
-                                          TPKIND_FLOAT64 ,
-                                          info,
+    auto new_lhs = Float64Negate::New( graph , NewUnboxNode(graph,rhs,TPKIND_FLOAT64,info) , info );
+    return NewBoxNode<Float64Arithmetic>( graph , TPKIND_FLOAT64 , info,
                                           NewUnboxNode(graph,new_lhs,TPKIND_FLOAT64,info),
                                           NewUnboxNode(graph,lhs->AsUnary()->operand(),TPKIND_FLOAT64,info),
-                                          Binary::SUB,
-                                          info );
+                                          Binary::SUB, info );
   } else if(IsUnaryMinus(rhs) && op == Binary::SUB) {
     // 4. a - (-b) => a + b
     auto info = irinfo();
-    return NewBoxNode<Float64Arithmetic>( graph ,
-                                          TPKIND_FLOAT64 ,
-                                          info,
+    return NewBoxNode<Float64Arithmetic>( graph , TPKIND_FLOAT64 , info,
                                           NewUnboxNode(graph,lhs,TPKIND_FLOAT64,info),
                                           NewUnboxNode(graph,rhs->AsUnary()->operand(),TPKIND_FLOAT64,info),
-                                          Binary::ADD,
-                                          info );
+                                          Binary::ADD, info );
   } else if(op == Binary::DIV && IsNumber(rhs,1)) {
     // 5. a / 1 => a
     return lhs;
   } else if(op == Binary::DIV && IsNumber(rhs,-1)) {
     // 6. a / -1 => -a
     auto info = irinfo();
-    return NewBoxNode<Float64Negate>( graph ,
-                                      TPKIND_FLOAT64,
-                                      info ,
+    return NewBoxNode<Float64Negate>( graph , TPKIND_FLOAT64, info ,
                                       NewUnboxNode(graph,lhs,TPKIND_FLOAT64,info) ,
                                       info );
   } else if(IsUnaryMinus(lhs) && IsUnaryMinus(rhs) && op == Binary::MUL) {
     // 7. -a * -b => a * b
     auto info = irinfo();
-    return NewBoxNode<Float64Arithmetic>( graph ,
-                                          TPKIND_FLOAT64 ,
-                                          info,
+    return NewBoxNode<Float64Arithmetic>( graph , TPKIND_FLOAT64 , info,
                                           NewUnboxNode(graph,lhs->AsUnary()->operand(),TPKIND_FLOAT64,info),
                                           NewUnboxNode(graph,rhs->AsUnary()->operand(),TPKIND_FLOAT64,info),
-                                          Binary::MUL,
-                                          info );
+                                          Binary::MUL, info );
   } else {
     return NULL;
   }
 }
-Expr* SimplifyLogicAnd( Graph* graph , TypeKind lhs_type ,
-                                       TypeKind rhs_type ,
-                                       Expr* lhs ,
-                                       Expr* rhs ,
-                                       const IRInfoProvider& irinfo ) {
+Expr* SimplifyLogicAnd( Graph* graph , TypeKind lhs_type , TypeKind rhs_type , Expr* lhs ,
+                                                                               Expr* rhs ,
+                                                                               const IRInfoProvider& irinfo ) {
   (void)lhs_type;
   (void)rhs_type;
   if(IsFalse(lhs,lhs_type)) { return Boolean::New(graph,false,irinfo()); }  // false && any ==> false
   if(IsTrue (lhs,lhs_type)) { return rhs; }                                 // true  && any ==> any
-  if(lhs == rhs) return lhs; // a && a ==> a
+  if(lhs->IsIdentical(rhs)) return lhs; // a && a ==> a
   if(IsUnaryNot(lhs) && lhs->AsUnary()->operand() == rhs) {
     // !a && a ==> false
     return Boolean::New(graph,false,irinfo());
@@ -199,13 +179,12 @@ Expr* SimplifyLogicAnd( Graph* graph , TypeKind lhs_type ,
   }
   return NULL;
 }
-Expr* SimplifyLogicOr ( Graph* graph , TypeKind lhs_type , TypeKind rhs_type ,
-                                                           Expr* lhs,
-                                                           Expr* rhs,
-                                                           const IRInfoProvider& irinfo ) {
+Expr* SimplifyLogicOr ( Graph* graph , TypeKind lhs_type , TypeKind rhs_type , Expr* lhs,
+                                                                               Expr* rhs,
+                                                                               const IRInfoProvider& irinfo ) {
   if(IsTrue (lhs,lhs_type)) { return Boolean::New(graph,true,irinfo()); }  // true || any ==> true
   if(IsFalse(lhs,lhs_type)) { return rhs; }                                // false|| any ==> any
-  if(lhs == rhs) return lhs; // a || a ==> a
+  if(lhs->IsIdentical(rhs)) return lhs; // a || a ==> a
   if(IsUnaryNot(lhs) && lhs->AsUnary()->operand() == rhs) {
     // !a || a ==> true
     return Boolean::New(graph,true,irinfo());
@@ -216,12 +195,11 @@ Expr* SimplifyLogicOr ( Graph* graph , TypeKind lhs_type , TypeKind rhs_type ,
   }
   return NULL;
 }
-Expr* SimplifyBooleanCompare( Graph* graph , Binary::Operator op,
-                                             TypeKind lhs_type ,
-                                             TypeKind rhs_type ,
-                                             Expr* lhs,
-                                             Expr* rhs,
-                                             const IRInfoProvider& irinfo ) {
+Expr* SimplifyBooleanCompare( Graph* graph , Binary::Operator op, TypeKind lhs_type ,
+                                                                  TypeKind rhs_type ,
+                                                                  Expr* lhs,
+                                                                  Expr* rhs,
+                                                                  const IRInfoProvider& irinfo ) {
   if(lhs_type == TPKIND_BOOLEAN && rhs->IsBoolean()) {
     auto info = irinfo();
     return rhs->AsBoolean()->value() ?  lhs :
@@ -233,9 +211,7 @@ Expr* SimplifyBooleanCompare( Graph* graph , Binary::Operator op,
   }
   return NULL;
 }
-Expr* SimplifyBinary( Graph* graph , Binary::Operator op , Expr* lhs ,
-                                                           Expr* rhs ,
-                                                           const IRInfoProvider& irinfo ) {
+Expr* SimplifyBinary( Graph* graph , Binary::Operator op , Expr* lhs , Expr* rhs , const IRInfoProvider& irinfo ) {
   auto lhs_type = GetTypeInference(lhs);
   auto rhs_type = GetTypeInference(rhs);
   if(lhs_type == TPKIND_FLOAT64 && rhs_type == TPKIND_FLOAT64) {
@@ -270,9 +246,7 @@ Expr* SimplifyBinary( Graph* graph , Binary::Operator op , Expr* lhs ,
   return NULL;
 }
 
-Expr* Fold( Graph* graph , Binary::Operator op , Expr* lhs ,
-                                                 Expr* rhs ,
-                                                 const IRInfoProvider& irinfo ) {
+Expr* Fold( Graph* graph , Binary::Operator op , Expr* lhs , Expr* rhs , const IRInfoProvider& irinfo ) {
   if(lhs->IsFloat64() && rhs->IsFloat64()) {
     auto lval = lhs->AsFloat64()->value();
     auto rval = rhs->AsFloat64()->value();
@@ -299,10 +273,8 @@ Expr* Fold( Graph* graph , Binary::Operator op , Expr* lhs ,
       default: lava_die(); return NULL;
     }
   } else if(lhs->IsString() && rhs->IsString()) {
-    const zone::String* lstr = lhs->IsSString() ? lhs->AsSString()->value() :
-                                                  lhs->AsLString()->value() ;
-    const zone::String* rstr = rhs->IsSString() ? rhs->AsSString()->value() :
-                                                  rhs->AsLString()->value() ;
+    const zone::String* lstr = lhs->IsSString() ? lhs->AsSString()->value() : lhs->AsLString()->value() ;
+    const zone::String* rstr = rhs->IsSString() ? rhs->AsSString()->value() : rhs->AsLString()->value() ;
     switch(op) {
       case Binary::LT: return Boolean::New(graph,*lstr <  *rstr, irinfo());
       case Binary::LE: return Boolean::New(graph,*lstr <= *rstr, irinfo());
@@ -324,8 +296,7 @@ Expr* Fold( Graph* graph , Binary::Operator op , Expr* lhs ,
   return SimplifyBinary(graph,op,lhs,rhs,irinfo);
 }
 
-Expr* Fold( Graph* graph , Expr* cond , Expr* lhs , Expr* rhs ,
-                                                    const IRInfoProvider& irinfo) {
+Expr* Fold( Graph* graph , Expr* cond , Expr* lhs , Expr* rhs , const IRInfoProvider& irinfo) {
   switch(cond->type()) {
     case IRTYPE_FLOAT64:
     case IRTYPE_LONG_STRING:
@@ -348,9 +319,28 @@ Expr* Fold( Graph* graph , Expr* cond , Expr* lhs , Expr* rhs ,
       }
       break;
   }
+
+  // 1. check if lhs and rhs are the same if so check if cond is side effect free
+  //    if it is side effect free then just return lhs/rhs
+  if(lhs->IsIdentical(rhs) && !cond->HasSideEffect()) return lhs;
+
+  // 2. check following cases
+  // 1) value = cond ? true : false ==> value = cast_to_boolean(cond)
+  // 2) value = cond ? false: true  ==> value = cast_to_boolean(cond,negate)
+  if( lhs->IsBoolean() && rhs->IsBoolean() ) {
+    auto lb = lhs->AsBoolean()->value();
+    auto rb = rhs->AsBoolean()->value();
+    if(lb) {
+      lava_debug(NORMAL,lava_verify(!rb););
+      return CastToBoolean::New(graph,cond,irinfo());
+    } else {
+      lava_debug(NORMAL,lava_verify(rb););
+      return CastToBoolean::NewNegateCast(graph,cond,irinfo());
+    }
+  }
+
   return NULL;
 }
-
 
 } // namespace
 
@@ -361,8 +351,7 @@ Expr* FoldBinary ( Graph* graph , Binary::Operator op , Expr* lhs , Expr* rhs ,
                                                                     const IRInfoProvider& irinfo ) {
   return Fold(graph,op,lhs,rhs,irinfo);
 }
-Expr* FoldTernary( Graph* graph , Expr* cond , Expr* lhs , Expr* rhs ,
-                                                           const IRInfoProvider& irinfo) {
+Expr* FoldTernary( Graph* graph , Expr* cond , Expr* lhs , Expr* rhs , const IRInfoProvider& irinfo) {
   return Fold(graph,cond,lhs,rhs,irinfo);
 }
 

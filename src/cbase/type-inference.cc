@@ -35,6 +35,7 @@ TypeKind GetTypeInference( Expr* node ) {
     case IRTYPE_SSTRING_EQ:         return TPKIND_BOOLEAN;
     case IRTYPE_SSTRING_NE:         return TPKIND_BOOLEAN;
     case IRTYPE_BOOLEAN_LOGIC:      return TPKIND_BOOLEAN;
+    case IRTYPE_BOOLEAN_NOT:        return TPKIND_BOOLEAN;
     // intrinsic call's return value mapping
     // TODO:: Add this into a X macro to make our life easier ?
     case IRTYPE_ICALL:

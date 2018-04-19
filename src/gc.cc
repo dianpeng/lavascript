@@ -98,7 +98,7 @@ bool Heap::RefillChunk( size_t size ) {
 
 void* Heap::Grab( size_t object_size , ValueType type, GCState gc_state ,
                                                        bool is_long_str ) {
-  object_size = Align(object_size,kAlignment);
+  object_size = Align(object_size,kMemoryAlignment);
   std::size_t size = object_size + HeapObjectHeader::kHeapObjectHeaderSize;
   void* buf = NULL;
 
@@ -125,7 +125,7 @@ void* Heap::Grab( size_t object_size , ValueType type, GCState gc_state ,
 void* Heap::CopyObject( const void* ptr , std::size_t length ) {
   lava_debug(NORMAL,
       lava_verify(!length);
-      lava_verify( Align(length,kAlignment) == length );
+      lava_verify( Align(length,kMemoryAlignment) == length );
     );
 
   void* buf = NULL;
@@ -246,7 +246,7 @@ SSO* SSOPool::Get( const char* str , std::size_t length ) {
     return e->sso;
   else {
     SSO* sso = ConstructFromBuffer<SSO>(
-        allocator_.Grab(Align(sizeof(SSO)+length,kAlignment)), length, hash );
+        allocator_.Grab(Align(sizeof(SSO)+length,kMemoryAlignment)), length, hash );
     if(length)
       std::memcpy( reinterpret_cast<char*>(sso) + sizeof(SSO) , str , length );
     e->sso = sso;
@@ -404,13 +404,13 @@ Prototype** GC::NewPrototype( String** proto,
                               std::uint32_t code_buffer_size ) {
 
   // Highly sensitive to the layout of the Prototype object
-  std::size_t rtable_bytes = Align(real_table_size*sizeof(double),gc::kAlignment);
-  std::size_t stable_bytes = Align(string_table_size*sizeof(String**),gc::kAlignment);
-  std::size_t ssotable_bytes = Align(sso_table_size*sizeof(Prototype::SSOTableEntry),gc::kAlignment);
-  std::size_t utable_bytes = Align(upvalue_size*sizeof(std::uint32_t),gc::kAlignment);
-  std::size_t cb_bytes     = Align(code_buffer_size*sizeof(std::uint32_t),gc::kAlignment);
-  std::size_t sci_bytes    = Align(code_buffer_size*sizeof(SourceCodeInfo),gc::kAlignment);
-  std::size_t roff_bytes   = Align(code_buffer_size*sizeof(std::uint8_t),gc::kAlignment);
+  std::size_t rtable_bytes = Align(real_table_size*sizeof(double),kMemoryAlignment);
+  std::size_t stable_bytes = Align(string_table_size*sizeof(String**),kMemoryAlignment);
+  std::size_t ssotable_bytes = Align(sso_table_size*sizeof(Prototype::SSOTableEntry),kMemoryAlignment);
+  std::size_t utable_bytes = Align(upvalue_size*sizeof(std::uint32_t),kMemoryAlignment);
+  std::size_t cb_bytes     = Align(code_buffer_size*sizeof(std::uint32_t),kMemoryAlignment);
+  std::size_t sci_bytes    = Align(code_buffer_size*sizeof(SourceCodeInfo),kMemoryAlignment);
+  std::size_t roff_bytes   = Align(code_buffer_size*sizeof(std::uint8_t),kMemoryAlignment);
 
   void* proto_buffer = heap_.Grab( sizeof(Prototype) + rtable_bytes +
                                                        stable_bytes +

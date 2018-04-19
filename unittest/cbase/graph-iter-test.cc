@@ -12,6 +12,7 @@
 
 #include <src/cbase/optimization/gvn.h>
 #include <src/cbase/optimization/dce.h>
+#include <src/cbase/graph-printer.h>
 
 #include <gtest/gtest.h>
 
@@ -71,7 +72,7 @@ bool PrintIter( const char* source ) {
     return false;
   }
 
-  std::cerr << Graph::PrintToDotFormat(graph) << std::endl;
+  std::cerr << GraphPrinter::Print(graph) << std::endl;
 
   for( ControlFlowRPOIterator itr(graph) ; itr.HasNext() ; itr.Move() ) {
     auto cf = itr.value();

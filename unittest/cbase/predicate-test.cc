@@ -1,6 +1,6 @@
 #include <src/trace.h>
 #include <src/zone/zone.h>
-#include <src/cbase/value-range.h>
+#include <src/cbase/predicate.h>
 
 #include <gtest/gtest.h>
 
@@ -25,80 +25,80 @@ const char* OpName( Binary::Operator op ) {
   }
 }
 
-typedef Float64ValueRange::Range R;
-typedef Float64ValueRange::NumberPoint N;
+typedef Float64Predicate::Range R;
+typedef Float64Predicate::NumberPoint N;
 
 R LOpen( double r, bool c ) { return R(N::kNegInf,N(r,c)); }
 R ROpen( double l, bool c ) { return R(N(l,c),N::kPosInf); }
 R Single( double r )        { return R(N(r,true),N(r,true)); }
 
 
-TEST(ValueRange,Range) {
+TEST(Predicate,Range) {
   // include
-  ASSERT_TRUE( LOpen(3,true).Test(LOpen(3,false)) == ValueRange::INCLUDE );  // ,3] > ,3)
-  ASSERT_TRUE( ROpen(3,true).Test(ROpen(3,false)) == ValueRange::INCLUDE );  // [3, > (3,
-  ASSERT_TRUE( LOpen(3,true).Test(LOpen(2,true )) == ValueRange::INCLUDE );  // ,3] > ,2)
-  ASSERT_TRUE( R(-2,true,3,true).Test(R(-2,true,1,true)) == ValueRange::INCLUDE );
-  ASSERT_TRUE( R(-2,true,3,true).Test(R(-1,true,3,true)) == ValueRange::INCLUDE );
-  ASSERT_TRUE( R(-3,true,3,false).Test(R(-3,false,2,false)) == ValueRange::INCLUDE );
+  ASSERT_TRUE( LOpen(3,true).Test(LOpen(3,false)) == Predicate::INCLUDE );  // ,3] > ,3)
+  ASSERT_TRUE( ROpen(3,true).Test(ROpen(3,false)) == Predicate::INCLUDE );  // [3, > (3,
+  ASSERT_TRUE( LOpen(3,true).Test(LOpen(2,true )) == Predicate::INCLUDE );  // ,3] > ,2)
+  ASSERT_TRUE( R(-2,true,3,true).Test(R(-2,true,1,true)) == Predicate::INCLUDE );
+  ASSERT_TRUE( R(-2,true,3,true).Test(R(-1,true,3,true)) == Predicate::INCLUDE );
+  ASSERT_TRUE( R(-3,true,3,false).Test(R(-3,false,2,false)) == Predicate::INCLUDE );
 
   // same
-  ASSERT_TRUE( LOpen(3,true).Test(LOpen(3,true)) == ValueRange::SAME );
-  ASSERT_TRUE( ROpen(3,false).Test(ROpen(3,false)) == ValueRange::SAME );
-  ASSERT_TRUE( R(-2,false,3,false).Test(R(-2,false,3,false)) == ValueRange::SAME );
-  ASSERT_TRUE( R(-2,true,3,true).Test(R(-2,true,3,true)) == ValueRange::SAME );
+  ASSERT_TRUE( LOpen(3,true).Test(LOpen(3,true)) == Predicate::SAME );
+  ASSERT_TRUE( ROpen(3,false).Test(ROpen(3,false)) == Predicate::SAME );
+  ASSERT_TRUE( R(-2,false,3,false).Test(R(-2,false,3,false)) == Predicate::SAME );
+  ASSERT_TRUE( R(-2,true,3,true).Test(R(-2,true,3,true)) == Predicate::SAME );
 
   // lexclude
-  ASSERT_TRUE( LOpen(2,false).Test(ROpen(2,true)) == ValueRange::LEXCLUDE );
-  ASSERT_TRUE( LOpen(1,true ).Test(ROpen(2,true)) == ValueRange::LEXCLUDE );
+  ASSERT_TRUE( LOpen(2,false).Test(ROpen(2,true)) == Predicate::LEXCLUDE );
+  ASSERT_TRUE( LOpen(1,true ).Test(ROpen(2,true)) == Predicate::LEXCLUDE );
 
   // rexclude
-  ASSERT_TRUE( ROpen(2,true).Test(LOpen(2,false)) == ValueRange::REXCLUDE );
-  ASSERT_TRUE( ROpen(2,false).Test(LOpen(2,true)) == ValueRange::REXCLUDE );
+  ASSERT_TRUE( ROpen(2,true).Test(LOpen(2,false)) == Predicate::REXCLUDE );
+  ASSERT_TRUE( ROpen(2,false).Test(LOpen(2,true)) == Predicate::REXCLUDE );
 
-  ASSERT_TRUE( ROpen(2,true).Test(LOpen(1,true )) == ValueRange::REXCLUDE );
+  ASSERT_TRUE( ROpen(2,true).Test(LOpen(1,true )) == Predicate::REXCLUDE );
 
   // OVERLAP
-  ASSERT_TRUE( ROpen(2,true).Test(LOpen(2,true)) == ValueRange::OVERLAP  );
-  ASSERT_TRUE( LOpen(1,true).Test(ROpen(1,true)) == ValueRange::OVERLAP  );
+  ASSERT_TRUE( ROpen(2,true).Test(LOpen(2,true)) == Predicate::OVERLAP  );
+  ASSERT_TRUE( LOpen(1,true).Test(ROpen(1,true)) == Predicate::OVERLAP  );
 
-  ASSERT_TRUE( ROpen(2,true).Test(LOpen(3,true)) == ValueRange::OVERLAP  );
+  ASSERT_TRUE( ROpen(2,true).Test(LOpen(3,true)) == Predicate::OVERLAP  );
 
   // Singleton range
-  ASSERT_TRUE( Single(2).Test(Single(2)) == ValueRange::SAME );
-  ASSERT_TRUE( Single(2).Test(Single(1)) == ValueRange::REXCLUDE );
-  ASSERT_TRUE( Single(2).Test(Single(3)) == ValueRange::LEXCLUDE );
+  ASSERT_TRUE( Single(2).Test(Single(2)) == Predicate::SAME );
+  ASSERT_TRUE( Single(2).Test(Single(1)) == Predicate::REXCLUDE );
+  ASSERT_TRUE( Single(2).Test(Single(3)) == Predicate::LEXCLUDE );
 
-  ASSERT_TRUE( Single(2).Test(ROpen(2,true)) == ValueRange::OVERLAP );
-  ASSERT_TRUE( ROpen(2,true).Test(Single(2)) == ValueRange::INCLUDE );
-  ASSERT_TRUE( Single(2).Test(ROpen(2,false)) == ValueRange::LEXCLUDE );
-  ASSERT_TRUE( ROpen(2,false).Test(Single(2)) == ValueRange::REXCLUDE );
+  ASSERT_TRUE( Single(2).Test(ROpen(2,true)) == Predicate::OVERLAP );
+  ASSERT_TRUE( ROpen(2,true).Test(Single(2)) == Predicate::INCLUDE );
+  ASSERT_TRUE( Single(2).Test(ROpen(2,false)) == Predicate::LEXCLUDE );
+  ASSERT_TRUE( ROpen(2,false).Test(Single(2)) == Predicate::REXCLUDE );
 
-  ASSERT_TRUE( Single(2).Test(LOpen(2,true)) == ValueRange::OVERLAP );
-  ASSERT_TRUE( LOpen(2,true).Test(Single(2)) == ValueRange::INCLUDE );
-  ASSERT_TRUE( Single(2).Test(ROpen(2,false)) == ValueRange::LEXCLUDE );
-  ASSERT_TRUE( ROpen(2,false).Test(Single(2)) == ValueRange::REXCLUDE );
+  ASSERT_TRUE( Single(2).Test(LOpen(2,true)) == Predicate::OVERLAP );
+  ASSERT_TRUE( LOpen(2,true).Test(Single(2)) == Predicate::INCLUDE );
+  ASSERT_TRUE( Single(2).Test(ROpen(2,false)) == Predicate::LEXCLUDE );
+  ASSERT_TRUE( ROpen(2,false).Test(Single(2)) == Predicate::REXCLUDE );
 }
 
 
 #define CHECK_TRUE(OP,V)                    \
   do {                                      \
     std::cerr<<"T:"<<OpName(OP)<<V<<'\n';   \
-    ASSERT_EQ(ValueRange::ALWAYS_TRUE,      \
+    ASSERT_EQ(Predicate::ALWAYS_TRUE,      \
               range.Infer(OP,V));           \
   } while(false)
 
 #define CHECK_FALSE(OP,V)                   \
   do {                                      \
     std::cerr<<"F:"<<OpName(OP)<<V<<'\n';   \
-    ASSERT_EQ(ValueRange::ALWAYS_FALSE,     \
+    ASSERT_EQ(Predicate::ALWAYS_FALSE,     \
               range.Infer(OP,V));           \
   } while(false)
 
 #define CHECK_UNKNOWN(OP,V)                 \
   do {                                      \
     std::cerr<<"F:"<<OpName(OP)<<V<<'\n';   \
-    ASSERT_EQ(ValueRange::UNKNOWN,          \
+    ASSERT_EQ(Predicate::UNKNOWN,          \
               range.Infer(OP,V));           \
   } while(false)
 
@@ -112,11 +112,11 @@ TEST(ValueRange,Range) {
   } while(false)
 
 
-TEST(ValueRange,F64Union) {
+TEST(Predicate,F64Union) {
   zone::Zone zone(4,4);
 
   {
-    Float64ValueRange range(&zone);
+    Float64Predicate range(&zone);
     range.Union(Binary::EQ,5); // == 5
     range.Union(Binary::GT,5); // > 5
     range.Union(Binary::GE,5); // >= 5
@@ -135,7 +135,7 @@ TEST(ValueRange,F64Union) {
   }
 
   {
-    Float64ValueRange range(&zone);
+    Float64Predicate range(&zone);
     range.Union(Binary::LT,2); // < 2
     range.Union(Binary::EQ,2); // == 2
     range.Union(Binary::EQ,2);
@@ -155,7 +155,7 @@ TEST(ValueRange,F64Union) {
   }
 
   {
-    Float64ValueRange range(&zone);
+    Float64Predicate range(&zone);
     range.Union(Binary::LT,2);  // < 2
     range.Union(Binary::GT,3);  // > 3
     range.Union(Binary::LE,3);
@@ -167,7 +167,7 @@ TEST(ValueRange,F64Union) {
   }
 
   {
-    Float64ValueRange range(&zone);
+    Float64Predicate range(&zone);
     range.Union(Binary::LT,1);
     range.Union(Binary::GE,3);
     range.Union(Binary::GE,1);
@@ -179,7 +179,7 @@ TEST(ValueRange,F64Union) {
   }
 
   {
-    Float64ValueRange range(&zone);
+    Float64Predicate range(&zone);
     range.Union(Binary::GT,10);
 
     // overlap with just one value 10
@@ -212,7 +212,7 @@ TEST(ValueRange,F64Union) {
 
   {
     // Multiple ranges
-    Float64ValueRange range(&zone);
+    Float64Predicate range(&zone);
     range.Union(Binary::GT,10); // > 10
     range.Union(Binary::LT,1 ); // < 1
     {
@@ -221,38 +221,38 @@ TEST(ValueRange,F64Union) {
     }
 
     { // range: (-@,2) (9,+@)
-      Float64ValueRange r(&zone);
+      Float64Predicate r(&zone);
       r.Union(Binary::GT,9);
       r.Union(Binary::LT,2);
-      ASSERT_EQ(ValueRange::ALWAYS_TRUE,range.Infer(r));
+      ASSERT_EQ(Predicate::ALWAYS_TRUE,range.Infer(r));
     }
 
     { // range: (-@,0) (100,+@)
-      Float64ValueRange r(&zone);
+      Float64Predicate r(&zone);
       r.Union(Binary::GT,100);
       r.Union(Binary::LT,0.0);
-      ASSERT_EQ(ValueRange::UNKNOWN,range.Infer(r));
+      ASSERT_EQ(Predicate::UNKNOWN,range.Infer(r));
     }
 
     { // range: (2,3)
-      Float64ValueRange r(&zone);
+      Float64Predicate r(&zone);
       r.Union(Binary::LT,3);
       r.Intersect(Binary::GT,2);
-      ASSERT_EQ(ValueRange::ALWAYS_FALSE,range.Infer(r));
+      ASSERT_EQ(Predicate::ALWAYS_FALSE,range.Infer(r));
     }
 
     { // range: (0,10)
-      Float64ValueRange r(&zone);
+      Float64Predicate r(&zone);
       r.Union(Binary::LT,10);
       r.Intersect(Binary::GT,0.0);
-      ASSERT_EQ(ValueRange::UNKNOWN,range.Infer(r));
+      ASSERT_EQ(Predicate::UNKNOWN,range.Infer(r));
     }
 
     { // range :[1,10]
-      Float64ValueRange r(&zone);
+      Float64Predicate r(&zone);
       r.Union(Binary::LE,10);
       r.Intersect(Binary::GE,1);
-      ASSERT_EQ(ValueRange::ALWAYS_FALSE,range.Infer(r));
+      ASSERT_EQ(Predicate::ALWAYS_FALSE,range.Infer(r));
     }
   }
 
@@ -260,7 +260,7 @@ TEST(ValueRange,F64Union) {
   // multiple range represents single number
   {
     static const int kSize = 100;
-    Float64ValueRange range(&zone);
+    Float64Predicate range(&zone);
 
     for( int i = 0 ; i < kSize ; ++i ) {
       range.Union(Binary::EQ,static_cast<double>(i));
@@ -272,10 +272,10 @@ TEST(ValueRange,F64Union) {
   }
 }
 
-TEST(ValueRange,F64Intersect) {
+TEST(Predicate,F64Intersect) {
   zone::Zone zone(4,4);
   {
-    Float64ValueRange range(&zone);
+    Float64Predicate range(&zone);
     range.Union(Binary::LE,10);
     range.Intersect(Binary::LT,10);
     {
@@ -292,7 +292,7 @@ TEST(ValueRange,F64Intersect) {
   }
 
   {
-    Float64ValueRange range(&zone);
+    Float64Predicate range(&zone);
     range.Union(Binary::GE,10);
     range.Intersect(Binary::GT,10);
     {
@@ -309,7 +309,7 @@ TEST(ValueRange,F64Intersect) {
   }
 
   {
-    Float64ValueRange range(&zone);
+    Float64Predicate range(&zone);
     range.Union(Binary::LE,10);    // <= 10
     range.Intersect(Binary::GT,4); // > 4
     {
@@ -324,7 +324,7 @@ TEST(ValueRange,F64Intersect) {
   }
 
   {
-    Float64ValueRange range(&zone);
+    Float64Predicate range(&zone);
     range.Union(Binary::LE,10);
     range.Intersect(Binary::GT,10);
     {
@@ -342,7 +342,7 @@ TEST(ValueRange,F64Intersect) {
   // multiple range representation
   {
     static const int kSize = 100;
-    Float64ValueRange range(&zone);
+    Float64Predicate range(&zone);
     for( int i = kSize - 1 ; i >= 0 ; --i ) {
       range.Union    (Binary::LE,i);
       range.Intersect(Binary::GE,i);
@@ -363,7 +363,7 @@ TEST(ValueRange,F64Intersect) {
 
   {
     // range [1,10] , [20,30], [40,50]
-    Float64ValueRange range(&zone);
+    Float64Predicate range(&zone);
     {
       range.Union(Binary::LE,10);
       range.Intersect(Binary::GE,1);
@@ -380,7 +380,7 @@ TEST(ValueRange,F64Intersect) {
     }
 
     {
-      Float64ValueRange r(&zone);
+      Float64Predicate r(&zone);
 
       r.Union(Binary::GE,40);
       r.Intersect(Binary::LE,50);
@@ -391,15 +391,15 @@ TEST(ValueRange,F64Intersect) {
       r.Intersect(Binary::GE,1);
       r.Union(Binary::LE,10);
 
-      ASSERT_EQ(ValueRange::ALWAYS_TRUE,range.Infer(r));
+      ASSERT_EQ(Predicate::ALWAYS_TRUE,range.Infer(r));
     }
   }
 
 }
 
-TEST(ValueRange,BoolUnion) {
+TEST(Predicate,BoolUnion) {
   {
-    BooleanValueRange range; // empty set
+    BooleanPredicate range; // empty set
     range.Union(true);       // true
     CHECK_TRUE (Binary::EQ,true);
     CHECK_FALSE(Binary::EQ,false);
@@ -413,7 +413,7 @@ TEST(ValueRange,BoolUnion) {
   }
 
   {
-    BooleanValueRange range;
+    BooleanPredicate range;
     range.Union(false);
     CHECK_TRUE (Binary::EQ,false);
     CHECK_FALSE(Binary::EQ,true);
@@ -427,48 +427,48 @@ TEST(ValueRange,BoolUnion) {
   }
 
   {
-    BooleanValueRange range;
+    BooleanPredicate range;
     range.Union(true); // true
-    ASSERT_EQ(ValueRange::ALWAYS_FALSE,range.Infer(BooleanValueRange(false)));
-    ASSERT_EQ(ValueRange::ALWAYS_TRUE ,range.Infer(BooleanValueRange(true )));
+    ASSERT_EQ(Predicate::ALWAYS_FALSE,range.Infer(BooleanPredicate(false)));
+    ASSERT_EQ(Predicate::ALWAYS_TRUE ,range.Infer(BooleanPredicate(true )));
   }
 
   {
-    BooleanValueRange range;
+    BooleanPredicate range;
     range.Union(false); // true
-    ASSERT_EQ(ValueRange::ALWAYS_FALSE,range.Infer(BooleanValueRange(true)));
-    ASSERT_EQ(ValueRange::ALWAYS_TRUE ,range.Infer(BooleanValueRange(false)));
+    ASSERT_EQ(Predicate::ALWAYS_FALSE,range.Infer(BooleanPredicate(true)));
+    ASSERT_EQ(Predicate::ALWAYS_TRUE ,range.Infer(BooleanPredicate(false)));
   }
 
   {
-    BooleanValueRange range;
+    BooleanPredicate range;
     range.Union(false); // true
     range.Union(true ); // true,false
 
-    ASSERT_EQ(ValueRange::UNKNOWN,range.Infer(BooleanValueRange(true)));
-    ASSERT_EQ(ValueRange::UNKNOWN,range.Infer(BooleanValueRange(false)));
+    ASSERT_EQ(Predicate::UNKNOWN,range.Infer(BooleanPredicate(true)));
+    ASSERT_EQ(Predicate::UNKNOWN,range.Infer(BooleanPredicate(false)));
   }
 
   {
-    BooleanValueRange range(true);
+    BooleanPredicate range(true);
     {
-      BooleanValueRange r(true); r.Union(false);
-      ASSERT_EQ(ValueRange::ALWAYS_TRUE,range.Infer(r));
+      BooleanPredicate r(true); r.Union(false);
+      ASSERT_EQ(Predicate::ALWAYS_TRUE,range.Infer(r));
     }
   }
 
   {
-    BooleanValueRange range(false);
+    BooleanPredicate range(false);
     {
-      BooleanValueRange r(false); r.Union(true);
-      ASSERT_EQ(ValueRange::ALWAYS_TRUE,range.Infer(r));
+      BooleanPredicate r(false); r.Union(true);
+      ASSERT_EQ(Predicate::ALWAYS_TRUE,range.Infer(r));
     }
   }
 }
 
-TEST(ValueRange,BoolIntersect) {
+TEST(Predicate,BoolIntersect) {
   {
-    BooleanValueRange range(true);
+    BooleanPredicate range(true);
     range.Intersect(false);
     {
       DumpWriter writer;
@@ -481,7 +481,7 @@ TEST(ValueRange,BoolIntersect) {
   }
 
   {
-    BooleanValueRange range(false);
+    BooleanPredicate range(false);
     range.Intersect(true);
     {
       DumpWriter writer;
@@ -494,7 +494,7 @@ TEST(ValueRange,BoolIntersect) {
   }
 
   {
-    BooleanValueRange range(true); range.Intersect(true);
+    BooleanPredicate range(true); range.Intersect(true);
     {
       DumpWriter writer;
       range.Dump(&writer);
@@ -506,7 +506,7 @@ TEST(ValueRange,BoolIntersect) {
   }
 
   {
-    BooleanValueRange range(false); range.Intersect(false);
+    BooleanPredicate range(false); range.Intersect(false);
     {
       DumpWriter writer;
       range.Dump(&writer);

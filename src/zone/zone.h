@@ -17,9 +17,6 @@ namespace zone {
 // STL allocator interface.
 class Zone {
  public:
-  // for future , we need to align the memory since some arch may have panelty
-  // for accessing not aligned memory
-  static const std::size_t kAlignment = 8;
   static const std::size_t kMaximum =
 #ifndef LAVA_ZONE_MAXIMUM_SIZE
     1024*1024*4; // 4MB
@@ -42,7 +39,7 @@ class Zone {
  public:
   // Malloc a chunk of memory , no free needed once This zone is destroyed or reset, the memory
   // is freed automatically
-  virtual void* Malloc( std::size_t size ) { return allocator_.Grab(Align(size,kAlignment)); }
+  virtual void* Malloc( std::size_t size ) { return allocator_.Grab(Align(size,kMemoryAlignment)); }
   // Reset the zone object, this will mark all malloced memory from this zone object to be invalid
   virtual void Reset() { allocator_.Reset(); }
  public: // helper

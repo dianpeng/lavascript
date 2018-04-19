@@ -6,7 +6,6 @@ namespace lavascript {
 namespace cbase      {
 namespace hir        {
 
-
 /**
  * Infer pass mark all the branch condition node with value range object
  * later on can be used to do inference
@@ -17,7 +16,6 @@ class Infer : public HIRPass {
   virtual bool Perform( Graph* , HIRPass::Flag );
   Infer() : HIRPass( "infer" ) {}
 };
-
 
 } // namespace hir
 } // namespace cbase

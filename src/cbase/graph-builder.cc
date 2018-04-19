@@ -2,6 +2,7 @@
 #include "type-inference.h"
 #include "fold-arith.h"
 #include "fold-intrinsic.h"
+#include "fold-phi.h"
 
 #include "src/interpreter/bytecode.h"
 #include "src/interpreter/bytecode-iterator.h"
@@ -371,7 +372,6 @@ Expr* GraphBuilder::TrySpeculativeUnary( const StackSlot& index , Unary::Operato
       if(TPKind::ToBoolean(tp,&bval)) {
         return Boolean::New(graph_,!bval,node->ir_info());
       } else if(tp == TPKIND_BOOLEAN) {
-
         // if the guarded type is boolean, then we could just use BooleanNot
         // node which has type information and enable the inference on it
         return NewBoxNode<BooleanNot>(graph_, TPKIND_BOOLEAN, node->ir_info(),
@@ -578,6 +578,16 @@ Expr* GraphBuilder::NewTernary ( const StackSlot& cidx, Expr* lhs, Expr* rhs, co
 
 // ========================================================================
 //
+// Phi
+//
+// ========================================================================
+Expr* GraphBuilder::NewPhi( Expr* lhs , Expr* rhs , ControlFlow* region , IRInfo* info ) {
+  auto n = FoldPhi(graph_,lhs,rhs,region,[=]() { return info; });
+  return n ? n : Phi::New(graph_,lhs,rhs,region,info);
+}
+
+// ========================================================================
+//
 // Intrinsic Call Node
 //
 // ========================================================================
@@ -770,15 +780,7 @@ void GraphBuilder::GeneratePhi( ValueStack* dest , const ValueStack& lhs , const
   for( std::size_t i = base ; i < sz ; ++i ) {
     Expr* l = lhs[i];
     Expr* r = rhs[i];
-    // only when l and r both exists we know this is variable that is available after
-    // the branch or jump
-    if(l && r) {
-      if(l != r) {
-        dest->at(i) = Phi::New(graph_,l,r,region,info);
-      } else {
-        dest->at(i) = l;
-      }
-    }
+    dest->at(i) = NewPhi(l,r,region,info);
   }
 }
 
@@ -805,7 +807,7 @@ void GraphBuilder::InsertPhi( Environment* lhs , Environment* rhs , ControlFlow*
         lnode = e.value;
         rnode = itr->value;
       }
-      auto phi = Phi::New(graph_,lnode,rnode,region,info);
+      auto phi = NewPhi(lnode,rnode,region,info);
       // add it to the temporarily list
       temp.push_back(Environment::GlobalVar(e.name,phi));
     }
@@ -813,9 +815,9 @@ void GraphBuilder::InsertPhi( Environment* lhs , Environment* rhs , ControlFlow*
     for( auto &e : *rhs->global() ) {
       auto itr = std::find(lhs->global()->begin(),lhs->global()->end(),e.name);
       if(itr == lhs->global()->end()) {
+        auto phi = NewPhi(GGet::New(graph_,NewString(e.name,info),info,region),e.value,region,info);
         // add a node when it is not scanned by the lhs
-        temp.push_back(Environment::GlobalVar(e.name,
-              Phi::New(graph_,GGet::New(graph_,NewString(e.name,info),info,region),e.value,region,info)));
+        temp.push_back(Environment::GlobalVar(e.name,phi));
       }
     }
     // use the new global list
@@ -1106,6 +1108,8 @@ void GraphBuilder::PatchLoopPhi() {
           Expr* node = StackGet(e.idx);
           lava_debug(NORMAL,lava_verify(phi != node););
           phi->AddOperand(node);
+          auto p = FoldPhi(phi);
+          if(p) phi->Replace(p);
         } else {
           Phi::RemovePhiFromRegion(phi);
         }
@@ -1115,6 +1119,8 @@ void GraphBuilder::PatchLoopPhi() {
           auto v = env()->global()->at(e.idx).value;
           lava_debug(NORMAL,lava_verify(phi != v););
           phi->AddOperand(v);
+          auto p = FoldPhi(phi);
+          if(p) phi->Replace(p);
         }
         break;
       default:
@@ -1122,6 +1128,8 @@ void GraphBuilder::PatchLoopPhi() {
           auto v = env()->upvalue()->at(e.idx);
           lava_debug(NORMAL,lava_verify(phi != v););
           phi->AddOperand(v);
+          auto p = FoldPhi(phi);
+          if(p) phi->Replace(p);
         }
         break;
     }
@@ -1582,11 +1590,9 @@ GraphBuilder::StopReason GraphBuilder::BuildBytecode( BytecodeIterator* itr ) {
       {
         std::uint16_t pc;
         itr->GetOperand(&pc);
-
         /** OffsetAt(pc) returns jump target address **/
         Jump* jump = Jump::New(graph_,itr->OffsetAt(pc),region());
         set_region(jump);
-
         if(itr->opcode() == BC_BRK)
           func_info().current_loop().AddBreak   (jump,itr->OffsetAt(pc),*env());
         else

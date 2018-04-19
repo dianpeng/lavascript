@@ -12,6 +12,7 @@
 
 #include <src/cbase/optimization/gvn.h>
 #include <src/cbase/optimization/dce.h>
+#include <src/cbase/graph-printer.h>
 
 #include <gtest/gtest.h>
 
@@ -76,7 +77,7 @@ bool CheckGraph( const char* source ) {
     return false;
   }
 
-  std::cerr << Graph::PrintToDotFormat(graph) << std::endl;
+  std::cerr << GraphPrinter::Print(graph) << std::endl;
   PrintHeap(graph);
 
   {
@@ -89,7 +90,7 @@ bool CheckGraph( const char* source ) {
     dce.Perform(&graph,HIRPass::NORMAL);
   }
 
-  std::cerr << Graph::PrintToDotFormat(graph) << std::endl;
+  std::cerr << GraphPrinter::Print(graph) << std::endl;
   PrintHeap(graph);
 
   // generate dominator graph information
@@ -124,7 +125,7 @@ bool CheckGraphOSR( const char* source , std::size_t offset ) {
     return false;
   }
 
-  std::cerr << Graph::PrintToDotFormat(graph) << std::endl;
+  std::cerr << GraphPrinter::Print(graph) << std::endl;
   PrintHeap(graph);
   return true;
 }

@@ -23,14 +23,9 @@ class BumpAllocator {
                         HeapAllocator* allocator = NULL );
 
   ~BumpAllocator() { Clear(); }
-
   // Grab memory from BumpAllocator
   void* Grab( std::size_t );
-  void* Grab( std::size_t sz , std::size_t alignment ) {
-    return Grab( Align(sz,alignment) );
-  }
   template< typename T > T* Grab() { return static_cast<T*>(Grab(sizeof(T))); }
-
  public:
   std::size_t size() const { return size_; }
   std::size_t maximum_size() const { return maximum_size_; }

@@ -1,6 +1,7 @@
 #ifndef CBASE_HIR_H_
 #define CBASE_HIR_H_
 #include "src/config.h"
+#include "src/tagged-ptr.h"
 #include "src/util.h"
 #include "src/stl-helper.h"
 #include "src/zone/zone.h"
@@ -19,6 +20,7 @@
 #include <vector>
 #include <deque>
 #include <stack>
+#include <functional>
 
 namespace lavascript {
 namespace cbase {
@@ -115,6 +117,11 @@ namespace hir {
   CBASE_IR_EXPRESSION_LOW_PROPERTY(__)
 
 // Guard conditional node , used to do type guess or speculative inline
+//
+// A null test is same as TestType(object,NULL) since null doesn't have
+// any value. And during graph construction any null test , ie x == null,
+// will be *normalized* into a TestType then we could just use predicate
+// to do inference and have null redundancy removal automatically
 #define CBASE_IR_EXPRESSION_TEST(__)                                  \
   __(TestType    ,TEST_TYPE      ,"test_type"      , false)           \
   __(TestListOOB ,TEST_LISTOOB   ,"test_listobb"   , false)
@@ -146,12 +153,22 @@ namespace hir {
   __(Box,BOX,"box",false)                                             \
   __(Unbox,UNBOX,"unbox",false)
 
+/**
+ * Cast
+ * Cast a certain type's value into another type's value. These type cast
+ * doesn't perform any test and should be guaranteed to be correct by
+ * the compiler
+ */
+#define CBASE_IR_CAST(__)                                             \
+  __(CastToBoolean,CAST_TO_BOOLEAN,"cast_to_boolean",false)
+
 // All the expression IR nodes
 #define CBASE_IR_EXPRESSION(__)                                       \
   CBASE_IR_EXPRESSION_HIGH(__)                                        \
   CBASE_IR_EXPRESSION_LOW (__)                                        \
   CBASE_IR_EXPRESSION_TEST(__)                                        \
   CBASE_IR_BOXOP(__)                                                  \
+  CBASE_IR_CAST (__)                                                  \
   CBASE_IR_ANNOTATION(__)
 
 // All the control flow IR nodes
@@ -254,6 +271,8 @@ class IRInfo {
   std::uint32_t method_;              // Index for method information
 };
 
+typedef std::function<IRInfo*()> IRInfoProvider;
+
 /**
  * Used to record each IR's corresponding prototype information
  */
@@ -286,7 +305,6 @@ struct StatementEdge {
   StatementEdge( ControlFlow* r , const StatementIterator& itr ): region(r), iterator(itr) {}
   StatementEdge(): region(NULL), iterator() {}
 };
-
 
 /**
  * Each expression will have 2 types of dependency with regards to other expression.
@@ -390,24 +408,20 @@ class Node : public zone::ZoneObject {
 };
 
 /**
- *
  * GVN hash function helper implementation
  *
  * Helper function to implement the GVN hash table function
  *
- *
  * GVN general rules:
  *
- * 1) for any primitive type or type that doesn't have observable
- *    side effect, the GVNHash it generates should *not* take into
- *    consideration of the node identity. Example like : any float64
- *    node with same value should have exactly same GVNHash value and
- *    also the Equal function should behave correctly
+ * 1) for any primitive type or type that doesn't have observable side effect, the GVNHash
+ *    it generates should *not* take into consideration of the node identity. Example like:
+ *    any float64 node with same value should have exactly same GVNHash value and also the
+ *    Equal function should behave correctly
  *
- * 2) for any type that has side effect , then the GVNHash value should
- *    take into consideration of its node identity. A generaly rules
- *    is put the node's id() value into the GVNHash generation. Prefer
- *    using id() function instead of use this pointer address as seed.
+ * 2) for any type that has side effect , then the GVNHash value should take into consideration
+ *    of its node identity. A generaly rules is put the node's id() value into the GVNHash
+ *    generation. Prefer using id() function instead of use this pointer address as seed.
  *
  */
 
@@ -448,19 +462,31 @@ class GVNHashN {
   LAVA_DISALLOW_COPY_AND_ASSIGN(GVNHashN)
 };
 
-// ================================================================
+// ==========================================================================
 //
 // Expr
 //
 //   This node is the mother all other expression node and its solo
 //   goal is to expose def-use and use-def chain into different types
 //
-// ================================================================
+// ==========================================================================
 
 class Expr : public Node {
+  static const std::uint32_t kHasSideEffect = 1;
+  static const std::uint32_t kNoSideEffect  = 0;
+
  public: // GVN hash value and hash function
   virtual std::uint64_t GVNHash()        const { return GVNHash1(type_name(),id()); }
   virtual bool Equal( const Expr* that ) const { return this == that;       }
+ public:
+  // Default operation to test whether 2 nodes are identical or not. it should be prefered
+  // when 2 nodes are compared against identity. it means if they are equal , then one node
+  // can be used to replace other
+  bool IsIdentical( const Expr* that ) const {
+    if(!HasSideEffect() && !that->HasSideEffect())
+      return this == that || Equal(that);
+    return false;
+  }
 
  public: // The statement in our IR is still an expression, we could use
          // following function to test whether it is an actual statement
@@ -480,7 +506,6 @@ class Expr : public Node {
   // This list returns a list of operands used by this Expr/IR node. Most
   // of time operand_list will return at most 3 operands except for call
   // function
-  OperandList* operand_list() { return &operand_list_; }
   const OperandList* operand_list() const { return &operand_list_; }
   // This function will add the input node into this node's operand list and
   // it will take care of the input node's ref list as well
@@ -495,7 +520,6 @@ class Expr : public Node {
   // whether we have that value added ; but it does a linear search so it is
   // not performant. The effect list maintain is a best effort in terms of
   // dedup.
-  EffectList* effect_list() { return &effect_list_; }
   const EffectList* effect_list() const { return &effect_list_; }
   inline void AddEffect   ( Expr* node );
   void AddEffectIfNotExist( Expr* );
@@ -507,11 +531,10 @@ class Expr : public Node {
   //   2) get the corresponding iterator where *me* is inserted into the list
   //      so we can fast modify/remove us from its list
   const OperandRefList* ref_list() const { return &ref_list_; }
-  OperandRefList* ref_list() { return &ref_list_; }
 
   // Add the referece into the reference list
   void AddRef( Node* who_uses_me , const OperandIterator& iter ) {
-    ref_list()->PushBack(zone(),OperandRef(iter,who_uses_me));
+    ref_list_.PushBack(zone(),OperandRef(iter,who_uses_me));
   }
 
  public:
@@ -537,23 +560,30 @@ class Expr : public Node {
   // Check if this Expression is a Leaf node or not
   inline bool IsLeaf()     const;
   bool        IsNoneLeaf() const { return !IsLeaf(); }
-  IRInfo*     ir_info()    const { return ir_info_; }
+  IRInfo*     ir_info()    const { return ir_info_.ptr(); }
 
+  // Check whether this expression has side effect , or namely one of its descendent
+  // operands has a none empty effect list
+  bool HasSideEffect()     const { return ir_info_.state() == kHasSideEffect; }
+
+  // constructor
   Expr( IRType type , std::uint32_t id , Graph* graph , IRInfo* info ):
     Node             (type,id,graph),
     operand_list_    (),
     effect_list_     (),
     ref_list_        (),
-    ir_info_         (info),
-    stmt_            ()
+    stmt_            (),
+    ir_info_         (info)
   {}
-
  private:
-  OperandList operand_list_;
-  EffectList  effect_list_;
+  // mark this node has side effect
+  void SetHasSideEffect() { ir_info_.set_state( kHasSideEffect); }
+
+  OperandList        operand_list_;
+  EffectList         effect_list_;
   OperandRefList     ref_list_;
-  IRInfo*     ir_info_;
-  StatementEdge  stmt_;
+  StatementEdge      stmt_;
+  TaggedPtr<IRInfo>  ir_info_;
 };
 
 // MemoryNode
@@ -594,8 +624,7 @@ class MemoryOp : public Expr {
 // 5. WriteEffectPhi
 class MemoryWrite : public MemoryOp {
  public:
-  MemoryWrite( IRType type , std::uint32_t id , Graph* g , IRInfo* info ):
-    MemoryOp(type,id,g,info){}
+  MemoryWrite( IRType type , std::uint32_t id , Graph* g , IRInfo* info ): MemoryOp(type,id,g,info){}
 };
 
 // MemoryRead
@@ -609,8 +638,7 @@ class MemoryWrite : public MemoryOp {
 // 4. ListGet
 class MemoryRead : public MemoryOp {
  public:
-  MemoryRead( IRType type , std::uint32_t id , Graph* g , IRInfo* info ):
-    MemoryOp(type,id,g,info) {}
+  MemoryRead( IRType type , std::uint32_t id , Graph* g , IRInfo* info ): MemoryOp(type,id,g,info) {}
 };
 
 /* ---------------------------------------------------
@@ -1840,6 +1868,31 @@ class Unbox : public Expr {
 
 // -----------------------------------------------------------------------
 //
+// Cast
+//
+// -----------------------------------------------------------------------
+
+// Cast an expression node into a *boxed* boolean value. This cast will always be
+// successful due to our language's semantic. Any types of value has a corresponding
+// boolean value.
+class CastToBoolean : public Expr {
+ public:
+  inline static CastToBoolean* New( Graph* , Expr* , IRInfo* );
+  // function to create a cast to boolean but negate its end result. this operation
+  // basically means negate(unbox(cast_to_boolean(node)))
+  inline static Expr* NewNegateCast( Graph* , Expr* , IRInfo* );
+
+  Expr* value() const { return operand_list()->First(); }
+
+  CastToBoolean( Graph* graph , std::uint32_t id , Expr* value , IRInfo* info ):
+    Expr( IRTYPE_CAST_TO_BOOLEAN , id , graph , info )
+  { AddOperand(value); }
+ private:
+  LAVA_DISALLOW_COPY_AND_ASSIGN(CastToBoolean)
+};
+
+// -----------------------------------------------------------------------
+//
 // Annotation
 //
 // -----------------------------------------------------------------------
@@ -1854,7 +1907,6 @@ class TypeAnnotation : public Expr {
   LAVA_DISALLOW_COPY_AND_ASSIGN(TypeAnnotation)
 };
 
-
 // -------------------------------------------------------------------------
 // Control Flow
 //
@@ -1865,16 +1917,14 @@ class TypeAnnotation : public Expr {
 // -------------------------------------------------------------------------
 class ControlFlow : public Node {
  public:
-  const RegionList* backward_edge() const {
-    return &backward_edge_;
-  }
-  RegionList* backward_edge() {
-    return &backward_edge_;
-  }
   // special case that only one backward edge we have
   ControlFlow* parent() const {
     lava_debug(NORMAL,lava_verify(backward_edge()->size() == 1););
     return backward_edge()->First();
+  }
+  // backward
+  const RegionList* backward_edge() const {
+    return &backward_edge_;
   }
   void AddBackwardEdge( ControlFlow* edge ) {
     AddBackwardEdgeImpl(edge);
@@ -1882,11 +1932,9 @@ class ControlFlow : public Node {
   }
   void RemoveBackwardEdge( ControlFlow* );
   void RemoveBackwardEdge( std::size_t index );
-  void ClearBackwardEdge () { backward_edge()->Clear(); }
+  void ClearBackwardEdge () { backward_edge_.Clear(); }
+  // forward
   const RegionList* forward_edge() const {
-    return &forward_edge_;
-  }
-  RegionList* forward_edge() {
     return &forward_edge_;
   }
   void AddForwardEdge ( ControlFlow* edge ) {
@@ -1895,16 +1943,15 @@ class ControlFlow : public Node {
   }
   void RemoveForwardEdge( ControlFlow* edge );
   void RemoveForwardEdge( std::size_t index );
-  void ClearForwardEdge () { forward_edge()->Clear(); }
+  void ClearForwardEdge () { forward_edge_.Clear(); }
+
+  // reflist
   const RegionRefList* ref_list() const {
-    return &ref_list_;
-  }
-  RegionRefList* ref_list() {
     return &ref_list_;
   }
   // Add the referece into the reference list
   void AddRef( ControlFlow* who_uses_me , const RegionListIterator& iter ) {
-    ref_list()->PushBack(zone(),RegionRef(iter,who_uses_me));
+    ref_list_.PushBack(zone(),RegionRef(iter,who_uses_me));
   }
 
   // Effective expression doesn't belong to certain expression chain
@@ -1917,16 +1964,13 @@ class ControlFlow : public Node {
   const StatementList* statement_list() const {
     return &stmt_expr_;
   }
-  StatementList* statement_list() {
-    return &stmt_expr_;
-  }
   void AddStatement( Expr* node ) {
     auto itr = stmt_expr_.PushBack(zone(),node);
     node->set_statement_edge(StatementEdge(this,itr));
   }
   void RemoveStatement( const StatementEdge& ee ) {
     lava_debug(NORMAL,lava_verify(ee.region == this););
-    statement_list()->Remove(ee.iterator);
+    stmt_expr_.Remove(ee.iterator);
   }
   void MoveStatement( ControlFlow* );
 
@@ -1935,15 +1979,17 @@ class ControlFlow : public Node {
   // All control flow's related data input should be stored via this list
   // since this list supports expression substitution/replacement. It is
   // used in all optimization pass
-  OperandList* operand_list() {
-    return &operand_list_;
-  }
   const OperandList* operand_list() const {
     return &operand_list_;
   }
   void AddOperand( Expr* node ) {
-    auto itr = operand_list()->PushBack(zone(),node);
+    auto itr = operand_list_.PushBack(zone(),node);
     node->AddRef(this,itr);
+  }
+  bool RemoveOperand( Expr* node ) {
+    auto itr = operand_list_.Find(node);
+    if(itr.HasNext()) { operand_list_.Remove(itr); return true; }
+    return false;
   }
  public:
   /**
@@ -1974,7 +2020,6 @@ class ControlFlow : public Node {
     auto itr = backward_edge_.PushBack(zone(),cf);
     cf->AddRef(this,itr);
   }
-
   void AddForwardEdgeImpl( ControlFlow* cf ) {
     auto itr = forward_edge_.PushBack(zone(),cf);
     cf->AddRef(this,itr);
@@ -1994,11 +2039,7 @@ class Region : public ControlFlow {
  public:
   inline static Region* New( Graph* );
   inline static Region* New( Graph* , ControlFlow* );
-
-  Region( Graph* graph , std::uint32_t id ):
-    ControlFlow(IRTYPE_REGION,id,graph)
-  {}
-
+  Region( Graph* graph , std::uint32_t id ): ControlFlow(IRTYPE_REGION,id,graph) {}
  private:
   LAVA_DISALLOW_COPY_AND_ASSIGN(Region)
 };
@@ -2314,14 +2355,6 @@ class Graph {
   const PrototypeInfo& GetProrotypeInfo( std::uint32_t index ) const {
     return prototype_info_[index];
   }
- public: // static helper function
-  struct DotFormatOption {
-    bool checkpoint;
-    DotFormatOption() : checkpoint(false) {}
-  };
-  // Print the graph into dot graph representation which can be visualized by
-  // using graphviz or other similar tools
-  static std::string PrintToDotFormat( const Graph& , const DotFormatOption& opt = DotFormatOption() );
  private:
   zone::Zone                  zone_;
   ControlFlow*                start_;

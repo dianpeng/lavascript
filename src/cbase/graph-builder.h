@@ -291,6 +291,9 @@ class GraphBuilder {
  private: // Checkpoint generation
   Checkpoint* BuildCheckpoint( const interpreter::BytecodeLocation& );
 
+ private: // Phi
+  Expr* NewPhi( Expr* , Expr* , ControlFlow* , IRInfo* );
+
  private: // Misc
   // Helper function to generate exit Phi node and also link the return and guard nodes to the
   // success and fail node of the HIR graph

@@ -59,13 +59,15 @@ inline const zone::String& Node::AsZoneString() const {
 }
 
 inline void Expr::AddOperand( Expr* node ) {
-  auto itr = operand_list()->PushBack(zone(),node);
+  auto itr = operand_list_.PushBack(zone(),node);
   node->AddRef(this,itr);
+  if(node->HasSideEffect()) SetHasSideEffect();
 }
 
 inline void Expr::AddEffect ( Expr* node ) {
-  auto itr = effect_list()->PushBack(zone(),node);
+  auto itr = effect_list_.PushBack(zone(),node);
   node->AddRef(this,itr);
+  SetHasSideEffect();
 }
 
 inline ControlFlow* Node::AsControlFlow() {
@@ -401,9 +403,7 @@ inline ItrDeref* ItrDeref::New( Graph* graph , Expr* operand , IRInfo* info , Co
 
 inline void Phi::RemovePhiFromRegion( Phi* phi ) {
   if(phi->region()) {
-    auto itr = phi->region()->operand_list()->Find(phi);
-    lava_debug(NORMAL,lava_verify(itr.HasNext()););
-    phi->region()->operand_list()->Remove(itr);
+    lava_verify(phi->region()->RemoveOperand(phi));
   }
 }
 
@@ -596,6 +596,16 @@ inline Guard* Guard::New( Graph* graph , Expr* test , Checkpoint* cp , ControlFl
 
 inline If* If::New( Graph* graph , Expr* condition , ControlFlow* parent ) {
   return graph->zone()->New<If>(graph,graph->AssignID(),condition,parent);
+}
+
+inline CastToBoolean* CastToBoolean::New( Graph* graph , Expr* value , IRInfo* info ) {
+  return graph->zone()->New<CastToBoolean>(graph,graph->AssignID(),value,info);
+}
+
+inline Expr* CastToBoolean::NewNegateCast( Graph* graph , Expr* value , IRInfo* info ) {
+  auto cast = New(graph,value,info);
+  auto unbox= Unbox::New(graph,cast,TPKIND_BOOLEAN,info);
+  return BooleanNot::New(graph,unbox,info);
 }
 
 inline TypeAnnotation::TypeAnnotation( Graph* graph , std::uint32_t id , Guard* node , IRInfo* info ):

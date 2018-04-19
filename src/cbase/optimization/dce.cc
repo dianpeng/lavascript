@@ -43,14 +43,13 @@ class DCEImpl {
 
  private:
   bool VisitIf( ControlFlow* );
-
-  struct DCEBlock {
+  struct DCEBlock : public ::lavascript::zone::ZoneObject {
     ControlFlow* block;
     bool cond;
     DCEBlock( ControlFlow* b , bool c ) : block(b) , cond(c) {}
   };
-
-  std::vector<DCEBlock> blocks_; // record all blocks that needs to be removed
+  ::lavascript::zone::Zone zone_;                // temporary memory zone
+  ::lavascript::zone::Vector<DCEBlock> blocks_;  // record all blocks that needs to be removed
 };
 
 bool DCEImpl::VisitIf( ControlFlow* node ) {
@@ -59,30 +58,25 @@ bool DCEImpl::VisitIf( ControlFlow* node ) {
                              node->AsLoopHeader()->condition();
 
   if(!InferPredicate(cond,&bval)) return false;
-  blocks_.push_back(DCEBlock(node,bval));
+  blocks_.Add(&zone_,DCEBlock(node,bval));
   return true;
 }
 
 void DCEImpl::Visit( Graph* graph ) {
 
   // mark all blocks that needs to be DCEed
-  for( ControlFlowRPOIterator itr(*graph) ; itr.HasNext() ; itr.Move() ) {
-    auto cf = itr.value();
-    // all the operands node
+  lava_foreach( auto cf , ControlFlowRPOIterator(*graph) ) {
     if(cf->IsIf())              VisitIf(cf);
     else if(cf->IsLoopHeader()) VisitIf(cf);
   }
 
   // patch all blocks that needs to be removed
-  for( auto &e : blocks_ ) {
+  lava_foreach( auto &e, blocks_.GetForwardIterator() ) {
     auto node = e.block;
     auto bval = e.cond;
     auto if_parent = node->parent();
-
     // link the merged region back to the if_parent node
-    auto merge = node->IsIf() ? node->AsIf()->merge() :
-                                node->AsLoopHeader()->merge();
-
+    auto merge = node->IsIf() ? node->AsIf()->merge() : node->AsLoopHeader()->merge();
     // remove the PHI node
     for( auto itr(merge->operand_list()->GetForwardIterator());
          itr.HasNext() ; itr.Move() ) {
@@ -97,7 +91,6 @@ void DCEImpl::Visit( Graph* graph ) {
         phi->Replace(v);
       }
     }
-
     // do the block deletion here
     auto true_block = merge->backward_edge()->Index(IfTrue::kIndex);
     auto false_block= merge->backward_edge()->Index(IfFalse::kIndex);
@@ -113,14 +106,11 @@ void DCEImpl::Visit( Graph* graph ) {
         node->RemoveForwardEdge(IfTrue::kIndex);
       }
     }
-
     // get all the statement from if_parent node
     node->MoveStatement(if_parent);
-
     // remove all its backwards edge since it will be replaced
     // by its parental node
     node->ClearBackwardEdge();
-
     // replace if_parent with node itself
     node->Replace(if_parent);
   }

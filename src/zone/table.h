@@ -136,10 +136,9 @@ class Table {
   typedef const Iterator ConstIterator;
 
  public:
-  Iterator      GetIterator()       { return Iterator(this); }
-  ConstIterator GetIterator() const { return ConstIterator(this); }
+  Iterator      GetIterator()       { return Iterator     (this); }
+  ConstIterator GetIterator() const { return ConstIterator(const_cast<Table*>(this)); }
 
- public:
   Iterator      Find  ( const K& );
   ConstIterator Find  ( const K& ) const;
 

@@ -13,46 +13,33 @@
 
 namespace lavascript {
 
+// report error in a human readable manner
+void ReportErrorV( std::string* , const char* , const char* , size_t , size_t , const char* , va_list );
 
-void ReportErrorV( std::string* buffer , const char* where , const char* source ,
-                                                             size_t start,
-                                                             size_t end  ,
-                                                             const char* format ,
-                                                             va_list );
-
-inline
-std::string ReportErrorV( const char* where , const char* source , size_t start ,
-                                                                   size_t end   ,
-                                                                   const char* format ,
-                                                                   va_list vl ) {
+inline std::string ReportErrorV( const char* where , const char* source , size_t start , size_t end ,
+                                                                                         const char* format ,
+                                                                                         va_list vl ) {
   std::string buf;
   ReportErrorV(&buf,where,source,start,end,format,vl);
   return buf;
 }
-
-inline
-void ReportError( std::string* buffer , const char* where, const char* source,
-                                                           size_t start ,
-                                                           size_t end ,
-                                                           const char* format ,
-                                                           ... ) {
+inline void ReportError( std::string* buffer , const char* where, const char* source,
+                                                                  size_t start ,
+                                                                  size_t end ,
+                                                                  const char* format , ... ) {
   va_list vl;
   va_start(vl,format);
   ReportErrorV(buffer,where,source,start,end,format,vl);
 }
-
 inline
-std::string ReportError( const char* where, const char* source, size_t start,
-                                                                size_t end,
-                                                                const char* format ,
-                                                                ... ) {
+std::string ReportError( const char* where, const char* source, size_t start, size_t end, const char* format , ... ) {
   va_list vl;
   va_start(vl,format);
   return ReportErrorV(where,source,start,end,format,vl);
 }
 
+// get source code snippet
 std::string GetSourceSnippetInOneLine( const std::string& source , size_t start, size_t end );
-
 inline std::string GetSourceSnippetInOneLine( const std::string& source , const SourceCodeInfo& sci ) {
   return GetSourceSnippetInOneLine(source,sci.start,sci.end);
 }

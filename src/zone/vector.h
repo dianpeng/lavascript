@@ -159,7 +159,7 @@ class Vector : ZoneObject {
     return FindIf([=](const T& that) { return value == that; });
   }
   ConstForwardIterator FindIf( const std::function<bool(const T&)>& predicate ) const {
-    return const_cast<ConstForwardIterator>(const_cast<Vector*>(this)->FindIf(predicate));
+    return const_cast<Vector*>(this)->FindIf(predicate);
   }
   ForwardIterator      FindIf( const std::function<bool(const T&)>& );
  public: // Set operation helper functions
@@ -371,7 +371,7 @@ template< typename T > void Vector<T>::Union( Zone* zone , const Vector<T>& lhs 
 
 template< typename T > void Vector<T>::Intersect( Zone* zone , const Vector<T>& lhs , const Vector<T>& rhs ,
                                                                                       Vector<T>* output ) {
-  Vector<T> temp(zone); temp.Reserve(zone,lhs.size());
+  Vector<T> temp(zone,lhs.size());
   lava_foreach(const T& v, rhs.GetForwardIterator()) {
     if(lhs.Find(v).HasNext()) temp.Add(zone,v);
   }

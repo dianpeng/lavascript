@@ -224,11 +224,9 @@ CBASE_IR_LIST(__)
 #undef __ // __
 
 const char* IRTypeGetName( IRType );
-
 inline bool IRTypeIsExpr( IRType type ) {
   return (type >= CBASE_IR_EXPRESSION_START && type <= CBASE_IR_EXPRESSION_END);
 }
-
 inline bool IRTypeIsControlFlow( IRType type ) {
   return (type >= CBASE_IR_CONTROL_FLOW_START && type <= CBASE_IR_CONTROL_FLOW_END);
 }
@@ -243,6 +241,7 @@ class GraphBuilder;
 class ValueRange;
 class Node;
 class Expr;
+class MemoryOp;
 class MemoryWrite;
 class MemoryRead ;
 class MemoryNode;
@@ -510,7 +509,8 @@ class Expr : public Node {
   // This function will add the input node into this node's operand list and
   // it will take care of the input node's ref list as well
   inline void AddOperand( Expr* node );
-
+  // Replace an existed operand with input operand at position
+  inline void SetOperand( std::size_t , Expr* );
   // Effect list
   // Used to develop dependency between expression which cannot be expressed
   // as data flow operation. Mainly used to order certain operations
@@ -521,9 +521,13 @@ class Expr : public Node {
   // not performant. The effect list maintain is a best effort in terms of
   // dedup.
   const EffectList* effect_list() const { return &effect_list_; }
+  // add a node into the effect list, it will refuse to add effect node when
+  // it is either NoMemoryRead/NoMemoryWrite since these nodes are just placeholders
   inline void AddEffect   ( Expr* node );
+  // add a node only when the effect node not show up inside of the effect list.
+  // this function should be invoked with cautious since it is time costy due to
+  // the linear finding internally
   void AddEffectIfNotExist( Expr* );
-
   // Reference list
   //
   // This list returns a list of Ref object which allow user to
@@ -531,25 +535,35 @@ class Expr : public Node {
   //   2) get the corresponding iterator where *me* is inserted into the list
   //      so we can fast modify/remove us from its list
   const OperandRefList* ref_list() const { return &ref_list_; }
-
   // Add the referece into the reference list
   void AddRef( Node* who_uses_me , const OperandIterator& iter ) {
     ref_list_.PushBack(zone(),OperandRef(iter,who_uses_me));
   }
-
+  // Remove a reference from the reference list whose ID == itr
+  bool RemoveRef( const OperandIterator& itr , Expr* );
  public:
   // check if this expression node has side effect if it is used as operand
   inline bool IsMemoryWrite() const;
   inline bool IsMemoryRead () const;
   inline bool IsMemoryOp   () const;
+  // cast
+  inline MemoryWrite*       AsMemoryWrite();
+  inline const MemoryWrite* AsMemoryWrite() const;
+  inline MemoryRead *       AsMemoryRead ();
+  inline const MemoryRead*  AsMemoryRead () const;
+  inline MemoryOp*          AsMemoryOp   ();
+  inline const MemoryOp*    AsMemoryOp   () const;
 
   // check if this expression node is a memory node
   inline bool IsMemoryNode () const;
-
+  // cast
+  inline MemoryNode*       AsMemoryNode();
+  inline const MemoryNode* AsMemoryNode() const;
+  // check if this expression node is either NoMemoryRead or NoMemoryWrite
+  inline bool IsNoMemoryEffectNode() const;
   // check if this node is any sort of Phi node , this includes normal expression
   // phi , ie Phi or read/write effect phi node
   inline bool IsPhiNode    () const;
-
   // check if this expression is used by any other expression, basically
   // check whether ref_list is empty or not
   //
@@ -561,7 +575,6 @@ class Expr : public Node {
   inline bool IsLeaf()     const;
   bool        IsNoneLeaf() const { return !IsLeaf(); }
   IRInfo*     ir_info()    const { return ir_info_.ptr(); }
-
   // Check whether this expression has side effect , or namely one of its descendent
   // operands has a none empty effect list
   bool HasSideEffect()     const { return ir_info_.state() == kHasSideEffect; }
@@ -783,10 +796,13 @@ class IRObjectKV : public Expr {
  public:
   inline static IRObjectKV* New( Graph* , Expr* , Expr* ,IRInfo* );
   Expr* key  () const { return operand_list()->First(); }
-  Expr* value() const { return operand_list()->Last(); }
+  Expr* value() const { return operand_list()->Last (); }
+  void set_key  ( Expr* key ) { lava_debug(NORMAL,lava_verify(key->IsString());); SetOperand(0,key); }
+  void set_value( Expr* val ) { SetOperand(1,val); }
   IRObjectKV( Graph* graph , std::uint32_t id , Expr* key , Expr* val , IRInfo* info ):
     Expr(IRTYPE_OBJECT_KV,id,graph,info)
   {
+    lava_debug(NORMAL,lava_verify(key->IsString()););
     AddOperand(key);
     AddOperand(val);
   }
@@ -799,6 +815,7 @@ class IRObject : public MemoryNode {
  public:
   inline static IRObject* New( Graph* , std::size_t size , IRInfo* );
   void Add( Expr* key , Expr* val , IRInfo* info ) {
+    lava_debug(NORMAL,lava_verify(key->IsString()););
     AddOperand(IRObjectKV::New(graph(),key,val,info));
   }
   std::size_t Size() const { return operand_list()->size(); }

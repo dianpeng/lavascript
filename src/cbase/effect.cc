@@ -17,8 +17,12 @@ Effect::Effect( const Effect& that ):
 {}
 
 void Effect::UpdateWriteEffect( MemoryWrite* node ) {
-  lava_foreach(MemoryRead* read,read_list_.GetForwardIterator()) {
-    node->AddEffect(read);
+  if(read_list_.empty()) {
+    node->AddEffect(write_effect_); // we don't have any read effect node
+  } else {
+    lava_foreach(MemoryRead* read,read_list_.GetForwardIterator()) {
+      node->AddEffect(read);
+    }
   }
   write_effect_ = node;
   read_list_.Clear();

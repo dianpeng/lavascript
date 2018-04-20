@@ -64,10 +64,27 @@ inline void Expr::AddOperand( Expr* node ) {
   if(node->HasSideEffect()) SetHasSideEffect();
 }
 
+inline void Expr::SetOperand( std::size_t index , Expr* node ) {
+  lava_debug(NORMAL,lava_verify(index < operand_list_.size()););
+  auto itr(operand_list_.GetForwardIterator());
+  lava_verify(itr.Advance(index));
+  node->AddRef(this,itr);           // add reference for the new node
+  itr.value()->RemoveRef(itr,this); // remove reference from the old value's refernece list
+  itr.set_value(node);              // update to the new value
+}
+
 inline void Expr::AddEffect ( Expr* node ) {
-  auto itr = effect_list_.PushBack(zone(),node);
-  node->AddRef(this,itr);
-  SetHasSideEffect();
+  if( !node->IsNoMemoryEffectNode() ) {
+    auto itr = effect_list_.PushBack(zone(),node);
+    node->AddRef(this,itr);
+    SetHasSideEffect();
+  }
+}
+
+inline void Expr::AddEffectIfNotExist( Expr* node ) {
+  auto itr = effect_list()->Find(node);
+  if(itr.HasNext()) return;
+  AddEffect(node);
 }
 
 inline ControlFlow* Node::AsControlFlow() {
@@ -134,6 +151,50 @@ inline bool Expr::IsMemoryNode() const {
     default:
       return false;
   }
+}
+
+inline MemoryWrite* Expr::AsMemoryWrite() {
+  lava_debug(NORMAL,lava_verify(IsMemoryWrite()););
+  return static_cast<MemoryWrite*>(this);
+}
+
+inline const MemoryWrite* Expr::AsMemoryWrite() const {
+  lava_debug(NORMAL,lava_verify(IsMemoryWrite()););
+  return static_cast<const MemoryWrite*>(this);
+}
+
+inline MemoryRead* Expr::AsMemoryRead() {
+  lava_debug(NORMAL,lava_verify(IsMemoryRead()););
+  return static_cast<MemoryRead*>(this);
+}
+
+inline const MemoryRead* Expr::AsMemoryRead() const {
+  lava_debug(NORMAL,lava_verify(IsMemoryRead()););
+  return static_cast<const MemoryRead*>(this);
+}
+
+inline MemoryOp* Expr::AsMemoryOp() {
+  lava_debug(NORMAL,lava_verify(IsMemoryOp()););
+  return static_cast<MemoryOp*>(this);
+}
+
+inline const MemoryOp* Expr::AsMemoryOp() const {
+  lava_debug(NORMAL,lava_verify(IsMemoryOp()););
+  return static_cast<const MemoryOp*>(this);
+}
+
+inline MemoryNode* Expr::AsMemoryNode() {
+  lava_debug(NORMAL,lava_verify(IsMemoryNode()););
+  return static_cast<MemoryNode*>(this);
+}
+
+inline const MemoryNode* Expr::AsMemoryNode() const {
+  lava_debug(NORMAL,lava_verify(IsMemoryNode()););
+  return static_cast<const MemoryNode*>(this);
+}
+
+inline bool Expr::IsNoMemoryEffectNode() const {
+  return type() == IRTYPE_NO_READ_EFFECT || type() == IRTYPE_NO_WRITE_EFFECT;
 }
 
 inline bool Expr::IsPhiNode() const {

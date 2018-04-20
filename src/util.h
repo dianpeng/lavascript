@@ -145,9 +145,8 @@ inline bool LexicalCast( bool   , std::string* output );
 // ---------------------------------------------------------------------
 // Real number cast
 // ---------------------------------------------------------------------
-// Try to narrow a real number into a 32 bits integer. It will fail
-// if the double has exponent part , and also fail if its size cannot
-// be put into the int32_t value.
+// Try to narrow a real number into a another types integer. It will fail
+// if the double has exponent part or when there's a overflow
 template< typename T >
 bool NarrowReal     ( double real , T* output ) {
   double ipart;
@@ -179,6 +178,25 @@ T CastReal( double real ) { return static_cast<T>(real); }
 template< typename T >
 double CastRealAndStoreAsReal( double real ) {
   return static_cast<double>( CastReal<T>(real) );
+}
+
+// Cast a float64/double into a index number that is acceptable by lavascript.
+// Inside of the lavascript, we use std::uint32_t as index to index into any
+// types of memory , which obviously post a upper bound of how much memory you
+// are allowed to index into
+inline bool CastToIndex( double v , std::uint32_t* idx ) {
+  // the following code is the same as what has been implemented inside of the
+  // interpreter. and we should not overflow with std::int64_t when convert to
+  // double and we ignore any float point part during conversion which is the
+  // same as the interpreter does.
+  std::int64_t temp = static_cast<std::int64_t>(v);
+  // check the boundary of the value type , it is not possible to have index
+  // larger than std::uint32_t's max range since we don't support this type
+  // of memory allocation internally at all
+  if(temp < 0) return false;
+  if(temp > std::numeric_limits<std::uint32_t>::max()) return false;
+  *idx = static_cast<std::uint32_t>(temp);
+  return true;
 }
 
 // ---------------------------------------------------------------------

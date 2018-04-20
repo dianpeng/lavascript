@@ -1,8 +1,10 @@
 #include "graph-builder.h"
 #include "type-inference.h"
+
 #include "fold-arith.h"
 #include "fold-intrinsic.h"
 #include "fold-phi.h"
+#include "fold-memory.h"
 
 #include "src/interpreter/bytecode.h"
 #include "src/interpreter/bytecode-iterator.h"
@@ -648,6 +650,9 @@ Expr* GraphBuilder::LowerICall( ICall* node ) {
 Expr* GraphBuilder::NewPSet( Expr* object , Expr* key , Expr* value , IRInfo* ir_info ) {
   auto ret = PSet::New(graph_,object,key,value,ir_info,region());
   env()->effect()->UpdateWriteEffect(ret);
+  if(!ret->HasSideEffect()) {
+    if(FoldPropSet(graph_,ret)) return ret;
+  }
   region()->AddStatement(ret);
   return ret;
 }
@@ -655,6 +660,9 @@ Expr* GraphBuilder::NewPSet( Expr* object , Expr* key , Expr* value , IRInfo* ir
 Expr* GraphBuilder::NewPGet( Expr* object , Expr* key , IRInfo* ir_info ) {
   auto ret = PGet::New(graph_,object,key,ir_info,region());
   env()->effect()->AddReadEffect(ret);
+  if(!ret->HasSideEffect()) {
+    if(auto n = FoldPropGet(graph_,ret); n) return n;
+  }
   return ret;
 }
 
@@ -666,6 +674,9 @@ Expr* GraphBuilder::NewPGet( Expr* object , Expr* key , IRInfo* ir_info ) {
 Expr* GraphBuilder::NewISet( Expr* object, Expr* index, Expr* value, IRInfo* ir_info ) {
   auto ret = ISet::New(graph_,object,index,value,ir_info,region());
   env()->effect()->UpdateWriteEffect(ret);
+  if(!ret->HasSideEffect()) {
+    if(FoldIndexSet(graph_,ret)) return ret;
+  }
   region()->AddStatement(ret);
   return ret;
 }
@@ -673,6 +684,9 @@ Expr* GraphBuilder::NewISet( Expr* object, Expr* index, Expr* value, IRInfo* ir_
 Expr* GraphBuilder::NewIGet( Expr* object, Expr* index, IRInfo* ir_info ) {
   auto ret = IGet::New(graph_,object,index,ir_info,region());
   env()->effect()->AddReadEffect(ret);
+  if(!ret->HasSideEffect()) {
+    if(auto n = FoldIndexGet(graph_,ret); n) return n;
+  }
   return ret;
 }
 
@@ -692,7 +706,7 @@ void GraphBuilder::NewGGet( std::uint8_t a1 , std::uint8_t a2 , const BytecodeLo
 
 void GraphBuilder::NewGSet( std::uint8_t a1 , std::uint8_t a2 , const BytecodeLocation& loc , bool sso ) {
   auto info = NewIRInfo(loc);
-  auto str  = NewStr(a2,sso);
+  auto str  = NewStr(a1,sso);
   env()->SetGlobal( str.data , str.length , [=]() { return sso ? NewSSO(a1,info) : NewString(a1,info); } ,
                                             StackGet(a2), [=]() { return info; } );
 }

@@ -122,10 +122,9 @@ void DotPrinter::RenderEdge( ControlFlow* from , ControlFlow* to ) {
 }
 
 void DotPrinter::RenderExpr( const std::string& name , Expr* node ) {
-  if(existed_[node->id()])
-    return;
-
+  if(existed_[node->id()]) return;
   existed_[node->id()] = true;
+  if(node->HasSideEffect()) Indent(1) << name << "[style=bold color=red]\n";
 
   switch(node->type()) {
     case IRTYPE_FLOAT64:

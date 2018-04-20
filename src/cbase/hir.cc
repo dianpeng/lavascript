@@ -30,11 +30,16 @@ void Expr::Replace( Expr* another ) {
   }
 }
 
-void Expr::AddEffectIfNotExist( Expr* node ) {
-  lava_foreach( auto &v , effect_list()->GetForwardIterator() ) {
-    if(v == node) return;
+bool Expr::RemoveRef( const OperandIterator& tar , Expr* node ) {
+  lava_debug(NORMAL,lava_verify(tar.value() == this););
+  for( auto itr = ref_list_.GetForwardIterator(); itr.HasNext(); itr.Move() ) {
+    auto &v = itr.value();
+    if(v.id == tar && v.node == node) {
+      ref_list_.Remove(itr);
+      return true;
+    }
   }
-  AddEffect(node);
+  return false;
 }
 
 IRList* IRList::Clone( Graph* graph , const IRList& that ) {

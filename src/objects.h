@@ -610,7 +610,6 @@ class LAVASCRIPT_OBJECT_ALIGN List final : public HeapObject {
   {}
 
  private:
-
   std::uint32_t size_;
   Handle<Slice> slice_;
 

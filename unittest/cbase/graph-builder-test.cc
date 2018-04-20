@@ -137,10 +137,12 @@ bool CheckGraphOSR( const char* source , std::size_t offset ) {
 
 TEST(GraphBuilder,Basic) {
   CASE(
-      u = [];
-      u.v = 2;
-      u.v.c.g=3;
-      return u[0];
+      var a = [1,2,3,4,5];
+      g.x = 20;
+      a[1] = 20;
+      g.c = 30;
+      a[2] = 30;
+      return a[1] + a[2];
     );
 }
 

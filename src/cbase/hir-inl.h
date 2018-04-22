@@ -112,7 +112,7 @@ inline zone::Zone* Node::zone() const {
 }
 
 inline bool Expr::IsLeaf() const {
-#define __(A,B,C,D) case IRTYPE_##B: return D;
+#define __(A,B,C,D) case HIR_##B: return D;
   switch(type()) {
     CBASE_IR_EXPRESSION(__)
     default: lava_die(); return false;
@@ -122,9 +122,9 @@ inline bool Expr::IsLeaf() const {
 
 inline bool Expr::IsMemoryRead() const {
   switch(type()) {
-    case IRTYPE_IGET: case IRTYPE_PGET: case IRTYPE_OBJECT_GET: case IRTYPE_LIST_GET:
+    case HIR_IGET: case HIR_PGET: case HIR_OBJECT_GET: case HIR_LIST_GET:
       return true;
-    case IRTYPE_NO_READ_EFFECT: case IRTYPE_READ_EFFECT_PHI:
+    case HIR_NO_READ_EFFECT: case HIR_READ_EFFECT_PHI:
       return true;
     default:
       return false;
@@ -133,9 +133,9 @@ inline bool Expr::IsMemoryRead() const {
 
 inline bool Expr::IsMemoryWrite() const {
   switch(type()) {
-    case IRTYPE_ISET: case IRTYPE_PSET: case IRTYPE_OBJECT_SET: case IRTYPE_LIST_SET:
+    case HIR_ISET: case HIR_PSET: case HIR_OBJECT_SET: case HIR_LIST_SET:
       return true;
-    case IRTYPE_NO_WRITE_EFFECT: case IRTYPE_WRITE_EFFECT_PHI:
+    case HIR_NO_WRITE_EFFECT: case HIR_WRITE_EFFECT_PHI:
       return true;
     default:
       return false;
@@ -146,7 +146,7 @@ inline bool Expr::IsMemoryOp() const { return IsMemoryRead() || IsMemoryWrite();
 
 inline bool Expr::IsMemoryNode() const {
   switch(type()) {
-    case IRTYPE_ARG: case IRTYPE_GGET: case IRTYPE_UGET: case IRTYPE_LIST: case IRTYPE_OBJECT:
+    case HIR_ARG: case HIR_GGET: case HIR_UGET: case HIR_LIST: case HIR_OBJECT:
       return true;
     default:
       return false;
@@ -194,12 +194,12 @@ inline const MemoryNode* Expr::AsMemoryNode() const {
 }
 
 inline bool Expr::IsNoMemoryEffectNode() const {
-  return type() == IRTYPE_NO_READ_EFFECT || type() == IRTYPE_NO_WRITE_EFFECT;
+  return type() == HIR_NO_READ_EFFECT || type() == HIR_NO_WRITE_EFFECT;
 }
 
 inline bool Expr::IsPhiNode() const {
   switch(type()) {
-    case IRTYPE_PHI: case IRTYPE_READ_EFFECT_PHI: case IRTYPE_WRITE_EFFECT_PHI:
+    case HIR_PHI: case HIR_READ_EFFECT_PHI: case HIR_WRITE_EFFECT_PHI:
       return true;
     default:
       return false;
@@ -469,7 +469,7 @@ inline void Phi::RemovePhiFromRegion( Phi* phi ) {
 }
 
 inline Phi::Phi( Graph* graph , std::uint32_t id , ControlFlow* region , IRInfo* info ):
-  Expr           (IRTYPE_PHI,id,graph,info),
+  Expr           (HIR_PHI,id,graph,info),
   region_        (region)
 {
   region->AddOperand(this);
@@ -487,7 +487,7 @@ inline Phi* Phi::New( Graph* graph , ControlFlow* region , IRInfo* info ) {
 }
 
 inline ReadEffectPhi::ReadEffectPhi( Graph* graph , std::uint32_t id , ControlFlow* region , IRInfo* info ):
-  MemoryRead(IRTYPE_READ_EFFECT_PHI,id,graph,info),
+  MemoryRead(HIR_READ_EFFECT_PHI,id,graph,info),
   region_   (region)
 {
   region->AddOperand(this);
@@ -507,7 +507,7 @@ inline ReadEffectPhi* ReadEffectPhi::New( Graph* graph , ControlFlow* region , I
 }
 
 inline WriteEffectPhi::WriteEffectPhi( Graph* graph , std::uint32_t id , ControlFlow* region  , IRInfo* info ):
-  MemoryWrite(IRTYPE_WRITE_EFFECT_PHI,id,graph,info),
+  MemoryWrite(HIR_WRITE_EFFECT_PHI,id,graph,info),
   region_    (region)
 {
   region->AddOperand(this);
@@ -670,7 +670,7 @@ inline Expr* CastToBoolean::NewNegateCast( Graph* graph , Expr* value , IRInfo* 
 }
 
 inline TypeAnnotation::TypeAnnotation( Graph* graph , std::uint32_t id , Guard* node , IRInfo* info ):
-  Expr      (IRTYPE_TYPE_ANNOTATION,id,graph,info),
+  Expr      (HIR_TYPE_ANNOTATION,id,graph,info),
   type_kind_(node->test()->AsTestType()->type_kind())
 {}
 

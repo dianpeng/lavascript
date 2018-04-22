@@ -13,32 +13,32 @@ TypeKind GetTypeInference( Expr* node ) {
 
   switch(node->type()) {
     // normal high ir node which has implicit type
-    case IRTYPE_FLOAT64:            return TPKIND_FLOAT64;
-    case IRTYPE_LONG_STRING:        return TPKIND_LONG_STRING;
-    case IRTYPE_SMALL_STRING:       return TPKIND_SMALL_STRING;
-    case IRTYPE_BOOLEAN:            return TPKIND_BOOLEAN;
-    case IRTYPE_NIL:                return TPKIND_NIL;
-    case IRTYPE_LIST:               return TPKIND_LIST;
-    case IRTYPE_OBJECT:             return TPKIND_OBJECT;
-    case IRTYPE_ITR_NEW:            return TPKIND_ITERATOR;
-    case IRTYPE_ITR_TEST:           return TPKIND_BOOLEAN ;
+    case HIR_FLOAT64:            return TPKIND_FLOAT64;
+    case HIR_LONG_STRING:        return TPKIND_LONG_STRING;
+    case HIR_SMALL_STRING:       return TPKIND_SMALL_STRING;
+    case HIR_BOOLEAN:            return TPKIND_BOOLEAN;
+    case HIR_NIL:                return TPKIND_NIL;
+    case HIR_LIST:               return TPKIND_LIST;
+    case HIR_OBJECT:             return TPKIND_OBJECT;
+    case HIR_ITR_NEW:            return TPKIND_ITERATOR;
+    case HIR_ITR_TEST:           return TPKIND_BOOLEAN ;
     // type mark
-    case IRTYPE_TYPE_ANNOTATION:    return node->AsTypeAnnotation()->type_kind();
+    case HIR_TYPE_ANNOTATION:    return node->AsTypeAnnotation()->type_kind();
     // box/unbox node
-    case IRTYPE_UNBOX:              return node->AsUnbox()->type_kind();
-    case IRTYPE_BOX:                return node->AsBox()->type_kind();
+    case HIR_UNBOX:              return node->AsUnbox()->type_kind();
+    case HIR_BOX:                return node->AsBox()->type_kind();
     // lower HIR type translation
-    case IRTYPE_FLOAT64_NEGATE:     return TPKIND_FLOAT64;
-    case IRTYPE_FLOAT64_ARITHMETIC: return TPKIND_FLOAT64;
-    case IRTYPE_FLOAT64_COMPARE:    return TPKIND_FLOAT64;
-    case IRTYPE_STRING_COMPARE:     return TPKIND_BOOLEAN;
-    case IRTYPE_SSTRING_EQ:         return TPKIND_BOOLEAN;
-    case IRTYPE_SSTRING_NE:         return TPKIND_BOOLEAN;
-    case IRTYPE_BOOLEAN_LOGIC:      return TPKIND_BOOLEAN;
-    case IRTYPE_BOOLEAN_NOT:        return TPKIND_BOOLEAN;
+    case HIR_FLOAT64_NEGATE:     return TPKIND_FLOAT64;
+    case HIR_FLOAT64_ARITHMETIC: return TPKIND_FLOAT64;
+    case HIR_FLOAT64_COMPARE:    return TPKIND_FLOAT64;
+    case HIR_STRING_COMPARE:     return TPKIND_BOOLEAN;
+    case HIR_SSTRING_EQ:         return TPKIND_BOOLEAN;
+    case HIR_SSTRING_NE:         return TPKIND_BOOLEAN;
+    case HIR_BOOLEAN_LOGIC:      return TPKIND_BOOLEAN;
+    case HIR_BOOLEAN_NOT:        return TPKIND_BOOLEAN;
     // intrinsic call's return value mapping
     // TODO:: Add this into a X macro to make our life easier ?
-    case IRTYPE_ICALL:
+    case HIR_ICALL:
     {
       auto icall = node->AsICall();
       switch(icall->ic()) {

@@ -127,23 +127,23 @@ void DotPrinter::RenderExpr( const std::string& name , Expr* node ) {
   if(node->HasSideEffect()) Indent(1) << name << "[style=bold color=red]\n";
 
   switch(node->type()) {
-    case IRTYPE_FLOAT64:
+    case HIR_FLOAT64:
       Indent(1) << name << "[label=\"f64(" << node->AsFloat64()->value() << ")\"]\n";
       break;
-    case IRTYPE_LONG_STRING:
+    case HIR_LONG_STRING:
       Indent(1) << name << "[label=\"str(" << node->AsLString()->value()->data() << ")\"]\n";
       break;
-    case IRTYPE_SMALL_STRING:
+    case HIR_SMALL_STRING:
       Indent(1) << name << "[label=\"sso(" << node->AsSString()->value()->data() << ")\"]\n";
       break;
-    case IRTYPE_BOOLEAN:
+    case HIR_BOOLEAN:
       Indent(1) << name << "[label=\"bool(" << (node->AsBoolean()->value() ? "true" : "false" )
                                             << ")\"]\n";
       break;
-    case IRTYPE_NIL:
+    case HIR_NIL:
       Indent(1) << name << "[label=\"nil\"]\n";
       break;
-    case IRTYPE_LIST:
+    case HIR_LIST:
       {
         Indent(1) << name << "[label=\"list\"]\n";
         auto list = node->AsIRList();
@@ -156,7 +156,7 @@ void DotPrinter::RenderExpr( const std::string& name , Expr* node ) {
         }
       }
       break;
-    case IRTYPE_OBJECT_KV:
+    case HIR_OBJECT_KV:
       {
         Indent(1) << name << "[label=\"object_kv\"]\n";
         auto kv = node->AsIRObjectKV();
@@ -171,7 +171,7 @@ void DotPrinter::RenderExpr( const std::string& name , Expr* node ) {
         Indent(1) << name << " -> " << val_name << "[label=\"val\"]\n";
       }
       break;
-    case IRTYPE_OBJECT:
+    case HIR_OBJECT:
       {
         Indent(1) << name << "[label=\"object\"]\n";
         auto obj = node->AsIRObject();
@@ -184,22 +184,22 @@ void DotPrinter::RenderExpr( const std::string& name , Expr* node ) {
         }
       }
       break;
-    case IRTYPE_LOAD_CLS:
+    case HIR_LOAD_CLS:
       {
         auto obj = node->AsLoadCls();
         Indent(1) << name << "[label=\"ref(" << obj->ref() << ")\"]\n";
       }
       break;
-    case IRTYPE_ARG:
+    case HIR_ARG:
       {
         auto arg = node->AsArg();
         Indent(1) << name << "[label=\"index(" << arg->index() << ")\"]\n";
       }
       break;
-    case IRTYPE_BINARY:
-    case IRTYPE_FLOAT64_BITWISE:
-    case IRTYPE_FLOAT64_ARITHMETIC:
-    case IRTYPE_FLOAT64_COMPARE:
+    case HIR_BINARY:
+    case HIR_FLOAT64_BITWISE:
+    case HIR_FLOAT64_ARITHMETIC:
+    case HIR_FLOAT64_COMPARE:
       {
         auto binary = static_cast<Binary*>(node);
 
@@ -218,7 +218,7 @@ void DotPrinter::RenderExpr( const std::string& name , Expr* node ) {
         Indent(1) << name << " -> " << rhs_name << '\n';
       }
       break;
-    case IRTYPE_UNARY:
+    case HIR_UNARY:
       {
         auto unary = static_cast<Unary*>(node);
         Indent(1) << name << "[label=\""
@@ -229,7 +229,7 @@ void DotPrinter::RenderExpr( const std::string& name , Expr* node ) {
 
       }
       break;
-    case IRTYPE_TERNARY:
+    case HIR_TERNARY:
       {
         auto tern = node->AsTernary();
         auto cond_name = GetNodeName(tern->condition());
@@ -245,10 +245,10 @@ void DotPrinter::RenderExpr( const std::string& name , Expr* node ) {
 
       }
       break;
-    case IRTYPE_UGET:
+    case HIR_UGET:
       Indent(1) << name << "[label=\"uget(" << node->AsUGet()->index() << ")\"]\n";
       break;
-    case IRTYPE_USET:
+    case HIR_USET:
       {
         auto uset = node->AsUSet();
         auto opr_name = GetNodeName(uset->value());
@@ -257,8 +257,8 @@ void DotPrinter::RenderExpr( const std::string& name , Expr* node ) {
         Indent(1) << name << opr_name << '\n';
       }
       break;
-    case IRTYPE_PGET:
-    case IRTYPE_OBJECT_GET:
+    case HIR_PGET:
+    case HIR_OBJECT_GET:
       {
         auto pget = static_cast<PGet*>(node);
 
@@ -272,8 +272,8 @@ void DotPrinter::RenderExpr( const std::string& name , Expr* node ) {
 
       }
       break;
-    case IRTYPE_PSET:
-    case IRTYPE_OBJECT_SET:
+    case HIR_PSET:
+    case HIR_OBJECT_SET:
       {
         auto pset = static_cast<PSet*>(node);
 
@@ -290,7 +290,7 @@ void DotPrinter::RenderExpr( const std::string& name , Expr* node ) {
 
       }
       break;
-    case IRTYPE_IGET: case IRTYPE_LIST_GET:
+    case HIR_IGET: case HIR_LIST_GET:
       {
         auto iget = static_cast<IGet*>(node);
 
@@ -304,7 +304,7 @@ void DotPrinter::RenderExpr( const std::string& name , Expr* node ) {
 
       }
       break;
-    case IRTYPE_ISET: case IRTYPE_LIST_SET:
+    case HIR_ISET: case HIR_LIST_SET:
       {
         auto iset = static_cast<ISet*>(node);
 
@@ -321,7 +321,7 @@ void DotPrinter::RenderExpr( const std::string& name , Expr* node ) {
 
       }
       break;
-    case IRTYPE_GGET:
+    case HIR_GGET:
       {
         auto gget = node->AsGGet();
         auto key_name = GetNodeName(gget->key());
@@ -331,7 +331,7 @@ void DotPrinter::RenderExpr( const std::string& name , Expr* node ) {
 
       }
       break;
-    case IRTYPE_GSET:
+    case HIR_GSET:
       {
         auto gset = node->AsGSet();
         auto key_name = GetNodeName(gset->key());
@@ -344,7 +344,7 @@ void DotPrinter::RenderExpr( const std::string& name , Expr* node ) {
 
       }
       break;
-    case IRTYPE_ITR_NEW:
+    case HIR_ITR_NEW:
       {
         auto itr_new = node->AsItrNew();
         auto opr_name= GetNodeName(itr_new->operand());
@@ -354,7 +354,7 @@ void DotPrinter::RenderExpr( const std::string& name , Expr* node ) {
 
       }
       break;
-    case IRTYPE_ITR_NEXT:
+    case HIR_ITR_NEXT:
       {
         auto itr_next = node->AsItrNext();
         auto opr_name = GetNodeName(itr_next->operand());
@@ -364,7 +364,7 @@ void DotPrinter::RenderExpr( const std::string& name , Expr* node ) {
 
       }
       break;
-    case IRTYPE_ITR_TEST:
+    case HIR_ITR_TEST:
       {
         auto itr_test = node->AsItrTest();
         auto opr_name = GetNodeName(itr_test->operand());
@@ -374,7 +374,7 @@ void DotPrinter::RenderExpr( const std::string& name , Expr* node ) {
 
       }
       break;
-    case IRTYPE_ITR_DEREF:
+    case HIR_ITR_DEREF:
       {
         auto itr_deref = node->AsItrDeref();
         auto itr_name  = GetNodeName(itr_deref->operand());
@@ -383,10 +383,10 @@ void DotPrinter::RenderExpr( const std::string& name , Expr* node ) {
         Indent(1) << name << " -> " << itr_name << '\n';
       }
       break;
-    case IRTYPE_PROJECTION:
+    case HIR_PROJECTION:
       Indent(1) << name << "[label=\"projection(" << node->AsProjection()->index() <<")]\n";
       break;
-    case IRTYPE_INIT_CLS:
+    case HIR_INIT_CLS:
       {
         Indent(1) << name << "[label=\"init_cls\"]\n";
         auto icls = node->AsInitCls();
@@ -397,7 +397,7 @@ void DotPrinter::RenderExpr( const std::string& name , Expr* node ) {
       }
       break;
     /** test **/
-    case IRTYPE_TEST_LISTOOB:
+    case HIR_TEST_LISTOOB:
       {
         Indent(1) << name << "[label=\"list-oob\"]\n";
         auto oob = node->AsTestListOOB();
@@ -413,7 +413,7 @@ void DotPrinter::RenderExpr( const std::string& name , Expr* node ) {
       }
       break;
 
-    case IRTYPE_TEST_TYPE:
+    case HIR_TEST_TYPE:
       {
         auto tt = node->AsTestType();
         Indent(1) << name << "[label=\"test-type(" << tt->type_kind_name() << ")\"]\n";
@@ -425,7 +425,7 @@ void DotPrinter::RenderExpr( const std::string& name , Expr* node ) {
       }
       break;
 
-    case IRTYPE_BOX:
+    case HIR_BOX:
       {
         auto box = node->AsBox();
         Indent(1) << name << "[label=\"box(" << GetTypeKindName(box->type_kind()) << ")\"]\n";
@@ -436,7 +436,7 @@ void DotPrinter::RenderExpr( const std::string& name , Expr* node ) {
         Indent(1) << name << " -> " << obj_name << '\n';
       }
       break;
-    case IRTYPE_UNBOX:
+    case HIR_UNBOX:
       {
         auto unbox = node->AsUnbox();
         Indent(1) << name << "[label=\"unbox(" << GetTypeKindName(unbox->type_kind()) << ")\"]\n";
@@ -449,7 +449,7 @@ void DotPrinter::RenderExpr( const std::string& name , Expr* node ) {
       break;
 
     /** function call and icall **/
-    case IRTYPE_ICALL:
+    case HIR_ICALL:
       {
         auto ic = node->AsICall();
         Indent(1) << name << "[label=\"icall(" << (ic->tail_call() ? "tail" : "normal")
@@ -465,13 +465,13 @@ void DotPrinter::RenderExpr( const std::string& name , Expr* node ) {
         }
       }
       break;
-    case IRTYPE_OSR_LOAD:
+    case HIR_OSR_LOAD:
       {
         auto osr_load = node->AsOSRLoad();
         Indent(1) << name << "[label=\"osr_load(" << osr_load->index() << ")\"]\n";
       }
       break;
-    case IRTYPE_CHECKPOINT:
+    case HIR_CHECKPOINT:
       return RenderCheckpoint(name,node->AsCheckpoint());
     default:
       {

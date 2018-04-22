@@ -69,15 +69,15 @@ Expr* Fold( Graph* graph , Unary::Operator op , Expr* expr , const IRInfoProvide
     }
   } else if(op == Unary::NOT) {
     switch(expr->type()) {
-      case IRTYPE_FLOAT64:
-      case IRTYPE_SMALL_STRING:
-      case IRTYPE_LONG_STRING:
-      case IRTYPE_LIST:
-      case IRTYPE_OBJECT:
+      case HIR_FLOAT64:
+      case HIR_SMALL_STRING:
+      case HIR_LONG_STRING:
+      case HIR_LIST:
+      case HIR_OBJECT:
         return Boolean::New(graph,false,irinfo());
-      case IRTYPE_BOOLEAN:
+      case HIR_BOOLEAN:
         return Boolean::New(graph,!expr->AsBoolean()->value(),irinfo());
-      case IRTYPE_NIL:
+      case HIR_NIL:
         return Boolean::New(graph,true,irinfo());
       default:
         {
@@ -299,15 +299,15 @@ Expr* Fold( Graph* graph , Binary::Operator op , Expr* lhs , Expr* rhs , const I
 
 Expr* Fold( Graph* graph , Expr* cond , Expr* lhs , Expr* rhs , const IRInfoProvider& irinfo) {
   switch(cond->type()) {
-    case IRTYPE_FLOAT64:
-    case IRTYPE_LONG_STRING:
-    case IRTYPE_SMALL_STRING:
-    case IRTYPE_LIST:
-    case IRTYPE_OBJECT:
+    case HIR_FLOAT64:
+    case HIR_LONG_STRING:
+    case HIR_SMALL_STRING:
+    case HIR_LIST:
+    case HIR_OBJECT:
       return lhs;
-    case IRTYPE_NIL:
+    case HIR_NIL:
       return rhs;
-    case IRTYPE_BOOLEAN:
+    case HIR_BOOLEAN:
       return (cond->AsBoolean()->value() ? lhs : rhs);
     default:
       {

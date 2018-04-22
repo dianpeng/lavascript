@@ -184,9 +184,9 @@ Expr* FoldICall( Graph* graph , ICall* node ) {
       {
         auto n1 = node->operand_list()->Index(0);
         switch(n1->type()) {
-          case IRTYPE_FLOAT64:
+          case HIR_FLOAT64:
             return Float64::New(graph, CastRealAndStoreAsReal<std::int32_t>(n1->AsFloat64()->value()), n1->ir_info());
-          case IRTYPE_LONG_STRING: case IRTYPE_SMALL_STRING:
+          case HIR_LONG_STRING: case HIR_SMALL_STRING:
             {
               double dv;
               if(LexicalCast(n1->AsZoneString().data(),&dv)) {
@@ -196,7 +196,7 @@ Expr* FoldICall( Graph* graph , ICall* node ) {
               }
             }
             break;
-          case IRTYPE_BOOLEAN:
+          case HIR_BOOLEAN:
             return Float64::New(graph,n1->AsBoolean()->value() ? 1.0 : 0.0,n1->ir_info());
           default:
             break;
@@ -207,9 +207,9 @@ Expr* FoldICall( Graph* graph , ICall* node ) {
       {
         auto n1 = node->operand_list()->Index(0);
         switch(n1->type()) {
-          case IRTYPE_FLOAT64:
+          case HIR_FLOAT64:
             return Float64::New(graph,n1->AsFloat64()->value(),n1->ir_info());
-          case IRTYPE_LONG_STRING: case IRTYPE_SMALL_STRING:
+          case HIR_LONG_STRING: case HIR_SMALL_STRING:
             {
               double val;
               if(LexicalCast(n1->AsZoneString().data(),&val)) {
@@ -217,7 +217,7 @@ Expr* FoldICall( Graph* graph , ICall* node ) {
               }
             }
             break;
-          case IRTYPE_BOOLEAN:
+          case HIR_BOOLEAN:
             return Float64::New(graph,n1->AsBoolean()->value() ? 1.0 : 0.0 , n1->ir_info());
           default:
             break;
@@ -228,13 +228,13 @@ Expr* FoldICall( Graph* graph , ICall* node ) {
       {
         auto n1 = node->operand_list()->Index(0);
         switch(n1->type()) {
-          case IRTYPE_FLOAT64:
+          case HIR_FLOAT64:
             return NewStringFromReal( graph , n1->AsFloat64()->value() , n1->ir_info());
-          case IRTYPE_LONG_STRING:
+          case HIR_LONG_STRING:
             return LString::New(graph,n1->AsLString()->value(),n1->ir_info());
-          case IRTYPE_SMALL_STRING:
+          case HIR_SMALL_STRING:
             return SString::New(graph,n1->AsSString()->value(),n1->ir_info());
-          case IRTYPE_BOOLEAN:
+          case HIR_BOOLEAN:
             return NewStringFromBoolean(graph,n1->AsBoolean()->value(),n1->ir_info());
           default:
             break;

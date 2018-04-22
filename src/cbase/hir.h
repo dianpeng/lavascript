@@ -197,7 +197,7 @@ namespace hir {
   CBASE_IR_CONTROL_FLOW(__)
 
 enum IRType {
-#define __(A,B,...) IRTYPE_##B,
+#define __(A,B,...) HIR_##B,
   /** expression related IRType **/
   CBASE_IR_EXPRESSION_START,
   CBASE_IR_EXPRESSION(__)
@@ -219,7 +219,7 @@ CBASE_IR_LIST(__)
 template< typename T > struct MapIRClassToIRType {};
 
 #define __(A,B,...)         \
-  template<> struct MapIRClassToIRType<A> { static const IRType value = IRTYPE_##B; };
+  template<> struct MapIRClassToIRType<A> { static const IRType value = HIR_##B; };
 CBASE_IR_LIST(__)
 #undef __ // __
 
@@ -384,7 +384,7 @@ class Node : public zone::ZoneObject {
   template< typename T > inline T* As();
   template< typename T > inline const T* As() const;
 
-#define __(A,B,...) bool Is##A() const { return type() == IRTYPE_##B; }
+#define __(A,B,...) bool Is##A() const { return type() == HIR_##B; }
   CBASE_IR_LIST(__)
 #undef __ // __
 
@@ -665,7 +665,7 @@ class Arg : public MemoryNode {
   std::uint32_t index() const { return index_; }
 
   Arg( Graph* graph , std::uint32_t id , std::uint32_t index ):
-    MemoryNode (IRTYPE_ARG,id,graph,NULL),
+    MemoryNode (HIR_ARG,id,graph,NULL),
     index_(index)
   {}
 
@@ -679,7 +679,7 @@ class Float64 : public Expr {
   inline static Float64* New( Graph* , double , IRInfo* );
   double value() const { return value_; }
   Float64( Graph* graph , std::uint32_t id , double value , IRInfo* info ):
-    Expr  (IRTYPE_FLOAT64,id,graph,info),
+    Expr  (HIR_FLOAT64,id,graph,info),
     value_(value)
   {}
  public:
@@ -699,7 +699,7 @@ class Boolean : public Expr {
   inline static Boolean* New( Graph* , bool , IRInfo* );
   bool value() const { return value_; }
   Boolean( Graph* graph , std::uint32_t id , bool value , IRInfo* info ):
-    Expr  (IRTYPE_BOOLEAN,id,graph,info),
+    Expr  (HIR_BOOLEAN,id,graph,info),
     value_(value)
   {}
   virtual std::uint64_t GVNHash() const {
@@ -721,7 +721,7 @@ class LString : public Expr {
   const zone::String* value() const { return value_; }
   LString( Graph* graph , std::uint32_t id , const zone::String* value ,
                                              IRInfo* info ):
-    Expr  (IRTYPE_LONG_STRING,id,graph,info),
+    Expr  (HIR_LONG_STRING,id,graph,info),
     value_(value)
   {}
   virtual std::uint64_t GVNHash() const {
@@ -743,7 +743,7 @@ class SString : public Expr {
   const zone::String* value() const { return value_; }
   SString( Graph* graph , std::uint32_t id , const zone::String* value ,
                                              IRInfo* info ):
-    Expr (IRTYPE_SMALL_STRING,id,graph,info),
+    Expr (HIR_SMALL_STRING,id,graph,info),
     value_(value)
   {}
   virtual std::uint64_t GVNHash() const {
@@ -761,7 +761,7 @@ class Nil : public Expr {
  public:
   inline static Nil* New( Graph* , IRInfo* );
   Nil( Graph* graph , std::uint32_t id , IRInfo* info ):
-    Expr(IRTYPE_NIL,id,graph,info)
+    Expr(HIR_NIL,id,graph,info)
   {}
   virtual std::uint64_t GVNHash() const {
     return GVNHash0(type_name());
@@ -779,7 +779,7 @@ class IRList : public MemoryNode {
   void Add( Expr* node ) { AddOperand(node); }
   std::size_t Size() const { return operand_list()->size(); }
   IRList( Graph* graph , std::uint32_t id , std::size_t size , IRInfo* info ):
-    MemoryNode(IRTYPE_LIST,id,graph,info)
+    MemoryNode(HIR_LIST,id,graph,info)
   {
     (void)size; // implicit indicated by the size of operand_list()
   }
@@ -799,7 +799,7 @@ class IRObjectKV : public Expr {
   void set_key  ( Expr* key ) { lava_debug(NORMAL,lava_verify(key->IsString());); ReplaceOperand(0,key); }
   void set_value( Expr* val ) { ReplaceOperand(1,val); }
   IRObjectKV( Graph* graph , std::uint32_t id , Expr* key , Expr* val , IRInfo* info ):
-    Expr(IRTYPE_OBJECT_KV,id,graph,info)
+    Expr(HIR_OBJECT_KV,id,graph,info)
   {
     lava_debug(NORMAL,lava_verify(key->IsString()););
     AddOperand(key);
@@ -819,7 +819,7 @@ class IRObject : public MemoryNode {
   }
   std::size_t Size() const { return operand_list()->size(); }
   IRObject( Graph* graph , std::uint32_t id , std::size_t size , IRInfo* info ):
-    MemoryNode(IRTYPE_OBJECT,id,graph,info)
+    MemoryNode(HIR_OBJECT,id,graph,info)
   {
     (void)size;
   }
@@ -836,7 +836,7 @@ class LoadCls : public Expr {
   static inline LoadCls* New( Graph* , std::uint32_t ref , IRInfo* info );
   std::uint32_t ref() const { return ref_; }
   LoadCls( Graph* graph , std::uint32_t id , std::uint32_t ref , IRInfo* info ):
-    Expr (IRTYPE_LOAD_CLS,id,graph,info),
+    Expr (HIR_LOAD_CLS,id,graph,info),
     ref_ (ref)
   {}
  private:
@@ -859,7 +859,7 @@ class Unary : public Expr {
   const char* op_name() const { return GetOperatorName(op()); }
 
   Unary( Graph* graph , std::uint32_t id , Expr* opr , Operator op , IRInfo* info ):
-    Expr  (IRTYPE_UNARY,id,graph,info),
+    Expr  (HIR_UNARY,id,graph,info),
     op_   (op)
   {
     AddOperand(opr);
@@ -906,7 +906,7 @@ class Binary : public Expr {
   const char* op_name() const { return GetOperatorName(op()); }
 
   Binary( Graph* graph , std::uint32_t id , Expr* lhs , Expr* rhs , Operator op , IRInfo* info ):
-    Expr  (IRTYPE_BINARY,id,graph,info),
+    Expr  (HIR_BINARY,id,graph,info),
     op_   (op)
   {
     AddOperand(lhs);
@@ -929,7 +929,7 @@ class Ternary: public Expr {
  public:
   inline static Ternary* New( Graph* , Expr* , Expr* , Expr* , IRInfo* );
   Ternary( Graph* graph , std::uint32_t id , Expr* cond , Expr* lhs , Expr* rhs , IRInfo* info ):
-    Expr  (IRTYPE_TERNARY,id,graph,info)
+    Expr  (HIR_TERNARY,id,graph,info)
   {
     AddOperand(cond);
     AddOperand(lhs);
@@ -953,7 +953,7 @@ class UGet : public MemoryNode {
   std::uint32_t method() const { return method_; }
 
   UGet( Graph* graph , std::uint32_t id , std::uint8_t index , std::uint32_t method , IRInfo* info ):
-    MemoryNode (IRTYPE_UGET,id,graph,info),
+    MemoryNode (HIR_UGET,id,graph,info),
     index_ (index),
     method_(method)
   {}
@@ -990,7 +990,7 @@ class USet : public Expr {
   }
 
   USet( Graph* graph , std::uint8_t id , std::uint8_t index , std::uint32_t method , Expr* value, IRInfo* info ):
-    Expr    (IRTYPE_USET,id,graph,info),
+    Expr    (HIR_USET,id,graph,info),
     index_  (index),
     method_ (method)
   {
@@ -1022,7 +1022,7 @@ class PGet : public MemoryRead {
     return false;
   }
   PGet( Graph* graph , std::uint32_t id , Expr* object , Expr* index , IRInfo* info ):
-    MemoryRead (IRTYPE_PGET,id,graph,info)
+    MemoryRead (HIR_PGET,id,graph,info)
   {
     AddOperand(object);
     AddOperand(index );
@@ -1061,7 +1061,7 @@ class PSet : public MemoryWrite {
     return false;
   }
   PSet( Graph* graph , std::uint32_t id , Expr* object , Expr* index , Expr* value , IRInfo* info ):
-    MemoryWrite(IRTYPE_PSET,id,graph,info)
+    MemoryWrite(HIR_PSET,id,graph,info)
   {
     AddOperand(object);
     AddOperand(index );
@@ -1089,7 +1089,7 @@ class IGet : public MemoryRead {
   virtual Expr* Memory() const { return object(); }
 
   IGet( Graph* graph , std::uint32_t id , Expr* object , Expr* index , IRInfo* info ):
-    MemoryRead (IRTYPE_IGET,id,graph,info)
+    MemoryRead (HIR_IGET,id,graph,info)
   {
     AddOperand(object);
     AddOperand(index );
@@ -1143,7 +1143,7 @@ class ISet : public MemoryWrite {
   }
 
   ISet( Graph* graph , std::uint32_t id , Expr* object , Expr* index , Expr* value , IRInfo* info ):
-    MemoryWrite(IRTYPE_ISET,id,graph,info)
+    MemoryWrite(HIR_ISET,id,graph,info)
   {
     AddOperand(object);
     AddOperand(index );
@@ -1172,7 +1172,7 @@ class GGet : public MemoryNode {
   Expr* key() const { return operand_list()->First(); }
 
   GGet( Graph* graph , std::uint32_t id , Expr* name , IRInfo* info ):
-    MemoryNode (IRTYPE_GGET,id,graph,info)
+    MemoryNode (HIR_GGET,id,graph,info)
   {
     AddOperand(name);
   }
@@ -1188,7 +1188,7 @@ class GSet : public Expr {
   Expr* value()const { return operand_list()->Last() ; }
 
   GSet( Graph* graph , std::uint32_t id , Expr* key , Expr* value , IRInfo* info ):
-    Expr(IRTYPE_GSET,id,graph,info)
+    Expr(HIR_GSET,id,graph,info)
   {
     AddOperand(key);
     AddOperand(value);
@@ -1207,7 +1207,7 @@ class ItrNew : public Expr {
   Expr* operand() const { return operand_list()->First(); }
 
   ItrNew( Graph* graph , std::uint32_t id , Expr* operand , IRInfo* info ):
-    Expr  (IRTYPE_ITR_NEW,id,graph,info)
+    Expr  (HIR_ITR_NEW,id,graph,info)
   {
     AddOperand(operand);
   }
@@ -1222,7 +1222,7 @@ class ItrNext : public Expr {
   Expr* operand() const { return operand_list()->First(); }
 
   ItrNext( Graph* graph , std::uint32_t id , Expr* operand , IRInfo* info ):
-    Expr  (IRTYPE_ITR_NEXT,id,graph,info)
+    Expr  (HIR_ITR_NEXT,id,graph,info)
   {
     AddOperand(operand);
   }
@@ -1237,7 +1237,7 @@ class ItrTest : public Expr {
   Expr* operand() const { return operand_list()->First(); }
 
   ItrTest( Graph* graph , std::uint32_t id , Expr* operand , IRInfo* info ):
-    Expr  (IRTYPE_ITR_TEST,id,graph,info)
+    Expr  (HIR_ITR_TEST,id,graph,info)
   {
     AddOperand(operand);
   }
@@ -1268,7 +1268,7 @@ class ItrDeref : public Expr {
   Expr* operand() const { return operand_list()->First(); }
 
   ItrDeref( Graph* graph , std::uint32_t id , Expr* operand , IRInfo* info ):
-    Expr   (IRTYPE_ITR_DEREF,id,graph,info)
+    Expr   (HIR_ITR_DEREF,id,graph,info)
   {
     AddOperand(operand);
   }
@@ -1349,7 +1349,7 @@ class WriteEffectPhi : public MemoryWrite {
 class NoReadEffect: public MemoryRead {
  public:
   inline static NoReadEffect* New( Graph* );
-  NoReadEffect( Graph* graph , std::uint32_t id ): MemoryRead(IRTYPE_NO_READ_EFFECT,id,graph,NULL) {}
+  NoReadEffect( Graph* graph , std::uint32_t id ): MemoryRead(HIR_NO_READ_EFFECT,id,graph,NULL) {}
  private:
   LAVA_DISALLOW_COPY_AND_ASSIGN(NoReadEffect);
 };
@@ -1357,7 +1357,7 @@ class NoReadEffect: public MemoryRead {
 class NoWriteEffect: public MemoryWrite {
  public:
   inline static NoWriteEffect* New( Graph* );
-  NoWriteEffect( Graph* graph , std::uint32_t id ): MemoryWrite(IRTYPE_NO_WRITE_EFFECT,id,graph,NULL) {}
+  NoWriteEffect( Graph* graph , std::uint32_t id ): MemoryWrite(HIR_NO_WRITE_EFFECT,id,graph,NULL) {}
  private:
   LAVA_DISALLOW_COPY_AND_ASSIGN(NoWriteEffect);
 };
@@ -1369,7 +1369,7 @@ class Call : public Expr {
  public:
   inline static Call* New( Graph* graph , Expr* , std::uint8_t , std::uint8_t , IRInfo* );
   Call( Graph* graph , std::uint32_t id , Expr* obj , std::uint8_t base , std::uint8_t narg , IRInfo* info ):
-    Expr  (IRTYPE_CALL,id,graph,info),
+    Expr  (HIR_CALL,id,graph,info),
     base_ (base),
     narg_ (narg)
   {
@@ -1405,7 +1405,7 @@ class ICall : public Expr {
   virtual bool Equal( const Expr* ) const;
 
   ICall( Graph* graph , std::uint32_t id , interpreter::IntrinsicCall ic , bool tail , IRInfo* info ):
-    Expr(IRTYPE_ICALL,id,graph,info),
+    Expr(HIR_ICALL,id,graph,info),
     ic_ (ic),
     tail_call_(tail)
   {}
@@ -1430,7 +1430,7 @@ class Projection : public Expr {
   // needs to be projected
   std::uint32_t index() const { return index_; }
   Projection( Graph* graph , std::uint32_t id , Expr* operand , std::uint32_t index , IRInfo* info ):
-    Expr  (IRTYPE_PROJECTION,id,graph,info),
+    Expr  (HIR_PROJECTION,id,graph,info),
     index_(index)
   {
     AddOperand(operand);
@@ -1450,7 +1450,7 @@ class InitCls : public Expr {
  public:
   inline static InitCls* New( Graph* , Expr* , IRInfo* );
   InitCls( Graph* graph , std::uint32_t id , Expr* key , IRInfo* info ):
-    Expr (IRTYPE_INIT_CLS,id,graph,info)
+    Expr (HIR_INIT_CLS,id,graph,info)
   {
     AddOperand(key);
   }
@@ -1472,7 +1472,7 @@ class OSRLoad : public Expr {
     return that->IsOSRLoad() && (that->AsOSRLoad()->index() == index());
   }
   OSRLoad( Graph* graph , std::uint32_t id , std::uint32_t index ):
-    Expr  ( IRTYPE_OSR_LOAD , id , graph , NULL ),
+    Expr  ( HIR_OSR_LOAD , id , graph , NULL ),
     index_(index)
   {}
  private:
@@ -1504,7 +1504,7 @@ class Checkpoint : public Expr {
   // add a StackSlot into the checkpoint
   inline void AddStackSlot( Expr* , std::uint32_t );
   Checkpoint( Graph* graph , std::uint32_t id ):
-    Expr(IRTYPE_CHECKPOINT,id,graph,NULL)
+    Expr(HIR_CHECKPOINT,id,graph,NULL)
   {}
  private:
   LAVA_DISALLOW_COPY_AND_ASSIGN(Checkpoint)
@@ -1523,7 +1523,7 @@ class StackSlot : public Expr {
   Expr* expr() const { return operand_list()->First(); }
 
   StackSlot( Graph* graph , std::uint32_t id , Expr* expr , std::uint32_t index ):
-    Expr(IRTYPE_STACK_SLOT,id,graph,NULL),
+    Expr(HIR_STACK_SLOT,id,graph,NULL),
     index_(index)
   {
     AddOperand(expr);
@@ -1547,7 +1547,7 @@ class TestType : public Expr {
   Expr* object() const { return operand_list()->First(); }
 
   TestType( Graph* graph , std::uint32_t id , TypeKind tc , Expr* obj, IRInfo* info ):
-    Expr(IRTYPE_TEST_TYPE,id,graph,info),
+    Expr(HIR_TEST_TYPE,id,graph,info),
     type_kind_(tc)
   {
     AddOperand(obj);
@@ -1567,7 +1567,7 @@ class TestListOOB : public Expr {
   Expr* index () const { return operand_list()->Last (); }
 
   TestListOOB( Graph* graph , std::uint32_t id , Expr* obj , Expr* idx , IRInfo* info ):
-    Expr(IRTYPE_TEST_LISTOOB,id,graph,info)
+    Expr(HIR_TEST_LISTOOB,id,graph,info)
   {
     AddOperand(obj);
     AddOperand(idx);
@@ -1587,7 +1587,7 @@ class Float64Negate  : public Expr {
   Expr* operand() const { return operand_list()->First(); }
 
   Float64Negate( Graph* graph , std::uint32_t id , Expr* opr , IRInfo* info ):
-    Expr(IRTYPE_FLOAT64_NEGATE,id,graph,info)
+    Expr(HIR_FLOAT64_NEGATE,id,graph,info)
   {
     AddOperand(opr);
   }
@@ -1624,7 +1624,7 @@ class Float64Arithmetic : public Binary , public detail::Float64BinaryGVNImpl<Fl
   using Binary::Operator;
   inline static Float64Arithmetic* New( Graph* , Expr*, Expr*, Operator, IRInfo* );
   Float64Arithmetic( Graph* graph , std::uint32_t id , Expr* lhs, Expr* rhs, Operator op, IRInfo* info ):
-    Binary(IRTYPE_FLOAT64_ARITHMETIC,graph,id,lhs,rhs,op,info)
+    Binary(HIR_FLOAT64_ARITHMETIC,graph,id,lhs,rhs,op,info)
   {
     lava_debug(NORMAL,lava_verify(Binary::IsArithmeticOperator(op)););
   }
@@ -1643,7 +1643,7 @@ class Float64Bitwise: public Binary , public detail::Float64BinaryGVNImpl<Float6
   using Binary::Operator;
   inline static Float64Bitwise* New( Graph* , Expr*, Expr*, Operator, IRInfo* );
   Float64Bitwise( Graph* graph , std::uint32_t id , Expr* lhs, Expr* rhs, Operator op, IRInfo* info ):
-    Binary(IRTYPE_FLOAT64_BITWISE,graph,id,lhs,rhs,op,info)
+    Binary(HIR_FLOAT64_BITWISE,graph,id,lhs,rhs,op,info)
   {
     lava_debug(NORMAL,lava_verify(Binary::IsBitwiseOperator(op)););
   }
@@ -1662,7 +1662,7 @@ class Float64Compare : public Binary , public detail::Float64BinaryGVNImpl<Float
   using Binary::Operator;
   inline static Float64Compare* New( Graph* , Expr* , Expr* , Operator, IRInfo* );
   Float64Compare( Graph* graph , std::uint32_t id , Expr* lhs , Expr* rhs , Operator op , IRInfo* info ):
-    Binary(IRTYPE_FLOAT64_COMPARE,graph,id,lhs,rhs,op,info)
+    Binary(HIR_FLOAT64_COMPARE,graph,id,lhs,rhs,op,info)
   {
     lava_debug(NORMAL,lava_verify(Binary::IsComparisonOperator(op)););
   }
@@ -1680,7 +1680,7 @@ class StringCompare : public Binary , public detail::Float64BinaryGVNImpl<String
   using Binary::Operator;
   inline static StringCompare* New( Graph* , Expr* , Expr* , Operator , IRInfo* );
   StringCompare( Graph* graph , std::uint32_t id , Expr* lhs , Expr* rhs , Operator op , IRInfo* info ):
-    Binary(IRTYPE_STRING_COMPARE,graph,id,lhs,rhs,op,info)
+    Binary(HIR_STRING_COMPARE,graph,id,lhs,rhs,op,info)
   {
     lava_debug(NORMAL,lava_verify(Binary::IsComparisonOperator(op)););
   }
@@ -1696,7 +1696,7 @@ class SStringEq : public Binary , public detail::Float64BinaryGVNImpl<SStringEq>
  public:
   inline static SStringEq* New( Graph* , Expr* , Expr* , IRInfo* );
   SStringEq( Graph* graph , std::uint32_t id , Expr* lhs , Expr* rhs , IRInfo* info ):
-    Binary(IRTYPE_SSTRING_EQ,graph,id,lhs,rhs,Binary::EQ,info)
+    Binary(HIR_SSTRING_EQ,graph,id,lhs,rhs,Binary::EQ,info)
   {}
 
  public:
@@ -1708,7 +1708,7 @@ class SStringNe : public Binary , public detail::Float64BinaryGVNImpl<SStringNe>
  public:
   inline static SStringNe* New( Graph* , Expr* , Expr* , IRInfo* );
   SStringNe( Graph* graph , std::uint32_t id , Expr* lhs , Expr* rhs , IRInfo* info ):
-    Binary(IRTYPE_SSTRING_EQ,graph,id,lhs,rhs,Binary::NE,info)
+    Binary(HIR_SSTRING_EQ,graph,id,lhs,rhs,Binary::NE,info)
   {}
 
  public:
@@ -1723,7 +1723,7 @@ class BooleanNot: public Expr {
   inline static BooleanNot* New( Graph* , Expr* , IRInfo* );
   Expr* operand() const { return operand_list()->First(); }
   BooleanNot( Graph* graph , std::uint32_t id , Expr* opr , IRInfo* info ):
-    Expr(IRTYPE_BOOLEAN_NOT,id,graph,info)
+    Expr(HIR_BOOLEAN_NOT,id,graph,info)
   {
     AddOperand(opr);
   }
@@ -1749,7 +1749,7 @@ class BooleanLogic : public Binary {
  public:
    inline static BooleanLogic* New( Graph* , Expr* , Expr* , Operator op , IRInfo* );
    BooleanLogic( Graph* graph , std::uint32_t id , Expr* lhs , Expr* rhs , Operator op, IRInfo* info ):
-     Binary(IRTYPE_BOOLEAN_LOGIC,graph,id,lhs,rhs,op,info)
+     Binary(HIR_BOOLEAN_LOGIC,graph,id,lhs,rhs,op,info)
   {
     lava_debug(NORMAL,lava_verify( GetTypeInference(lhs) == TPKIND_BOOLEAN &&
                                    GetTypeInference(rhs) == TPKIND_BOOLEAN ););
@@ -1774,7 +1774,7 @@ class ObjectGet : public PGet {
  public:
   inline static ObjectGet* New( Graph* , Expr* , Expr* , IRInfo* );
   ObjectGet( Graph* graph , std::uint32_t id , Expr* object , Expr* key, IRInfo* info ):
-    PGet(IRTYPE_OBJECT_GET,graph,id,object,key,info)
+    PGet(HIR_OBJECT_GET,graph,id,object,key,info)
   {}
 
  private:
@@ -1785,7 +1785,7 @@ class ObjectSet : public PSet {
  public:
   inline static ObjectSet* New( Graph* , Expr* , Expr* , Expr* , IRInfo* );
   ObjectSet( Graph* graph , std::uint32_t id , Expr* object , Expr* key, Expr* value, IRInfo* info ):
-    PSet(IRTYPE_OBJECT_SET,graph,id,object,key,value,info)
+    PSet(HIR_OBJECT_SET,graph,id,object,key,value,info)
   {}
 
  private:
@@ -1796,7 +1796,7 @@ class ListGet : public IGet {
  public:
   inline static ListGet* New( Graph* , Expr* , Expr* , IRInfo* );
   ListGet( Graph* graph , std::uint32_t id, Expr* object, Expr* index , IRInfo* info ):
-    IGet(IRTYPE_LIST_GET,graph,id,object,index,info)
+    IGet(HIR_LIST_GET,graph,id,object,index,info)
   {}
 
  private:
@@ -1807,7 +1807,7 @@ class ListSet : public ISet {
  public:
   inline static ListSet* New( Graph* , Expr* , Expr* , Expr* , IRInfo* );
   ListSet( Graph* graph , std::uint32_t id , Expr* object , Expr* index  , Expr* value  , IRInfo* info ):
-    ISet(IRTYPE_LIST_SET,graph,id,object,index,value,info)
+    ISet(HIR_LIST_SET,graph,id,object,index,value,info)
   {}
 
  private:
@@ -1823,7 +1823,7 @@ class Box : public Expr {
   Expr* value() const { return operand_list()->First(); }
   TypeKind type_kind() const { return type_kind_; }
   Box( Graph* graph , std::uint32_t id , Expr* object , TypeKind tk , IRInfo* info ):
-    Expr(IRTYPE_BOX,id,graph,info),
+    Expr(HIR_BOX,id,graph,info),
     type_kind_(tk)
   {
     AddOperand(object);
@@ -1853,7 +1853,7 @@ class Unbox : public Expr {
   Expr* value() const { return operand_list()->First(); }
   TypeKind type_kind() const { return type_kind_; }
   Unbox( Graph* graph , std::uint32_t id , Expr* object , TypeKind tk , IRInfo* info ):
-    Expr(IRTYPE_UNBOX,id,graph,info),
+    Expr(HIR_UNBOX,id,graph,info),
     type_kind_(tk)
   {
     AddOperand(object);
@@ -1895,7 +1895,7 @@ class CastToBoolean : public Expr {
   Expr* value() const { return operand_list()->First(); }
 
   CastToBoolean( Graph* graph , std::uint32_t id , Expr* value , IRInfo* info ):
-    Expr( IRTYPE_CAST_TO_BOOLEAN , id , graph , info )
+    Expr( HIR_CAST_TO_BOOLEAN , id , graph , info )
   { AddOperand(value); }
  private:
   LAVA_DISALLOW_COPY_AND_ASSIGN(CastToBoolean)
@@ -2049,7 +2049,7 @@ class Region : public ControlFlow {
  public:
   inline static Region* New( Graph* );
   inline static Region* New( Graph* , ControlFlow* );
-  Region( Graph* graph , std::uint32_t id ): ControlFlow(IRTYPE_REGION,id,graph) {}
+  Region( Graph* graph , std::uint32_t id ): ControlFlow(HIR_REGION,id,graph) {}
  private:
   LAVA_DISALLOW_COPY_AND_ASSIGN(Region)
 };
@@ -2073,7 +2073,7 @@ class LoopHeader : public ControlFlow {
   void set_merge( ControlFlow* merge ) { merge_ = merge; }
 
   LoopHeader( Graph* graph , std::uint32_t id , ControlFlow* region ):
-    ControlFlow(IRTYPE_LOOP_HEADER,id,graph,region)
+    ControlFlow(HIR_LOOP_HEADER,id,graph,region)
   {}
  private:
   ControlFlow* merge_;
@@ -2085,7 +2085,7 @@ class Loop : public ControlFlow {
   inline static Loop* New( Graph* );
 
   Loop( Graph* graph , std::uint32_t id ):
-    ControlFlow(IRTYPE_LOOP,id,graph)
+    ControlFlow(HIR_LOOP,id,graph)
   {}
 
  private:
@@ -2098,7 +2098,7 @@ class LoopExit : public ControlFlow {
   Expr* condition() const { return operand_list()->First(); }
 
   LoopExit( Graph* graph , std::uint32_t id , Expr* cond ):
-    ControlFlow(IRTYPE_LOOP_EXIT,id,graph)
+    ControlFlow(HIR_LOOP_EXIT,id,graph)
   {
     AddOperand(cond);
   }
@@ -2133,7 +2133,7 @@ class If : public ControlFlow {
   void set_merge( ControlFlow* merge ) { merge_ = merge; }
 
   If( Graph* graph , std::uint32_t id , Expr* cond , ControlFlow* region ):
-    ControlFlow(IRTYPE_IF,id,graph,region),
+    ControlFlow(HIR_IF,id,graph,region),
     merge_(NULL)
   {
     AddOperand(cond);
@@ -2152,7 +2152,7 @@ class IfTrue : public ControlFlow {
   inline static IfTrue* New( Graph* );
 
   IfTrue( Graph* graph , std::uint32_t id , ControlFlow* region ):
-    ControlFlow(IRTYPE_IF_TRUE,id,graph,region)
+    ControlFlow(HIR_IF_TRUE,id,graph,region)
   {}
 
  private:
@@ -2167,7 +2167,7 @@ class IfFalse: public ControlFlow {
   inline static IfFalse* New( Graph* );
 
   IfFalse( Graph* graph , std::uint32_t id , ControlFlow* region ):
-    ControlFlow(IRTYPE_IF_FALSE,id,graph,region)
+    ControlFlow(HIR_IF_FALSE,id,graph,region)
   {}
 
  private:
@@ -2189,7 +2189,7 @@ class Guard : public ControlFlow {
   Checkpoint* checkpoint() const { return operand_list()->Last()->AsCheckpoint(); }
 
   Guard( Graph* graph , std::uint32_t id , Expr* test , Checkpoint* cp , ControlFlow* region ):
-    ControlFlow(IRTYPE_GUARD,id,graph,region)
+    ControlFlow(HIR_GUARD,id,graph,region)
   {
     AddOperand(test);
     AddOperand(cp);
@@ -2206,7 +2206,7 @@ class Jump : public ControlFlow {
   inline bool TrySetTarget( const std::uint32_t* , ControlFlow* );
 
   Jump( Graph* graph , std::uint32_t id , ControlFlow* region , const std::uint32_t* bytecode_bc ):
-    ControlFlow(IRTYPE_JUMP,id,graph,region),
+    ControlFlow(HIR_JUMP,id,graph,region),
     target_(NULL),
     bytecode_pc_(bytecode_bc)
   {}
@@ -2225,7 +2225,7 @@ class Trap : public ControlFlow {
   Checkpoint* checkpoint() const { return operand_list()->First()->AsCheckpoint(); }
   Trap( Graph* graph , std::uint32_t id , Checkpoint* cp ,
                                           ControlFlow* region ):
-    ControlFlow(IRTYPE_TRAP,id,graph,region)
+    ControlFlow(HIR_TRAP,id,graph,region)
   {
     AddOperand(cp);
   }
@@ -2238,7 +2238,7 @@ class Trap : public ControlFlow {
 class Fail : public ControlFlow {
  public:
   inline static Fail* New( Graph* );
-  Fail( Graph* graph , std::uint32_t id ): ControlFlow(IRTYPE_FAIL,id,graph) {}
+  Fail( Graph* graph , std::uint32_t id ): ControlFlow(HIR_FAIL,id,graph) {}
  private:
   LAVA_DISALLOW_COPY_AND_ASSIGN(Fail)
 };
@@ -2250,7 +2250,7 @@ class Success : public ControlFlow {
   Expr* return_value() const { return operand_list()->First(); }
 
   Success( Graph* graph , std::uint32_t id ):
-    ControlFlow  (IRTYPE_SUCCESS,id,graph)
+    ControlFlow  (HIR_SUCCESS,id,graph)
   {}
 
  private:
@@ -2262,7 +2262,7 @@ class Return : public ControlFlow {
   inline static Return* New( Graph* , Expr* , ControlFlow* );
   Expr* value() const { return operand_list()->First(); }
   Return( Graph* graph , std::uint32_t id , Expr* value , ControlFlow* region ):
-    ControlFlow(IRTYPE_RETURN,id,graph,region)
+    ControlFlow(HIR_RETURN,id,graph,region)
   {
     AddOperand(value);
   }
@@ -2274,7 +2274,7 @@ class Return : public ControlFlow {
 class Start : public ControlFlow {
  public:
   inline static Start* New( Graph* );
-  Start( Graph* graph , std::uint32_t id ): ControlFlow(IRTYPE_START,id,graph) {}
+  Start( Graph* graph , std::uint32_t id ): ControlFlow(HIR_START,id,graph) {}
  private:
   LAVA_DISALLOW_COPY_AND_ASSIGN(Start)
 };
@@ -2285,7 +2285,7 @@ class End : public ControlFlow {
   Success* success() const { return backward_edge()->First()->AsSuccess(); }
   Fail*    fail()    const { return backward_edge()->Last ()->AsFail   (); }
   End( Graph* graph , std::uint32_t id , Success* s , Fail* f ):
-    ControlFlow(IRTYPE_END,id,graph)
+    ControlFlow(HIR_END,id,graph)
   {
     AddBackwardEdge(s);
     AddBackwardEdge(f);
@@ -2299,7 +2299,7 @@ class OSRStart : public ControlFlow {
   inline static OSRStart* New( Graph* );
 
   OSRStart( Graph* graph  , std::uint32_t id ):
-    ControlFlow(IRTYPE_OSR_START,id,graph)
+    ControlFlow(HIR_OSR_START,id,graph)
   {}
 
  private:
@@ -2314,7 +2314,7 @@ class OSREnd : public ControlFlow {
   Fail*    fail   () const { return backward_edge()->Last()->AsFail(); }
 
   OSREnd( Graph* graph , std::uint32_t id , Success* succ , Fail* f ):
-    ControlFlow(IRTYPE_OSR_END,id,graph)
+    ControlFlow(HIR_OSR_END,id,graph)
   {
     AddBackwardEdge(succ);
     AddBackwardEdge(f);

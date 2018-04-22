@@ -124,7 +124,7 @@ Predicate* MultiPredicate::MaybeCopy( PredicateType type , Expr* node ) {
 void MultiPredicate::DoConstruct  ( Predicate* range , Expr* node , Expr* v , bool is_union ) {
   lava_debug(NORMAL,lava_verify(range->type() == type_););
   switch(node->type()) {
-    case IRTYPE_FLOAT64_COMPARE:
+    case HIR_FLOAT64_COMPARE:
       {
         auto fcomp = node->AsFloat64Compare();
         auto var   = fcomp->lhs()->IsFloat64() ? fcomp->rhs() : fcomp->lhs() ;
@@ -134,7 +134,7 @@ void MultiPredicate::DoConstruct  ( Predicate* range , Expr* node , Expr* v , bo
         else         range->Intersect( fcomp->op() , cst );
       }
       break;
-    case IRTYPE_BOOLEAN_LOGIC:
+    case HIR_BOOLEAN_LOGIC:
       {
         auto bl    = node->AsBooleanLogic();
         auto temp  = NewPredicate(type_,NULL);
@@ -144,7 +144,7 @@ void MultiPredicate::DoConstruct  ( Predicate* range , Expr* node , Expr* v , bo
         else         range->Intersect(*temp);
       }
       break;
-    case IRTYPE_TEST_TYPE:
+    case HIR_TEST_TYPE:
       if(is_union) range->Union    (Binary::EQ,node);
       else         range->Intersect(Binary::EQ,node);
       break;
@@ -333,11 +333,11 @@ Expr* ConditionGroup::SimplifyBoolean( Expr* node ) {
 
 Expr* ConditionGroup::Simplify( Expr* node ) {
   switch(node->type()) {
-    case IRTYPE_FLOAT64_COMPARE:
+    case HIR_FLOAT64_COMPARE:
       return SimplifyF64Compare(node->AsFloat64Compare());
-    case IRTYPE_BOOLEAN_LOGIC:
+    case HIR_BOOLEAN_LOGIC:
       return SimplifyBooleanLogic(node->AsBooleanLogic());
-    case IRTYPE_TEST_TYPE:
+    case HIR_TEST_TYPE:
       return SimplifyTestType(node->AsTestType());
     default:
       return SimplifyBoolean(node);

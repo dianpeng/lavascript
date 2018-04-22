@@ -14,22 +14,22 @@ namespace {
 // returns false.
 bool InferPredicate( Expr* predicate , bool* output ) {
   switch(predicate->type()) {
-    case IRTYPE_BOOLEAN:
+    case HIR_BOOLEAN:
       *output = predicate->AsBoolean()->value();
       return true;
-    case IRTYPE_NIL:
+    case HIR_NIL:
       *output = false;
       return true;
-    case IRTYPE_FLOAT64:
-    case IRTYPE_LONG_STRING :
-    case IRTYPE_SMALL_STRING:
-    case IRTYPE_LIST:
-    case IRTYPE_OBJECT:
-    case IRTYPE_LOAD_CLS:
-    case IRTYPE_ITR_NEW:
-    case IRTYPE_FLOAT64_NEGATE:
-    case IRTYPE_FLOAT64_ARITHMETIC:
-    case IRTYPE_FLOAT64_BITWISE:
+    case HIR_FLOAT64:
+    case HIR_LONG_STRING :
+    case HIR_SMALL_STRING:
+    case HIR_LIST:
+    case HIR_OBJECT:
+    case HIR_LOAD_CLS:
+    case HIR_ITR_NEW:
+    case HIR_FLOAT64_NEGATE:
+    case HIR_FLOAT64_ARITHMETIC:
+    case HIR_FLOAT64_BITWISE:
       *output = true;
       return true;
     default:

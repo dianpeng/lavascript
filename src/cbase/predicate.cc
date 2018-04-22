@@ -49,12 +49,12 @@ bool Classifier::Check( Expr* node ) {
   if(node->HasSideEffect()) return Bailout();
 
   switch(node->type()) {
-    case IRTYPE_BOOLEAN_LOGIC:
+    case HIR_BOOLEAN_LOGIC:
       {
         auto l = node->AsBooleanLogic();
         return DoCheck(l->lhs(),l->rhs());
       }
-    case IRTYPE_FLOAT64_COMPARE:
+    case HIR_FLOAT64_COMPARE:
       {
         if(!CheckType(FLOAT64_PREDICATE)) return false;
         auto fcomp = node->AsFloat64Compare();
@@ -69,7 +69,7 @@ bool Classifier::Check( Expr* node ) {
         }
       }
       break;
-    case IRTYPE_TEST_TYPE:
+    case HIR_TEST_TYPE:
       {
         if(!CheckType(TYPE_PREDICATE)) return false;
         auto tt = node->AsTestType();

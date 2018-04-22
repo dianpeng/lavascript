@@ -6,6 +6,7 @@ namespace lavascript {
 namespace cbase {
 namespace hir {
 namespace {
+
 using namespace ::lavascript::interpreter;
 
 inline bool IsUnaryMinus( Expr* node ) {
@@ -168,7 +169,7 @@ Expr* SimplifyLogicAnd( Graph* graph , TypeKind lhs_type , TypeKind rhs_type , E
   (void)rhs_type;
   if(IsFalse(lhs,lhs_type)) { return Boolean::New(graph,false,irinfo()); }  // false && any ==> false
   if(IsTrue (lhs,lhs_type)) { return rhs; }                                 // true  && any ==> any
-  if(lhs->IsIdentical(rhs)) return lhs; // a && a ==> a
+  if(lhs->IsReplaceable(rhs)) return lhs; // a && a ==> a
   if(IsUnaryNot(lhs) && lhs->AsUnary()->operand() == rhs) {
     // !a && a ==> false
     return Boolean::New(graph,false,irinfo());
@@ -184,7 +185,7 @@ Expr* SimplifyLogicOr ( Graph* graph , TypeKind lhs_type , TypeKind rhs_type , E
                                                                                const IRInfoProvider& irinfo ) {
   if(IsTrue (lhs,lhs_type)) { return Boolean::New(graph,true,irinfo()); }  // true || any ==> true
   if(IsFalse(lhs,lhs_type)) { return rhs; }                                // false|| any ==> any
-  if(lhs->IsIdentical(rhs)) return lhs; // a || a ==> a
+  if(lhs->IsReplaceable(rhs)) return lhs; // a || a ==> a
   if(IsUnaryNot(lhs) && lhs->AsUnary()->operand() == rhs) {
     // !a || a ==> true
     return Boolean::New(graph,true,irinfo());
@@ -322,7 +323,7 @@ Expr* Fold( Graph* graph , Expr* cond , Expr* lhs , Expr* rhs , const IRInfoProv
 
   // 1. check if lhs and rhs are the same if so check if cond is side effect free
   //    if it is side effect free then just return lhs/rhs
-  if(lhs->IsIdentical(rhs) && !cond->HasSideEffect()) return lhs;
+  if(lhs->IsReplaceable(rhs) && !cond->HasSideEffect()) return lhs;
 
   // 2. check following cases
   // 1) value = cond ? true : false ==> value = cast_to_boolean(cond)

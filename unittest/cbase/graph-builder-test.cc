@@ -142,6 +142,7 @@ TEST(GraphBuilder,Basic) {
       a[1] = 20;
       g.c = 30;
       a[2] = 30;
+      a[x] = 20;
       return a[1] + a[2];
     );
 }

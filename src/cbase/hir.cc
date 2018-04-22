@@ -24,10 +24,13 @@ void Expr::Replace( Expr* another ) {
   }
   // 2. modify *this* if the node is a statement
   if(IsStatement()) {
-    auto region = statement_edge().region;
-    region->RemoveStatement(statement_edge());
+    auto region = stmt_.region;
+    region->RemoveStatement(stmt_);
     region->AddStatement(another);
+    stmt_.region = NULL;
   }
+  // 3. clear all the ref list since it is not referenced by any expression now
+  ref_list_.Clear();
 }
 
 bool Expr::RemoveRef( const OperandIterator& tar , Expr* node ) {

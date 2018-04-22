@@ -143,7 +143,6 @@ std::string Dominators::PrintToDotFormat() const {
     for( auto &e : dominators_ ) {
       formatter << "  " << GetNodeName(e.first) << "[color=red]\n";
     }
-
     // 2. this pass generate dominator relationship
     for( auto &e : dominators_ ) {
       auto &dset = e.second;
@@ -157,7 +156,6 @@ std::string Dominators::PrintToDotFormat() const {
     }
     formatter << "}\n";
   }
-
   {
     formatter << "digraph idom {\n";
 
@@ -171,7 +169,6 @@ std::string Dominators::PrintToDotFormat() const {
 
     formatter << "}\n";
   }
-
   return formatter.str();
 }
 

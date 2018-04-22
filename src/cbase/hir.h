@@ -290,7 +290,6 @@ struct PrototypeInfo : zone::ZoneObject {
 // Bunch of statements that are not used by any expression but have observable
 // effects. Example like : foo() , a free function call
 typedef zone::List<Expr*> StatementList;
-
 typedef StatementList::ForwardIterator StatementIterator;
 
 // This structure is held by *all* the expression. If the region field is not
@@ -374,6 +373,12 @@ class Node : public zone::ZoneObject {
   Graph* graph() const { return graph_; }
   // get the belonged zone object from graph
   inline zone::Zone* zone() const;
+  // check whether 2 nodes are same , pls do not use pointer comparison
+  // due to the sick cpp memory layout makes pointer not the same value
+  // even they are actually same object. If you want to do comparison ,
+  // do something like static_cast<Node*>(a) == static_cast<Node*>(b) which
+  // is the same as using IsSame function.
+  bool IsSame( Node* that ) const { return id() == that->id(); }
  public: // type check and cast
   template< typename T > bool Is() const { return type() == MapIRClassToIRType<T>::value; }
   template< typename T > inline T* As();
@@ -473,7 +478,6 @@ class GVNHashN {
 class Expr : public Node {
   static const std::uint32_t kHasSideEffect = 1;
   static const std::uint32_t kNoSideEffect  = 0;
-
  public: // GVN hash value and hash function
   virtual std::uint64_t GVNHash()        const { return GVNHash1(type_name(),id()); }
   virtual bool Equal( const Expr* that ) const { return this == that;       }
@@ -481,26 +485,24 @@ class Expr : public Node {
   // Default operation to test whether 2 nodes are identical or not. it should be prefered
   // when 2 nodes are compared against identity. it means if they are equal , then one node
   // can be used to replace other
-  bool IsIdentical( const Expr* that ) const {
+  bool IsReplaceable( const Expr* that ) const {
     if(!HasSideEffect() && !that->HasSideEffect())
       return this == that || Equal(that);
     return false;
   }
-
  public: // The statement in our IR is still an expression, we could use
          // following function to test whether it is an actual statement
          // pint to a certain region
-  bool  IsStatement() const { return stmt_.HasRef(); }
+  bool  IsStatement()                   const { return stmt_.HasRef(); }
   void  set_statement_edge ( const StatementEdge& st ) { stmt_= st; }
   const StatementEdge& statement_edge() const { return stmt_; }
  public: // patching function helps to mutate any def-use and use-def
-
   // Replace *this* node with the input expression node. This replace
   // will only change all the node that *reference* this node but not
   // touch all the operands' reference list
   virtual void Replace( Expr* );
  public:
-  // Operand list
+  // Operand list ----------------------------------------------------------
   //
   // This list returns a list of operands used by this Expr/IR node. Most
   // of time operand_list will return at most 3 operands except for call
@@ -510,8 +512,8 @@ class Expr : public Node {
   // it will take care of the input node's ref list as well
   inline void AddOperand( Expr* node );
   // Replace an existed operand with input operand at position
-  inline void SetOperand( std::size_t , Expr* );
-  // Effect list
+  inline void ReplaceOperand( std::size_t , Expr* );
+  // Effect list -----------------------------------------------------------
   // Used to develop dependency between expression which cannot be expressed
   // as data flow operation. Mainly used to order certain operations
   //
@@ -528,7 +530,7 @@ class Expr : public Node {
   // this function should be invoked with cautious since it is time costy due to
   // the linear finding internally
   void AddEffectIfNotExist( Expr* );
-  // Reference list
+  // Reference list -------------------------------------------------------
   //
   // This list returns a list of Ref object which allow user to
   //   1) get a list of expression that uses this expression, ie who uses me
@@ -540,30 +542,7 @@ class Expr : public Node {
     ref_list_.PushBack(zone(),OperandRef(iter,who_uses_me));
   }
   // Remove a reference from the reference list whose ID == itr
-  bool RemoveRef( const OperandIterator& itr , Expr* );
- public:
-  // check if this expression node has side effect if it is used as operand
-  inline bool IsMemoryWrite() const;
-  inline bool IsMemoryRead () const;
-  inline bool IsMemoryOp   () const;
-  // cast
-  inline MemoryWrite*       AsMemoryWrite();
-  inline const MemoryWrite* AsMemoryWrite() const;
-  inline MemoryRead *       AsMemoryRead ();
-  inline const MemoryRead*  AsMemoryRead () const;
-  inline MemoryOp*          AsMemoryOp   ();
-  inline const MemoryOp*    AsMemoryOp   () const;
-
-  // check if this expression node is a memory node
-  inline bool IsMemoryNode () const;
-  // cast
-  inline MemoryNode*       AsMemoryNode();
-  inline const MemoryNode* AsMemoryNode() const;
-  // check if this expression node is either NoMemoryRead or NoMemoryWrite
-  inline bool IsNoMemoryEffectNode() const;
-  // check if this node is any sort of Phi node , this includes normal expression
-  // phi , ie Phi or read/write effect phi node
-  inline bool IsPhiNode    () const;
+  bool RemoveRef( const OperandIterator& itr , Expr* who_uses_me );
   // check if this expression is used by any other expression, basically
   // check whether ref_list is empty or not
   //
@@ -571,14 +550,34 @@ class Expr : public Node {
   // once a node is removed, we don't clean its ref_list but it is not used
   // essentially
   bool HasRef() const { return !ref_list()->empty(); }
+ public:
+  // check if this expression node has side effect if it is used as operand
+  inline bool IsMemoryWrite() const;
+  inline bool IsMemoryRead () const;
+  inline bool IsMemoryOp   () const;
+  // check if this expression node is a memory node
+  inline bool IsMemoryNode () const;
+  // check if this expression node is either NoMemoryRead or NoMemoryWrite
+  inline bool IsNoMemoryEffectNode() const;
+  // check if this node is any sort of Phi node , this includes normal expression
+  // phi , ie Phi or read/write effect phi node
+  inline bool IsPhiNode    () const;
   // Check if this Expression is a Leaf node or not
   inline bool IsLeaf()     const;
   bool        IsNoneLeaf() const { return !IsLeaf(); }
   IRInfo*     ir_info()    const { return ir_info_.ptr(); }
+  // cast
+  inline MemoryWrite*       AsMemoryWrite();
+  inline const MemoryWrite* AsMemoryWrite() const;
+  inline MemoryRead *       AsMemoryRead ();
+  inline const MemoryRead*  AsMemoryRead () const;
+  inline MemoryOp*          AsMemoryOp   ();
+  inline const MemoryOp*    AsMemoryOp   () const;
+  inline MemoryNode*        AsMemoryNode ();
+  inline const MemoryNode*  AsMemoryNode () const;
   // Check whether this expression has side effect , or namely one of its descendent
   // operands has a none empty effect list
   bool HasSideEffect()     const { return ir_info_.state() == kHasSideEffect; }
-
   // constructor
   Expr( IRType type , std::uint32_t id , Graph* graph , IRInfo* info ):
     Node             (type,id,graph),
@@ -797,8 +796,8 @@ class IRObjectKV : public Expr {
   inline static IRObjectKV* New( Graph* , Expr* , Expr* ,IRInfo* );
   Expr* key  () const { return operand_list()->First(); }
   Expr* value() const { return operand_list()->Last (); }
-  void set_key  ( Expr* key ) { lava_debug(NORMAL,lava_verify(key->IsString());); SetOperand(0,key); }
-  void set_value( Expr* val ) { SetOperand(1,val); }
+  void set_key  ( Expr* key ) { lava_debug(NORMAL,lava_verify(key->IsString());); ReplaceOperand(0,key); }
+  void set_value( Expr* val ) { ReplaceOperand(1,val); }
   IRObjectKV( Graph* graph , std::uint32_t id , Expr* key , Expr* val , IRInfo* info ):
     Expr(IRTYPE_OBJECT_KV,id,graph,info)
   {
@@ -1464,23 +1463,18 @@ class InitCls : public Expr {
 class OSRLoad : public Expr {
  public:
   inline static OSRLoad* New( Graph* , std::uint32_t );
-
   // Offset in sizeof(Value)/8 bytes to load this value from osr input buffer
   std::uint32_t index() const { return index_; }
-
+  virtual std::uint64_t GVNHash() const {
+    return GVNHash1(type_name(),index());
+  }
+  virtual bool Equal( const Expr* that ) const {
+    return that->IsOSRLoad() && (that->AsOSRLoad()->index() == index());
+  }
   OSRLoad( Graph* graph , std::uint32_t id , std::uint32_t index ):
     Expr  ( IRTYPE_OSR_LOAD , id , graph , NULL ),
     index_(index)
   {}
-
-  virtual std::uint64_t GVNHash() const {
-    return GVNHash1(type_name(),index());
-  }
-
-  virtual bool Equal( const Expr* that ) const {
-    return that->IsOSRLoad() && (that->AsOSRLoad()->index() == index());
-  }
-
  private:
   std::uint32_t index_;
   LAVA_DISALLOW_COPY_AND_ASSIGN(OSRLoad)
@@ -1898,7 +1892,6 @@ class CastToBoolean : public Expr {
   // function to create a cast to boolean but negate its end result. this operation
   // basically means negate(unbox(cast_to_boolean(node)))
   inline static Expr* NewNegateCast( Graph* , Expr* , IRInfo* );
-
   Expr* value() const { return operand_list()->First(); }
 
   CastToBoolean( Graph* graph , std::uint32_t id , Expr* value , IRInfo* info ):
@@ -2131,7 +2124,6 @@ class LoopExit : public ControlFlow {
 // 3) Unconditional jump
 // -----------------------------------------------------------------------
 
-
 class If : public ControlFlow {
  public:
   inline static If* New( Graph* , Expr* , ControlFlow* );
@@ -2355,7 +2347,7 @@ class Graph {
   zone::Zone*       zone()        { return &zone_; }
   const zone::Zone* zone()  const { return &zone_; }
   std::uint32_t     MaxID() const { return id_; }
-  std::uint32_t AssignID()        { return id_++; }
+  std::uint32_t     AssignID()    { return id_++; }
   // check whether the graph is OSR construction graph
   bool IsOSR() const {
     lava_debug(NORMAL,lava_verify(start_););
@@ -2385,7 +2377,6 @@ class Graph {
   friend class GraphBuilder;
   LAVA_DISALLOW_COPY_AND_ASSIGN(Graph)
 };
-
 
 // --------------------------------------------------------------------------
 // A simple stack tracks which node has been added into the stack. This avoids
@@ -2523,7 +2514,6 @@ class ControlFlowRPOIterator : public ControlFlowIterator {
   const Graph* graph_;
   ControlFlow* next_;
 };
-
 
 // -------------------------------------------------------------------------------
 // A graph's edge iterator. It will not guarantee any order except visit the edge

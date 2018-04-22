@@ -38,14 +38,15 @@ bool TryFoldObjectSet( Graph* graph , Expr* obj, Expr* key, Expr* value ) {
 
 } // namespace
 
-// fold of iget/pget is kind of hard due to the fact that we don't reflect the
-// mutation of field back to the list/object node itself but rely on the statement
-// list and dependency. so not too much can be done. but still we can fold iget
-// one it is side effect free.
-Expr* FoldIndexGet( Graph* graph , IGet* node ) {
-  if(!node->HasSideEffect()) {
-    auto obj = node->object();
-    auto idx = node->index ();
+// Precondition of folding memory node
+//
+// We use Node::HasRef function to test whether we can fold this object/list node
+// the HasRef tests true at least means this node is not referenced by any other node
+// which is at least telling us no alias existed and we can just do folding on top of
+// it without worrying about any other sort of dependency existed.
+
+Expr* FoldIndexGet( Graph* graph , Expr* obj , Expr* idx ) {
+  if(!obj->HasRef()) {
     // 1. try to dereference as a list literal index
     if(obj->IsIRList() && idx->IsFloat64()) {
       // a constant index into a list literal and also this node doesn't have any
@@ -66,45 +67,37 @@ bailout:
   return NULL;
 }
 
-Expr* FoldPropGet( Graph* graph , PGet* node ) {
-  if(!node->HasSideEffect()) {
-    auto obj = node->object();
-    auto prop= node->key   ();
+Expr* FoldPropGet( Graph* graph , Expr* obj , Expr* prop ) {
+  if(!obj->HasRef()) {
     if(auto r = TryFoldObjectGet(graph,obj,prop); r != NULL) return r;
   }
   return NULL;
 }
 
-bool FoldIndexSet( Graph* graph , ISet* node ) {
-  if(!node->HasSideEffect()) {
-    auto obj = node->object();
-    auto idx = node->index ();
-    auto val = node->value ();
+Expr* FoldIndexSet( Graph* graph , Expr* obj , Expr* idx , Expr* val ) {
+  if(!obj->HasRef()) {
     // 1. try list literal
     if(obj->IsIRList() && idx->IsFloat64()) {
       std::uint32_t iidx;
       if(!CastToIndex(idx->AsFloat64()->value(),&iidx)) goto bailout;
       auto list = obj->AsIRList();
       if(iidx >= list->Size()) goto bailout;
-      list->SetOperand( iidx , val ); // replace the old value with new value
+      list->ReplaceOperand( iidx , val ); // replace the old value with new value
       return list;
     }
     // 2. try object literal
-    if(TryFoldObjectSet(graph,obj,idx,val)) return true;
+    if(TryFoldObjectSet(graph,obj,idx,val)) return obj;
   }
 
 bailout:
-  return false;
+  return NULL;
 }
 
-bool FoldPropSet( Graph* graph , PSet* node ) {
-  if(!node->HasSideEffect()) {
-    auto obj = node->object();
-    auto idx = node->key   ();
-    auto val = node->value ();
-    if(TryFoldObjectSet(graph,obj,idx,val)) return true;
+Expr* FoldPropSet( Graph* graph , Expr* obj , Expr* idx , Expr* val ) {
+  if(!obj->HasRef()) {
+    if(TryFoldObjectSet(graph,obj,idx,val)) return obj;
   }
-  return false;
+  return NULL;
 }
 
 } // namespace hir

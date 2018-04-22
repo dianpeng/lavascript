@@ -648,21 +648,18 @@ Expr* GraphBuilder::LowerICall( ICall* node ) {
 //
 // ====================================================================
 Expr* GraphBuilder::NewPSet( Expr* object , Expr* key , Expr* value , IRInfo* ir_info ) {
+  if(auto n = FoldIndexSet(graph_,object,key,value); n) return n;
+
   auto ret = PSet::New(graph_,object,key,value,ir_info,region());
   env()->effect()->UpdateWriteEffect(ret);
-  if(!ret->HasSideEffect()) {
-    if(FoldPropSet(graph_,ret)) return ret;
-  }
   region()->AddStatement(ret);
   return ret;
 }
 
 Expr* GraphBuilder::NewPGet( Expr* object , Expr* key , IRInfo* ir_info ) {
+  if(auto n = FoldPropGet(graph_,object,key); n) return n;
   auto ret = PGet::New(graph_,object,key,ir_info,region());
   env()->effect()->AddReadEffect(ret);
-  if(!ret->HasSideEffect()) {
-    if(auto n = FoldPropGet(graph_,ret); n) return n;
-  }
   return ret;
 }
 
@@ -672,21 +669,18 @@ Expr* GraphBuilder::NewPGet( Expr* object , Expr* key , IRInfo* ir_info ) {
 //
 // ====================================================================
 Expr* GraphBuilder::NewISet( Expr* object, Expr* index, Expr* value, IRInfo* ir_info ) {
+  if(auto n = FoldIndexSet(graph_,object,index,value); n) return n;
+
   auto ret = ISet::New(graph_,object,index,value,ir_info,region());
   env()->effect()->UpdateWriteEffect(ret);
-  if(!ret->HasSideEffect()) {
-    if(FoldIndexSet(graph_,ret)) return ret;
-  }
   region()->AddStatement(ret);
   return ret;
 }
 
 Expr* GraphBuilder::NewIGet( Expr* object, Expr* index, IRInfo* ir_info ) {
+  if(auto n = FoldIndexGet(graph_,object,index); n) return n;
   auto ret = IGet::New(graph_,object,index,ir_info,region());
   env()->effect()->AddReadEffect(ret);
-  if(!ret->HasSideEffect()) {
-    if(auto n = FoldIndexGet(graph_,ret); n) return n;
-  }
   return ret;
 }
 
@@ -1165,9 +1159,7 @@ Expr* GraphBuilder::BuildLoopEndCondition( BytecodeIterator* itr , ControlFlow* 
   } else if(itr->opcode() == BC_FEND2) {
     std::uint8_t a1,a2,a3; std::uint32_t a4;
     itr->GetOperand(&a1,&a2,&a3,&a4);
-
-    Expr* induct = StackGet(a1);
-    lava_debug(NORMAL,lava_verify(induct->IsPhi()););
+    lava_debug(NORMAL,lava_verify(StackGet(a1)->IsPhi()););
     // the addition node will use the PHI node as its left hand side
     auto addition = NewBinary(StackGetSlot(a1),StackGetSlot(a3), Binary::ADD, itr->bytecode_location());
     // store the PHI node back to the slot

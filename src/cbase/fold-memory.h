@@ -6,10 +6,10 @@ namespace lavascript {
 namespace cbase      {
 namespace hir        {
 
-Expr* FoldIndexGet( Graph* , IGet* );
-Expr* FoldPropGet ( Graph* , PGet* );
-bool  FoldIndexSet( Graph* , ISet* );
-bool  FoldPropSet ( Graph* , PSet* );
+Expr* FoldIndexGet( Graph* , Expr* , Expr* );
+Expr* FoldPropGet ( Graph* , Expr* , Expr* );
+Expr* FoldIndexSet( Graph* , Expr* , Expr* , Expr* );
+Expr* FoldPropSet ( Graph* , Expr* , Expr* , Expr* );
 
 } // namespace hir
 } // namespace cbase

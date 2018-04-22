@@ -64,7 +64,7 @@ inline void Expr::AddOperand( Expr* node ) {
   if(node->HasSideEffect()) SetHasSideEffect();
 }
 
-inline void Expr::SetOperand( std::size_t index , Expr* node ) {
+inline void Expr::ReplaceOperand( std::size_t index , Expr* node ) {
   lava_debug(NORMAL,lava_verify(index < operand_list_.size()););
   auto itr(operand_list_.GetForwardIterator());
   lava_verify(itr.Advance(index));

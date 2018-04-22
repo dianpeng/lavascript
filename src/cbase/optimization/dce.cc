@@ -40,7 +40,6 @@ bool InferPredicate( Expr* predicate , bool* output ) {
 class DCEImpl {
  public:
   void Visit  ( Graph* );
-
  private:
   bool VisitIf( ControlFlow* );
   struct DCEBlock : public ::lavascript::zone::ZoneObject {
@@ -78,9 +77,7 @@ void DCEImpl::Visit( Graph* graph ) {
     // link the merged region back to the if_parent node
     auto merge = node->IsIf() ? node->AsIf()->merge() : node->AsLoopHeader()->merge();
     // remove the PHI node
-    for( auto itr(merge->operand_list()->GetForwardIterator());
-         itr.HasNext() ; itr.Move() ) {
-      auto n = itr.value();
+    lava_foreach( auto n , merge->operand_list()->GetForwardIterator() ) {
       if(n->IsPhi()) {
         auto phi = n->AsPhi();
         lava_debug(NORMAL,lava_verify(phi->operand_list()->size() == 2););

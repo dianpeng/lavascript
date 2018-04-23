@@ -136,8 +136,7 @@ class AssemblerInterpreter : public Interpreter {
     return false;
   }
 
-  virtual ~AssemblerInterpreter() {}
-
+  virtual ~AssemblerInterpreter();
  public:
   const void* dispatch_interp() const { return dispatch_interp_; }
   const void* dispatch_profile()const { return dispatch_profile_;}

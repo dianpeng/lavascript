@@ -3,18 +3,21 @@
 # Building Script for LavaScript
 #
 # -------------------------------------------------------------------------------
-PWD:=$(shell pwd)
-SOURCE=$(shell find src/ -type f -name "*.cc")
-INCLUDE:=$(shell find src/ -type f -name "*.h")
-OBJECT=${SOURCE:.cc=.o}
-TEST:=$(shell find unittest/ -type f -name "*-test.cc")
-TESTOBJECT:=${TEST:.cc=.t}
-CXX = g++
-SANITIZER=-fsanitize=address,undefined
-LUA=luajit
+PWD               =$(shell pwd)
+SOURCE            =$(shell find src/ -type f -name "*.cc")
+INCLUDE           =$(shell find src/ -type f -name "*.h")
+OBJECT            =${SOURCE:.cc=.o}
+TEST              =$(shell find unittest/ -type f -name "*-test.cc")
+TESTOBJECT        =${TEST:.cc=.t}
+CXX               = g++
+SANITIZER         =-fsanitize=address,undefined
+RUNTIME_DEBUG     :=-D_FORTIFY_SOURCE=2 -D_GLIBCXX_ASSERTIONS
+LUA               =luajit
 
-CXXFLAGS += -std=c++17
-
+# All interesting CXX flags needed to compile lavascript
+## c++17 support
+CXXFLAGS          += -std=c++17
+CXXFLAGS          += -Wall -pipe
 # -------------------------------------------------------------------------------
 #
 # Dependency flags
@@ -55,11 +58,12 @@ $(INTERP_OBJECT): $(INTERP_SOURCE)
 # Flags for different types of build
 #
 # -------------------------------------------------------------------------------
-RELEASE_FLAGS = -I$(PWD) -g3 -O3 -Wall
+
+RELEASE_FLAGS = -I$(PWD) -g3 -O3
 RELEASE_LIBS  =
 
 TEST_DEF = -DLAVASCRIPT_DEBUG_LEVEL=3
-TEST_FLAGS = -I$(PWD) -g3 -Wall $(TEST_DEF) $(SANITIZER)
+TEST_FLAGS = -I$(PWD) -g3 -Wall $(TEST_DEF) $(SANITIZER) $(RUNTIME_DEBUG)
 TEST_LIBS = -lgtest -lpthread -lm
 
 # -------------------------------------------------------------------------------
@@ -89,7 +93,7 @@ test: build_dep $(TESTOBJECT)
 #
 # -------------------------------------------------------------------------------
 release: CXXFLAGS += $(RELEASE_FLAGS)
-release: LDFLAGS += $(RELEASE_LIBS)
+release: LDFLAGS  += $(RELEASE_LIBS)
 
 release: build_dep $(OBJECT) $(INTERP_OBJECT)
 	ar rcs liblavascript.a $(OBJECT) $(INTERP_OBJECT)

@@ -320,11 +320,9 @@ Expr* Fold( Graph* graph , Expr* cond , Expr* lhs , Expr* rhs , const IRInfoProv
       }
       break;
   }
-
   // 1. check if lhs and rhs are the same if so check if cond is side effect free
   //    if it is side effect free then just return lhs/rhs
   if(lhs->IsReplaceable(rhs) && !cond->HasSideEffect()) return lhs;
-
   // 2. check following cases
   // 1) value = cond ? true : false ==> value = cast_to_boolean(cond)
   // 2) value = cond ? false: true  ==> value = cast_to_boolean(cond,negate)

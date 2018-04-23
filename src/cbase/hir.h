@@ -28,60 +28,60 @@ namespace hir {
 
 // Constant node
 #define CBASE_HIR_CONSTANT(__)                                         \
-  __(Float64,FLOAT64,"float64",true)                                   \
-  __(LString,LONG_STRING,"lstring",true)                               \
-  __(SString,SMALL_STRING,"small_string",true)                         \
-  __(Boolean,BOOLEAN,"boolean",true)                                   \
-  __(Nil,NIL,"null",true)
+  __(Float64,FLOAT64     ,"float64"     ,Leaf,NoEffect)                \
+  __(LString,LONG_STRING ,"lstring"     ,Leaf,NoEffect)                \
+  __(SString,SMALL_STRING,"small_string",Leaf,NoEffect)                \
+  __(Boolean,BOOLEAN     ,"boolean"     ,Leaf,NoEffect)                \
+  __(Nil    ,NIL         ,"null"        ,Leaf,NoEffect)
 
 // High level HIR node. Used to describe unttyped polymorphic operations
 #define CBASE_HIR_EXPRESSION_HIGH(__)                                  \
   /* compound */                                                       \
-  __(IRList,LIST,   "list",false)                                      \
-  __(IRObjectKV,OBJECT_KV,"object_kv",false)                           \
-  __(IRObject,OBJECT, "object",false)                                  \
+  __(IRList       ,LIST     ,"list"     ,NoLeaf,NoEffect)              \
+  __(IRObjectKV   ,OBJECT_KV,"object_kv",NoLeaf,NoEffect)              \
+  __(IRObject     ,OBJECT   ,"object"   ,NoLeaf,NoEffect)              \
   /* closure */                                                        \
-  __(LoadCls,LOAD_CLS,"load_cls",true)                                 \
+  __(LoadCls      ,LOAD_CLS ,"load_cls" ,Leaf,Effect)                  \
   /* argument node */                                                  \
-  __(Arg,ARG,"arg",true)                                               \
+  __(Arg          ,ARG      ,"arg"      ,Leaf,NoEffect)                \
   /* arithmetic/comparison node */                                     \
-  __(Unary,UNARY ,"unary",false)                                       \
-  __(Binary,BINARY,"binary",false)                                     \
-  __(Ternary,TERNARY,"ternary",false)                                  \
+  __(Unary        ,UNARY    ,"unary"    ,NoLeaf,NoEffect)              \
+  __(Binary       ,BINARY   ,"binary"   ,NoLeaf,Effect)                \
+  __(Ternary      ,TERNARY  ,"ternary"  ,NoLeaf,NoEffect)              \
   /* upvalue */                                                        \
-  __(UGet,UGET,"uval",true)                                            \
-  __(USet,USET  ,"uset",true)                                          \
+  __(UGet         ,UGET     ,"uval"     ,Leaf  ,NoEffect)              \
+  __(USet         ,USET     ,"uset"     ,Leaf  ,Effect)                \
   /* property/idx */                                                   \
-  __(PGet,PGET  ,"pget",false)                                         \
-  __(PSet,PSET  ,"pset",false)                                         \
-  __(IGet,IGET  ,"iget",false)                                         \
-  __(ISet,ISET  ,"iset",false)                                         \
+  __(PGet         ,PGET     ,"pget"     ,NoLeaf,NoEffect)              \
+  __(PSet         ,PSET     ,"pset"     ,NoLeaf,Effect)                \
+  __(IGet         ,IGET     ,"iget"     ,NoLeaf,NoEffect)              \
+  __(ISet         ,ISET     ,"iset"     ,NoLeaf,Effect)                \
   /* gget */                                                           \
-  __(GGet,GGET  , "gget",false)                                        \
-  __(GSet,GSET  , "gset",false)                                        \
+  __(GGet         ,GGET     ,"gget"     ,NoLeaf,NoEffect)              \
+  __(GSet         ,GSET     ,"gset"     ,NoLeaf,Effect)                \
   /* iterator */                                                       \
-  __(ItrNew ,ITR_NEW ,"itr_new",false)                                 \
-  __(ItrNext,ITR_NEXT,"itr_next",false)                                \
-  __(ItrTest,ITR_TEST,"itr_test",false)                                \
-  __(ItrDeref,ITR_DEREF,"itr_deref",false)                             \
+  __(ItrNew       ,ITR_NEW  ,"itr_new"  ,NoLeaf,NoEffect)              \
+  __(ItrNext      ,ITR_NEXT ,"itr_next" ,NoLeaf,NoEffect)              \
+  __(ItrTest      ,ITR_TEST ,"itr_test" ,NoLeaf,NoEffect)              \
+  __(ItrDeref     ,ITR_DEREF,"itr_deref",NoLeaf,NoEffect)              \
   /* call     */                                                       \
-  __(Call,CALL   ,"call",false)                                        \
+  __(Call         ,CALL     ,"call"     ,NoLeaf,Effect)                \
   /* intrinsic call */                                                 \
-  __(ICall,ICALL ,"icall",false)                                       \
+  __(ICall        ,ICALL    ,"icall"    ,NoLeaf,NoEffect)              \
   /* phi */                                                            \
-  __(Phi,PHI,"phi",false)                                              \
-  __(WriteEffectPhi,WRITE_EFFECT_PHI,"write_effect_phi",false)         \
-  __(ReadEffectPhi, READ_EFFECT_PHI ,"read_effect_phi" ,false)         \
-  __(NoReadEffect,NO_READ_EFFECT,"no_read_effect",true)                \
-  __(NoWriteEffect,NO_WRITE_EFFECT,"no_write_effect",true)             \
+  __(Phi           ,PHI             ,"phi"             ,NoLeaf,NoEffect) \
+  __(WriteEffectPhi,WRITE_EFFECT_PHI,"write_effect_phi",NoLeaf,NoEffect) \
+  __(ReadEffectPhi ,READ_EFFECT_PHI ,"read_effect_phi" ,NoLeaf,NoEffect) \
+  __(NoReadEffect  ,NO_READ_EFFECT  ,"no_read_effect"  ,Leaf  ,NoEffect) \
+  __(NoWriteEffect ,NO_WRITE_EFFECT ,"no_write_effect" ,Leaf  ,NoEffect) \
   /* statement */                                                      \
-  __(InitCls,INIT_CLS,"init_cls",false)                                \
-  __(Projection,PROJECTION,"projection",false)                         \
+  __(InitCls      ,INIT_CLS        ,"init_cls"  ,NoLeaf,Effect)        \
+  __(Projection   ,PROJECTION      ,"projection",NoLeaf,NoEffect)      \
   /* osr */                                                            \
-  __(OSRLoad,OSR_LOAD,"osr_load",true)                                 \
+  __(OSRLoad      ,OSR_LOAD        ,"osr_load"  ,Leaf,Effect)          \
   /* checkpoints */                                                    \
-  __(Checkpoint,CHECKPOINT,"checkpoint",false)                         \
-  __(StackSlot ,STACK_SLOT, "stackslot",false)
+  __(Checkpoint   ,CHECKPOINT      ,"checkpoint",NoLeaf,Effect)        \
+  __(StackSlot    ,STACK_SLOT      ,"stackslot" ,NoLeaf,NoEffect)
 
 /**
  * These arithmetic and compare node are used to do typed arithmetic
@@ -93,22 +93,22 @@ namespace hir {
  * itself is a typped node which produce unbox value.
  *
  */
-#define CBASE_HIR_EXPRESSION_LOW_ARITHMETIC_AND_COMPARE(__)           \
-  __(Float64Negate,FLOAT64_NEGATE,"float64_negate",false)             \
-  __(Float64Arithmetic,FLOAT64_ARITHMETIC,"float64_arithmetic",false) \
-  __(Float64Bitwise,FLOAT64_BITWISE,"float64_bitwise",false)          \
-  __(Float64Compare,FLOAT64_COMPARE,"float64_compare",false)          \
-  __(BooleanNot,BOOLEAN_NOT,"boolean_not",false)                      \
-  __(BooleanLogic ,BOOLEAN_LOGIC ,"boolean_logic" ,false)             \
-  __(StringCompare,STRING_COMPARE,"string_compare",false)             \
-  __(SStringEq,SSTRING_EQ,"sstring_eq",false)                         \
-  __(SStringNe,SSTRING_NE,"sstring_ne",false)                         \
+#define CBASE_HIR_EXPRESSION_LOW_ARITHMETIC_AND_COMPARE(__)                     \
+  __(Float64Negate    ,FLOAT64_NEGATE    ,"float64_negate"    ,NoLeaf,NoEffect) \
+  __(Float64Arithmetic,FLOAT64_ARITHMETIC,"float64_arithmetic",NoLeaf,NoEffect) \
+  __(Float64Bitwise   ,FLOAT64_BITWISE   ,"float64_bitwise"   ,NoLeaf,NoEffect) \
+  __(Float64Compare   ,FLOAT64_COMPARE   ,"float64_compare"   ,NoLeaf,NoEffect) \
+  __(BooleanNot       ,BOOLEAN_NOT       ,"boolean_not"       ,NoLeaf,NoEffect) \
+  __(BooleanLogic     ,BOOLEAN_LOGIC     ,"boolean_logic"     ,NoLeaf,NoEffect) \
+  __(StringCompare    ,STRING_COMPARE    ,"string_compare"    ,NoLeaf,NoEffect) \
+  __(SStringEq        ,SSTRING_EQ        ,"sstring_eq"        ,NoLeaf,NoEffect) \
+  __(SStringNe        ,SSTRING_NE        ,"sstring_ne"        ,NoLeaf,NoEffect) \
 
-#define CBASE_HIR_EXPRESSION_LOW_PROPERTY(__)                         \
-  __(ObjectGet    ,OBJECT_GET    ,"object_get"   ,false)              \
-  __(ObjectSet    ,OBJECT_SET    ,"object_set"   ,false)              \
-  __(ListGet      ,LIST_GET      ,"list_get"     ,false)              \
-  __(ListSet      ,LIST_SET      ,"list_set"     ,false)
+#define CBASE_HIR_EXPRESSION_LOW_PROPERTY(__)                          \
+  __(ObjectGet    ,OBJECT_GET    ,"object_get"   ,NoLeaf,NoEffect)     \
+  __(ObjectSet    ,OBJECT_SET    ,"object_set"   ,NoLeaf,Effect)       \
+  __(ListGet      ,LIST_GET      ,"list_get"     ,NoLeaf,NoEffect)     \
+  __(ListSet      ,LIST_SET      ,"list_set"     ,NoLeaf,Effect)
 
 // All the low HIR nodes
 #define CBASE_HIR_EXPRESSION_LOW(__)                                  \
@@ -122,8 +122,8 @@ namespace hir {
 // will be *normalized* into a TestType then we could just use predicate
 // to do inference and have null redundancy removal automatically
 #define CBASE_HIR_EXPRESSION_TEST(__)                                 \
-  __(TestType    ,TEST_TYPE      ,"test_type"      , false)           \
-  __(TestListOOB ,TEST_LISTOOB   ,"test_listobb"   , false)
+  __(TestType    ,TEST_TYPE      ,"test_type"      ,NoLeaf,NoEffect)  \
+  __(TestListOOB ,TEST_LISTOOB   ,"test_listobb"   ,NoLeaf,NoEffect)
 
 /**
  * Annotation
@@ -135,7 +135,7 @@ namespace hir {
  */
 
 #define CBASE_HIR_ANNOTATION(__)                                      \
-  __(TypeAnnotation,TYPE_ANNOTATION,"type_annotation",false)
+  __(TypeAnnotation,TYPE_ANNOTATION,"type_annotation",NoLeaf,NoEffect)
 
 /**
  * Box operation will wrap a value into the internal box representation
@@ -149,8 +149,8 @@ namespace hir {
  * It is added after the lowering phase of the HIR
  */
 #define CBASE_HIR_BOXOP(__)                                           \
-  __(Box,BOX,"box",false)                                             \
-  __(Unbox,UNBOX,"unbox",false)
+  __(Box,BOX,"box",NoLeaf)                                            \
+  __(Unbox,UNBOX,"unbox",NoLeaf)
 
 /**
  * Cast
@@ -159,7 +159,7 @@ namespace hir {
  * the compiler
  */
 #define CBASE_HIR_CAST(__)                                            \
-  __(CastToBoolean,CAST_TO_BOOLEAN,"cast_to_boolean",false)
+  __(CastToBoolean,CAST_TO_BOOLEAN,"cast_to_boolean",NoLeaf)
 
 // All the expression IR nodes
 #define CBASE_HIR_EXPRESSION(__)                                      \
@@ -173,24 +173,24 @@ namespace hir {
 
 // All the control flow IR nodes
 #define CBASE_HIR_CONTROL_FLOW(__)                                    \
-  __(Start,START,"start",false)                                       \
-  __(End,END  , "end" ,false)                                         \
-  __(LoopHeader,LOOP_HEADER,"loop_header",false)                      \
-  __(Loop,LOOP ,"loop",false)                                         \
-  __(LoopExit,LOOP_EXIT,"loop_exit",false)                            \
-  __(Guard,GUARD,"guard",false)                                       \
-  __(If,IF,"if",false)                                                \
-  __(IfTrue,IF_TRUE,"if_true",false)                                  \
-  __(IfFalse,IF_FALSE,"if_false",false)                               \
-  __(Jump,JUMP,"jump",false)                                          \
-  __(Fail ,FAIL,"fail" ,true)                                         \
-  __(Success,SUCCESS,"success",false)                                 \
-  __(Return,RETURN,"return",false)                                    \
-  __(Region,REGION,"region",false)                                    \
-  __(Trap,TRAP, "trap",false)                                         \
+  __(Start      ,START      ,"start"      ,NoLeaf,NoEffect)           \
+  __(End        ,END        ,"end"        ,NoLeaf,NoEffect)           \
+  __(LoopHeader ,LOOP_HEADER,"loop_header",NoLeaf,NoEffect)           \
+  __(Loop       ,LOOP       ,"loop"       ,NoLeaf,NoEffect)           \
+  __(LoopExit   ,LOOP_EXIT  ,"loop_exit"  ,NoLeaf,NoEffect)           \
+  __(Guard      ,GUARD      ,"guard"      ,NoLeaf,NoEffect)           \
+  __(If         ,IF         ,"if"         ,NoLeaf,NoEffect)           \
+  __(IfTrue     ,IF_TRUE    ,"if_true"    ,NoLeaf,NoEffect)           \
+  __(IfFalse    ,IF_FALSE   ,"if_false"   ,NoLeaf,NoEffect)           \
+  __(Jump       ,JUMP       ,"jump"       ,NoLeaf,NoEffect)           \
+  __(Fail       ,FAIL       ,"fail"       ,Leaf  ,NoEffect)           \
+  __(Success    ,SUCCESS    ,"success"    ,NoLeaf,NoEffect)           \
+  __(Return     ,RETURN     ,"return"     ,NoLeaf,NoEffect)           \
+  __(Region     ,REGION     ,"region"     ,NoLeaf,NoEffect)           \
+  __(Trap       ,TRAP       ,"trap"       ,NoLeaf,NoEffect)           \
   /* osr */                                                           \
-  __(OSRStart,OSR_START,"osr_start",false)                            \
-  __(OSREnd  ,OSR_END  ,"osr_end"  ,false)
+  __(OSRStart   ,OSR_START  ,"osr_start"  ,NoLeaf,NoEffect)           \
+  __(OSREnd     ,OSR_END    ,"osr_end"    ,NoLeaf,NoEffect)
 
 #define CBASE_HIR_LIST(__)                                            \
   CBASE_HIR_EXPRESSION(__)                                            \
@@ -389,17 +389,16 @@ class Node : public zone::ZoneObject {
   CBASE_HIR_LIST(__)
 #undef __ // __
 
-  bool IsString() const { return IsSString() || IsLString(); }
+  bool                           IsString() const { return IsSString() || IsLString(); }
   inline const zone::String& AsZoneString() const;
-  bool IsControlFlow() const { return IRTypeIsControlFlow(type()); }
-  inline ControlFlow* AsControlFlow();
+  bool                      IsControlFlow() const { return IRTypeIsControlFlow(type()); }
+  inline ControlFlow*       AsControlFlow();
   inline const ControlFlow* AsControlFlow() const;
-  bool IsExpr() const { return IRTypeIsExpr(type()); }
-  inline Expr* AsExpr();
-  inline const Expr* AsExpr() const;
+  bool                             IsExpr() const { return IRTypeIsExpr(type()); }
+  inline Expr*                     AsExpr();
+  inline const Expr*               AsExpr() const;
  protected:
   Node( IRType type , std::uint32_t id , Graph* graph ):type_(type),id_(id),graph_(graph) {}
-
  private:
   IRType        type_;
   std::uint32_t id_;
@@ -2558,16 +2557,6 @@ template< typename T , typename ...ARGS >
 inline Box* NewBoxNode( Graph* graph , TypeKind tk , IRInfo* irinfo , ARGS ...args ) {
   auto n = T::New(graph,args...);
   return Box::New(graph,n,tk,irinfo);
-}
-
-template< typename T >
-typename T::ForwardIterator FindNode( T& container , Node* node ) {
-  return container.FindIf([=]( Node* value ) { return node->IsIdentical(value); });
-}
-
-template< typename T >
-typename T::ConstForwardIterator FindNode( const T& container, Node* node ) {
-  return container.FindIf([=]( Node* value ) { return node->IsIdentical(value); });
 }
 
 // Create a unbox value from a node that has type inference.

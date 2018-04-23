@@ -79,7 +79,7 @@ inline void Expr::AddEffect ( Expr* node ) {
 }
 
 inline void Expr::AddEffectIfNotExist( Expr* node ) {
-  auto itr = FindNode(effect_list_,node);
+  auto itr = effect_list_.Find(node);
   if(itr.HasNext()) return;
   AddEffect(node);
 }
@@ -109,12 +109,16 @@ inline zone::Zone* Node::zone() const {
 }
 
 inline bool Expr::IsLeaf() const {
-#define __(A,B,C,D) case HIR_##B: return D;
+#define __(A,B,C,D,...) case HIR_##B: return D;
+#define Leaf   true
+#define NoLeaf false
   switch(type()) {
     CBASE_HIR_EXPRESSION(__)
     default: lava_die(); return false;
   }
-#undef __ // __
+#undef Leaf   // Leaf
+#undef NoLeaf // NoLeaf
+#undef __     // __
 }
 
 inline bool Expr::IsMemoryRead() const {
@@ -639,7 +643,7 @@ inline Region* Region::New( Graph* graph , ControlFlow* parent ) {
 }
 
 inline bool ControlFlow::RemoveOperand( Expr* node ) {
-  auto itr = FindNode(operand_list_,node);
+  auto itr = operand_list_.Find(node);
   if(itr.HasNext()) {
     // remove |this| from the node's reference list
     lava_verify(node->RemoveRef(itr,this));

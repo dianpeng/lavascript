@@ -4649,5 +4649,7 @@ bool AssemblerInterpreter::Run( Context* context , const Handle<Script>& script 
   return ret;
 }
 
+AssemblerInterpreter::~AssemblerInterpreter() {}
+
 } // namespace interpreter
 } // namespace lavascript

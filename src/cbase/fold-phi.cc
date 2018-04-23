@@ -14,16 +14,14 @@ Expr* FoldPhi( Graph* graph , Expr* lhs , Expr* rhs , ControlFlow* region , cons
     auto inode = region->AsIf();
     // 2. try to fold it as a ternary if the cond is side effect free
     auto cond = inode->condition(); // get the condition
-    if(!cond->HasSideEffect()) {
-      auto n = FoldTernary(graph,cond,lhs,rhs,irinfo);
-      if(n) return n;
-    }
+    auto    n = FoldTernary(graph,cond,lhs,rhs,irinfo);
+    if(n) return n;
   }
   return NULL;
 }
 
 Expr* FoldPhi( Phi* phi ) {
-  if(!phi->HasSideEffect() && phi->operand_list()->size() == 2) {
+  if(phi->operand_list()->size() == 2) {
     auto lhs = phi->operand_list()->First();
     auto rhs = phi->operand_list()->Last();
     if(lhs->IsReplaceable(rhs)) return lhs;

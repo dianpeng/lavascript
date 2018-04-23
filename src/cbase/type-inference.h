@@ -14,17 +14,11 @@
 namespace lavascript {
 namespace cbase      {
 namespace hir        {
-
 class Expr;
-class ICall;
 
-
-/**
- * Do a static type inference according to the node type and its implicit
- * indication. This is used to help us do speculative type assertion
- */
+// Do type inference based on TypeAnnotation node. The graph itself is annotated
+// with type already so no external information is needed to do type inference.
 TypeKind GetTypeInference( Expr* );
-
 
 } // namespace hir
 } // namespace cbase

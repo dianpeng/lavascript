@@ -13,54 +13,33 @@ namespace lavascript {
 class Context {
  public:
   inline Context();
-
- public:
-
   // ------------------------------------------------------------
   // GC field
-  GC* gc() {
-    return &gc_;
-  }
-
-  const GC* gc() const {
-    return &gc_;
-  }
-
+  GC*       gc()       { return &gc_; }
+  const GC* gc() const { return &gc_; }
   // ------------------------------------------------------------
   // Runtime pointer
-  interpreter::Runtime* runtime() {
-    return runtime_;
-  }
-
-  const interpreter::Runtime* runtime() const {
-    return runtime_;
-  }
-
+  interpreter::Runtime*       runtime()       { return runtime_; }
+  const interpreter::Runtime* runtime() const { return runtime_; }
   void PushCurrentRuntime( interpreter::Runtime* runtime ) {
     runtime_ = runtime;
   }
-
   void PopCurrentRuntime();
-
   // ------------------------------------------------------------
   // JIT hot conut data field
   compiler::JITHotCountData* hotcount_data() {
     return &hotcount_data_;
   }
-
   const compiler::JITHotCountData* hotcount_data() const {
     return &hotcount_data_;
   }
-
  private:
   // GC interfaces
   GC gc_;
-
   // current interpreter runtime. This field will be set if we are in
   // an interpreted frame or an interpreter is executed. Otherwise,it
   // is NULL
   interpreter::Runtime* runtime_;
-
   // hot count for recording JIT compiler's profile data
   compiler::JITHotCountData hotcount_data_;
 };

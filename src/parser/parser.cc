@@ -1,13 +1,10 @@
 #include "parser.h"
 #include "optimizer.h"
 #include "ast/ast.h"
-
 #include "src/zone/zone.h"
 #include "src/error-report.h"
 #include "src/util.h"
-
 #include <vector>
-
 
 namespace lavascript {
 namespace parser {

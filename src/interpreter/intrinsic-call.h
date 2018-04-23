@@ -20,27 +20,20 @@ namespace interpreter{
  */
 enum IntrinsicCall {
 #define __(A,B,...) INTRINSIC_CALL_##B,
-
   LAVASCRIPT_BUILTIN_FUNCTIONS(__)
-
 #undef __ // __
-
   SIZE_OF_INTRINSIC_CALL
 };
 
 // We cannot have more than 256 intrinsic call due to the limitation of bytecode
 static_assert( SIZE_OF_INTRINSIC_CALL <= kMaxIntrinsicCall );
-
 // map a intrinsic call's function name to the IntrinsicCall index, if no such
 // intrinsic call, then return SIZE_OF_INTRINSIC_CALL
 IntrinsicCall MapIntrinsicCallIndex( const char* );
-
 // get the argument count of intrinsic function call
 std::uint8_t  GetIntrinsicCallArgumentSize( IntrinsicCall );
-
 // get the intrinsic function call's name based on the intrinsic call index
 const char* GetIntrinsicCallName  ( IntrinsicCall );
-
 // get the intrinsic function call's error message
 const char* GetIntrinsicCallErrorMessage( IntrinsicCall );
 

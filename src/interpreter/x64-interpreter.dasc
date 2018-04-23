@@ -2607,19 +2607,12 @@ void GenBytecode( BuildContext* bctx, Bytecode bc ) {
     // -------------------------------------------------
     // Loading List/Object/Clousure
     //
-    //
     // For these bytecodes, no optimization is performed but
     // directly yield back to C++ function to do the job. It
     // has no points to optimize these cases since they are
     // small amount of bytecodes and also complicated to write
     // in assembly without too much gain
     //
-    //
-    // To reduce ICache stress, the decode routine is *not*
-    // placed inlined with each BC_XXX here but in the slow
-    // path. This is purposely to make the main part of
-    // interpreter to be small which helps about the icache
-    // footprint of hot code
     // ------------------------------------------------*/
     case BC_LOADLIST0:
       |=> bc:
@@ -3995,26 +3988,19 @@ void GenBytecode( BuildContext* bctx, Bytecode bc ) {
        */
       |  xor ARG2F,ARG2F
       |  mov qword [T0-24], ARG2F
-
       // set the needed flag
       |  set_flag
-
       // set the closure pointer back to *runtime* object
       |  mov qword [RUNTIME+RuntimeLayout::kCurClsOffset],RREG
-
       // get the *new* proto object
       |  mov PROTO , qword [LREG+ClosureLayout::kPrototypeOffset]
-
       // get the *new* code buffer starting pointer
       |  mov PC , qword [LREG+ClosureLayout::kCodeBufferOffset]
-
       // change the current context PROTO and PC register to the correct field
       // of the new closure
       |  mov STK   , T0               // set the new *stack*
       |  mov qword [RUNTIME+RuntimeLayout::kCurStackOffset], T0
-
       |  mov qword SAVED_PC, PC       // set the savedpc
-
       |  DispatchCheckJIT 1
 
       // stack overflow

@@ -149,8 +149,8 @@ namespace hir {
  * It is added after the lowering phase of the HIR
  */
 #define CBASE_HIR_BOXOP(__)                                           \
-  __(Box,BOX,"box",NoLeaf)                                            \
-  __(Unbox,UNBOX,"unbox",NoLeaf)
+  __(Box  ,BOX  ,"box"  ,NoLeaf,NoEffect)                             \
+  __(Unbox,UNBOX,"unbox",NoLeaf,NoEffect)
 
 /**
  * Cast
@@ -159,7 +159,7 @@ namespace hir {
  * the compiler
  */
 #define CBASE_HIR_CAST(__)                                            \
-  __(CastToBoolean,CAST_TO_BOOLEAN,"cast_to_boolean",NoLeaf)
+  __(CastToBoolean,CAST_TO_BOOLEAN,"cast_to_boolean",NoLeaf,NoEffect)
 
 // All the expression IR nodes
 #define CBASE_HIR_EXPRESSION(__)                                      \

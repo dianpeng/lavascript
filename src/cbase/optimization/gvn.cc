@@ -17,14 +17,14 @@ bool GVN::Perform( Graph* graph , HIRPass::Flag flag ) {
                                               // it makes no sense to have stack zone
   (void)flag;
 
-  DynamicBitSet                      visited(graph->MaxID());
-  ::lavascript::zone::StackZone<kStackSize>             zone;
+  ::lavascript::zone::StackZone<kStackSize>            zone;
+  ::lavascript::zone::OOLVector<bool>                  visited(&zone,graph->MaxID());
   ::lavascript::zone::Table<Expr*,Expr*,HIRExprHasher> table(&zone,kTableSize);
 
   lava_foreach( auto cf , ControlFlowRPOIterator(*graph) ) {
     lava_foreach( auto expr , cf->operand_list()->GetForwardIterator() ) {
     // all the operands node
-      if(!visited[expr->id()]) {
+      if(!visited.Get(&zone,expr->id())) {
         // number valuing
         lava_foreach( auto subexpr , ExprDFSIterator(*graph,expr) ) {
           auto itr = table.Find(subexpr);
@@ -39,7 +39,7 @@ bool GVN::Perform( Graph* graph , HIRPass::Flag flag ) {
           }
         }
         // mark it to be visited
-        visited[expr->id()] = true;
+        visited.Set(&zone,expr->id(),true);
       }
     }
   }

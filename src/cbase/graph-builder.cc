@@ -788,7 +788,7 @@ void GraphBuilder::GeneratePhi( ValueStack* dest , const ValueStack& lhs , const
   for( std::size_t i = base ; i < sz ; ++i ) {
     Expr* l = lhs[i];
     Expr* r = rhs[i];
-    dest->at(i) = NewPhi(l,r,region,info);
+    if(l && r) dest->at(i) = NewPhi(l,r,region,info);
   }
 }
 

@@ -10,7 +10,7 @@ namespace hir {
 const char* IRTypeGetName( IRType type ) {
 #define __(A,B,C,...) case HIR_##B: return C;
   switch(type) {
-    CBASE_IR_LIST(__)
+    CBASE_HIR_LIST(__)
     default: lava_die(); return NULL;
   }
 #undef __ // __
@@ -31,18 +31,28 @@ void Expr::Replace( Expr* another ) {
   }
   // 3. clear all the ref list since it is not referenced by any expression now
   ref_list_.Clear();
+  // 4. clear all the operands since this node is dead
+  ClearOperand();
 }
 
-bool Expr::RemoveRef( const OperandIterator& tar , Expr* node ) {
+bool Expr::RemoveRef( const OperandIterator& tar , Node* node ) {
   lava_debug(NORMAL,lava_verify(tar.value() == this););
   for( auto itr = ref_list_.GetForwardIterator(); itr.HasNext(); itr.Move() ) {
     auto &v = itr.value();
-    if(v.id == tar && v.node == node) {
+    if(v.id == tar && v.node->IsIdentical(node)) {
       ref_list_.Remove(itr);
       return true;
     }
   }
   return false;
+}
+
+void Expr::ClearOperand() {
+  for( auto itr = operand_list_.GetForwardIterator(); itr.HasNext(); itr.Move() ) {
+    auto n = itr.value();
+    lava_verify(n->RemoveRef(itr,this));
+  }
+  operand_list_.Clear();
 }
 
 IRList* IRList::Clone( Graph* graph , const IRList& that ) {
@@ -103,13 +113,15 @@ void ControlFlow::Replace( ControlFlow* node ) {
   // 2. transfer all the backward and forward edge to |node|
   node->forward_edge_.Merge(&forward_edge_);
   node->backward_edge_.Merge(&backward_edge_);
+  // 3. clear all operand from *this* node
+  ClearOperand();
 }
 
 void ControlFlow::RemoveBackwardEdge( ControlFlow* node ) {
-  auto itr = backward_edge_.Find(node);
+  auto itr = FindNode(backward_edge,node);
   lava_verify(itr.HasNext());
   {
-    auto i = node->forward_edge_.Find(this);
+    auto i = FindNode(node->forward_edge_,this);
     lava_verify(i.HasNext());
     node->forward_edge_.Remove(i);
   }
@@ -121,10 +133,10 @@ void ControlFlow::RemoveBackwardEdge( std::size_t index ) {
 }
 
 void ControlFlow::RemoveForwardEdge( ControlFlow* node ) {
-  auto itr = forward_edge_.Find(node);
+  auto itr = FindNode(forward_edge_,node);
   lava_verify(itr.HasNext());
   {
-    auto i = node->backward_edge_.Find(this);
+    auto i = FindNode(node->backward_edge_,this);
     lava_verify(i.HasNext());
     node->backward_edge_.Remove(i);
   }
@@ -139,6 +151,14 @@ void ControlFlow::MoveStatement( ControlFlow* cf ) {
   lava_foreach( auto &v , cf->statement_list()->GetForwardIterator() ) {
     AddStatement(v);
   }
+}
+
+void ControlFlow::ClearOperand() {
+  for( auto itr = operand_list_.GetForwardIterator(); itr.HasNext(); itr.Move() ) {
+    auto n = itr.value();
+    lava_verify(n->RemoveRef(itr,this));
+  }
+  operand_list_.Clear();
 }
 
 Graph::Graph():

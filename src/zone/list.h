@@ -90,6 +90,10 @@ template< typename T > class List : ZoneObject {
   typedef detail::Node<T> NodeType;
   typedef detail::NodeBase<NodeType> NodeBaseType;
  public:
+  typedef                T ValueType;
+  typedef       ValueType& ReferenceType;
+  typedef const ValueType& ConstReferenceType;
+
   static List* New( Zone* zone ) { return zone->New<List<T>>(); }
   List() : end_ () , size_(0) {}
   List( Zone* zone , const List& that ) : end_() , size_(0) { Assign(zone,this,that); }
@@ -154,15 +158,12 @@ template< typename T > class List : ZoneObject {
   // set a certain value to an index
   void Set( std::size_t , const T& );
 
-  ForwardIterator      FindIf( const std::function<bool (const T&) >& );
-
-  ConstForwardIterator FindIf( const std::function<bool (const T&) >& ) const;
-
-  ForwardIterator      Find( const T& value ) {
+  ForwardIterator      FindIf( const std::function<bool (ConstReferenceType) >& );
+  ConstForwardIterator FindIf( const std::function<bool (ConstReferenceType) >& ) const;
+  ForwardIterator      Find  ( const T& value ) {
     return FindIf([value]( const T& v ) { return v == value; });
   }
-
-  ConstForwardIterator Find( const T& value ) const {
+  ConstForwardIterator Find  ( const T& value ) const {
     return FindIf([value]( const T& v ) { return v == value; });
   }
 
@@ -302,12 +303,14 @@ void List<T>::Set( std::size_t index , const T& value ) {
 }
 
 template< typename T >
-typename List<T>::ForwardIterator List<T>::FindIf( const std::function<bool (const T&)>& predicate ) {
+typename List<T>::ForwardIterator List<T>::FindIf(
+    const std::function<bool (ConstReferenceType)>& predicate ) {
   return ::lavascript::FindIf(GetForwardIterator(),predicate);
 }
 
 template< typename T >
-typename List<T>::ConstForwardIterator List<T>::FindIf( const std::function<bool (const T&)>& predicate ) const {
+typename List<T>::ConstForwardIterator List<T>::FindIf(
+    const std::function<bool (ConstReferenceType)>& predicate ) const {
   return ::lavascript::FindIf(GetForwardIterator(),predicate);
 }
 

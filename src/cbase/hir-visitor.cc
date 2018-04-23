@@ -4,7 +4,6 @@ namespace cbase {
 namespace hir {
 
 ExprVisitor::~ExprVisitor() {}
-
 ControlFlowVisitor::~ControlFlowVisitor() {}
 
 } // namespace hir

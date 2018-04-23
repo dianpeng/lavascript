@@ -12,7 +12,7 @@ inline bool VisitExprNode( Expr* node , ExprVisitor* visitor ) {
 
 #define __(A,B,C,D) case HIR_##B: return visitor->Visit##A(node->As##A());
   switch(node->type()) {
-    CBASE_IR_EXPRESSION(__)
+    CBASE_HIR_EXPRESSION(__)
     default: lava_die(); return false;
   }
 #undef __ // __
@@ -23,7 +23,7 @@ inline bool VisitControlFlowNode( ControlFlow* node , ControlFlowVisitor* visito
 
 #define __(A,B,C,D) case HIR_##B: return visitor->Visit##A(node->As##A());
   switch(node->type()) {
-    CBASE_IR_CONTROL_FLOW(__)
+    CBASE_HIR_CONTROL_FLOW(__)
     default: lava_die(); return false;
   }
 #undef __ // __

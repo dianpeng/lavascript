@@ -16,7 +16,7 @@ namespace hir {
 class ExprVisitor {
  public:
 #define __(A,...) virtual bool Visit##A( A* expr ) { (void)expr; return true; }
-  CBASE_IR_EXPRESSION(__)
+  CBASE_HIR_EXPRESSION(__)
 #undef __ // __
   virtual ~ExprVisitor() = 0;
 };
@@ -24,7 +24,7 @@ class ExprVisitor {
 class ControlFlowVisitor {
  public:
 #define __(A,...) virtual bool Visit##A( A* node ) { (void)node; return true; }
-  CBASE_IR_CONTROL_FLOW(__)
+  CBASE_HIR_CONTROL_FLOW(__)
 #undef __ // __
   virtual ~ControlFlowVisitor() = 0;
 };

@@ -75,6 +75,10 @@ template< typename T >
 class Vector : ZoneObject {
   LAVASCRIPT_ZONE_CHECK_TYPE(T);
  public:
+  typedef                T ValueType;
+  typedef       ValueType& ReferenceType;
+  typedef const ValueType& ConstReferenceType;
+
   Vector();
   Vector( Zone* , std::size_t size );
   Vector( Zone* , const Vector& );
@@ -158,10 +162,10 @@ class Vector : ZoneObject {
   ForwardIterator Find       ( const T& value ) {
     return FindIf([=](const T& that) { return value == that; });
   }
-  ConstForwardIterator FindIf( const std::function<bool(const T&)>& predicate ) const {
+  ConstForwardIterator FindIf( const std::function<bool(ConstReferenceType)>& predicate ) const {
     return const_cast<Vector*>(this)->FindIf(predicate);
   }
-  ForwardIterator      FindIf( const std::function<bool(const T&)>& );
+  ForwardIterator      FindIf( const std::function<bool(ConstReferenceType)>& );
  public: // Set operation helper functions
   static void Union     ( Zone* , const Vector<T>& , const Vector<T>& , Vector<T>* );
   static void Intersect ( Zone* , const Vector<T>& , const Vector<T>& , Vector<T>* );
@@ -191,18 +195,18 @@ template< typename T >
 struct OOLVectorDefaultEnlargePolicy {
  public:
   // return enlarged size number
-  T GetSize( const T& value ) { auto idx = value ? value : 1 ; return idx*2; }
+  T GetSize( const T& value ) { auto idx = value ? value : 1; return idx*2; }
 };
 
 // A vector that will automatically enlarge array when an random index is provided.
 // Used for helping node tracking and construction
-template< typename T , typename Policy = OOLVectorDefaultEnlargePolicy<T>>
+template< typename T , typename Policy = OOLVectorDefaultEnlargePolicy<std::size_t>>
 class OOLVector : public Vector<T> {
   typedef Vector<T> Base;
  public:
   OOLVector( Zone* zone , std::size_t size = 0 ): Vector<T>(zone,size) {}
   template< typename IDX > T& Get( Zone* zone , const IDX& idx ) {
-    if(Base::size() <= idx) Resize(zone,Policy().GetSize(idx));
+    if(Base::size() <= idx) Base::Resize(zone,Policy().GetSize(idx));
     return Base::Index(static_cast<int>(idx));
   }
   template< typename IDX > const T& Get( Zone* zone , const IDX& idx ) const {
@@ -350,7 +354,7 @@ Vector<T>::Remove( ConstForwardIterator& start , ConstForwardIterator& end ) {
 }
 
 template< typename T > typename Vector<T>::ForwardIterator
-Vector<T>::FindIf( const std::function<bool (const T&)>& predicate ) {
+Vector<T>::FindIf( const std::function<bool (ConstReferenceType)>& predicate ) {
   return ::lavascript::FindIf(GetForwardIterator(),predicate);
 }
 

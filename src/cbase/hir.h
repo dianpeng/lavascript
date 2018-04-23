@@ -26,15 +26,16 @@ namespace lavascript {
 namespace cbase {
 namespace hir {
 
-// High level HIR node. Used to describe unttyped polymorphic
-// operations
-#define CBASE_IR_EXPRESSION_HIGH(__)                                   \
-  /* const    */                                                       \
+// Constant node
+#define CBASE_HIR_CONSTANT(__)                                         \
   __(Float64,FLOAT64,"float64",true)                                   \
   __(LString,LONG_STRING,"lstring",true)                               \
   __(SString,SMALL_STRING,"small_string",true)                         \
   __(Boolean,BOOLEAN,"boolean",true)                                   \
-  __(Nil,NIL,"null",true)                                              \
+  __(Nil,NIL,"null",true)
+
+// High level HIR node. Used to describe unttyped polymorphic operations
+#define CBASE_HIR_EXPRESSION_HIGH(__)                                  \
   /* compound */                                                       \
   __(IRList,LIST,   "list",false)                                      \
   __(IRObjectKV,OBJECT_KV,"object_kv",false)                           \
@@ -82,8 +83,6 @@ namespace hir {
   __(Checkpoint,CHECKPOINT,"checkpoint",false)                         \
   __(StackSlot ,STACK_SLOT, "stackslot",false)
 
-// Low level HIR node and they are fully typped or partially typped
-
 /**
  * These arithmetic and compare node are used to do typed arithmetic
  * or compare operations. It is used after we do speculative type guess.
@@ -94,7 +93,7 @@ namespace hir {
  * itself is a typped node which produce unbox value.
  *
  */
-#define CBASE_IR_EXPRESSION_LOW_ARITHMETIC_AND_COMPARE(__)            \
+#define CBASE_HIR_EXPRESSION_LOW_ARITHMETIC_AND_COMPARE(__)           \
   __(Float64Negate,FLOAT64_NEGATE,"float64_negate",false)             \
   __(Float64Arithmetic,FLOAT64_ARITHMETIC,"float64_arithmetic",false) \
   __(Float64Bitwise,FLOAT64_BITWISE,"float64_bitwise",false)          \
@@ -105,16 +104,16 @@ namespace hir {
   __(SStringEq,SSTRING_EQ,"sstring_eq",false)                         \
   __(SStringNe,SSTRING_NE,"sstring_ne",false)                         \
 
-#define CBASE_IR_EXPRESSION_LOW_PROPERTY(__)                          \
+#define CBASE_HIR_EXPRESSION_LOW_PROPERTY(__)                         \
   __(ObjectGet    ,OBJECT_GET    ,"object_get"   ,false)              \
   __(ObjectSet    ,OBJECT_SET    ,"object_set"   ,false)              \
   __(ListGet      ,LIST_GET      ,"list_get"     ,false)              \
   __(ListSet      ,LIST_SET      ,"list_set"     ,false)
 
 // All the low HIR nodes
-#define CBASE_IR_EXPRESSION_LOW(__)                                   \
-  CBASE_IR_EXPRESSION_LOW_ARITHMETIC_AND_COMPARE(__)                  \
-  CBASE_IR_EXPRESSION_LOW_PROPERTY(__)
+#define CBASE_HIR_EXPRESSION_LOW(__)                                  \
+  CBASE_HIR_EXPRESSION_LOW_ARITHMETIC_AND_COMPARE(__)                 \
+  CBASE_HIR_EXPRESSION_LOW_PROPERTY(__)
 
 // Guard conditional node , used to do type guess or speculative inline
 //
@@ -122,7 +121,7 @@ namespace hir {
 // any value. And during graph construction any null test , ie x == null,
 // will be *normalized* into a TestType then we could just use predicate
 // to do inference and have null redundancy removal automatically
-#define CBASE_IR_EXPRESSION_TEST(__)                                  \
+#define CBASE_HIR_EXPRESSION_TEST(__)                                 \
   __(TestType    ,TEST_TYPE      ,"test_type"      , false)           \
   __(TestListOOB ,TEST_LISTOOB   ,"test_listobb"   , false)
 
@@ -135,7 +134,7 @@ namespace hir {
  *
  */
 
-#define CBASE_IR_ANNOTATION(__)                                       \
+#define CBASE_HIR_ANNOTATION(__)                                      \
   __(TypeAnnotation,TYPE_ANNOTATION,"type_annotation",false)
 
 /**
@@ -149,7 +148,7 @@ namespace hir {
  *
  * It is added after the lowering phase of the HIR
  */
-#define CBASE_IR_BOXOP(__)                                            \
+#define CBASE_HIR_BOXOP(__)                                           \
   __(Box,BOX,"box",false)                                             \
   __(Unbox,UNBOX,"unbox",false)
 
@@ -159,20 +158,21 @@ namespace hir {
  * doesn't perform any test and should be guaranteed to be correct by
  * the compiler
  */
-#define CBASE_IR_CAST(__)                                             \
+#define CBASE_HIR_CAST(__)                                            \
   __(CastToBoolean,CAST_TO_BOOLEAN,"cast_to_boolean",false)
 
 // All the expression IR nodes
-#define CBASE_IR_EXPRESSION(__)                                       \
-  CBASE_IR_EXPRESSION_HIGH(__)                                        \
-  CBASE_IR_EXPRESSION_LOW (__)                                        \
-  CBASE_IR_EXPRESSION_TEST(__)                                        \
-  CBASE_IR_BOXOP(__)                                                  \
-  CBASE_IR_CAST (__)                                                  \
-  CBASE_IR_ANNOTATION(__)
+#define CBASE_HIR_EXPRESSION(__)                                      \
+  CBASE_HIR_CONSTANT(__)                                              \
+  CBASE_HIR_EXPRESSION_HIGH(__)                                       \
+  CBASE_HIR_EXPRESSION_LOW (__)                                       \
+  CBASE_HIR_EXPRESSION_TEST(__)                                       \
+  CBASE_HIR_BOXOP(__)                                                 \
+  CBASE_HIR_CAST (__)                                                 \
+  CBASE_HIR_ANNOTATION(__)
 
 // All the control flow IR nodes
-#define CBASE_IR_CONTROL_FLOW(__)                                     \
+#define CBASE_HIR_CONTROL_FLOW(__)                                    \
   __(Start,START,"start",false)                                       \
   __(End,END  , "end" ,false)                                         \
   __(LoopHeader,LOOP_HEADER,"loop_header",false)                      \
@@ -192,27 +192,27 @@ namespace hir {
   __(OSRStart,OSR_START,"osr_start",false)                            \
   __(OSREnd  ,OSR_END  ,"osr_end"  ,false)
 
-#define CBASE_IR_LIST(__)                                             \
-  CBASE_IR_EXPRESSION(__)                                             \
-  CBASE_IR_CONTROL_FLOW(__)
+#define CBASE_HIR_LIST(__)                                            \
+  CBASE_HIR_EXPRESSION(__)                                            \
+  CBASE_HIR_CONTROL_FLOW(__)
 
 enum IRType {
 #define __(A,B,...) HIR_##B,
   /** expression related IRType **/
-  CBASE_IR_EXPRESSION_START,
-  CBASE_IR_EXPRESSION(__)
-  CBASE_IR_EXPRESSION_END,
+  CBASE_HIR_EXPRESSION_START,
+  CBASE_HIR_EXPRESSION(__)
+  CBASE_HIR_EXPRESSION_END,
   /** control flow related IRType **/
-  CBASE_IR_CONTROL_FLOW_START,
-  CBASE_IR_CONTROL_FLOW(__)
-  CBASE_IR_CONTROL_FLOW_END
+  CBASE_HIR_CONTROL_FLOW_START,
+  CBASE_HIR_CONTROL_FLOW(__)
+  CBASE_HIR_CONTROL_FLOW_END
 #undef __ // __
 };
-#define SIZE_OF_IR (CBASE_IR_STMT_END-6)
+#define SIZE_OF_HIR (CBASE_HIR_STMT_END-6)
 
 // IR classes forward declaration
 #define __(A,...) class A;
-CBASE_IR_LIST(__)
+CBASE_HIR_LIST(__)
 #undef __ // __
 
 // IRType value static mapping
@@ -220,20 +220,20 @@ template< typename T > struct MapIRClassToIRType {};
 
 #define __(A,B,...)         \
   template<> struct MapIRClassToIRType<A> { static const IRType value = HIR_##B; };
-CBASE_IR_LIST(__)
+CBASE_HIR_LIST(__)
 #undef __ // __
 
 const char* IRTypeGetName( IRType );
 inline bool IRTypeIsExpr( IRType type ) {
-  return (type >= CBASE_IR_EXPRESSION_START && type <= CBASE_IR_EXPRESSION_END);
+  return (type >= CBASE_HIR_EXPRESSION_START && type <= CBASE_HIR_EXPRESSION_END);
 }
 inline bool IRTypeIsControlFlow( IRType type ) {
-  return (type >= CBASE_IR_CONTROL_FLOW_START && type <= CBASE_IR_CONTROL_FLOW_END);
+  return (type >= CBASE_HIR_CONTROL_FLOW_START && type <= CBASE_HIR_CONTROL_FLOW_END);
 }
 
 // Forward class declaration
 #define __(A,...) class A;
-CBASE_IR_LIST(__)
+CBASE_HIR_LIST(__)
 #undef __ // __
 
 class Graph;
@@ -255,7 +255,6 @@ class ControlFlow;
  * Some IR may have exactly same IRInfo object since one bytecode can be mapped
  * to multiple IR node in some cases.
  */
-
 class IRInfo {
  public:
   IRInfo( std::uint32_t method , const interpreter::BytecodeLocation& bc ):
@@ -272,9 +271,7 @@ class IRInfo {
 
 typedef std::function<IRInfo*()> IRInfoProvider;
 
-/**
- * Used to record each IR's corresponding prototype information
- */
+// Used to record each IR's corresponding prototype information
 struct PrototypeInfo : zone::ZoneObject {
   std::uint32_t base;
   Handle<Prototype> prototype;
@@ -377,19 +374,19 @@ class Node : public zone::ZoneObject {
   // due to the sick cpp memory layout makes pointer not the same value
   // even they are actually same object. If you want to do comparison ,
   // do something like static_cast<Node*>(a) == static_cast<Node*>(b) which
-  // is the same as using IsSame function.
-  bool IsSame( Node* that ) const { return id() == that->id(); }
+  // is the same as using IsIdentical function.
+  bool IsIdentical( const Node* that ) const { return id() == that->id(); }
  public: // type check and cast
   template< typename T > bool Is() const { return type() == MapIRClassToIRType<T>::value; }
   template< typename T > inline T* As();
   template< typename T > inline const T* As() const;
 
 #define __(A,B,...) bool Is##A() const { return type() == HIR_##B; }
-  CBASE_IR_LIST(__)
+  CBASE_HIR_LIST(__)
 #undef __ // __
 
 #define __(A,B,...) inline A* As##A(); inline const A* As##A() const;
-  CBASE_IR_LIST(__)
+  CBASE_HIR_LIST(__)
 #undef __ // __
 
   bool IsString() const { return IsSString() || IsLString(); }
@@ -478,18 +475,6 @@ class GVNHashN {
 class Expr : public Node {
   static const std::uint32_t kHasSideEffect = 1;
   static const std::uint32_t kNoSideEffect  = 0;
- public: // GVN hash value and hash function
-  virtual std::uint64_t GVNHash()        const { return GVNHash1(type_name(),id()); }
-  virtual bool Equal( const Expr* that ) const { return this == that;       }
- public:
-  // Default operation to test whether 2 nodes are identical or not. it should be prefered
-  // when 2 nodes are compared against identity. it means if they are equal , then one node
-  // can be used to replace other
-  bool IsReplaceable( const Expr* that ) const {
-    if(!HasSideEffect() && !that->HasSideEffect())
-      return this == that || Equal(that);
-    return false;
-  }
  public: // The statement in our IR is still an expression, we could use
          // following function to test whether it is an actual statement
          // pint to a certain region
@@ -498,9 +483,21 @@ class Expr : public Node {
   const StatementEdge& statement_edge() const { return stmt_; }
  public: // patching function helps to mutate any def-use and use-def
   // Replace *this* node with the input expression node. This replace
-  // will only change all the node that *reference* this node but not
-  // touch all the operands' reference list
+  // will modify all reference to |this| with reference to input node.
+  // After replacement, |this| node should be treated as *invalid* and
+  // are not supposed to be used again.
   virtual void Replace( Expr* );
+ public: // GVN hash value and hash function
+  virtual std::uint64_t GVNHash()        const { return GVNHash1(type_name(),id()); }
+  virtual bool Equal( const Expr* that ) const { return IsIdentical(that);          }
+  // Default operation to test whether 2 nodes are identical or not. it should be prefered
+  // when 2 nodes are compared against identity. it means if they are equal , then one node
+  // can be used to replace other
+  bool IsReplaceable( const Expr* that ) const {
+    if(!HasSideEffect() && !that->HasSideEffect())
+      return IsIdentical(that) || Equal(that);
+    return false;
+  }
  public:
   // Operand list ----------------------------------------------------------
   //
@@ -513,6 +510,8 @@ class Expr : public Node {
   inline void AddOperand( Expr* node );
   // Replace an existed operand with input operand at position
   inline void ReplaceOperand( std::size_t , Expr* );
+  // Clear all the operand inside of this node's operand list
+  void ClearOperand();
   // Effect list -----------------------------------------------------------
   // Used to develop dependency between expression which cannot be expressed
   // as data flow operation. Mainly used to order certain operations
@@ -542,7 +541,7 @@ class Expr : public Node {
     ref_list_.PushBack(zone(),OperandRef(iter,who_uses_me));
   }
   // Remove a reference from the reference list whose ID == itr
-  bool RemoveRef( const OperandIterator& itr , Expr* who_uses_me );
+  bool RemoveRef( const OperandIterator& itr , Node* who_uses_me );
   // check if this expression is used by any other expression, basically
   // check whether ref_list is empty or not
   //
@@ -663,12 +662,10 @@ class Arg : public MemoryNode {
  public:
   inline static Arg* New( Graph* , std::uint32_t );
   std::uint32_t index() const { return index_; }
-
   Arg( Graph* graph , std::uint32_t id , std::uint32_t index ):
     MemoryNode (HIR_ARG,id,graph,NULL),
     index_(index)
   {}
-
  private:
   std::uint32_t index_;
   LAVA_DISALLOW_COPY_AND_ASSIGN(Arg)
@@ -783,7 +780,6 @@ class IRList : public MemoryNode {
   {
     (void)size; // implicit indicated by the size of operand_list()
   }
-
   // Helper function to clone the IRList
   static IRList* Clone( Graph* , const IRList& );
   static IRList* CloneExceptLastOne( Graph* , const IRList& );
@@ -805,7 +801,6 @@ class IRObjectKV : public Expr {
     AddOperand(key);
     AddOperand(val);
   }
-
  private:
   LAVA_DISALLOW_COPY_AND_ASSIGN(IRObjectKV)
 };
@@ -857,14 +852,12 @@ class Unary : public Expr {
   Expr*       operand() const { return operand_list()->First(); }
   Operator       op  () const { return op_;      }
   const char* op_name() const { return GetOperatorName(op()); }
-
   Unary( Graph* graph , std::uint32_t id , Expr* opr , Operator op , IRInfo* info ):
     Expr  (HIR_UNARY,id,graph,info),
     op_   (op)
   {
     AddOperand(opr);
   }
-
  protected:
   Unary( IRType type , Graph* graph , std::uint32_t id , Expr* opr , Operator op , IRInfo* info ):
     Expr  (type,id,graph,info),
@@ -989,7 +982,8 @@ class USet : public Expr {
     return false;
   }
 
-  USet( Graph* graph , std::uint8_t id , std::uint8_t index , std::uint32_t method , Expr* value, IRInfo* info ):
+  USet( Graph* graph , std::uint8_t id , std::uint8_t index , std::uint32_t method , Expr* value,
+                                                                                     IRInfo* info ):
     Expr    (HIR_USET,id,graph,info),
     index_  (index),
     method_ (method)
@@ -1001,6 +995,7 @@ class USet : public Expr {
   std::uint32_t method_;
   LAVA_DISALLOW_COPY_AND_ASSIGN(USet)
 };
+
 // -------------------------------------------------------------------------
 // property set/get (side effect)
 // -------------------------------------------------------------------------
@@ -1034,7 +1029,6 @@ class PGet : public MemoryRead {
     AddOperand(object);
     AddOperand(index );
   }
-
  private:
   LAVA_DISALLOW_COPY_AND_ASSIGN(PGet)
 };
@@ -1047,9 +1041,7 @@ class PSet : public MemoryWrite {
   Expr* value () const { return operand_list()->Last (); }
  public:
   virtual std::uint64_t GVNHash() const {
-    return GVNHash3(type_name(),object()->GVNHash(),
-                                key()->GVNHash(),
-                                value()->GVNHash());
+    return GVNHash3(type_name(),object()->GVNHash(),key()->GVNHash(),value()->GVNHash());
   }
   virtual bool Equal( const Expr* that ) const {
     if(that->IsPSet()) {
@@ -1102,8 +1094,7 @@ class IGet : public MemoryRead {
   virtual bool Equal( const Expr* that ) const {
     if(that->IsIGet()) {
       auto that_iget = that->AsIGet();
-      return object()->Equal(that_iget->object()) &&
-             index ()->Equal(that_iget->index());
+      return object()->Equal(that_iget->object()) && index ()->Equal(that_iget->index());
     }
     return false;
   }
@@ -1128,9 +1119,7 @@ class ISet : public MemoryWrite {
   Expr* value () const { return operand_list()->Last (); }
 
   virtual std::uint64_t GVNHash() const {
-    return GVNHash3(type_name(),object()->GVNHash(),
-                                index ()->GVNHash(),
-                                value ()->GVNHash());
+    return GVNHash3(type_name(),object()->GVNHash(),index ()->GVNHash(),value ()->GVNHash());
   }
   virtual bool Eqaul( const Expr* that ) const {
     if(that->IsISet()) {
@@ -1176,7 +1165,6 @@ class GGet : public MemoryNode {
   {
     AddOperand(name);
   }
-
  private:
   LAVA_DISALLOW_COPY_AND_ASSIGN(GGet)
 };
@@ -1186,14 +1174,12 @@ class GSet : public Expr {
   inline static GSet* New( Graph* , Expr* key , Expr* value , IRInfo* , ControlFlow* );
   Expr* key () const { return operand_list()->First(); }
   Expr* value()const { return operand_list()->Last() ; }
-
   GSet( Graph* graph , std::uint32_t id , Expr* key , Expr* value , IRInfo* info ):
     Expr(HIR_GSET,id,graph,info)
   {
     AddOperand(key);
     AddOperand(value);
   }
-
  private:
   LAVA_DISALLOW_COPY_AND_ASSIGN(GSet)
 };
@@ -1205,13 +1191,11 @@ class ItrNew : public Expr {
  public:
   inline static ItrNew* New( Graph* , Expr* , IRInfo* , ControlFlow* );
   Expr* operand() const { return operand_list()->First(); }
-
   ItrNew( Graph* graph , std::uint32_t id , Expr* operand , IRInfo* info ):
     Expr  (HIR_ITR_NEW,id,graph,info)
   {
     AddOperand(operand);
   }
-
  private:
   LAVA_DISALLOW_COPY_AND_ASSIGN(ItrNew)
 };
@@ -1220,13 +1204,11 @@ class ItrNext : public Expr {
  public:
   inline static ItrNext* New( Graph* , Expr* , IRInfo* , ControlFlow* );
   Expr* operand() const { return operand_list()->First(); }
-
   ItrNext( Graph* graph , std::uint32_t id , Expr* operand , IRInfo* info ):
     Expr  (HIR_ITR_NEXT,id,graph,info)
   {
     AddOperand(operand);
   }
-
  private:
   LAVA_DISALLOW_COPY_AND_ASSIGN(ItrNext)
 };
@@ -1235,23 +1217,19 @@ class ItrTest : public Expr {
  public:
   inline static ItrTest* New( Graph* , Expr* , IRInfo* , ControlFlow* );
   Expr* operand() const { return operand_list()->First(); }
-
   ItrTest( Graph* graph , std::uint32_t id , Expr* operand , IRInfo* info ):
     Expr  (HIR_ITR_TEST,id,graph,info)
   {
     AddOperand(operand);
   }
-
   virtual std::uint64_t GVNHash() const {
     auto opr = operand()->GVNHash();
     if(!opr) return 0;
     return GVNHash1(type_name(),opr);
   }
-
   virtual bool Equal( const Expr* that ) const {
     return that->IsItrNew() && (operand()->Equal(that->AsItrNew()->operand()));
   }
-
  private:
   LAVA_DISALLOW_COPY_AND_ASSIGN(ItrTest)
 };
@@ -1262,17 +1240,13 @@ class ItrDeref : public Expr {
     PROJECTION_KEY = 0,
     PROJECTION_VAL
   };
-
   inline static ItrDeref* New( Graph* , Expr* , IRInfo* , ControlFlow* );
-
   Expr* operand() const { return operand_list()->First(); }
-
   ItrDeref( Graph* graph , std::uint32_t id , Expr* operand , IRInfo* info ):
     Expr   (HIR_ITR_DEREF,id,graph,info)
   {
     AddOperand(operand);
   }
-
  private:
   LAVA_DISALLOW_COPY_AND_ASSIGN(ItrDeref)
 };
@@ -1287,7 +1261,6 @@ class Phi : public Expr {
  public:
   inline static Phi* New( Graph* , ControlFlow* , IRInfo* );
   inline static Phi* New( Graph* , Expr* , Expr* , ControlFlow* , IRInfo* );
-
   // Remove the phi node from its belonged region. The reason this one is just
   // a static function is because this function *doesn't* touch its ref_list,
   // so its ref_list will still have its belonged region's reference there and
@@ -1552,27 +1525,22 @@ class TestType : public Expr {
   {
     AddOperand(obj);
   }
-
  private:
   TypeKind type_kind_;
-
   LAVA_DISALLOW_COPY_AND_ASSIGN(TestType)
 };
 
 class TestListOOB : public Expr {
  public:
   inline static TestListOOB* New( Graph* , Expr* , Expr* , IRInfo* );
-
   Expr* object() const { return operand_list()->First(); }
   Expr* index () const { return operand_list()->Last (); }
-
   TestListOOB( Graph* graph , std::uint32_t id , Expr* obj , Expr* idx , IRInfo* info ):
     Expr(HIR_TEST_LISTOOB,id,graph,info)
   {
     AddOperand(obj);
     AddOperand(idx);
   }
-
  private:
   LAVA_DISALLOW_COPY_AND_ASSIGN(TestListOOB)
 };
@@ -1585,13 +1553,11 @@ class Float64Negate  : public Expr {
  public:
   inline static Float64Negate* New( Graph* , Expr* , IRInfo* );
   Expr* operand() const { return operand_list()->First(); }
-
   Float64Negate( Graph* graph , std::uint32_t id , Expr* opr , IRInfo* info ):
     Expr(HIR_FLOAT64_NEGATE,id,graph,info)
   {
     AddOperand(opr);
   }
-
  public:
   virtual std::uint64_t GVNHash() const {
     return GVNHash1(type_name(),operand()->GVNHash());
@@ -1604,7 +1570,6 @@ class Float64Negate  : public Expr {
     }
     return false;
   }
-
  private:
   LAVA_DISALLOW_COPY_AND_ASSIGN(Float64Negate)
 };
@@ -1927,12 +1892,12 @@ class TypeAnnotation : public Expr {
 // -------------------------------------------------------------------------
 class ControlFlow : public Node {
  public:
-  // special case that only one backward edge we have
+  // Parental node
   ControlFlow* parent() const {
     lava_debug(NORMAL,lava_verify(backward_edge()->size() == 1););
     return backward_edge()->First();
   }
-  // backward
+  // Backward(Successor) ---------------------------------------------------
   const RegionList* backward_edge() const {
     return &backward_edge_;
   }
@@ -1943,7 +1908,7 @@ class ControlFlow : public Node {
   void RemoveBackwardEdge( ControlFlow* );
   void RemoveBackwardEdge( std::size_t index );
   void ClearBackwardEdge () { backward_edge_.Clear(); }
-  // forward
+  // Forward(Predecessor) --------------------------------------------------
   const RegionList* forward_edge() const {
     return &forward_edge_;
   }
@@ -1954,8 +1919,7 @@ class ControlFlow : public Node {
   void RemoveForwardEdge( ControlFlow* edge );
   void RemoveForwardEdge( std::size_t index );
   void ClearForwardEdge () { forward_edge_.Clear(); }
-
-  // reflist
+  // Reference List ---------------------------------------------------------
   const RegionRefList* ref_list() const {
     return &ref_list_;
   }
@@ -1963,9 +1927,8 @@ class ControlFlow : public Node {
   void AddRef( ControlFlow* who_uses_me , const RegionListIterator& iter ) {
     ref_list_.PushBack(zone(),RegionRef(iter,who_uses_me));
   }
-
+  // Statement -------------------------------------------------------------
   // Effective expression doesn't belong to certain expression chain
-  //
   // Like free function invocation, they are not part certain expression chain
   // but they have visiable effects.
   //
@@ -1983,9 +1946,7 @@ class ControlFlow : public Node {
     stmt_expr_.Remove(ee.iterator);
   }
   void MoveStatement( ControlFlow* );
-
-  // OperandList
-  //
+  // OperandList -----------------------------------------------------------
   // All control flow's related data input should be stored via this list
   // since this list supports expression substitution/replacement. It is
   // used in all optimization pass
@@ -1996,22 +1957,13 @@ class ControlFlow : public Node {
     auto itr = operand_list_.PushBack(zone(),node);
     node->AddRef(this,itr);
   }
-  bool RemoveOperand( Expr* node ) {
-    auto itr = operand_list_.Find(node);
-    if(itr.HasNext()) { operand_list_.Remove(itr); return true; }
-    return false;
-  }
+  bool RemoveOperand( Expr* node );
+  // Clear all the operand from this control flow node
+  void ClearOperand ();
  public:
-  /**
-   * This function will replace |this| node with another control flow
-   * node.
-   *
-   * NOTES:
-   *
-   * The replace function will only take care of the control flow edge.
-   * As with statement list and operand list , they will not be covered
-   * in this function
-   */
+  // Replace *this* with the input node. Internally this function only
+  // modifies the input and output edge for the input node. For operand
+  // list, the input node's operand list will be used.
   virtual void Replace( ControlFlow* );
  public:
   ControlFlow( IRType type , std::uint32_t id , Graph* graph , ControlFlow* parent = NULL ):
@@ -2034,7 +1986,6 @@ class ControlFlow : public Node {
     auto itr = forward_edge_.PushBack(zone(),cf);
     cf->AddRef(this,itr);
   }
-
  private:
   RegionList                 backward_edge_;
   RegionList                 forward_edge_;
@@ -2223,8 +2174,7 @@ class Trap : public ControlFlow {
  public:
   inline static Trap* New( Graph* , Checkpoint* , ControlFlow* );
   Checkpoint* checkpoint() const { return operand_list()->First()->AsCheckpoint(); }
-  Trap( Graph* graph , std::uint32_t id , Checkpoint* cp ,
-                                          ControlFlow* region ):
+  Trap( Graph* graph , std::uint32_t id , Checkpoint* cp , ControlFlow* region ):
     ControlFlow(HIR_TRAP,id,graph,region)
   {
     AddOperand(cp);
@@ -2608,6 +2558,16 @@ template< typename T , typename ...ARGS >
 inline Box* NewBoxNode( Graph* graph , TypeKind tk , IRInfo* irinfo , ARGS ...args ) {
   auto n = T::New(graph,args...);
   return Box::New(graph,n,tk,irinfo);
+}
+
+template< typename T >
+typename T::ForwardIterator FindNode( T& container , Node* node ) {
+  return container.FindIf([=]( Node* value ) { return node->IsIdentical(value); });
+}
+
+template< typename T >
+typename T::ConstForwardIterator FindNode( const T& container, Node* node ) {
+  return container.FindIf([=]( Node* value ) { return node->IsIdentical(value); });
 }
 
 // Create a unbox value from a node that has type inference.

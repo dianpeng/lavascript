@@ -108,11 +108,14 @@ class Table {
  public:
   static const std::size_t kDefaultCap = 4;
 
+  typedef                     K KeyType;
+  typedef                     V ValueType;
+  typedef            ValueType& ReferenceType;
+  typedef      const ValueType& ConstReferenceType;
+
   LAVASCRIPT_ZONE_CHECK_TYPE(K);
   LAVASCRIPT_ZONE_CHECK_TYPE(V);
 
-  typedef K KeyType;
-  typedef V ValueType;
   typedef Table<K,V,Trait> Self;
 
   // we will just do a memset(0) to the entry and treat it as initialized

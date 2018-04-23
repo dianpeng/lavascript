@@ -10,9 +10,7 @@ namespace detail {
 template< typename T >
 std::uint64_t Float64BinaryGVNImpl<T>::GVNHashImpl() const {
   auto self = static_cast<const T*>(this);
-  return GVNHash3(self->type_name(),self->op(),
-                                    self->lhs()->GVNHash(),
-                                    self->rhs()->GVNHash());
+  return GVNHash3(self->type_name(),self->op(),self->lhs()->GVNHash(),self->rhs()->GVNHash());
 }
 
 template< typename T >
@@ -39,7 +37,7 @@ bool Float64BinaryGVNImpl<T>::EqualImpl( const Expr* that ) const {
     return static_cast<const A*>(this);       \
   }
 
-CBASE_IR_LIST(__)
+CBASE_HIR_LIST(__)
 
 #undef __ // __
 
@@ -54,8 +52,7 @@ inline const T* Node::As() const {
 
 inline const zone::String& Node::AsZoneString() const {
   lava_debug(NORMAL,lava_verify(IsString()););
-  return IsLString() ? *AsLString()->value() :
-                       *AsSString()->value() ;
+  return IsLString() ? *AsLString()->value() : *AsSString()->value() ;
 }
 
 inline void Expr::AddOperand( Expr* node ) {
@@ -82,7 +79,7 @@ inline void Expr::AddEffect ( Expr* node ) {
 }
 
 inline void Expr::AddEffectIfNotExist( Expr* node ) {
-  auto itr = effect_list()->Find(node);
+  auto itr = FindNode(effect_list_,node);
   if(itr.HasNext()) return;
   AddEffect(node);
 }
@@ -114,7 +111,7 @@ inline zone::Zone* Node::zone() const {
 inline bool Expr::IsLeaf() const {
 #define __(A,B,C,D) case HIR_##B: return D;
   switch(type()) {
-    CBASE_IR_EXPRESSION(__)
+    CBASE_HIR_EXPRESSION(__)
     default: lava_die(); return false;
   }
 #undef __ // __
@@ -639,6 +636,17 @@ inline Region* Region::New( Graph* graph , ControlFlow* parent ) {
   auto ret = New(graph);
   ret->AddBackwardEdge(parent);
   return ret;
+}
+
+inline bool ControlFlow::RemoveOperand( Expr* node ) {
+  auto itr = FindNode(operand_list_,node);
+  if(itr.HasNext()) {
+    // remove |this| from the node's reference list
+    lava_verify(node->RemoveRef(itr,this));
+    // remove the node from the operand list
+    operand_list_.Remove(itr);
+  }
+  return false;
 }
 
 inline LoopHeader* LoopHeader::New( Graph* graph , ControlFlow* parent ) {

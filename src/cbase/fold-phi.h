@@ -6,7 +6,7 @@ namespace lavascript {
 namespace cbase      {
 namespace hir        {
 
-Expr* FoldPhi( Graph* , Expr* , Expr* , ControlFlow* , const IRInfoProvider& );
+Expr* FoldPhi( Graph* , Expr* , Expr* , ControlFlow* );
 Expr* FoldPhi( Phi* );
 
 } // namespace hir

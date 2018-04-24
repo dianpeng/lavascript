@@ -1179,7 +1179,6 @@ struct ClosureLayout {
  * Extension is the only interfaces that user can be used to extend the whole world
  * of lavascript. An extension is a specialized HeapObject that is used to customization.
  */
-
 class LAVASCRIPT_OBJECT_ALIGN Extension : public HeapObject {
  public:
    // Arithmetic handler for extension.
@@ -1189,7 +1188,6 @@ class LAVASCRIPT_OBJECT_ALIGN Extension : public HeapObject {
   virtual bool Div( const Value& , const Value& , Value* , std::string* );
   virtual bool Mod( const Value& , const Value& , Value* , std::string* );
   virtual bool Pow( const Value& , const Value& , Value* , std::string* );
-
   // Comparison handler for extension
   virtual bool Lt ( const Value& , const Value& , Value* , std::string* );
   virtual bool Le ( const Value& , const Value& , Value* , std::string* );
@@ -1197,23 +1195,17 @@ class LAVASCRIPT_OBJECT_ALIGN Extension : public HeapObject {
   virtual bool Ge ( const Value& , const Value& , Value* , std::string* );
   virtual bool Eq ( const Value& , const Value& , Value* , std::string* );
   virtual bool Ne ( const Value& , const Value& , Value* , std::string* );
-
-  // Accessor
+  // Indexer/Field accessor
   virtual bool GetProp ( const Value& , const Value& , Value* , std::string* ) const;
   virtual bool SetProp ( const Value& , const Value& , const Value& , std::string* );
-
   // Iterator
   virtual Handle<Iterator> NewIterator( GC* , const Handle<Extension>& , std::string* ) const;
-
+  // Size of extension
   virtual bool Size( std::uint32_t* , std::string* ) const;
-
   // Function Call
   virtual bool Call( CallFrame* call_frame , std::string* error );
-
-
   // Unique type name
   virtual const char* name() const = 0;
-
  public:
   virtual ~Extension() = 0;
 };

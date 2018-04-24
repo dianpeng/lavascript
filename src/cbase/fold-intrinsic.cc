@@ -41,7 +41,7 @@ Expr* FoldICall( Graph* graph , ICall* node ) {
         double a1 ,a2;
         if(AsReal(node->operand_list()->Index(0),&a1) &&
            AsReal(node->operand_list()->Index(1),&a2)) {
-          return (Float64::New(graph,std::max(a1,a2),node->ir_info()));
+          return (Float64::New(graph,std::max(a1,a2)));
         }
       }
       break;
@@ -50,7 +50,7 @@ Expr* FoldICall( Graph* graph , ICall* node ) {
         double a1,a2;
         if(AsReal(node->operand_list()->Index(0),&a1) &&
            AsReal(node->operand_list()->Index(1),&a2)) {
-          return (Float64::New(graph,std::min(a1,a2),node->ir_info()));
+          return (Float64::New(graph,std::min(a1,a2)));
         }
       }
       break;
@@ -58,7 +58,7 @@ Expr* FoldICall( Graph* graph , ICall* node ) {
       {
         double a1;
         if(AsReal(node->operand_list()->Index(0),&a1)) {
-          return (Float64::New(graph,std::sqrt(a1),node->ir_info()));
+          return (Float64::New(graph,std::sqrt(a1)));
         }
       }
       break;
@@ -66,7 +66,7 @@ Expr* FoldICall( Graph* graph , ICall* node ) {
       {
         double a1;
         if(AsReal(node->operand_list()->Index(0),&a1)) {
-          return (Float64::New(graph,std::sin(a1),node->ir_info()));
+          return (Float64::New(graph,std::sin(a1)));
         }
       }
       break;
@@ -74,7 +74,7 @@ Expr* FoldICall( Graph* graph , ICall* node ) {
       {
         double a1;
         if(AsReal(node->operand_list()->Index(0),&a1)) {
-          return (Float64::New(graph,std::cos(a1),node->ir_info()));
+          return (Float64::New(graph,std::cos(a1)));
         }
       }
       break;
@@ -82,7 +82,7 @@ Expr* FoldICall( Graph* graph , ICall* node ) {
       {
         double a1;
         if(AsReal(node->operand_list()->Index(0),&a1)) {
-          return (Float64::New(graph,std::tan(a1),node->ir_info()));
+          return (Float64::New(graph,std::tan(a1)));
         }
       }
       break;
@@ -90,7 +90,7 @@ Expr* FoldICall( Graph* graph , ICall* node ) {
       {
         double a1;
         if(AsReal(node->operand_list()->Index(0),&a1)) {
-          return (Float64::New(graph,std::abs(a1),node->ir_info()));
+          return (Float64::New(graph,std::abs(a1)));
         }
       }
       break;
@@ -98,7 +98,7 @@ Expr* FoldICall( Graph* graph , ICall* node ) {
       {
         double a1;
         if(AsReal(node->operand_list()->Index(0),&a1)) {
-          return (Float64::New(graph,std::ceil(a1),node->ir_info()));
+          return (Float64::New(graph,std::ceil(a1)));
         }
       }
       break;
@@ -106,7 +106,7 @@ Expr* FoldICall( Graph* graph , ICall* node ) {
       {
         double a1;
         if(AsReal(node->operand_list()->Index(0),&a1)) {
-          return (Float64::New(graph,std::floor(a1),node->ir_info()));
+          return (Float64::New(graph,std::floor(a1)));
         }
       }
       break;
@@ -116,7 +116,7 @@ Expr* FoldICall( Graph* graph , ICall* node ) {
         std::uint8_t  a2;
         if(AsUInt32(node->operand_list()->Index(0),&a1) &&
            AsUInt8(node->operand_list()->Index(1),&a2)) {
-          return (Float64::New(graph,static_cast<double>(a1 << a2),node->ir_info()));
+          return (Float64::New(graph,static_cast<double>(a1 << a2)));
         }
       }
       break;
@@ -126,7 +126,7 @@ Expr* FoldICall( Graph* graph , ICall* node ) {
         std::uint8_t  a2;
         if(AsUInt32(node->operand_list()->Index(0),&a1) &&
            AsUInt8 (node->operand_list()->Index(1),&a2)) {
-          return (Float64::New(graph,static_cast<double>(a1 >> a2), node->ir_info()));
+          return (Float64::New(graph,static_cast<double>(a1 >> a2)));
         }
       }
       break;
@@ -136,7 +136,7 @@ Expr* FoldICall( Graph* graph , ICall* node ) {
         std::uint8_t  a2;
         if(AsUInt32(node->operand_list()->Index(0),&a1) &&
            AsUInt8 (node->operand_list()->Index(1),&a2)) {
-          return (Float64::New(graph,static_cast<double>(bits::BRol(a1,a2)),node->ir_info()));
+          return (Float64::New(graph,static_cast<double>(bits::BRol(a1,a2))));
         }
       }
       break;
@@ -146,7 +146,7 @@ Expr* FoldICall( Graph* graph , ICall* node ) {
         std::uint8_t  a2;
         if(AsUInt32(node->operand_list()->Index(0),&a1) &&
            AsUInt8 (node->operand_list()->Index(1),&a2)) {
-          return (Float64::New(graph,static_cast<double>(bits::BRor(a1,a2)),node->ir_info()));
+          return (Float64::New(graph,static_cast<double>(bits::BRor(a1,a2))));
         }
       }
       break;
@@ -156,7 +156,7 @@ Expr* FoldICall( Graph* graph , ICall* node ) {
         std::uint32_t a2;
         if(AsUInt32(node->operand_list()->Index(0),&a1) &&
            AsUInt32(node->operand_list()->Index(1),&a2)) {
-          return (Float64::New(graph,static_cast<double>((a1 & a2)),node->ir_info()));
+          return (Float64::New(graph,static_cast<double>((a1 & a2))));
         }
       }
       break;
@@ -166,7 +166,7 @@ Expr* FoldICall( Graph* graph , ICall* node ) {
         std::uint32_t a2;
         if(AsUInt32(node->operand_list()->Index(0),&a1) &&
            AsUInt32(node->operand_list()->Index(1),&a2)) {
-          return (Float64::New(graph,static_cast<double>(a1 | a2),node->ir_info()));
+          return (Float64::New(graph,static_cast<double>(a1 | a2)));
         }
       }
       break;
@@ -176,7 +176,7 @@ Expr* FoldICall( Graph* graph , ICall* node ) {
         std::uint32_t a2;
         if(AsUInt32(node->operand_list()->Index(0),&a1) &&
            AsUInt32(node->operand_list()->Index(1),&a2)) {
-          return (Float64::New(graph,static_cast<double>(a1 ^ a2),node->ir_info()));
+          return (Float64::New(graph,static_cast<double>(a1 ^ a2)));
         }
       }
       break;
@@ -185,19 +185,17 @@ Expr* FoldICall( Graph* graph , ICall* node ) {
         auto n1 = node->operand_list()->Index(0);
         switch(n1->type()) {
           case HIR_FLOAT64:
-            return Float64::New(graph, CastRealAndStoreAsReal<std::int32_t>(n1->AsFloat64()->value()), n1->ir_info());
+            return Float64::New(graph, CastRealAndStoreAsReal<std::int32_t>(n1->AsFloat64()->value()));
           case HIR_LONG_STRING: case HIR_SMALL_STRING:
             {
               double dv;
               if(LexicalCast(n1->AsZoneString().data(),&dv)) {
-                return Float64::New(graph,
-                                    CastRealAndStoreAsReal<std::int32_t>(dv),
-                                    n1->ir_info());
+                return Float64::New(graph,CastRealAndStoreAsReal<std::int32_t>(dv));
               }
             }
             break;
           case HIR_BOOLEAN:
-            return Float64::New(graph,n1->AsBoolean()->value() ? 1.0 : 0.0,n1->ir_info());
+            return Float64::New(graph,n1->AsBoolean()->value() ? 1.0 : 0.0);
           default:
             break;
         }
@@ -208,17 +206,17 @@ Expr* FoldICall( Graph* graph , ICall* node ) {
         auto n1 = node->operand_list()->Index(0);
         switch(n1->type()) {
           case HIR_FLOAT64:
-            return Float64::New(graph,n1->AsFloat64()->value(),n1->ir_info());
+            return Float64::New(graph,n1->AsFloat64()->value());
           case HIR_LONG_STRING: case HIR_SMALL_STRING:
             {
               double val;
               if(LexicalCast(n1->AsZoneString().data(),&val)) {
-                return Float64::New(graph,val,n1->ir_info());
+                return Float64::New(graph,val);
               }
             }
             break;
           case HIR_BOOLEAN:
-            return Float64::New(graph,n1->AsBoolean()->value() ? 1.0 : 0.0 , n1->ir_info());
+            return Float64::New(graph,n1->AsBoolean()->value() ? 1.0 : 0.0);
           default:
             break;
         }
@@ -229,13 +227,13 @@ Expr* FoldICall( Graph* graph , ICall* node ) {
         auto n1 = node->operand_list()->Index(0);
         switch(n1->type()) {
           case HIR_FLOAT64:
-            return NewStringFromReal( graph , n1->AsFloat64()->value() , n1->ir_info());
+            return NewStringFromReal( graph , n1->AsFloat64()->value());
           case HIR_LONG_STRING:
-            return LString::New(graph,n1->AsLString()->value(),n1->ir_info());
+            return LString::New(graph,n1->AsLString()->value());
           case HIR_SMALL_STRING:
-            return SString::New(graph,n1->AsSString()->value(),n1->ir_info());
+            return SString::New(graph,n1->AsSString()->value());
           case HIR_BOOLEAN:
-            return NewStringFromBoolean(graph,n1->AsBoolean()->value(),n1->ir_info());
+            return NewStringFromBoolean(graph,n1->AsBoolean()->value());
           default:
             break;
         }

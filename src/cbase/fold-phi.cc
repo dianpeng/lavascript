@@ -5,7 +5,7 @@ namespace lavascript {
 namespace cbase      {
 namespace hir        {
 
-Expr* FoldPhi( Graph* graph , Expr* lhs , Expr* rhs , ControlFlow* region , const IRInfoProvider& irinfo ) {
+Expr* FoldPhi( Graph* graph , Expr* lhs , Expr* rhs , ControlFlow* region ) {
   // 1. if lhs and rhs are same, then just return lhs/rhs
   if(lhs->IsReplaceable(rhs)) {
     return lhs;
@@ -14,7 +14,7 @@ Expr* FoldPhi( Graph* graph , Expr* lhs , Expr* rhs , ControlFlow* region , cons
     auto inode = region->AsIf();
     // 2. try to fold it as a ternary if the cond is side effect free
     auto cond = inode->condition(); // get the condition
-    auto    n = FoldTernary(graph,cond,lhs,rhs,irinfo);
+    auto    n = FoldTernary(graph,cond,lhs,rhs);
     if(n) return n;
   }
   return NULL;

@@ -40,7 +40,7 @@ class Effect {
   void AddReadEffect    ( MemoryRead*  );
  public:
   // merge the input 2 effect object into another effect object, the input and output can be the same
-  static void Merge( const Effect& , const Effect& , Effect* , Graph*  , ControlFlow* , IRInfo* );
+  static void Merge( const Effect& , const Effect& , Effect* , Graph*  , ControlFlow* );
  private:
   MemoryWrite*                            write_effect_;   // Write effect currently tracked
   ::lavascript::zone::Vector<MemoryRead*> read_list_;      // All the read happened *after* the write

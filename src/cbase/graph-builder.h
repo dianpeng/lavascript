@@ -57,7 +57,6 @@ class GraphBuilder {
     typedef std::vector<GlobalVar>     GlobalMap;
     typedef std::vector<Expr*>         UpValueVector;
     typedef std::function<Expr* ()>    KeyProvider;
-    typedef std::function<IRInfo* ()>  IRInfoProvider;
    public:
     Environment( GraphBuilder* );
     Environment( const Environment& );
@@ -67,10 +66,10 @@ class GraphBuilder {
     void PopulateArgument    ( const FuncInfo& );
     void ExitFunctionScope   ( const FuncInfo& );
     // getter/setter
-    Expr*  GetUpValue( std::uint8_t , const IRInfoProvider& );
-    Expr*  GetGlobal ( const void* , std::size_t , const KeyProvider& , const IRInfoProvider& );
-    void   SetUpValue( std::uint8_t , Expr* , const IRInfoProvider& );
-    void   SetGlobal ( const void* , std::size_t , const KeyProvider& , Expr* , const IRInfoProvider& );
+    Expr*  GetUpValue( std::uint8_t );
+    Expr*  GetGlobal ( const void* , std::size_t , const KeyProvider& );
+    void   SetUpValue( std::uint8_t , Expr* );
+    void   SetGlobal ( const void* , std::size_t , const KeyProvider& , Expr* );
     // accessor
     ValueStack*      stack()    { return &stack_;  }
     UpValueVector*   upvalue()  { return &upvalue_;}
@@ -223,33 +222,22 @@ class GraphBuilder {
   // argument is not argument but just local variables
   std::size_t input_argument_size()    const { return func_info_.front().prototype->argument_size(); }
  private: // Constant handling
-  Expr* NewConstNumber( std::int32_t , const interpreter::BytecodeLocation& );
   Expr* NewConstNumber( std::int32_t );
-  Expr* NewNumber     ( std::uint8_t , IRInfo* );
-  Expr* NewNumber     ( std::uint8_t , const interpreter::BytecodeLocation& );
   Expr* NewNumber     ( std::uint8_t );
-  Expr* NewString     ( std::uint8_t , IRInfo* );
-  Expr* NewString     ( std::uint8_t , const interpreter::BytecodeLocation& );
   Expr* NewString     ( std::uint8_t );
-  Expr* NewString     ( const Str& , const interpreter::BytecodeLocation& );
-  Expr* NewString     ( const Str& , IRInfo* );
+  Expr* NewString     ( const Str&   );
   Str   NewStr        ( std::uint32_t ref , bool sso );
-  Expr* NewSSO        ( std::uint8_t , IRInfo* );
-  Expr* NewSSO        ( std::uint8_t , const interpreter::BytecodeLocation& );
   Expr* NewSSO        ( std::uint8_t );
-  Expr* NewBoolean    ( bool         , const interpreter::BytecodeLocation& );
-  Expr* NewBoolean    ( bool );
+  Expr* NewBoolean    ( bool         );
 
  private: // IRList/IRObject
-  IRList*   NewIRList   ( std::size_t , IRInfo* );
-  IRObject* NewIRObject ( std::size_t , IRInfo* );
+  IRList*   NewIRList   ( std::size_t );
+  IRObject* NewIRObject ( std::size_t );
 
  private: // Guard handling
   // Add a type feedback with TypeKind into the stack slot pointed by index
   Expr* AddTypeFeedbackIfNeed( const StackSlot& , TypeKind     , const interpreter::BytecodeLocation& );
   Expr* AddTypeFeedbackIfNeed( const StackSlot& , const Value& , const interpreter::BytecodeLocation& );
-  Expr* AddTypeFeedbackIfNeed( const StackSlot& , TypeKind     , IRInfo* );
-  Expr* AddTypeFeedbackIfNeed( const StackSlot& , const Value& , IRInfo* );
   // Create a guard node and linked it back to the current graph
   Guard* NewGuard            ( Expr* , Checkpoint* );
 
@@ -257,42 +245,40 @@ class GraphBuilder {
   // Unary
   Expr* NewUnary            ( const StackSlot& , Unary::Operator , const interpreter::BytecodeLocation& );
   Expr* TrySpeculativeUnary ( const StackSlot& , Unary::Operator , const interpreter::BytecodeLocation& );
-  Expr* NewUnaryFallback    ( const StackSlot& , Unary::Operator , const interpreter::BytecodeLocation& );
+  Expr* NewUnaryFallback    ( const StackSlot& , Unary::Operator );
 
   // Binary
   Expr* NewBinary           ( const StackSlot& , const StackSlot& , Binary::Operator ,
-                                                                     const interpreter::BytecodeLocation& );
+                                                                    const interpreter::BytecodeLocation& );
   Expr* TrySpecialTestBinary( const StackSlot& , const StackSlot& , Binary::Operator ,
-                                                                     const interpreter::BytecodeLocation& );
+                                                                    const interpreter::BytecodeLocation& );
   Expr* TrySpeculativeBinary( const StackSlot& , const StackSlot& , Binary::Operator ,
-                                                                     const interpreter::BytecodeLocation& );
-  Expr* NewBinaryFallback   ( const StackSlot& , const StackSlot& , Binary::Operator ,
-                                                                     const interpreter::BytecodeLocation& );
+                                                                    const interpreter::BytecodeLocation& );
+  Expr* NewBinaryFallback   ( const StackSlot& , const StackSlot& , Binary::Operator );
   // Ternary
   Expr* NewTernary( const StackSlot& , Expr* , Expr* , const interpreter::BytecodeLocation& );
-
   // Intrinsic
-  Expr* NewICall  ( std::uint8_t ,std::uint8_t ,std::uint8_t ,bool ,const interpreter::BytecodeLocation& );
+  Expr* NewICall  ( std::uint8_t ,std::uint8_t ,std::uint8_t ,bool );
   Expr* LowerICall( ICall* );
  private: // Property/Index Get/Set
-  Expr* NewPSet( Expr* , Expr* , Expr* , IRInfo* );
-  Expr* NewPGet( Expr* , Expr* , IRInfo* );
-  Expr* NewISet( Expr* , Expr* , Expr* , IRInfo* );
-  Expr* NewIGet( Expr* , Expr* , IRInfo* );
+  Expr* NewPSet( Expr* , Expr* , Expr* );
+  Expr* NewPGet( Expr* , Expr* );
+  Expr* NewISet( Expr* , Expr* , Expr* );
+  Expr* NewIGet( Expr* , Expr* );
 
  private: // Global variables
-  void NewGGet( std::uint8_t , std::uint8_t , const interpreter::BytecodeLocation& , bool sso = false );
-  void NewGSet( std::uint8_t , std::uint8_t , const interpreter::BytecodeLocation& , bool sso = false );
+  void NewGGet( std::uint8_t , std::uint8_t , bool sso );
+  void NewGSet( std::uint8_t , std::uint8_t , bool sso );
 
  private: // Upvalue
-  void NewUGet( std::uint8_t , std::uint8_t , const interpreter::BytecodeLocation& );
-  void NewUSet( std::uint8_t , std::uint8_t , const interpreter::BytecodeLocation& );
+  void NewUGet( std::uint8_t , std::uint8_t );
+  void NewUSet( std::uint8_t , std::uint8_t );
 
  private: // Checkpoint generation
   Checkpoint* BuildCheckpoint( const interpreter::BytecodeLocation& );
 
  private: // Phi
-  Expr* NewPhi( Expr* , Expr* , ControlFlow* , IRInfo* );
+  Expr* NewPhi( Expr* , Expr* , ControlFlow* );
 
  private: // Misc
   // Helper function to generate exit Phi node and also link the return and guard nodes to the
@@ -317,8 +303,8 @@ class GraphBuilder {
   StopReason BuildBasicBlock( interpreter::BytecodeIterator* itr , const std::uint32_t* end_pc = NULL );
 
   // Build branch IR graph
-  void InsertPhi( Environment* , Environment* , ControlFlow* , IRInfo* );
-  void GeneratePhi( ValueStack* , const ValueStack& , const ValueStack& , std::size_t , ControlFlow* , IRInfo* );
+  void InsertPhi( Environment* , Environment* , ControlFlow* );
+  void GeneratePhi( ValueStack* , const ValueStack& , const ValueStack& , std::size_t , ControlFlow* );
 
   StopReason GotoIfEnd   ( interpreter::BytecodeIterator* , const std::uint32_t* );
   StopReason BuildIf     ( interpreter::BytecodeIterator* itr );
@@ -340,17 +326,12 @@ class GraphBuilder {
   StopReason BuildLoop       ( interpreter::BytecodeIterator* itr );
   StopReason BuildLoopBody   ( interpreter::BytecodeIterator* itr , ControlFlow* );
   StopReason BuildForeverLoop( interpreter::BytecodeIterator* itr );
-  void GenerateLoopPhi       ( const interpreter::BytecodeLocation& );
+  void GenerateLoopPhi       ();
   void PatchLoopPhi          ();
 
   // Iterate until we see FEEND/FEND1/FEND2/FEVREND
   StopReason BuildLoopBlock  ( interpreter::BytecodeIterator* itr );
   void PatchUnconditionalJump( UnconditionalJumpList* , ControlFlow* , const interpreter::BytecodeLocation& );
-
- private: // IRInfo
-  IRInfo* NewIRInfo( const interpreter::BytecodeLocation& loc );
-  IRInfo* NewIRInfo( interpreter::BytecodeIterator* );
-
  private:
   // Zone owned by the Graph object, and it is supposed to be stay around while the
   // optimization happenened
@@ -364,7 +345,6 @@ class GraphBuilder {
   const TypeTrace&        type_trace_;
   // This zone is used for other transient memory costs during graph construction
   zone::Zone              temp_zone_;
-
  private:
   class OSRScope ;
   class FuncScope;

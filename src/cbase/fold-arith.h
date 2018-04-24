@@ -17,10 +17,10 @@ namespace hir {
  * otherwise it will return the new node
  */
 
-Expr* FoldUnary    ( Graph* , Unary::Operator , Expr* , const IRInfoProvider& );
-Expr* FoldBinary   ( Graph* , Binary::Operator, Expr* , Expr* , const IRInfoProvider& );
-Expr* FoldTernary  ( Graph* , Expr* , Expr* , Expr* , const IRInfoProvider& );
-Expr* SimplifyLogic( Graph* , Expr* , Expr* , Binary::Operator , const IRInfoProvider& );
+Expr* FoldUnary    ( Graph* , Unary::Operator , Expr* );
+Expr* FoldBinary   ( Graph* , Binary::Operator, Expr* , Expr* );
+Expr* FoldTernary  ( Graph* , Expr* , Expr* , Expr* );
+Expr* SimplifyLogic( Graph* , Expr* , Expr* , Binary::Operator );
 
 } // namespace hir
 } // namespace cbase

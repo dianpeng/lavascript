@@ -92,7 +92,7 @@ class Predicate : public zone::ZoneObject {
   // it does this value range represents a fixed number or boolean value ?
   //
   // It is used during GVN for inference
-  virtual Expr* Collapse( Graph* , IRInfo* ) const = 0;
+  virtual Expr* Collapse( Graph* ) const = 0;
   // debug purpose
   virtual void Dump( DumpWriter* ) const = 0;
   // Check if the value range is empty set or not
@@ -116,7 +116,7 @@ class UnknownPredicate : public Predicate {
   virtual void  Intersect( const Predicate& );
   virtual int   Infer    ( Binary::Operator , Expr* ) const;
   virtual int   Infer    ( const Predicate& ) const;
-  virtual Expr* Collapse ( Graph* , IRInfo*         ) const;
+  virtual Expr* Collapse ( Graph* ) const;
   virtual void  Dump     ( DumpWriter* ) const;
   virtual bool  IsEmpty  () const { return false; }
 
@@ -194,7 +194,7 @@ class Float64Predicate : public Predicate {
   virtual void  Intersect( const Predicate& );
   virtual int   Infer    ( Binary::Operator , Expr* ) const;
   virtual int   Infer    ( const Predicate&  ) const;
-  virtual Expr* Collapse ( Graph* , IRInfo* ) const;
+  virtual Expr* Collapse ( Graph* ) const;
   virtual void  Dump     ( DumpWriter* ) const;
   virtual bool  IsEmpty  () const { return sets_.empty(); }
 
@@ -267,7 +267,7 @@ class BooleanPredicate : public Predicate {
   virtual int   Infer    ( Binary::Operator , Expr* ) const;
   virtual int   Infer    ( const Predicate& ) const;
 
-  virtual Expr* Collapse ( Graph* , IRInfo*         ) const;
+  virtual Expr* Collapse ( Graph* ) const;
   virtual void  Dump     ( DumpWriter* ) const;
   virtual bool  IsEmpty  () const { return state_ == EMPTY; }
 
@@ -306,7 +306,7 @@ class TypePredicate : public Predicate {
   virtual void  Intersect( const Predicate& );
   virtual int   Infer    ( Binary::Operator , Expr* ) const;
   virtual int   Infer    ( const Predicate& ) const;
-  virtual Expr* Collapse ( Graph* , IRInfo* ) const { return NULL; }
+  virtual Expr* Collapse ( Graph* ) const { return NULL; }
   virtual void  Dump     ( DumpWriter* ) const;
   virtual bool  IsEmpty  () const { return set_.empty(); }
  private:

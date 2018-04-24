@@ -14,7 +14,7 @@ namespace hir        {
 using namespace ::lavascript;
 namespace {
 
-static Boolean kTrueNode(NULL,0,true,NULL);
+static Boolean kTrueNode(NULL,0,true);
 
 // MultiPredicate is an object that is used to track multiple type value's range
 // independently
@@ -247,9 +247,9 @@ inline ConditionGroup::ConditionGroup( Graph* graph , zone::Zone* zone , Conditi
 Expr* ConditionGroup::DeduceTo( Expr* node , int result ) {
   Expr* n = NULL;
   if(result == Predicate::ALWAYS_TRUE) {
-    n = Boolean::New(graph_,true,node->ir_info());
+    n = Boolean::New(graph_,true);
   } else if(result == Predicate::ALWAYS_FALSE) {
-    n = Boolean::New(graph_,false,node->ir_info());
+    n = Boolean::New(graph_,false);
   }
   if(n) node->Replace(n);
   return n;
@@ -299,7 +299,7 @@ Expr* ConditionGroup::SimplifyBooleanLogic( BooleanLogic* n ) {
   auto r = n->rhs();
   auto op= n->op();
   if( Simplify(l) || Simplify(r) ) {
-    auto nnode = FoldBinary(graph_,op,n->lhs(),n->rhs(),[=]() { return n->ir_info(); });
+    auto nnode = FoldBinary(graph_,op,n->lhs(),n->rhs());
     if(nnode) {
       n->Replace(nnode);
       return nnode;

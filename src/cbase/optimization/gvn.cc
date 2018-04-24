@@ -30,7 +30,7 @@ bool GVN::Perform( Graph* graph , HIRPass::Flag flag ) {
           auto itr = table.Find(subexpr);
           auto tar = itr.HasNext() ? itr.value() : NULL;
           if(tar) {
-            if(tar != subexpr) {
+            if(!tar->IsIdentical(subexpr)) {
               subexpr->Replace(tar);          // okay, find a target, just replace the old one
               if(tar == expr) expr = subexpr; // it is replaced, so use the replaced value
             }

@@ -55,6 +55,11 @@ inline const zone::String& Node::AsZoneString() const {
   return IsLString() ? *AsLString()->value() : *AsSString()->value() ;
 }
 
+inline bool Expr::IsReplaceable( const Expr* that ) const {
+  // the gvn should only work on node that doesn't have side effect
+  return Equal(that);
+}
+
 inline void Expr::AddOperand( Expr* node ) {
   auto itr = operand_list_.PushBack(zone(),node);
   node->AddRef(this,itr);
@@ -143,8 +148,6 @@ inline bool Expr::IsMemoryWrite() const {
   }
 }
 
-inline bool Expr::IsMemoryOp() const { return IsMemoryRead() || IsMemoryWrite(); }
-
 inline bool Expr::IsMemoryNode() const {
   switch(type()) {
     case HIR_ARG: case HIR_GGET: case HIR_UGET: case HIR_LIST: case HIR_OBJECT:
@@ -174,16 +177,6 @@ inline const MemoryRead* Expr::AsMemoryRead() const {
   return static_cast<const MemoryRead*>(this);
 }
 
-inline MemoryOp* Expr::AsMemoryOp() {
-  lava_debug(NORMAL,lava_verify(IsMemoryOp()););
-  return static_cast<MemoryOp*>(this);
-}
-
-inline const MemoryOp* Expr::AsMemoryOp() const {
-  lava_debug(NORMAL,lava_verify(IsMemoryOp()););
-  return static_cast<const MemoryOp*>(this);
-}
-
 inline MemoryNode* Expr::AsMemoryNode() {
   lava_debug(NORMAL,lava_verify(IsMemoryNode()););
   return static_cast<MemoryNode*>(this);
@@ -207,98 +200,116 @@ inline bool Expr::IsPhiNode() const {
   }
 }
 
+inline bool Expr::IsTestNode() const {
+#define __(A,B,...) case HIR_##B: return true;
+  switch(type()) {
+    CBASE_HIR_TEST(__)
+    default: return false;
+  }
+#undef __ // __
+}
+
+inline Test* Expr::AsTest() {
+  lava_debug(NORMAL,lava_verify(IsTestNode()););
+  return static_cast<Test*>(this);
+}
+
+inline const Test* Expr::AsTest() const {
+  lava_debug(NORMAL,lava_verify(IsTestNode()););
+  return static_cast<const Test*>(this);
+}
+
 inline Arg* Arg::New( Graph* graph , std::uint32_t index ) {
   return graph->zone()->New<Arg>(graph,graph->AssignID(),index);
 }
 
-inline Float64* Float64::New( Graph* graph , double value , IRInfo* info ) {
-  return graph->zone()->New<Float64>(graph,graph->AssignID(),value,info);
+inline Float64* Float64::New( Graph* graph , double value ) {
+  return graph->zone()->New<Float64>(graph,graph->AssignID(),value);
 }
 
-inline Boolean* Boolean::New( Graph* graph , bool value , IRInfo* info ) {
-  return graph->zone()->New<Boolean>(graph,graph->AssignID(),value,info);
+inline Boolean* Boolean::New( Graph* graph , bool value ) {
+  return graph->zone()->New<Boolean>(graph,graph->AssignID(),value);
 }
 
-inline LString* LString::New( Graph* graph , const LongString& str , IRInfo* info ) {
+inline LString* LString::New( Graph* graph , const LongString& str ) {
   return graph->zone()->New<LString>(graph,graph->AssignID(),
-      zone::String::New(graph->zone(),static_cast<const char*>(str.data()),str.size),info);
+      zone::String::New(graph->zone(),static_cast<const char*>(str.data()),str.size));
 }
 
-inline LString* LString::New( Graph* graph , const char* data , IRInfo* info ) {
+inline LString* LString::New( Graph* graph , const char* data ) {
   auto str = zone::String::New(graph->zone(),data);
   lava_debug(NORMAL,lava_verify(!str->IsSSO()););
-  return graph->zone()->New<LString>(graph,graph->AssignID(),str,info);
+  return graph->zone()->New<LString>(graph,graph->AssignID(),str);
 }
 
-inline LString* LString::New( Graph* graph , const zone::String* str , IRInfo* info ) {
+inline LString* LString::New( Graph* graph , const zone::String* str ) {
   lava_debug(NORMAL,lava_verify(!str->IsSSO()););
-  return graph->zone()->New<LString>(graph,graph->AssignID(),str,info);
+  return graph->zone()->New<LString>(graph,graph->AssignID(),str);
 }
 
-inline SString* SString::New( Graph* graph , const SSO& str , IRInfo* info ) {
+inline SString* SString::New( Graph* graph , const SSO& str ) {
   return graph->zone()->New<SString>(graph,graph->AssignID(),
-      zone::String::New(graph->zone(),static_cast<const char*>(str.data()),str.size()),info);
+      zone::String::New(graph->zone(),static_cast<const char*>(str.data()),str.size()));
 }
 
-inline SString* SString::New( Graph* graph , const char* data , IRInfo* info ) {
+inline SString* SString::New( Graph* graph , const char* data ) {
   auto str = zone::String::New(graph->zone(),data);
   lava_debug(NORMAL,lava_verify(str->IsSSO()););
-  return graph->zone()->New<SString>(graph,graph->AssignID(),str,info);
+  return graph->zone()->New<SString>(graph,graph->AssignID(),str);
 }
 
-inline SString* SString::New( Graph* graph , const zone::String* str , IRInfo* info ) {
+inline SString* SString::New( Graph* graph , const zone::String* str ) {
   lava_debug(NORMAL,lava_verify(str->IsSSO()););
-  return graph->zone()->New<SString>(graph,graph->AssignID(),str,info);
+  return graph->zone()->New<SString>(graph,graph->AssignID(),str);
 }
 
-inline Expr* NewString( Graph* graph , const zone::String* str , IRInfo* info ) {
-  return str->IsSSO() ? static_cast<Expr*>(SString::New(graph,str,info)) :
-                        static_cast<Expr*>(LString::New(graph,str,info)) ;
+inline Expr* NewString( Graph* graph , const zone::String* str ) {
+  return str->IsSSO() ? static_cast<Expr*>(SString::New(graph,str)) :
+                        static_cast<Expr*>(LString::New(graph,str)) ;
 }
 
-inline Expr* NewString( Graph* graph , const char* data , IRInfo* info ) {
+inline Expr* NewString( Graph* graph , const char* data ) {
   auto str = zone::String::New(graph->zone(),data);
-  return NewString(graph,str,info);
+  return NewString(graph,str);
 }
 
-inline Expr* NewString( Graph* graph , const void* data , std::size_t size , IRInfo* info ) {
+inline Expr* NewString( Graph* graph , const void* data , std::size_t size ) {
   auto str = zone::String::New(graph->zone(),static_cast<const char*>(data),size);
-  return NewString(graph,str,info);
+  return NewString(graph,str);
 }
 
-inline Expr* NewStringFromBoolean( Graph* graph , bool value , IRInfo* info ) {
+inline Expr* NewStringFromBoolean( Graph* graph , bool value ) {
   std::string temp;
   LexicalCast(value,&temp);
   auto str = zone::String::New(graph->zone(),temp.c_str(),temp.size());
-  return NewString(graph,str,info);
+  return NewString(graph,str);
 }
 
-inline Expr* NewStringFromReal( Graph* graph , double value , IRInfo* info ) {
+inline Expr* NewStringFromReal( Graph* graph , double value ) {
   std::string temp;
   LexicalCast(value,&temp);
   auto str = zone::String::New(graph->zone(),temp.c_str(),temp.size());
-  return NewString(graph,str,info);
+  return NewString(graph,str);
 }
 
-inline Nil* Nil::New( Graph* graph , IRInfo* info ) {
-  return graph->zone()->New<Nil>(graph,graph->AssignID(),info);
+inline Nil* Nil::New( Graph* graph ) {
+  return graph->zone()->New<Nil>(graph,graph->AssignID());
 }
 
-inline IRList* IRList::New( Graph* graph , std::size_t size , IRInfo* info ) {
-  return graph->zone()->New<IRList>(graph,graph->AssignID(),size,info);
+inline IRList* IRList::New( Graph* graph , std::size_t size ) {
+  return graph->zone()->New<IRList>(graph,graph->AssignID(),size);
 }
 
-inline IRObjectKV* IRObjectKV::New( Graph* graph , Expr* key , Expr* val , IRInfo* info ) {
-  return graph->zone()->New<IRObjectKV>(graph,graph->AssignID(),key,val,info);
+inline IRObjectKV* IRObjectKV::New( Graph* graph , Expr* key , Expr* val ) {
+  return graph->zone()->New<IRObjectKV>(graph,graph->AssignID(),key,val);
 }
 
-inline IRObject* IRObject::New( Graph* graph , std::size_t size , IRInfo* info ) {
-  return graph->zone()->New<IRObject>(graph,graph->AssignID(),size,info);
+inline IRObject* IRObject::New( Graph* graph , std::size_t size ) {
+  return graph->zone()->New<IRObject>(graph,graph->AssignID(),size);
 }
 
-inline Binary* Binary::New( Graph* graph , Expr* lhs , Expr* rhs, Operator op ,
-                                                                  IRInfo* info ) {
-  return graph->zone()->New<Binary>(graph,graph->AssignID(),lhs,rhs,op,info);
+inline Binary* Binary::New( Graph* graph , Expr* lhs , Expr* rhs, Operator op ) {
+  return graph->zone()->New<Binary>(graph,graph->AssignID(),lhs,rhs,op);
 }
 
 inline bool Binary::IsComparisonOperator( Operator op ) {
@@ -347,7 +358,8 @@ inline Binary::Operator Binary::BytecodeToOperator( interpreter::Bytecode op ) {
     case BC_GERV : case BC_GEVR : case BC_GEVV : return GE ;
     case BC_EQRV : case BC_EQVR : case BC_EQSV : case BC_EQVS: case BC_EQVV: return EQ;
     case BC_NERV : case BC_NEVR : case BC_NESV : case BC_NEVS: case BC_NEVV: return NE;
-    case BC_AND: return AND; case BC_OR : return OR;
+    case BC_AND  : return AND;
+    case BC_OR   : return OR;
     default: lava_unreachF("unknown bytecode %s",interpreter::GetBytecodeName(op)); break;
   }
   return ADD;
@@ -395,71 +407,70 @@ inline const char* Unary::GetOperatorName( Operator op ) {
     return "not";
 }
 
-inline Unary* Unary::New( Graph* graph , Expr* opr , Operator op , IRInfo* info ) {
-  return graph->zone()->New<Unary>(graph,graph->AssignID(),opr,op,info);
+inline Unary* Unary::New( Graph* graph , Expr* opr , Operator op ) {
+  return graph->zone()->New<Unary>(graph,graph->AssignID(),opr,op);
 }
 
-inline Ternary* Ternary::New( Graph* graph , Expr* cond , Expr* lhs , Expr* rhs ,
-                                                                      IRInfo* info ) {
-  return graph->zone()->New<Ternary>(graph,graph->AssignID(),cond,lhs,rhs,info);
+inline Ternary* Ternary::New( Graph* graph , Expr* cond , Expr* lhs , Expr* rhs ) {
+  return graph->zone()->New<Ternary>(graph,graph->AssignID(),cond,lhs,rhs);
 }
 
-inline UGet* UGet::New( Graph* graph , std::uint8_t index , std::uint32_t method , IRInfo* info ) {
-  return graph->zone()->New<UGet>(graph,graph->AssignID(),index,method,info);
+inline UGet* UGet::New( Graph* graph , std::uint8_t index , std::uint32_t method ) {
+  return graph->zone()->New<UGet>(graph,graph->AssignID(),index,method);
 }
 
-inline USet* USet::New( Graph* graph , std::uint8_t index , std::uint32_t method , Expr* opr , IRInfo* info ) {
-  auto ret = graph->zone()->New<USet>(graph,graph->AssignID(),index,method,opr,info);
+inline USet* USet::New( Graph* graph , std::uint8_t index , std::uint32_t method , Expr* opr ) {
+  auto ret = graph->zone()->New<USet>(graph,graph->AssignID(),index,method,opr);
   return ret;
 }
 
-inline PGet* PGet::New( Graph* graph , Expr* obj , Expr* key , IRInfo* info , ControlFlow* region ) {
-  auto ret = graph->zone()->New<PGet>(graph,graph->AssignID(),obj,key,info);
+inline PGet* PGet::New( Graph* graph , Expr* obj , Expr* key , ControlFlow* region ) {
+  auto ret = graph->zone()->New<PGet>(graph,graph->AssignID(),obj,key);
   return ret;
 }
 
-inline PSet* PSet::New( Graph* graph , Expr* obj , Expr* key , Expr* value , IRInfo* info, ControlFlow* region ) {
-  auto ret = graph->zone()->New<PSet>(graph,graph->AssignID(),obj,key,value,info);
+inline PSet* PSet::New( Graph* graph , Expr* obj , Expr* key , Expr* value , ControlFlow* region ) {
+  auto ret = graph->zone()->New<PSet>(graph,graph->AssignID(),obj,key,value);
   return ret;
 }
 
-inline IGet* IGet::New( Graph* graph , Expr* obj, Expr* key , IRInfo* info , ControlFlow* region ) {
-  auto ret = graph->zone()->New<IGet>(graph,graph->AssignID(),obj,key,info);
+inline IGet* IGet::New( Graph* graph , Expr* obj, Expr* key , ControlFlow* region ) {
+  auto ret = graph->zone()->New<IGet>(graph,graph->AssignID(),obj,key);
   return ret;
 }
 
-inline ISet* ISet::New( Graph* graph , Expr* obj , Expr* key , Expr* val , IRInfo* info , ControlFlow* region ) {
-  auto ret = graph->zone()->New<ISet>(graph,graph->AssignID(),obj,key,val,info);
+inline ISet* ISet::New( Graph* graph , Expr* obj , Expr* key , Expr* val , ControlFlow* region ) {
+  auto ret = graph->zone()->New<ISet>(graph,graph->AssignID(),obj,key,val);
   return ret;
 }
 
-inline GGet* GGet::New( Graph* graph , Expr* key , IRInfo* info , ControlFlow* region ) {
-  auto ret = graph->zone()->New<GGet>(graph,graph->AssignID(),key,info);
+inline GGet* GGet::New( Graph* graph , Expr* key , ControlFlow* region ) {
+  auto ret = graph->zone()->New<GGet>(graph,graph->AssignID(),key);
   return ret;
 }
 
-inline GSet* GSet::New( Graph* graph , Expr* key, Expr* value , IRInfo* info , ControlFlow* region ) {
-  auto ret = graph->zone()->New<GSet>(graph,graph->AssignID(),key,value,info);
+inline GSet* GSet::New( Graph* graph , Expr* key, Expr* value , ControlFlow* region ) {
+  auto ret = graph->zone()->New<GSet>(graph,graph->AssignID(),key,value);
   return ret;
 }
 
-inline ItrNew* ItrNew::New( Graph* graph , Expr* operand , IRInfo* info , ControlFlow* region ) {
-  auto ret = graph->zone()->New<ItrNew>(graph,graph->AssignID(),operand,info);
+inline ItrNew* ItrNew::New( Graph* graph , Expr* operand , ControlFlow* region ) {
+  auto ret = graph->zone()->New<ItrNew>(graph,graph->AssignID(),operand);
   return ret;
 }
 
-inline ItrNext* ItrNext::New( Graph* graph , Expr* operand , IRInfo* info , ControlFlow* region ) {
-  auto ret = graph->zone()->New<ItrNext>(graph,graph->AssignID(),operand,info);
+inline ItrNext* ItrNext::New( Graph* graph , Expr* operand , ControlFlow* region ) {
+  auto ret = graph->zone()->New<ItrNext>(graph,graph->AssignID(),operand);
   return ret;
 }
 
-inline ItrTest* ItrTest::New( Graph* graph , Expr* operand , IRInfo* info , ControlFlow* region ) {
-  auto ret = graph->zone()->New<ItrTest>(graph,graph->AssignID(),operand,info);
+inline ItrTest* ItrTest::New( Graph* graph , Expr* operand , ControlFlow* region ) {
+  auto ret = graph->zone()->New<ItrTest>(graph,graph->AssignID(),operand);
   return ret;
 }
 
-inline ItrDeref* ItrDeref::New( Graph* graph , Expr* operand , IRInfo* info , ControlFlow* region ) {
-  auto ret = graph->zone()->New<ItrDeref>(graph,graph->AssignID(),operand,info);
+inline ItrDeref* ItrDeref::New( Graph* graph , Expr* operand , ControlFlow* region ) {
+  auto ret = graph->zone()->New<ItrDeref>(graph,graph->AssignID(),operand);
   return ret;
 }
 
@@ -469,62 +480,60 @@ inline void Phi::RemovePhiFromRegion( Phi* phi ) {
   }
 }
 
-inline Phi::Phi( Graph* graph , std::uint32_t id , ControlFlow* region , IRInfo* info ):
-  Expr           (HIR_PHI,id,graph,info),
+inline Phi::Phi( Graph* graph , std::uint32_t id , ControlFlow* region ):
+  Expr           (HIR_PHI,id,graph),
   region_        (region)
 {
   region->AddOperand(this);
 }
 
-inline Phi* Phi::New( Graph* graph , Expr* lhs , Expr* rhs , ControlFlow* region , IRInfo* info ) {
-  auto ret = graph->zone()->New<Phi>(graph,graph->AssignID(),region,info);
+inline Phi* Phi::New( Graph* graph , Expr* lhs , Expr* rhs , ControlFlow* region ) {
+  auto ret = graph->zone()->New<Phi>(graph,graph->AssignID(),region);
   ret->AddOperand(lhs);
   ret->AddOperand(rhs);
   return ret;
 }
 
-inline Phi* Phi::New( Graph* graph , ControlFlow* region , IRInfo* info ) {
-  return graph->zone()->New<Phi>(graph,graph->AssignID(),region,info);
+inline Phi* Phi::New( Graph* graph , ControlFlow* region ) {
+  return graph->zone()->New<Phi>(graph,graph->AssignID(),region);
 }
 
-inline ReadEffectPhi::ReadEffectPhi( Graph* graph , std::uint32_t id , ControlFlow* region , IRInfo* info ):
-  MemoryRead(HIR_READ_EFFECT_PHI,id,graph,info),
+inline ReadEffectPhi::ReadEffectPhi( Graph* graph , std::uint32_t id , ControlFlow* region ):
+  MemoryRead(HIR_READ_EFFECT_PHI,id,graph),
   region_   (region)
 {
   region->AddOperand(this);
 }
 
 inline ReadEffectPhi* ReadEffectPhi::New( Graph* graph , MemoryRead* lhs , MemoryRead* rhs ,
-                                                                           ControlFlow* region ,
-                                                                           IRInfo* info ) {
-  auto ret = graph->zone()->New<ReadEffectPhi>(graph,graph->AssignID(),region,info);
+                                                                           ControlFlow* region ) {
+  auto ret = graph->zone()->New<ReadEffectPhi>(graph,graph->AssignID(),region);
   ret->AddOperand(lhs);
   ret->AddOperand(rhs);
   return ret;
 }
 
-inline ReadEffectPhi* ReadEffectPhi::New( Graph* graph , ControlFlow* region , IRInfo* info ) {
-  return graph->zone()->New<ReadEffectPhi>(graph,graph->AssignID(),region,info);
+inline ReadEffectPhi* ReadEffectPhi::New( Graph* graph , ControlFlow* region ) {
+  return graph->zone()->New<ReadEffectPhi>(graph,graph->AssignID(),region);
 }
 
-inline WriteEffectPhi::WriteEffectPhi( Graph* graph , std::uint32_t id , ControlFlow* region  , IRInfo* info ):
-  MemoryWrite(HIR_WRITE_EFFECT_PHI,id,graph,info),
+inline WriteEffectPhi::WriteEffectPhi( Graph* graph , std::uint32_t id , ControlFlow* region ):
+  MemoryWrite(HIR_WRITE_EFFECT_PHI,id,graph),
   region_    (region)
 {
   region->AddOperand(this);
 }
 
 inline WriteEffectPhi* WriteEffectPhi::New( Graph* graph , MemoryWrite* lhs , MemoryWrite* rhs ,
-                                                                              ControlFlow* region  ,
-                                                                              IRInfo* info ) {
-  auto ret = graph->zone()->New<WriteEffectPhi>(graph,graph->AssignID(),region,info);
+                                                                              ControlFlow* region ) {
+  auto ret = graph->zone()->New<WriteEffectPhi>(graph,graph->AssignID(),region);
   ret->AddOperand(lhs);
   ret->AddOperand(rhs);
   return ret;
 }
 
-inline WriteEffectPhi* WriteEffectPhi::New( Graph* graph , ControlFlow* region , IRInfo* info ) {
-  return graph->zone()->New<WriteEffectPhi>(graph,graph->AssignID(),region,info);
+inline WriteEffectPhi* WriteEffectPhi::New( Graph* graph , ControlFlow* region ) {
+  return graph->zone()->New<WriteEffectPhi>(graph,graph->AssignID(),region);
 }
 
 inline NoReadEffect* NoReadEffect::New( Graph* graph ) {
@@ -535,16 +544,16 @@ inline NoWriteEffect* NoWriteEffect::New( Graph* graph ) {
   return graph->zone()->New<NoWriteEffect>(graph,graph->AssignID());
 }
 
-inline ICall* ICall::New( Graph* graph , interpreter::IntrinsicCall ic , bool tc, IRInfo* info ) {
-  return graph->zone()->New<ICall>(graph,graph->AssignID(),ic,tc,info);
+inline ICall* ICall::New( Graph* graph , interpreter::IntrinsicCall ic , bool tc ) {
+  return graph->zone()->New<ICall>(graph,graph->AssignID(),ic,tc);
 }
 
-inline LoadCls* LoadCls::New( Graph* graph , std::uint32_t ref , IRInfo* info ) {
-  return graph->zone()->New<LoadCls>(graph,graph->AssignID(),ref,info);
+inline LoadCls* LoadCls::New( Graph* graph , std::uint32_t ref ) {
+  return graph->zone()->New<LoadCls>(graph,graph->AssignID(),ref);
 }
 
-inline Projection* Projection::New( Graph* graph , Expr* operand , std::uint32_t index , IRInfo* info ) {
-  return graph->zone()->New<Projection>(graph,graph->AssignID(),operand,index,info);
+inline Projection* Projection::New( Graph* graph , Expr* operand , std::uint32_t index ) {
+  return graph->zone()->New<Projection>(graph,graph->AssignID(),operand,index);
 }
 
 inline OSRLoad* OSRLoad::New( Graph* graph , std::uint32_t index ) {
@@ -559,73 +568,86 @@ inline void Checkpoint::AddStackSlot( Expr* val , std::uint32_t index ) {
   AddOperand(StackSlot::New(graph(),val,index));
 }
 
-inline TestType* TestType::New( Graph* graph , TypeKind tc , Expr* object , IRInfo* info ) {
-  return graph->zone()->New<TestType>(graph,graph->AssignID(),tc,object,info);
+inline Guard* Guard::New( Graph* graph , Test* test , ControlFlow* region ) {
+  return graph->zone()->New<Guard>(graph,graph->AssignID(),test,region);
 }
 
-inline TestListOOB* TestListOOB::New( Graph* graph , Expr* object , Expr* key , IRInfo* info ) {
-  return graph->zone()->New<TestListOOB>(graph,graph->AssignID(),object,key,info);
+inline TestType* TestType::New( Graph* graph , TypeKind tc , Expr* object ) {
+  return graph->zone()->New<TestType>(graph,graph->AssignID(),tc,object);
 }
 
-inline Float64Negate* Float64Negate::New( Graph* graph , Expr* opr , IRInfo* info ) {
-  return graph->zone()->New<Float64Negate>(graph,graph->AssignID(),opr,info);
+inline TestListOOB* TestListOOB::New( Graph* graph , Expr* object , Expr* key ) {
+  return graph->zone()->New<TestListOOB>(graph,graph->AssignID(),object,key);
 }
 
-inline Float64Arithmetic* Float64Arithmetic::New( Graph* graph , Expr* lhs , Expr* rhs , Operator op,
-                                                                                         IRInfo* info ) {
-  return graph->zone()->New<Float64Arithmetic>(graph,graph->AssignID(),lhs,rhs,op,info);
+inline Float64Negate* Float64Negate::New( Graph* graph , Expr* opr ) {
+  return graph->zone()->New<Float64Negate>(graph,graph->AssignID(),opr);
 }
 
-inline Float64Bitwise* Float64Bitwise::New( Graph* graph , Expr* lhs , Expr* rhs , Operator op, IRInfo* info ) {
-  return graph->zone()->New<Float64Bitwise>(graph,graph->AssignID(),lhs,rhs,op,info);
+inline Float64Arithmetic* Float64Arithmetic::New( Graph* graph , Expr* lhs , Expr* rhs , Operator op ) {
+  return graph->zone()->New<Float64Arithmetic>(graph,graph->AssignID(),lhs,rhs,op);
 }
 
-inline Float64Compare* Float64Compare::New( Graph* graph , Expr* lhs , Expr* rhs , Operator op, IRInfo* info ) {
-  return graph->zone()->New<Float64Compare>(graph,graph->AssignID(),lhs,rhs,op,info);
+inline Float64Bitwise* Float64Bitwise::New( Graph* graph , Expr* lhs , Expr* rhs , Operator op ) {
+  return graph->zone()->New<Float64Bitwise>(graph,graph->AssignID(),lhs,rhs,op);
 }
 
-inline BooleanNot* BooleanNot::New( Graph* graph , Expr* opr , IRInfo* info ) {
-  return graph->zone()->New<BooleanNot>(graph,graph->AssignID(),opr,info);
+inline Float64Compare* Float64Compare::New( Graph* graph , Expr* lhs , Expr* rhs , Operator op ) {
+  return graph->zone()->New<Float64Compare>(graph,graph->AssignID(),lhs,rhs,op);
 }
 
-inline BooleanLogic* BooleanLogic::New( Graph* graph , Expr* lhs , Expr* rhs , Operator op, IRInfo* info ) {
-  return graph->zone()->New<BooleanLogic>(graph,graph->AssignID(),lhs,rhs,op,info);
+inline BooleanNot* BooleanNot::New( Graph* graph , Expr* opr ) {
+  return graph->zone()->New<BooleanNot>(graph,graph->AssignID(),opr);
 }
 
-inline StringCompare* StringCompare::New( Graph* graph , Expr* lhs , Expr* rhs , Operator op , IRInfo* info ) {
-  return graph->zone()->New<StringCompare>(graph,graph->AssignID(),lhs,rhs,op,info);
+inline BooleanLogic* BooleanLogic::New( Graph* graph , Expr* lhs , Expr* rhs , Operator op ) {
+  return graph->zone()->New<BooleanLogic>(graph,graph->AssignID(),lhs,rhs,op);
 }
 
-inline SStringEq* SStringEq::New( Graph* graph , Expr* lhs , Expr* rhs , IRInfo* info ) {
-  return graph->zone()->New<SStringEq>(graph,graph->AssignID(),lhs,rhs,info);
+inline StringCompare* StringCompare::New( Graph* graph , Expr* lhs , Expr* rhs , Operator op ) {
+  return graph->zone()->New<StringCompare>(graph,graph->AssignID(),lhs,rhs,op);
 }
 
-inline SStringNe* SStringNe::New( Graph* graph , Expr* lhs , Expr* rhs , IRInfo* info ) {
-  return graph->zone()->New<SStringNe>(graph,graph->AssignID(),lhs,rhs,info);
+inline SStringEq* SStringEq::New( Graph* graph , Expr* lhs , Expr* rhs ) {
+  return graph->zone()->New<SStringEq>(graph,graph->AssignID(),lhs,rhs);
 }
 
-inline ListGet* ListGet::New( Graph* graph , Expr* obj , Expr* index , IRInfo* info ) {
-  return graph->zone()->New<ListGet>(graph,graph->AssignID(),obj,index,info);
+inline SStringNe* SStringNe::New( Graph* graph , Expr* lhs , Expr* rhs ) {
+  return graph->zone()->New<SStringNe>(graph,graph->AssignID(),lhs,rhs);
 }
 
-inline ListSet* ListSet::New( Graph* graph , Expr* obj , Expr* index , Expr* value , IRInfo* info ) {
-  return graph->zone()->New<ListSet>(graph,graph->AssignID(),obj,index,value,info);
+inline ListGet* ListGet::New( Graph* graph , Expr* obj , Expr* index ) {
+  return graph->zone()->New<ListGet>(graph,graph->AssignID(),obj,index);
 }
 
-inline ObjectGet* ObjectGet::New( Graph* graph , Expr* obj , Expr* key , IRInfo* info ) {
-  return graph->zone()->New<ObjectGet>(graph,graph->AssignID(),obj,key,info);
+inline ListSet* ListSet::New( Graph* graph , Expr* obj , Expr* index , Expr* value ) {
+  return graph->zone()->New<ListSet>(graph,graph->AssignID(),obj,index,value);
 }
 
-inline ObjectSet* ObjectSet::New( Graph* graph , Expr* obj , Expr* key , Expr* value , IRInfo* info ) {
-  return graph->zone()->New<ObjectSet>(graph,graph->AssignID(),obj,key,value,info);
+inline ObjectGet* ObjectGet::New( Graph* graph , Expr* obj , Expr* key ) {
+  return graph->zone()->New<ObjectGet>(graph,graph->AssignID(),obj,key);
 }
 
-inline Box* Box::New( Graph* graph , Expr* obj , TypeKind tk , IRInfo* info ) {
-  return graph->zone()->New<Box>(graph,graph->AssignID(),obj,tk,info);
+inline ObjectSet* ObjectSet::New( Graph* graph , Expr* obj , Expr* key , Expr* value ) {
+  return graph->zone()->New<ObjectSet>(graph,graph->AssignID(),obj,key,value);
 }
 
-inline Unbox* Unbox::New( Graph* graph , Expr* obj , TypeKind tk , IRInfo* info ) {
-  return graph->zone()->New<Unbox>(graph,graph->AssignID(),obj,tk,info);
+inline Box* Box::New( Graph* graph , Expr* obj , TypeKind tk ) {
+  return graph->zone()->New<Box>(graph,graph->AssignID(),obj,tk);
+}
+
+inline Unbox* Unbox::New( Graph* graph , Expr* obj , TypeKind tk ) {
+  return graph->zone()->New<Unbox>(graph,graph->AssignID(),obj,tk);
+}
+
+inline CastToBoolean* CastToBoolean::New( Graph* graph , Expr* value ) {
+  return graph->zone()->New<CastToBoolean>(graph,graph->AssignID(),value);
+}
+
+inline Expr* CastToBoolean::NewNegateCast( Graph* graph , Expr* value ) {
+  auto cast = New(graph,value);
+  auto unbox= Unbox::New(graph,cast,TPKIND_BOOLEAN);
+  return BooleanNot::New(graph,unbox);
 }
 
 inline StackSlot* StackSlot::New( Graph* graph , Expr* expr , std::uint32_t index ) {
@@ -663,33 +685,9 @@ inline LoopExit* LoopExit::New( Graph* graph , Expr* condition ) {
   return graph->zone()->New<LoopExit>(graph,graph->AssignID(),condition);
 }
 
-inline Guard* Guard::New( Graph* graph , Expr* test , Checkpoint* cp , ControlFlow* region ) {
-  return graph->zone()->New<Guard>(graph,graph->AssignID(),test,cp,region);
-}
-
 inline If* If::New( Graph* graph , Expr* condition , ControlFlow* parent ) {
   return graph->zone()->New<If>(graph,graph->AssignID(),condition,parent);
 }
-
-inline CastToBoolean* CastToBoolean::New( Graph* graph , Expr* value , IRInfo* info ) {
-  return graph->zone()->New<CastToBoolean>(graph,graph->AssignID(),value,info);
-}
-
-inline Expr* CastToBoolean::NewNegateCast( Graph* graph , Expr* value , IRInfo* info ) {
-  auto cast = New(graph,value,info);
-  auto unbox= Unbox::New(graph,cast,TPKIND_BOOLEAN,info);
-  return BooleanNot::New(graph,unbox,info);
-}
-
-inline TypeAnnotation::TypeAnnotation( Graph* graph , std::uint32_t id , Guard* node , IRInfo* info ):
-  Expr      (HIR_TYPE_ANNOTATION,id,graph,info),
-  type_kind_(node->test()->AsTestType()->type_kind())
-{}
-
-inline TypeAnnotation* TypeAnnotation::New( Graph* graph , Guard* node , IRInfo* info ) {
-  return graph->zone()->New<TypeAnnotation>(graph,graph->AssignID(),node,info);
-}
-
 inline IfTrue* IfTrue::New( Graph* graph , ControlFlow* parent ) {
   lava_debug(NORMAL,lava_verify(
         parent->IsIf() && parent->forward_edge()->size() == 1););

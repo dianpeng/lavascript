@@ -17,6 +17,7 @@ const char* IRTypeGetName( IRType type ) {
 }
 
 void Expr::Replace( Expr* another ) {
+  if(IsIdentical(another)) return;
   // 1. check all the operand_list and patch each operands reference
   //    list to be new one
   lava_foreach( auto &v , ref_list()->GetForwardIterator() ) {
@@ -56,7 +57,7 @@ void Expr::ClearOperand() {
 }
 
 IRList* IRList::Clone( Graph* graph , const IRList& that ) {
-  auto ret = IRList::New(graph,that.Size(),that.ir_info());
+  auto ret = IRList::New(graph,that.Size());
   lava_foreach( auto &v , that.operand_list()->GetForwardIterator() ) {
     ret->Add(v);
   }
@@ -64,7 +65,7 @@ IRList* IRList::Clone( Graph* graph , const IRList& that ) {
 }
 
 IRList* IRList::CloneExceptLastOne( Graph* graph , const IRList& that ) {
-  auto ret = IRList::New(graph,that.Size(),that.ir_info());
+  auto ret = IRList::New(graph,that.Size());
   if(that.Size() == 0)
     return ret;
   else {
@@ -106,6 +107,7 @@ bool ICall::Equal( const Expr* that ) const {
 }
 
 void ControlFlow::Replace( ControlFlow* node ) {
+  if(IsIdentical(node)) return;
   // 1. transfer all *use* node
   lava_foreach( auto &v , ref_list()->GetForwardIterator() ) {
     v.id.set_value(node);
@@ -341,7 +343,7 @@ recursion:
   return false;
 }
 
-Expr* NewUnboxNode( Graph* graph , Expr* node , TypeKind tk , IRInfo* info ) {
+Expr* NewUnboxNode( Graph* graph , Expr* node , TypeKind tk ) {
   // we can only unbox a node when we know the type
   lava_debug(NORMAL,lava_verify(tk != TPKIND_UNKNOWN && tk == GetTypeInference(node)););
 
@@ -376,7 +378,7 @@ Expr* NewUnboxNode( Graph* graph , Expr* node , TypeKind tk , IRInfo* info ) {
   }
 
   // 2. do a real unbox here
-  return Unbox::New(graph,node,tk,info);
+  return Unbox::New(graph,node,tk);
 }
 
 } // namespace hir

@@ -104,10 +104,10 @@ namespace hir {
   __(SStringEq        ,SSTRING_EQ        ,"sstring_eq"        ,NoLeaf,NoEffect) \
   __(SStringNe        ,SSTRING_NE        ,"sstring_ne"        ,NoLeaf,NoEffect) \
 
-#define CBASE_HIR_EXPRESSION_LOW_PROPERTY(__)                          \
-  __(ObjectGet    ,OBJECT_GET    ,"object_get"   ,NoLeaf,NoEffect)     \
-  __(ObjectSet    ,OBJECT_SET    ,"object_set"   ,NoLeaf,Effect)       \
-  __(ListGet      ,LIST_GET      ,"list_get"     ,NoLeaf,NoEffect)     \
+#define CBASE_HIR_EXPRESSION_LOW_PROPERTY(__)                         \
+  __(ObjectGet    ,OBJECT_GET    ,"object_get"   ,NoLeaf,NoEffect)    \
+  __(ObjectSet    ,OBJECT_SET    ,"object_set"   ,NoLeaf,Effect)      \
+  __(ListGet      ,LIST_GET      ,"list_get"     ,NoLeaf,NoEffect)    \
   __(ListSet      ,LIST_SET      ,"list_set"     ,NoLeaf,Effect)
 
 // All the low HIR nodes
@@ -115,27 +115,21 @@ namespace hir {
   CBASE_HIR_EXPRESSION_LOW_ARITHMETIC_AND_COMPARE(__)                 \
   CBASE_HIR_EXPRESSION_LOW_PROPERTY(__)
 
+// Guard node.
+//
+// Guard node is an expression node so it is floating and can be GVNed
+#define CBASE_IR_GUARD(__)                                            \
+  __(Guard       ,GUARD         ,"guard"          ,NoLeaf,NoEffect)
+
 // Guard conditional node , used to do type guess or speculative inline
 //
 // A null test is same as TestType(object,NULL) since null doesn't have
 // any value. And during graph construction any null test , ie x == null,
 // will be *normalized* into a TestType then we could just use predicate
 // to do inference and have null redundancy removal automatically
-#define CBASE_HIR_EXPRESSION_TEST(__)                                 \
+#define CBASE_HIR_TEST(__)                                            \
   __(TestType    ,TEST_TYPE      ,"test_type"      ,NoLeaf,NoEffect)  \
   __(TestListOOB ,TEST_LISTOOB   ,"test_listobb"   ,NoLeaf,NoEffect)
-
-/**
- * Annotation
- *
- * An anntiona is an *expression* node that attaches to an expression
- * annotate the expression's certain aspects. Usually this is for type
- * annotation node to decorate the expression's type
- *
- */
-
-#define CBASE_HIR_ANNOTATION(__)                                      \
-  __(TypeAnnotation,TYPE_ANNOTATION,"type_annotation",NoLeaf,NoEffect)
 
 /**
  * Box operation will wrap a value into the internal box representation
@@ -166,10 +160,10 @@ namespace hir {
   CBASE_HIR_CONSTANT(__)                                              \
   CBASE_HIR_EXPRESSION_HIGH(__)                                       \
   CBASE_HIR_EXPRESSION_LOW (__)                                       \
-  CBASE_HIR_EXPRESSION_TEST(__)                                       \
+  CBASE_HIR_TEST(__)                                                  \
   CBASE_HIR_BOXOP(__)                                                 \
   CBASE_HIR_CAST (__)                                                 \
-  CBASE_HIR_ANNOTATION(__)
+  CBASE_HIR_GUARD(__)
 
 // All the control flow IR nodes
 #define CBASE_HIR_CONTROL_FLOW(__)                                    \
@@ -178,7 +172,6 @@ namespace hir {
   __(LoopHeader ,LOOP_HEADER,"loop_header",NoLeaf,NoEffect)           \
   __(Loop       ,LOOP       ,"loop"       ,NoLeaf,NoEffect)           \
   __(LoopExit   ,LOOP_EXIT  ,"loop_exit"  ,NoLeaf,NoEffect)           \
-  __(Guard      ,GUARD      ,"guard"      ,NoLeaf,NoEffect)           \
   __(If         ,IF         ,"if"         ,NoLeaf,NoEffect)           \
   __(IfTrue     ,IF_TRUE    ,"if_true"    ,NoLeaf,NoEffect)           \
   __(IfFalse    ,IF_FALSE   ,"if_false"   ,NoLeaf,NoEffect)           \
@@ -240,6 +233,7 @@ class Graph;
 class GraphBuilder;
 class ValueRange;
 class Node;
+class Test;
 class Expr;
 class MemoryOp;
 class MemoryWrite;
@@ -268,8 +262,6 @@ class IRInfo {
   interpreter::BytecodeLocation bc_;  // Encoded bytecode
   std::uint32_t method_;              // Index for method information
 };
-
-typedef std::function<IRInfo*()> IRInfoProvider;
 
 // Used to record each IR's corresponding prototype information
 struct PrototypeInfo : zone::ZoneObject {
@@ -492,11 +484,7 @@ class Expr : public Node {
   // Default operation to test whether 2 nodes are identical or not. it should be prefered
   // when 2 nodes are compared against identity. it means if they are equal , then one node
   // can be used to replace other
-  bool IsReplaceable( const Expr* that ) const {
-    if(!HasSideEffect() && !that->HasSideEffect())
-      return IsIdentical(that) || Equal(that);
-    return false;
-  }
+  inline bool IsReplaceable( const Expr* that ) const;
  public:
   // Operand list ----------------------------------------------------------
   //
@@ -511,6 +499,7 @@ class Expr : public Node {
   inline void ReplaceOperand( std::size_t , Expr* );
   // Clear all the operand inside of this node's operand list
   void ClearOperand();
+ public:
   // Effect list -----------------------------------------------------------
   // Used to develop dependency between expression which cannot be expressed
   // as data flow operation. Mainly used to order certain operations
@@ -528,6 +517,7 @@ class Expr : public Node {
   // this function should be invoked with cautious since it is time costy due to
   // the linear finding internally
   void AddEffectIfNotExist( Expr* );
+ public:
   // Reference list -------------------------------------------------------
   //
   // This list returns a list of Ref object which allow user to
@@ -552,7 +542,6 @@ class Expr : public Node {
   // check if this expression node has side effect if it is used as operand
   inline bool IsMemoryWrite() const;
   inline bool IsMemoryRead () const;
-  inline bool IsMemoryOp   () const;
   // check if this expression node is a memory node
   inline bool IsMemoryNode () const;
   // check if this expression node is either NoMemoryRead or NoMemoryWrite
@@ -560,40 +549,41 @@ class Expr : public Node {
   // check if this node is any sort of Phi node , this includes normal expression
   // phi , ie Phi or read/write effect phi node
   inline bool IsPhiNode    () const;
+  // check if this node is any type of Test node
+  inline bool IsTestNode   () const;
   // Check if this Expression is a Leaf node or not
   inline bool IsLeaf()     const;
   bool        IsNoneLeaf() const { return !IsLeaf(); }
-  IRInfo*     ir_info()    const { return ir_info_.ptr(); }
-  // cast
+  // special cast -------------------------------------------------------
   inline MemoryWrite*       AsMemoryWrite();
   inline const MemoryWrite* AsMemoryWrite() const;
   inline MemoryRead *       AsMemoryRead ();
   inline const MemoryRead*  AsMemoryRead () const;
-  inline MemoryOp*          AsMemoryOp   ();
-  inline const MemoryOp*    AsMemoryOp   () const;
   inline MemoryNode*        AsMemoryNode ();
   inline const MemoryNode*  AsMemoryNode () const;
+  inline Test*              AsTest       ();
+  inline const Test*        AsTest       () const;
   // Check whether this expression has side effect , or namely one of its descendent
   // operands has a none empty effect list
-  bool HasSideEffect()     const { return ir_info_.state() == kHasSideEffect; }
+  bool HasSideEffect()     const { return state_ == kHasSideEffect; }
   // constructor
-  Expr( IRType type , std::uint32_t id , Graph* graph , IRInfo* info ):
+  Expr( IRType type , std::uint32_t id , Graph* graph ):
     Node             (type,id,graph),
     operand_list_    (),
     effect_list_     (),
     ref_list_        (),
     stmt_            (),
-    ir_info_         (info)
+    state_           ()
   {}
  private:
   // mark this node has side effect
-  void SetHasSideEffect() { ir_info_.set_state( kHasSideEffect); }
+  void SetHasSideEffect() { state_ = kHasSideEffect; }
 
   OperandList        operand_list_;
   EffectList         effect_list_;
   OperandRefList     ref_list_;
   StatementEdge      stmt_;
-  TaggedPtr<IRInfo>  ir_info_;
+  std::uint64_t      state_;
 };
 
 // MemoryNode
@@ -611,15 +601,7 @@ class Expr : public Node {
 // ensure correct program behavior
 class MemoryNode : public Expr {
  public:
-  MemoryNode( IRType type , std::uint32_t id , Graph* g , IRInfo* info ): Expr(type,id,g,info){}
-};
-
-// MemoryOp
-// This node demonstrats those operations which can cause side effect from perspectives of
-// 1) read and 2) write.
-class MemoryOp : public Expr {
- public:
-  MemoryOp( IRType type , std::uint32_t id , Graph* g , IRInfo* info ): Expr(type,id,g,info){}
+  MemoryNode( IRType type , std::uint32_t id , Graph* g ): Expr(type,id,g){}
 };
 
 // MemoryWrite
@@ -632,9 +614,9 @@ class MemoryOp : public Expr {
 //    generate a side effect so it is always ordered
 // 4. ISet/PSet/ObjectSet/ListSet
 // 5. WriteEffectPhi
-class MemoryWrite : public MemoryOp {
+class MemoryWrite : public Expr {
  public:
-  MemoryWrite( IRType type , std::uint32_t id , Graph* g , IRInfo* info ): MemoryOp(type,id,g,info){}
+  MemoryWrite( IRType type , std::uint32_t id , Graph* g ): Expr(type,id,g){}
 };
 
 // MemoryRead
@@ -646,9 +628,9 @@ class MemoryWrite : public MemoryOp {
 // 2. PGet
 // 3. ObjectGet
 // 4. ListGet
-class MemoryRead : public MemoryOp {
+class MemoryRead : public Expr {
  public:
-  MemoryRead( IRType type , std::uint32_t id , Graph* g , IRInfo* info ): MemoryOp(type,id,g,info) {}
+  MemoryRead( IRType type , std::uint32_t id , Graph* g ): Expr(type,id,g) {}
 };
 
 /* ---------------------------------------------------
@@ -657,27 +639,11 @@ class MemoryRead : public MemoryOp {
  *
  * --------------------------------------------------*/
 
-class Arg : public MemoryNode {
- public:
-  inline static Arg* New( Graph* , std::uint32_t );
-  std::uint32_t index() const { return index_; }
-  Arg( Graph* graph , std::uint32_t id , std::uint32_t index ):
-    MemoryNode (HIR_ARG,id,graph,NULL),
-    index_(index)
-  {}
- private:
-  std::uint32_t index_;
-  LAVA_DISALLOW_COPY_AND_ASSIGN(Arg)
-};
-
 class Float64 : public Expr {
  public:
-  inline static Float64* New( Graph* , double , IRInfo* );
-  double value() const { return value_; }
-  Float64( Graph* graph , std::uint32_t id , double value , IRInfo* info ):
-    Expr  (HIR_FLOAT64,id,graph,info),
-    value_(value)
-  {}
+  inline static Float64* New( Graph* , double );
+  double               value() const { return value_; }
+  Float64( Graph* graph , std::uint32_t id , double value ): Expr(HIR_FLOAT64,id,graph), value_(value) {}
  public:
   virtual std::uint64_t GVNHash() const {
     return GVNHash1(type_name(),value_);
@@ -692,10 +658,10 @@ class Float64 : public Expr {
 
 class Boolean : public Expr {
  public:
-  inline static Boolean* New( Graph* , bool , IRInfo* );
+  inline static Boolean* New( Graph* , bool );
   bool value() const { return value_; }
-  Boolean( Graph* graph , std::uint32_t id , bool value , IRInfo* info ):
-    Expr  (HIR_BOOLEAN,id,graph,info),
+  Boolean( Graph* graph , std::uint32_t id , bool value ):
+    Expr  (HIR_BOOLEAN,id,graph),
     value_(value)
   {}
   virtual std::uint64_t GVNHash() const {
@@ -711,13 +677,12 @@ class Boolean : public Expr {
 
 class LString : public Expr {
  public:
-  inline static LString* New( Graph* , const LongString& , IRInfo* );
-  inline static LString* New( Graph* , const char* , IRInfo* );
-  inline static LString* New( Graph* , const zone::String* , IRInfo* );
+  inline static LString* New( Graph* , const LongString& );
+  inline static LString* New( Graph* , const char* );
+  inline static LString* New( Graph* , const zone::String* );
   const zone::String* value() const { return value_; }
-  LString( Graph* graph , std::uint32_t id , const zone::String* value ,
-                                             IRInfo* info ):
-    Expr  (HIR_LONG_STRING,id,graph,info),
+  LString( Graph* graph , std::uint32_t id , const zone::String* value ):
+    Expr  (HIR_LONG_STRING,id,graph),
     value_(value)
   {}
   virtual std::uint64_t GVNHash() const {
@@ -733,13 +698,12 @@ class LString : public Expr {
 
 class SString : public Expr {
  public:
-  inline static SString* New( Graph* , const SSO& , IRInfo* );
-  inline static SString* New( Graph* , const char* , IRInfo* );
-  inline static SString* New( Graph* , const zone::String* , IRInfo* );
+  inline static SString* New( Graph* , const SSO& );
+  inline static SString* New( Graph* , const char* );
+  inline static SString* New( Graph* , const zone::String* );
   const zone::String* value() const { return value_; }
-  SString( Graph* graph , std::uint32_t id , const zone::String* value ,
-                                             IRInfo* info ):
-    Expr (HIR_SMALL_STRING,id,graph,info),
+  SString( Graph* graph , std::uint32_t id , const zone::String* value ):
+    Expr (HIR_SMALL_STRING,id,graph),
     value_(value)
   {}
   virtual std::uint64_t GVNHash() const {
@@ -755,10 +719,8 @@ class SString : public Expr {
 
 class Nil : public Expr {
  public:
-  inline static Nil* New( Graph* , IRInfo* );
-  Nil( Graph* graph , std::uint32_t id , IRInfo* info ):
-    Expr(HIR_NIL,id,graph,info)
-  {}
+  inline static Nil* New( Graph* );
+  Nil( Graph* graph , std::uint32_t id ): Expr(HIR_NIL,id,graph) {}
   virtual std::uint64_t GVNHash() const {
     return GVNHash0(type_name());
   }
@@ -769,13 +731,26 @@ class Nil : public Expr {
   LAVA_DISALLOW_COPY_AND_ASSIGN(Nil)
 };
 
+class Arg : public MemoryNode {
+ public:
+  inline static Arg* New( Graph* , std::uint32_t );
+  std::uint32_t index() const { return index_; }
+  Arg( Graph* graph , std::uint32_t id , std::uint32_t index ):
+    MemoryNode (HIR_ARG,id,graph),
+    index_(index)
+  {}
+ private:
+  std::uint32_t index_;
+  LAVA_DISALLOW_COPY_AND_ASSIGN(Arg)
+};
+
 class IRList : public MemoryNode {
  public:
-  inline static IRList* New( Graph* , std::size_t size , IRInfo* );
+  inline static IRList* New( Graph* , std::size_t size );
   void Add( Expr* node ) { AddOperand(node); }
   std::size_t Size() const { return operand_list()->size(); }
-  IRList( Graph* graph , std::uint32_t id , std::size_t size , IRInfo* info ):
-    MemoryNode(HIR_LIST,id,graph,info)
+  IRList( Graph* graph , std::uint32_t id , std::size_t size ):
+    MemoryNode(HIR_LIST,id,graph)
   {
     (void)size; // implicit indicated by the size of operand_list()
   }
@@ -788,13 +763,13 @@ class IRList : public MemoryNode {
 
 class IRObjectKV : public Expr {
  public:
-  inline static IRObjectKV* New( Graph* , Expr* , Expr* ,IRInfo* );
+  inline static IRObjectKV* New( Graph* , Expr* , Expr* );
   Expr* key  () const { return operand_list()->First(); }
   Expr* value() const { return operand_list()->Last (); }
   void set_key  ( Expr* key ) { lava_debug(NORMAL,lava_verify(key->IsString());); ReplaceOperand(0,key); }
   void set_value( Expr* val ) { ReplaceOperand(1,val); }
-  IRObjectKV( Graph* graph , std::uint32_t id , Expr* key , Expr* val , IRInfo* info ):
-    Expr(HIR_OBJECT_KV,id,graph,info)
+  IRObjectKV( Graph* graph , std::uint32_t id , Expr* key , Expr* val ):
+    Expr(HIR_OBJECT_KV,id,graph)
   {
     lava_debug(NORMAL,lava_verify(key->IsString()););
     AddOperand(key);
@@ -806,14 +781,14 @@ class IRObjectKV : public Expr {
 
 class IRObject : public MemoryNode {
  public:
-  inline static IRObject* New( Graph* , std::size_t size , IRInfo* );
-  void Add( Expr* key , Expr* val , IRInfo* info ) {
+  inline static IRObject* New( Graph* , std::size_t size );
+  void Add( Expr* key , Expr* val ) {
     lava_debug(NORMAL,lava_verify(key->IsString()););
-    AddOperand(IRObjectKV::New(graph(),key,val,info));
+    AddOperand(IRObjectKV::New(graph(),key,val));
   }
   std::size_t Size() const { return operand_list()->size(); }
-  IRObject( Graph* graph , std::uint32_t id , std::size_t size , IRInfo* info ):
-    MemoryNode(HIR_OBJECT,id,graph,info)
+  IRObject( Graph* graph , std::uint32_t id , std::size_t size ):
+    MemoryNode(HIR_OBJECT,id,graph)
   {
     (void)size;
   }
@@ -827,10 +802,10 @@ class IRObject : public MemoryNode {
 // ----------------------------------------------------------------
 class LoadCls : public Expr {
  public:
-  static inline LoadCls* New( Graph* , std::uint32_t ref , IRInfo* info );
+  static inline LoadCls* New( Graph* , std::uint32_t ref );
   std::uint32_t ref() const { return ref_; }
-  LoadCls( Graph* graph , std::uint32_t id , std::uint32_t ref , IRInfo* info ):
-    Expr (HIR_LOAD_CLS,id,graph,info),
+  LoadCls( Graph* graph , std::uint32_t id , std::uint32_t ref ):
+    Expr (HIR_LOAD_CLS,id,graph),
     ref_ (ref)
   {}
  private:
@@ -840,26 +815,32 @@ class LoadCls : public Expr {
 
 // ----------------------------------------------------------------
 // Arithmetic
+//
+// The following node doesn't map the operands to a specific type so
+// they map to dynamic dispatch code in jitted version. For binary,
+// since we support invoke binary operator implemented in C++ side,
+// the binary node is even a side effect node and it will generate
+// a checkpoint/framestate.
 // ----------------------------------------------------------------
 class Unary : public Expr {
  public:
   enum Operator { MINUS, NOT };
-  inline static Unary* New( Graph* , Expr* , Operator , IRInfo* );
+  inline static Unary* New( Graph* , Expr* , Operator );
   inline static Operator BytecodeToOperator( interpreter::Bytecode bc );
   inline static const char* GetOperatorName( Operator op );
  public:
   Expr*       operand() const { return operand_list()->First(); }
   Operator       op  () const { return op_;      }
   const char* op_name() const { return GetOperatorName(op()); }
-  Unary( Graph* graph , std::uint32_t id , Expr* opr , Operator op , IRInfo* info ):
-    Expr  (HIR_UNARY,id,graph,info),
+  Unary( Graph* graph , std::uint32_t id , Expr* opr , Operator op ):
+    Expr  (HIR_UNARY,id,graph),
     op_   (op)
   {
     AddOperand(opr);
   }
  protected:
-  Unary( IRType type , Graph* graph , std::uint32_t id , Expr* opr , Operator op , IRInfo* info ):
-    Expr  (type,id,graph,info),
+  Unary( IRType type , Graph* graph , std::uint32_t id , Expr* opr , Operator op ):
+    Expr  (type,id,graph),
     op_   (op)
   {
     AddOperand(opr);
@@ -891,22 +872,22 @@ class Binary : public Expr {
 
  public:
   // Create a binary node
-  inline static Binary* New( Graph* , Expr* , Expr* , Operator , IRInfo* );
+  inline static Binary* New( Graph* , Expr* , Expr* , Operator );
   Expr*           lhs() const { return operand_list()->First(); }
   Expr*           rhs() const { return operand_list()->Last (); }
   Operator         op() const { return op_;  }
   const char* op_name() const { return GetOperatorName(op()); }
 
-  Binary( Graph* graph , std::uint32_t id , Expr* lhs , Expr* rhs , Operator op , IRInfo* info ):
-    Expr  (HIR_BINARY,id,graph,info),
+  Binary( Graph* graph , std::uint32_t id , Expr* lhs , Expr* rhs , Operator op ):
+    Expr  (HIR_BINARY,id,graph),
     op_   (op)
   {
     AddOperand(lhs);
     AddOperand(rhs);
   }
  protected:
-  Binary( IRType irtype ,Graph* graph ,std::uint32_t id ,Expr* lhs ,Expr* rhs ,Operator op,IRInfo* info ):
-    Expr  (irtype,id,graph,info),
+  Binary( IRType irtype ,Graph* graph ,std::uint32_t id ,Expr* lhs ,Expr* rhs ,Operator op ):
+    Expr  (irtype,id,graph),
     op_   (op)
   {
     AddOperand(lhs);
@@ -919,9 +900,9 @@ class Binary : public Expr {
 
 class Ternary: public Expr {
  public:
-  inline static Ternary* New( Graph* , Expr* , Expr* , Expr* , IRInfo* );
-  Ternary( Graph* graph , std::uint32_t id , Expr* cond , Expr* lhs , Expr* rhs , IRInfo* info ):
-    Expr  (HIR_TERNARY,id,graph,info)
+  inline static Ternary* New( Graph* , Expr* , Expr* , Expr* );
+  Ternary( Graph* graph , std::uint32_t id , Expr* cond , Expr* lhs , Expr* rhs ):
+    Expr  (HIR_TERNARY,id,graph)
   {
     AddOperand(cond);
     AddOperand(lhs);
@@ -940,12 +921,12 @@ class Ternary: public Expr {
 // -------------------------------------------------------------------------
 class UGet : public MemoryNode {
  public:
-  inline static UGet* New( Graph* , std::uint8_t , std::uint32_t , IRInfo* );
+  inline static UGet* New( Graph* , std::uint8_t , std::uint32_t );
   std::uint8_t index()   const { return index_;  }
   std::uint32_t method() const { return method_; }
 
-  UGet( Graph* graph , std::uint32_t id , std::uint8_t index , std::uint32_t method , IRInfo* info ):
-    MemoryNode (HIR_UGET,id,graph,info),
+  UGet( Graph* graph , std::uint32_t id , std::uint8_t index , std::uint32_t method ):
+    MemoryNode (HIR_UGET,id,graph),
     index_ (index),
     method_(method)
   {}
@@ -964,7 +945,7 @@ class UGet : public MemoryNode {
 
 class USet : public Expr {
  public:
-  inline static USet* New( Graph* , std::uint8_t , std::uint32_t , Expr* opr , IRInfo* );
+  inline static USet* New( Graph* , std::uint8_t , std::uint32_t , Expr* opr );
   std::uint32_t method() const { return method_; }
   std::uint8_t  index () const { return index_ ; }
   Expr* value() const { return operand_list()->First();  }
@@ -981,9 +962,8 @@ class USet : public Expr {
     return false;
   }
 
-  USet( Graph* graph , std::uint8_t id , std::uint8_t index , std::uint32_t method , Expr* value,
-                                                                                     IRInfo* info ):
-    Expr    (HIR_USET,id,graph,info),
+  USet( Graph* graph , std::uint8_t id , std::uint8_t index , std::uint32_t method , Expr* value ):
+    Expr    (HIR_USET,id,graph),
     index_  (index),
     method_ (method)
   {
@@ -1000,7 +980,7 @@ class USet : public Expr {
 // -------------------------------------------------------------------------
 class PGet : public MemoryRead {
  public:
-  inline static PGet* New( Graph* , Expr* , Expr* , IRInfo* , ControlFlow* );
+  inline static PGet* New( Graph* , Expr* , Expr* , ControlFlow* );
   Expr* object() const { return operand_list()->First(); }
   Expr* key   () const { return operand_list()->Last (); }
   virtual Expr* Memory() const { return object(); }
@@ -1015,15 +995,15 @@ class PGet : public MemoryRead {
     }
     return false;
   }
-  PGet( Graph* graph , std::uint32_t id , Expr* object , Expr* index , IRInfo* info ):
-    MemoryRead (HIR_PGET,id,graph,info)
+  PGet( Graph* graph , std::uint32_t id , Expr* object , Expr* index ):
+    MemoryRead (HIR_PGET,id,graph)
   {
     AddOperand(object);
     AddOperand(index );
   }
  protected:
-  PGet( IRType type , Graph* graph , std::uint32_t id , Expr* object , Expr* index  , IRInfo* info ):
-    MemoryRead(type,id,graph,info)
+  PGet( IRType type , Graph* graph , std::uint32_t id , Expr* object , Expr* index ):
+    MemoryRead(type,id,graph)
   {
     AddOperand(object);
     AddOperand(index );
@@ -1034,7 +1014,7 @@ class PGet : public MemoryRead {
 
 class PSet : public MemoryWrite {
  public:
-  inline static PSet* New( Graph* , Expr* , Expr* , Expr* , IRInfo* , ControlFlow* );
+  inline static PSet* New( Graph* , Expr* , Expr* , Expr* , ControlFlow* );
   Expr* object() const { return operand_list()->First(); }
   Expr* key   () const { return operand_list()->Index(1);}
   Expr* value () const { return operand_list()->Last (); }
@@ -1051,8 +1031,8 @@ class PSet : public MemoryWrite {
     }
     return false;
   }
-  PSet( Graph* graph , std::uint32_t id , Expr* object , Expr* index , Expr* value , IRInfo* info ):
-    MemoryWrite(HIR_PSET,id,graph,info)
+  PSet( Graph* graph , std::uint32_t id , Expr* object , Expr* index , Expr* value ):
+    MemoryWrite(HIR_PSET,id,graph)
   {
     AddOperand(object);
     AddOperand(index );
@@ -1060,8 +1040,8 @@ class PSet : public MemoryWrite {
   }
 
  protected:
-  PSet(IRType type,Graph* graph,std::uint32_t id,Expr* object,Expr* index,Expr* value,IRInfo* info):
-    MemoryWrite(type,id,graph,info)
+  PSet(IRType type,Graph* graph,std::uint32_t id,Expr* object,Expr* index,Expr* value):
+    MemoryWrite(type,id,graph)
   {
     AddOperand(object);
     AddOperand(index );
@@ -1074,13 +1054,13 @@ class PSet : public MemoryWrite {
 
 class IGet : public MemoryRead {
  public:
-  inline static IGet* New( Graph* , Expr* , Expr* , IRInfo* , ControlFlow* );
+  inline static IGet* New( Graph* , Expr* , Expr* , ControlFlow* );
   Expr* object() const { return operand_list()->First(); }
   Expr* index () const { return operand_list()->Last (); }
   virtual Expr* Memory() const { return object(); }
 
-  IGet( Graph* graph , std::uint32_t id , Expr* object , Expr* index , IRInfo* info ):
-    MemoryRead (HIR_IGET,id,graph,info)
+  IGet( Graph* graph , std::uint32_t id , Expr* object , Expr* index ):
+    MemoryRead (HIR_IGET,id,graph)
   {
     AddOperand(object);
     AddOperand(index );
@@ -1099,8 +1079,8 @@ class IGet : public MemoryRead {
   }
 
  protected:
-  IGet( IRType type , Graph* graph , std::uint32_t id , Expr* object , Expr* index , IRInfo* info ):
-    MemoryRead(type,id,graph,info)
+  IGet( IRType type , Graph* graph , std::uint32_t id , Expr* object , Expr* index ):
+    MemoryRead(type,id,graph)
   {
     AddOperand(object);
     AddOperand(index );
@@ -1112,7 +1092,7 @@ class IGet : public MemoryRead {
 
 class ISet : public MemoryWrite {
  public:
-  inline static ISet* New( Graph* , Expr* , Expr* , Expr* , IRInfo* , ControlFlow* );
+  inline static ISet* New( Graph* , Expr* , Expr* , Expr* , ControlFlow* );
   Expr* object() const { return operand_list()->First(); }
   Expr* index () const { return operand_list()->Index(1);}
   Expr* value () const { return operand_list()->Last (); }
@@ -1130,8 +1110,8 @@ class ISet : public MemoryWrite {
     return false;
   }
 
-  ISet( Graph* graph , std::uint32_t id , Expr* object , Expr* index , Expr* value , IRInfo* info ):
-    MemoryWrite(HIR_ISET,id,graph,info)
+  ISet( Graph* graph , std::uint32_t id , Expr* object , Expr* index , Expr* value ):
+    MemoryWrite(HIR_ISET,id,graph)
   {
     AddOperand(object);
     AddOperand(index );
@@ -1139,8 +1119,8 @@ class ISet : public MemoryWrite {
   }
 
  protected:
-  ISet(IRType type,Graph* graph,std::uint32_t id,Expr* object,Expr* index,Expr* value,IRInfo* info):
-    MemoryWrite(type,id,graph,info)
+  ISet(IRType type,Graph* graph,std::uint32_t id,Expr* object,Expr* index,Expr* value):
+    MemoryWrite(type,id,graph)
   {
     AddOperand(object);
     AddOperand(index );
@@ -1156,11 +1136,11 @@ class ISet : public MemoryWrite {
 // -------------------------------------------------------------------------
 class GGet : public MemoryNode {
  public:
-  inline static GGet* New( Graph* , Expr* , IRInfo* , ControlFlow* );
+  inline static GGet* New( Graph* , Expr* , ControlFlow* );
   Expr* key() const { return operand_list()->First(); }
 
-  GGet( Graph* graph , std::uint32_t id , Expr* name , IRInfo* info ):
-    MemoryNode (HIR_GGET,id,graph,info)
+  GGet( Graph* graph , std::uint32_t id , Expr* name ):
+    MemoryNode (HIR_GGET,id,graph)
   {
     AddOperand(name);
   }
@@ -1170,11 +1150,11 @@ class GGet : public MemoryNode {
 
 class GSet : public Expr {
  public:
-  inline static GSet* New( Graph* , Expr* key , Expr* value , IRInfo* , ControlFlow* );
+  inline static GSet* New( Graph* , Expr* key , Expr* value , ControlFlow* );
   Expr* key () const { return operand_list()->First(); }
   Expr* value()const { return operand_list()->Last() ; }
-  GSet( Graph* graph , std::uint32_t id , Expr* key , Expr* value , IRInfo* info ):
-    Expr(HIR_GSET,id,graph,info)
+  GSet( Graph* graph , std::uint32_t id , Expr* key , Expr* value ):
+    Expr(HIR_GSET,id,graph)
   {
     AddOperand(key);
     AddOperand(value);
@@ -1188,10 +1168,10 @@ class GSet : public Expr {
 // -------------------------------------------------------------------------
 class ItrNew : public Expr {
  public:
-  inline static ItrNew* New( Graph* , Expr* , IRInfo* , ControlFlow* );
+  inline static ItrNew* New( Graph* , Expr* , ControlFlow* );
   Expr* operand() const { return operand_list()->First(); }
-  ItrNew( Graph* graph , std::uint32_t id , Expr* operand , IRInfo* info ):
-    Expr  (HIR_ITR_NEW,id,graph,info)
+  ItrNew( Graph* graph , std::uint32_t id , Expr* operand ):
+    Expr  (HIR_ITR_NEW,id,graph)
   {
     AddOperand(operand);
   }
@@ -1201,10 +1181,10 @@ class ItrNew : public Expr {
 
 class ItrNext : public Expr {
  public:
-  inline static ItrNext* New( Graph* , Expr* , IRInfo* , ControlFlow* );
+  inline static ItrNext* New( Graph* , Expr* , ControlFlow* );
   Expr* operand() const { return operand_list()->First(); }
-  ItrNext( Graph* graph , std::uint32_t id , Expr* operand , IRInfo* info ):
-    Expr  (HIR_ITR_NEXT,id,graph,info)
+  ItrNext( Graph* graph , std::uint32_t id , Expr* operand ):
+    Expr  (HIR_ITR_NEXT,id,graph)
   {
     AddOperand(operand);
   }
@@ -1214,10 +1194,10 @@ class ItrNext : public Expr {
 
 class ItrTest : public Expr {
  public:
-  inline static ItrTest* New( Graph* , Expr* , IRInfo* , ControlFlow* );
+  inline static ItrTest* New( Graph* , Expr* , ControlFlow* );
   Expr* operand() const { return operand_list()->First(); }
-  ItrTest( Graph* graph , std::uint32_t id , Expr* operand , IRInfo* info ):
-    Expr  (HIR_ITR_TEST,id,graph,info)
+  ItrTest( Graph* graph , std::uint32_t id , Expr* operand ):
+    Expr  (HIR_ITR_TEST,id,graph)
   {
     AddOperand(operand);
   }
@@ -1239,10 +1219,10 @@ class ItrDeref : public Expr {
     PROJECTION_KEY = 0,
     PROJECTION_VAL
   };
-  inline static ItrDeref* New( Graph* , Expr* , IRInfo* , ControlFlow* );
+  inline static ItrDeref* New( Graph* , Expr* , ControlFlow* );
   Expr* operand() const { return operand_list()->First(); }
-  ItrDeref( Graph* graph , std::uint32_t id , Expr* operand , IRInfo* info ):
-    Expr   (HIR_ITR_DEREF,id,graph,info)
+  ItrDeref( Graph* graph , std::uint32_t id , Expr* operand ):
+    Expr   (HIR_ITR_DEREF,id,graph)
   {
     AddOperand(operand);
   }
@@ -1258,8 +1238,8 @@ class ItrDeref : public Expr {
 // -------------------------------------------------------------------------
 class Phi : public Expr {
  public:
-  inline static Phi* New( Graph* , ControlFlow* , IRInfo* );
-  inline static Phi* New( Graph* , Expr* , Expr* , ControlFlow* , IRInfo* );
+  inline static Phi* New( Graph* , ControlFlow* );
+  inline static Phi* New( Graph* , Expr* , Expr* , ControlFlow* );
   // Remove the phi node from its belonged region. The reason this one is just
   // a static function is because this function *doesn't* touch its ref_list,
   // so its ref_list will still have its belonged region's reference there and
@@ -1270,9 +1250,7 @@ class Phi : public Expr {
   // Check if this Phi node is not used. We cannot use HasRef function since
   // a Phi node may added to a region during setup time and there will be one
   // ref inside of the RefList. We just need to check that
-  bool IsUsed() const {
-    return !(region() ? ref_list()->size() == 1 : (ref_list()->empty()));
-  }
+  bool         IsUsed() const { return !(region() ? ref_list()->size() == 1 : (ref_list()->empty())); }
   // Check if this Phi node is in intermediate state. A phi node will generated
   // at the front the loop and it will only have on operand then. If phi is in
   // this stage, then it is an intermediate state
@@ -1282,7 +1260,7 @@ class Phi : public Expr {
   // Each phi node is bounded to a control flow regional node
   // and by this we can easily decide which region contributs
   // to a certain input node of Phi node
-  inline Phi( Graph* , std::uint32_t , ControlFlow* , IRInfo* );
+  inline Phi( Graph* , std::uint32_t , ControlFlow* );
  private:
   ControlFlow* region_;
   LAVA_DISALLOW_COPY_AND_ASSIGN(Phi)
@@ -1297,10 +1275,10 @@ class Phi : public Expr {
 // -------------------------------------------------------------------------
 class ReadEffectPhi : public MemoryRead {
  public:
-  inline static ReadEffectPhi* New( Graph* , ControlFlow* , IRInfo* );
-  inline static ReadEffectPhi* New( Graph* , MemoryRead* , MemoryRead* , ControlFlow* , IRInfo* );
+  inline static ReadEffectPhi* New( Graph* , ControlFlow* );
+  inline static ReadEffectPhi* New( Graph* , MemoryRead* , MemoryRead* , ControlFlow* );
   ControlFlow* region() const { return region_; }
-  inline ReadEffectPhi( Graph* , std::uint32_t , ControlFlow* , IRInfo* );
+  inline ReadEffectPhi( Graph* , std::uint32_t , ControlFlow* );
  private:
   ControlFlow* region_;
   LAVA_DISALLOW_COPY_AND_ASSIGN(ReadEffectPhi);
@@ -1308,10 +1286,10 @@ class ReadEffectPhi : public MemoryRead {
 
 class WriteEffectPhi : public MemoryWrite {
  public:
-  inline static WriteEffectPhi* New( Graph* , ControlFlow* , IRInfo* );
-  inline static WriteEffectPhi* New( Graph* , MemoryWrite* , MemoryWrite* , ControlFlow* , IRInfo* );
+  inline static WriteEffectPhi* New( Graph* , ControlFlow* );
+  inline static WriteEffectPhi* New( Graph* , MemoryWrite* , MemoryWrite* , ControlFlow* );
   ControlFlow* region() const { return region_; }
-  inline WriteEffectPhi( Graph* , std::uint32_t , ControlFlow* , IRInfo* );
+  inline WriteEffectPhi( Graph* , std::uint32_t , ControlFlow* );
  private:
   ControlFlow* region_;
   LAVA_DISALLOW_COPY_AND_ASSIGN(WriteEffectPhi);
@@ -1321,7 +1299,7 @@ class WriteEffectPhi : public MemoryWrite {
 class NoReadEffect: public MemoryRead {
  public:
   inline static NoReadEffect* New( Graph* );
-  NoReadEffect( Graph* graph , std::uint32_t id ): MemoryRead(HIR_NO_READ_EFFECT,id,graph,NULL) {}
+  NoReadEffect( Graph* graph , std::uint32_t id ): MemoryRead(HIR_NO_READ_EFFECT,id,graph) {}
  private:
   LAVA_DISALLOW_COPY_AND_ASSIGN(NoReadEffect);
 };
@@ -1329,7 +1307,7 @@ class NoReadEffect: public MemoryRead {
 class NoWriteEffect: public MemoryWrite {
  public:
   inline static NoWriteEffect* New( Graph* );
-  NoWriteEffect( Graph* graph , std::uint32_t id ): MemoryWrite(HIR_NO_WRITE_EFFECT,id,graph,NULL) {}
+  NoWriteEffect( Graph* graph , std::uint32_t id ): MemoryWrite(HIR_NO_WRITE_EFFECT,id,graph) {}
  private:
   LAVA_DISALLOW_COPY_AND_ASSIGN(NoWriteEffect);
 };
@@ -1339,9 +1317,9 @@ class NoWriteEffect: public MemoryWrite {
 // -------------------------------------------------------------------------
 class Call : public Expr {
  public:
-  inline static Call* New( Graph* graph , Expr* , std::uint8_t , std::uint8_t , IRInfo* );
-  Call( Graph* graph , std::uint32_t id , Expr* obj , std::uint8_t base , std::uint8_t narg , IRInfo* info ):
-    Expr  (HIR_CALL,id,graph,info),
+  inline static Call* New( Graph* graph , Expr* , std::uint8_t , std::uint8_t );
+  Call( Graph* graph , std::uint32_t id , Expr* obj , std::uint8_t base , std::uint8_t narg ):
+    Expr  (HIR_CALL,id,graph),
     base_ (base),
     narg_ (narg)
   {
@@ -1357,7 +1335,7 @@ class Call : public Expr {
 // intrinsic function call
 class ICall : public Expr {
  public:
-  inline static ICall* New( Graph* , interpreter::IntrinsicCall , bool tail , IRInfo* );
+  inline static ICall* New( Graph* , interpreter::IntrinsicCall , bool tail );
   // add argument back to the ICall's argument list
   void AddArgument( Expr* expr ) {
     lava_debug(NORMAL,lava_verify(
@@ -1376,8 +1354,8 @@ class ICall : public Expr {
   virtual std::uint64_t GVNHash() const;
   virtual bool Equal( const Expr* ) const;
 
-  ICall( Graph* graph , std::uint32_t id , interpreter::IntrinsicCall ic , bool tail , IRInfo* info ):
-    Expr(HIR_ICALL,id,graph,info),
+  ICall( Graph* graph , std::uint32_t id , interpreter::IntrinsicCall ic , bool tail ):
+    Expr(HIR_ICALL,id,graph),
     ic_ (ic),
     tail_call_(tail)
   {}
@@ -1396,13 +1374,13 @@ class ICall : public Expr {
 // -------------------------------------------------------------------------
 class Projection : public Expr {
  public:
-  inline static Projection* New( Graph* , Expr* , std::uint32_t index , IRInfo* );
+  inline static Projection* New( Graph* , Expr* , std::uint32_t index );
   Expr* operand() const { return operand_list()->First(); }
   // a specific value to indicate which part of the input operand
   // needs to be projected
   std::uint32_t index() const { return index_; }
-  Projection( Graph* graph , std::uint32_t id , Expr* operand , std::uint32_t index , IRInfo* info ):
-    Expr  (HIR_PROJECTION,id,graph,info),
+  Projection( Graph* graph , std::uint32_t id , Expr* operand , std::uint32_t index ):
+    Expr  (HIR_PROJECTION,id,graph),
     index_(index)
   {
     AddOperand(operand);
@@ -1420,9 +1398,9 @@ class Projection : public Expr {
 
 class InitCls : public Expr {
  public:
-  inline static InitCls* New( Graph* , Expr* , IRInfo* );
-  InitCls( Graph* graph , std::uint32_t id , Expr* key , IRInfo* info ):
-    Expr (HIR_INIT_CLS,id,graph,info)
+  inline static InitCls* New( Graph* , Expr* );
+  InitCls( Graph* graph , std::uint32_t id , Expr* key ):
+    Expr (HIR_INIT_CLS,id,graph)
   {
     AddOperand(key);
   }
@@ -1444,7 +1422,7 @@ class OSRLoad : public Expr {
     return that->IsOSRLoad() && (that->AsOSRLoad()->index() == index());
   }
   OSRLoad( Graph* graph , std::uint32_t id , std::uint32_t index ):
-    Expr  ( HIR_OSR_LOAD , id , graph , NULL ),
+    Expr  ( HIR_OSR_LOAD , id , graph ),
     index_(index)
   {}
  private:
@@ -1476,7 +1454,7 @@ class Checkpoint : public Expr {
   // add a StackSlot into the checkpoint
   inline void AddStackSlot( Expr* , std::uint32_t );
   Checkpoint( Graph* graph , std::uint32_t id ):
-    Expr(HIR_CHECKPOINT,id,graph,NULL)
+    Expr(HIR_CHECKPOINT,id,graph)
   {}
  private:
   LAVA_DISALLOW_COPY_AND_ASSIGN(Checkpoint)
@@ -1495,7 +1473,7 @@ class StackSlot : public Expr {
   Expr* expr() const { return operand_list()->First(); }
 
   StackSlot( Graph* graph , std::uint32_t id , Expr* expr , std::uint32_t index ):
-    Expr(HIR_STACK_SLOT,id,graph,NULL),
+    Expr(HIR_STACK_SLOT,id,graph),
     index_(index)
   {
     AddOperand(expr);
@@ -1506,20 +1484,27 @@ class StackSlot : public Expr {
   LAVA_DISALLOW_COPY_AND_ASSIGN(StackSlot)
 };
 
+
 /* -------------------------------------------------------
  * Testing node , used with Guard node or If node
  * ------------------------------------------------------*/
-
-class TestType : public Expr {
+class Test : public Expr {
  public:
-  inline static TestType* New( Graph* , TypeKind , Expr* , IRInfo* );
+  // return the object this test node test against with
+  virtual Expr* object() const = 0;
+ protected:
+  Test( IRType type , std::uint32_t id , Graph* g ): Expr(type,id,g) {}
+};
 
+class TestType : public Test {
+ public:
+  inline static TestType* New( Graph* , TypeKind , Expr* );
   TypeKind type_kind() const { return type_kind_; }
   const char* type_kind_name() const { return GetTypeKindName(type_kind_); }
-  Expr* object() const { return operand_list()->First(); }
+  virtual Expr* object() const { return operand_list()->First(); }
 
-  TestType( Graph* graph , std::uint32_t id , TypeKind tc , Expr* obj, IRInfo* info ):
-    Expr(HIR_TEST_TYPE,id,graph,info),
+  TestType( Graph* graph , std::uint32_t id , TypeKind tc , Expr* obj ):
+    Test(HIR_TEST_TYPE,id,graph),
     type_kind_(tc)
   {
     AddOperand(obj);
@@ -1529,13 +1514,13 @@ class TestType : public Expr {
   LAVA_DISALLOW_COPY_AND_ASSIGN(TestType)
 };
 
-class TestListOOB : public Expr {
+class TestListOOB : public Test {
  public:
-  inline static TestListOOB* New( Graph* , Expr* , Expr* , IRInfo* );
-  Expr* object() const { return operand_list()->First(); }
+  inline static TestListOOB* New( Graph* , Expr* , Expr* );
+  virtual Expr* object() const { return operand_list()->First(); }
   Expr* index () const { return operand_list()->Last (); }
-  TestListOOB( Graph* graph , std::uint32_t id , Expr* obj , Expr* idx , IRInfo* info ):
-    Expr(HIR_TEST_LISTOOB,id,graph,info)
+  TestListOOB( Graph* graph , std::uint32_t id , Expr* obj , Expr* idx ):
+    Test(HIR_TEST_LISTOOB,id,graph)
   {
     AddOperand(obj);
     AddOperand(idx);
@@ -1544,16 +1529,34 @@ class TestListOOB : public Expr {
   LAVA_DISALLOW_COPY_AND_ASSIGN(TestListOOB)
 };
 
+// -----------------------------------------------------
+// Guard
+// -----------------------------------------------------
+class Guard : public Expr {
+ public:
+  inline static Guard* New( Graph* , Test* , ControlFlow* );
+  Test*             test() const { return operand_list()->First()->AsTest(); }
+  Expr*           object() const { return test()->object(); }
+
+  Guard( Graph* graph , std::uint32_t id , Test* test , ControlFlow* region ):
+    ControlFlow(HIR_GUARD,id,graph,region)
+  {
+    AddOperand(test);
+  }
+ private:
+  LAVA_DISALLOW_COPY_AND_ASSIGN(Guard)
+};
+
 /* -------------------------------------------------------
  * Low level operations
  * ------------------------------------------------------*/
 
 class Float64Negate  : public Expr {
  public:
-  inline static Float64Negate* New( Graph* , Expr* , IRInfo* );
+  inline static Float64Negate* New( Graph* , Expr* );
   Expr* operand() const { return operand_list()->First(); }
-  Float64Negate( Graph* graph , std::uint32_t id , Expr* opr , IRInfo* info ):
-    Expr(HIR_FLOAT64_NEGATE,id,graph,info)
+  Float64Negate( Graph* graph , std::uint32_t id , Expr* opr ):
+    Expr(HIR_FLOAT64_NEGATE,id,graph)
   {
     AddOperand(opr);
   }
@@ -1573,121 +1576,14 @@ class Float64Negate  : public Expr {
   LAVA_DISALLOW_COPY_AND_ASSIGN(Float64Negate)
 };
 
-namespace detail {
-
-template< typename T > struct Float64BinaryGVNImpl {
- protected:
-  std::uint64_t GVNHashImpl() const;
-  bool EqualImpl( const Expr* that ) const;
-};
-
-} // namespace detail
-
-class Float64Arithmetic : public Binary , public detail::Float64BinaryGVNImpl<Float64Arithmetic> {
- public:
-  using Binary::Operator;
-  inline static Float64Arithmetic* New( Graph* , Expr*, Expr*, Operator, IRInfo* );
-  Float64Arithmetic( Graph* graph , std::uint32_t id , Expr* lhs, Expr* rhs, Operator op, IRInfo* info ):
-    Binary(HIR_FLOAT64_ARITHMETIC,graph,id,lhs,rhs,op,info)
-  {
-    lava_debug(NORMAL,lava_verify(Binary::IsArithmeticOperator(op)););
-  }
-
- public:
-  virtual std::uint64_t GVNHash()        const { return GVNHashImpl(); }
-  virtual bool Equal( const Expr* that ) const { return EqualImpl(that); }
-
- private:
-
-  LAVA_DISALLOW_COPY_AND_ASSIGN(Float64Arithmetic)
-};
-
-class Float64Bitwise: public Binary , public detail::Float64BinaryGVNImpl<Float64Bitwise> {
- public:
-  using Binary::Operator;
-  inline static Float64Bitwise* New( Graph* , Expr*, Expr*, Operator, IRInfo* );
-  Float64Bitwise( Graph* graph , std::uint32_t id , Expr* lhs, Expr* rhs, Operator op, IRInfo* info ):
-    Binary(HIR_FLOAT64_BITWISE,graph,id,lhs,rhs,op,info)
-  {
-    lava_debug(NORMAL,lava_verify(Binary::IsBitwiseOperator(op)););
-  }
-
- public:
-  virtual std::uint64_t GVNHash()        const { return GVNHashImpl(); }
-  virtual bool Equal( const Expr* that ) const { return EqualImpl(that); }
-
- private:
-
-  LAVA_DISALLOW_COPY_AND_ASSIGN(Float64Bitwise)
-};
-
-class Float64Compare : public Binary , public detail::Float64BinaryGVNImpl<Float64Compare> {
- public:
-  using Binary::Operator;
-  inline static Float64Compare* New( Graph* , Expr* , Expr* , Operator, IRInfo* );
-  Float64Compare( Graph* graph , std::uint32_t id , Expr* lhs , Expr* rhs , Operator op , IRInfo* info ):
-    Binary(HIR_FLOAT64_COMPARE,graph,id,lhs,rhs,op,info)
-  {
-    lava_debug(NORMAL,lava_verify(Binary::IsComparisonOperator(op)););
-  }
-
- public:
-  virtual std::uint64_t GVNHash()        const { return GVNHashImpl(); }
-  virtual bool Equal( const Expr* that ) const { return EqualImpl(that); }
-
- private:
-  LAVA_DISALLOW_COPY_AND_ASSIGN(Float64Compare)
-};
-
-class StringCompare : public Binary , public detail::Float64BinaryGVNImpl<StringCompare> {
- public:
-  using Binary::Operator;
-  inline static StringCompare* New( Graph* , Expr* , Expr* , Operator , IRInfo* );
-  StringCompare( Graph* graph , std::uint32_t id , Expr* lhs , Expr* rhs , Operator op , IRInfo* info ):
-    Binary(HIR_STRING_COMPARE,graph,id,lhs,rhs,op,info)
-  {
-    lava_debug(NORMAL,lava_verify(Binary::IsComparisonOperator(op)););
-  }
- public:
-  virtual std::uint64_t GVNHash()        const { return GVNHashImpl(); }
-  virtual bool Equal( const Expr* that ) const { return EqualImpl(that); }
-
- private:
-  LAVA_DISALLOW_COPY_AND_ASSIGN(StringCompare);
-};
-
-class SStringEq : public Binary , public detail::Float64BinaryGVNImpl<SStringEq> {
- public:
-  inline static SStringEq* New( Graph* , Expr* , Expr* , IRInfo* );
-  SStringEq( Graph* graph , std::uint32_t id , Expr* lhs , Expr* rhs , IRInfo* info ):
-    Binary(HIR_SSTRING_EQ,graph,id,lhs,rhs,Binary::EQ,info)
-  {}
-
- public:
-  virtual std::uint64_t GVNHash()        const { return GVNHashImpl(); }
-  virtual bool Equal( const Expr* that ) const { return EqualImpl(that); }
-};
-
-class SStringNe : public Binary , public detail::Float64BinaryGVNImpl<SStringNe> {
- public:
-  inline static SStringNe* New( Graph* , Expr* , Expr* , IRInfo* );
-  SStringNe( Graph* graph , std::uint32_t id , Expr* lhs , Expr* rhs , IRInfo* info ):
-    Binary(HIR_SSTRING_EQ,graph,id,lhs,rhs,Binary::NE,info)
-  {}
-
- public:
-  virtual std::uint64_t GVNHash()        const { return GVNHashImpl(); }
-  virtual bool Equal( const Expr* that ) const { return EqualImpl(that); }
-};
-
 // Specialized logic operator, its lhs is type fixed by boolean. ie, we are
 // sure its lhs operand outputs boolean in an unboxed format.
 class BooleanNot: public Expr {
  public:
-  inline static BooleanNot* New( Graph* , Expr* , IRInfo* );
+  inline static BooleanNot* New( Graph* , Expr* );
   Expr* operand() const { return operand_list()->First(); }
-  BooleanNot( Graph* graph , std::uint32_t id , Expr* opr , IRInfo* info ):
-    Expr(HIR_BOOLEAN_NOT,id,graph,info)
+  BooleanNot( Graph* graph , std::uint32_t id , Expr* opr ):
+    Expr(HIR_BOOLEAN_NOT,id,graph)
   {
     AddOperand(opr);
   }
@@ -1709,11 +1605,118 @@ class BooleanNot: public Expr {
   LAVA_DISALLOW_COPY_AND_ASSIGN(BooleanNot)
 };
 
+namespace detail {
+
+template< typename T > struct Float64BinaryGVNImpl {
+ protected:
+  std::uint64_t GVNHashImpl() const;
+  bool EqualImpl( const Expr* that ) const;
+};
+
+} // namespace detail
+
+class Float64Arithmetic : public Binary , public detail::Float64BinaryGVNImpl<Float64Arithmetic> {
+ public:
+  using Binary::Operator;
+  inline static Float64Arithmetic* New( Graph* , Expr*, Expr*, Operator );
+  Float64Arithmetic( Graph* graph , std::uint32_t id , Expr* lhs, Expr* rhs, Operator op ):
+    Binary(HIR_FLOAT64_ARITHMETIC,graph,id,lhs,rhs,op)
+  {
+    lava_debug(NORMAL,lava_verify(Binary::IsArithmeticOperator(op)););
+  }
+
+ public:
+  virtual std::uint64_t GVNHash()        const { return GVNHashImpl(); }
+  virtual bool Equal( const Expr* that ) const { return EqualImpl(that); }
+
+ private:
+
+  LAVA_DISALLOW_COPY_AND_ASSIGN(Float64Arithmetic)
+};
+
+class Float64Bitwise: public Binary , public detail::Float64BinaryGVNImpl<Float64Bitwise> {
+ public:
+  using Binary::Operator;
+  inline static Float64Bitwise* New( Graph* , Expr*, Expr*, Operator );
+  Float64Bitwise( Graph* graph , std::uint32_t id , Expr* lhs, Expr* rhs, Operator op ):
+    Binary(HIR_FLOAT64_BITWISE,graph,id,lhs,rhs,op)
+  {
+    lava_debug(NORMAL,lava_verify(Binary::IsBitwiseOperator(op)););
+  }
+
+ public:
+  virtual std::uint64_t GVNHash()        const { return GVNHashImpl(); }
+  virtual bool Equal( const Expr* that ) const { return EqualImpl(that); }
+
+ private:
+
+  LAVA_DISALLOW_COPY_AND_ASSIGN(Float64Bitwise)
+};
+
+class Float64Compare : public Binary , public detail::Float64BinaryGVNImpl<Float64Compare> {
+ public:
+  using Binary::Operator;
+  inline static Float64Compare* New( Graph* , Expr* , Expr* , Operator );
+  Float64Compare( Graph* graph , std::uint32_t id , Expr* lhs , Expr* rhs , Operator op ):
+    Binary(HIR_FLOAT64_COMPARE,graph,id,lhs,rhs,op)
+  {
+    lava_debug(NORMAL,lava_verify(Binary::IsComparisonOperator(op)););
+  }
+
+ public:
+  virtual std::uint64_t GVNHash()        const { return GVNHashImpl(); }
+  virtual bool Equal( const Expr* that ) const { return EqualImpl(that); }
+
+ private:
+  LAVA_DISALLOW_COPY_AND_ASSIGN(Float64Compare)
+};
+
+class StringCompare : public Binary , public detail::Float64BinaryGVNImpl<StringCompare> {
+ public:
+  using Binary::Operator;
+  inline static StringCompare* New( Graph* , Expr* , Expr* , Operator );
+  StringCompare( Graph* graph , std::uint32_t id , Expr* lhs , Expr* rhs , Operator op ):
+    Binary(HIR_STRING_COMPARE,graph,id,lhs,rhs,op)
+  {
+    lava_debug(NORMAL,lava_verify(Binary::IsComparisonOperator(op)););
+  }
+ public:
+  virtual std::uint64_t GVNHash()        const { return GVNHashImpl(); }
+  virtual bool Equal( const Expr* that ) const { return EqualImpl(that); }
+
+ private:
+  LAVA_DISALLOW_COPY_AND_ASSIGN(StringCompare);
+};
+
+class SStringEq : public Binary , public detail::Float64BinaryGVNImpl<SStringEq> {
+ public:
+  inline static SStringEq* New( Graph* , Expr* , Expr* );
+  SStringEq( Graph* graph , std::uint32_t id , Expr* lhs , Expr* rhs ):
+    Binary(HIR_SSTRING_EQ,graph,id,lhs,rhs,Binary::EQ)
+  {}
+
+ public:
+  virtual std::uint64_t GVNHash()        const { return GVNHashImpl(); }
+  virtual bool Equal( const Expr* that ) const { return EqualImpl(that); }
+};
+
+class SStringNe : public Binary , public detail::Float64BinaryGVNImpl<SStringNe> {
+ public:
+  inline static SStringNe* New( Graph* , Expr* , Expr* );
+  SStringNe( Graph* graph , std::uint32_t id , Expr* lhs , Expr* rhs ):
+    Binary(HIR_SSTRING_EQ,graph,id,lhs,rhs,Binary::NE)
+  {}
+
+ public:
+  virtual std::uint64_t GVNHash()        const { return GVNHashImpl(); }
+  virtual bool Equal( const Expr* that ) const { return EqualImpl(that); }
+};
+
 class BooleanLogic : public Binary {
  public:
-   inline static BooleanLogic* New( Graph* , Expr* , Expr* , Operator op , IRInfo* );
-   BooleanLogic( Graph* graph , std::uint32_t id , Expr* lhs , Expr* rhs , Operator op, IRInfo* info ):
-     Binary(HIR_BOOLEAN_LOGIC,graph,id,lhs,rhs,op,info)
+   inline static BooleanLogic* New( Graph* , Expr* , Expr* , Operator op );
+   BooleanLogic( Graph* graph , std::uint32_t id , Expr* lhs , Expr* rhs , Operator op ):
+     Binary(HIR_BOOLEAN_LOGIC,graph,id,lhs,rhs,op)
   {
     lava_debug(NORMAL,lava_verify( GetTypeInference(lhs) == TPKIND_BOOLEAN &&
                                    GetTypeInference(rhs) == TPKIND_BOOLEAN ););
@@ -1736,9 +1739,9 @@ class BooleanLogic : public Binary {
 
 class ObjectGet : public PGet {
  public:
-  inline static ObjectGet* New( Graph* , Expr* , Expr* , IRInfo* );
-  ObjectGet( Graph* graph , std::uint32_t id , Expr* object , Expr* key, IRInfo* info ):
-    PGet(HIR_OBJECT_GET,graph,id,object,key,info)
+  inline static ObjectGet* New( Graph* , Expr* , Expr* );
+  ObjectGet( Graph* graph , std::uint32_t id , Expr* object , Expr* key ):
+    PGet(HIR_OBJECT_GET,graph,id,object,key)
   {}
 
  private:
@@ -1747,9 +1750,9 @@ class ObjectGet : public PGet {
 
 class ObjectSet : public PSet {
  public:
-  inline static ObjectSet* New( Graph* , Expr* , Expr* , Expr* , IRInfo* );
-  ObjectSet( Graph* graph , std::uint32_t id , Expr* object , Expr* key, Expr* value, IRInfo* info ):
-    PSet(HIR_OBJECT_SET,graph,id,object,key,value,info)
+  inline static ObjectSet* New( Graph* , Expr* , Expr* , Expr* );
+  ObjectSet( Graph* graph , std::uint32_t id , Expr* object , Expr* key, Expr* value ):
+    PSet(HIR_OBJECT_SET,graph,id,object,key,value)
   {}
 
  private:
@@ -1758,9 +1761,9 @@ class ObjectSet : public PSet {
 
 class ListGet : public IGet {
  public:
-  inline static ListGet* New( Graph* , Expr* , Expr* , IRInfo* );
-  ListGet( Graph* graph , std::uint32_t id, Expr* object, Expr* index , IRInfo* info ):
-    IGet(HIR_LIST_GET,graph,id,object,index,info)
+  inline static ListGet* New( Graph* , Expr* , Expr* );
+  ListGet( Graph* graph , std::uint32_t id, Expr* object, Expr* index ):
+    IGet(HIR_LIST_GET,graph,id,object,index)
   {}
 
  private:
@@ -1769,9 +1772,9 @@ class ListGet : public IGet {
 
 class ListSet : public ISet {
  public:
-  inline static ListSet* New( Graph* , Expr* , Expr* , Expr* , IRInfo* );
-  ListSet( Graph* graph , std::uint32_t id , Expr* object , Expr* index  , Expr* value  , IRInfo* info ):
-    ISet(HIR_LIST_SET,graph,id,object,index,value,info)
+  inline static ListSet* New( Graph* , Expr* , Expr* , Expr* );
+  ListSet( Graph* graph , std::uint32_t id , Expr* object , Expr* index  , Expr* value ):
+    ISet(HIR_LIST_SET,graph,id,object,index,value)
   {}
 
  private:
@@ -1783,11 +1786,11 @@ class ListSet : public ISet {
 // -------------------------------------------------------------------------
 class Box : public Expr {
  public:
-  inline static Box* New( Graph* , Expr* , TypeKind , IRInfo* );
+  inline static Box* New( Graph* , Expr* , TypeKind );
   Expr* value() const { return operand_list()->First(); }
   TypeKind type_kind() const { return type_kind_; }
-  Box( Graph* graph , std::uint32_t id , Expr* object , TypeKind tk , IRInfo* info ):
-    Expr(HIR_BOX,id,graph,info),
+  Box( Graph* graph , std::uint32_t id , Expr* object , TypeKind tk ):
+    Expr(HIR_BOX,id,graph),
     type_kind_(tk)
   {
     AddOperand(object);
@@ -1813,11 +1816,11 @@ class Box : public Expr {
 
 class Unbox : public Expr {
  public:
-  inline static Unbox* New( Graph* , Expr* , TypeKind , IRInfo* );
+  inline static Unbox* New( Graph* , Expr* , TypeKind );
   Expr* value() const { return operand_list()->First(); }
   TypeKind type_kind() const { return type_kind_; }
-  Unbox( Graph* graph , std::uint32_t id , Expr* object , TypeKind tk , IRInfo* info ):
-    Expr(HIR_UNBOX,id,graph,info),
+  Unbox( Graph* graph , std::uint32_t id , Expr* object , TypeKind tk ):
+    Expr(HIR_UNBOX,id,graph),
     type_kind_(tk)
   {
     AddOperand(object);
@@ -1852,33 +1855,17 @@ class Unbox : public Expr {
 // boolean value.
 class CastToBoolean : public Expr {
  public:
-  inline static CastToBoolean* New( Graph* , Expr* , IRInfo* );
+  inline static CastToBoolean* New ( Graph* , Expr* );
   // function to create a cast to boolean but negate its end result. this operation
   // basically means negate(unbox(cast_to_boolean(node)))
-  inline static Expr* NewNegateCast( Graph* , Expr* , IRInfo* );
+  inline static Expr* NewNegateCast( Graph* , Expr* );
   Expr* value() const { return operand_list()->First(); }
 
-  CastToBoolean( Graph* graph , std::uint32_t id , Expr* value , IRInfo* info ):
-    Expr( HIR_CAST_TO_BOOLEAN , id , graph , info )
+  CastToBoolean( Graph* graph , std::uint32_t id , Expr* value ):
+    Expr( HIR_CAST_TO_BOOLEAN , id , graph )
   { AddOperand(value); }
  private:
   LAVA_DISALLOW_COPY_AND_ASSIGN(CastToBoolean)
-};
-
-// -----------------------------------------------------------------------
-//
-// Annotation
-//
-// -----------------------------------------------------------------------
-class TypeAnnotation : public Expr {
- public:
-  inline static TypeAnnotation* New( Graph* , Guard* , IRInfo* );
-  TypeKind type_kind () const { return type_kind_; }
-
-  inline TypeAnnotation( Graph* , std::uint32_t , Guard* , IRInfo* );
- private:
-  TypeKind type_kind_;
-  LAVA_DISALLOW_COPY_AND_ASSIGN(TypeAnnotation)
 };
 
 // -------------------------------------------------------------------------
@@ -2061,17 +2048,12 @@ class LoopExit : public ControlFlow {
 //
 // Branch
 //
-// Branch node in HIR basically has 3 types :
+// Branch node in HIR basically has 2 types :
 //
 // 1) If related node , which basically represents a normal written if else
 //    branch
 //
-// 2) Guard node , which is used to generate *guard* during the execution,
-//    an assertion is a single pass node which will *not* have any else branch.
-//    An assertion failed will trigger a bailout operation which basically
-//    fallback to the interpreter
-//
-// 3) Unconditional jump
+// 2) Unconditional jump
 // -----------------------------------------------------------------------
 
 class If : public ControlFlow {
@@ -2122,30 +2104,6 @@ class IfFalse: public ControlFlow {
 
  private:
   LAVA_DISALLOW_COPY_AND_ASSIGN(IfFalse)
-};
-
-// --------------------------------------------------------------------------
-// Guard
-//
-// This node is mainly generated for type assertion or other assertion to do
-// speculative optimization against the source code. The assert node doesn't
-// introduce any other basic block except the fall through part. An assertion
-// failed during runtime means *bailout* back to interpreter
-class Guard : public ControlFlow {
- public:
-  inline static Guard* New( Graph* , Expr* , Checkpoint* , ControlFlow* );
-
-  Expr*             test() const { return operand_list()->First(); }
-  Checkpoint* checkpoint() const { return operand_list()->Last()->AsCheckpoint(); }
-
-  Guard( Graph* graph , std::uint32_t id , Expr* test , Checkpoint* cp , ControlFlow* region ):
-    ControlFlow(HIR_GUARD,id,graph,region)
-  {
-    AddOperand(test);
-    AddOperand(cp);
-  }
- private:
-  LAVA_DISALLOW_COPY_AND_ASSIGN(Guard)
 };
 
 class Jump : public ControlFlow {
@@ -2544,23 +2502,23 @@ class ExprDFSIterator : public ExprIterator {
 // Helper
 //
 // -------------------------------------------------------------------------
-inline Expr* NewString           ( Graph* , const void* , std::size_t length , IRInfo* );
-inline Expr* NewString           ( Graph* , const char* , IRInfo* );
-inline Expr* NewString           ( Graph* , const zone::String* , IRInfo* );
-inline Expr* NewStringFromBoolean( Graph* , bool , IRInfo* );
-inline Expr* NewStringFromReal   ( Graph* , double , IRInfo* );
+inline Expr* NewString           ( Graph* , const void* , std::size_t length );
+inline Expr* NewString           ( Graph* , const char* );
+inline Expr* NewString           ( Graph* , const zone::String* );
+inline Expr* NewStringFromBoolean( Graph* , bool );
+inline Expr* NewStringFromReal   ( Graph* , double );
 
 // ---------------------------------------------------------------------
 // Helper functions for creation of node
 // ---------------------------------------------------------------------
 template< typename T , typename ...ARGS >
-inline Box* NewBoxNode( Graph* graph , TypeKind tk , IRInfo* irinfo , ARGS ...args ) {
+inline Box* NewBoxNode( Graph* graph , TypeKind tk , ARGS ...args ) {
   auto n = T::New(graph,args...);
-  return Box::New(graph,n,tk,irinfo);
+  return Box::New(graph,n,tk);
 }
 
 // Create a unbox value from a node that has type inference.
-Expr* NewUnboxNode( Graph* , Expr* node , TypeKind tk , IRInfo* );
+Expr* NewUnboxNode( Graph* , Expr* node , TypeKind tk );
 
 } // namespace hir
 } // namespace cbase

@@ -542,10 +542,10 @@ bool  Float64Predicate::Collapse( double* output ) const {
   return false;
 }
 
-Expr* Float64Predicate::Collapse( Graph* graph , IRInfo* info ) const {
+Expr* Float64Predicate::Collapse( Graph* graph ) const {
   double v;
   if(Collapse(&v)) {
-    return Float64::New(graph,v,info);
+    return Float64::New(graph,v);
   }
   return NULL;
 }
@@ -608,9 +608,8 @@ int UnknownPredicate::Infer( const Predicate& r ) const {
   return Predicate::UNKNOWN;
 }
 
-Expr* UnknownPredicate::Collapse( Graph* graph , IRInfo* info ) const {
+Expr* UnknownPredicate::Collapse( Graph* graph ) const {
   (void)graph;
-  (void)info;
   return NULL;
 }
 
@@ -743,9 +742,9 @@ bool BooleanPredicate::Collapse( bool* output ) const {
   }
 }
 
-Expr* BooleanPredicate::Collapse( Graph* graph , IRInfo* info ) const {
+Expr* BooleanPredicate::Collapse( Graph* graph ) const {
   bool v;
-  if(Collapse(&v)) return Boolean::New(graph,v,info);
+  if(Collapse(&v)) return Boolean::New(graph,v);
   return NULL;
 }
 

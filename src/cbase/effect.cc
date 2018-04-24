@@ -33,10 +33,8 @@ void Effect::AddReadEffect( MemoryRead* node ) {
   read_list_.Add(zone_,node);
 }
 
-void Effect::Merge( const Effect& lhs, const Effect& rhs, Effect* output , Graph* graph ,
-                                                                           ControlFlow* region,
-                                                                           IRInfo* info ) {
-  auto effect_phi = WriteEffectPhi::New(graph,lhs.write_effect_,rhs.write_effect_,region,info);
+void Effect::Merge( const Effect& lhs, const Effect& rhs, Effect* output , Graph* graph , ControlFlow* region ) {
+  auto effect_phi = WriteEffectPhi::New(graph,lhs.write_effect_,rhs.write_effect_,region);
 
   // merge all the read effect
   lava_foreach( MemoryRead* read , lhs.read_list_.GetForwardIterator() ) {

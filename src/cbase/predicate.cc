@@ -381,7 +381,6 @@ void Float64Predicate::IntersectRange( const Range& range ) {
       case Predicate::OVERLAP:
         {
           lava_debug(NORMAL,lava_verify(upper - lower >=1););
-
           /**
            * This part for intersection is relatively hard since we need to
            * find out all the overlapped section and modify accordingly

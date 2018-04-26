@@ -252,9 +252,8 @@ IRObject* GraphBuilder::NewIRObject( std::size_t size ) {
 
 // Type Guard ---------------------------------------------------------------------
 Guard* GraphBuilder::NewGuard( Test* test , Checkpoint* cp ) {
-  (void)cp;
   // create a new guard
-  auto guard = Guard::New(graph_,test);
+  auto guard = Guard::New(graph_,test,cp);
   // add this guard back to the guard_list , later on we can patch the guard
   func_info().guard_list.push_back(guard);
   // return the newly created region node

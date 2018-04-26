@@ -239,24 +239,6 @@ Expr* FoldICall( Graph* graph , ICall* node ) {
         }
       }
       break;
-    case INTRINSIC_CALL_PUSH:
-      {
-        auto n1 = node->operand_list()->Index(0);
-        if(n1->IsIRList()) {
-          auto new_list = IRList::Clone(graph,*n1->AsIRList());
-          new_list->Add( node->operand_list()->Index(1) );
-          return new_list;
-        }
-      }
-      break;
-    case INTRINSIC_CALL_POP:
-      {
-        auto n1 = node->operand_list()->Index(0);
-        if(n1->IsIRList()) {
-          return IRList::CloneExceptLastOne(graph,*n1->AsIRList());
-        }
-      }
-      break;
     default:
       break;
   }

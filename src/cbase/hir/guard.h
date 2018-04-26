@@ -88,7 +88,7 @@ class Guard : public Expr {
   inline static Guard* New( Graph* , Test* , Checkpoint* );
   Test*             test() const { return operand_list()->First()->AsTest(); }
   Expr*           object() const { return test()->object(); }
-  Checkpoint* checkpoint() const { return operand_list()->Last(); }
+  Checkpoint* checkpoint() const { return operand_list()->Last()->AsCheckpoint(); }
 
   Guard( Graph* graph , std::uint32_t id , Test* test , Checkpoint* cp ):
     Expr(HIR_GUARD,id,graph)

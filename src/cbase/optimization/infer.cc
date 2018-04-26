@@ -299,13 +299,11 @@ Expr* ConditionGroup::SimplifyBooleanLogic( BooleanLogic* n ) {
   auto r = n->rhs();
   auto op= n->op();
   if( Simplify(l) || Simplify(r) ) {
-    auto nnode = FoldBinary(graph_,op,n->lhs(),n->rhs());
-    if(nnode) {
+    if(auto nnode = FoldBinary(graph_,op,n->lhs(),n->rhs()); nnode) {
       n->Replace(nnode);
       return nnode;
-    } else {
-      return n;
     }
+    return n;
   }
   return NULL;
 }
@@ -407,7 +405,7 @@ bool Infer::Perform( Graph* graph , HIRPass::Flag flag ) {
       }
       auto new_cg         = zone.New<ConditionGroup>(graph,&zone,pcg);
       new_cg->Process(cond,is_first);
-      cg_vec[cf->id()] = new_cg;
+      cg_vec[cf->id()]    = new_cg;
     }
   }
   return true;

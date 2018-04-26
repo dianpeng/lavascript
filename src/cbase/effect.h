@@ -31,19 +31,19 @@ namespace hir        {
 // write operations are treated order free and we don't track them , ie output dependency.
 class Effect {
  public:
-  Effect( ::lavascript::zone::Zone* , MemoryWrite* );
+  Effect( ::lavascript::zone::Zone* , WriteEffect* );
   Effect( const Effect& );
  public:
   // update the write effect for this effect object
-  void UpdateWriteEffect( MemoryWrite* );
+  void UpdateWriteEffect( WriteEffect* );
   // add a new read effect
-  void AddReadEffect    ( MemoryRead*  );
+  void AddReadEffect    ( ReadEffect*  );
  public:
   // merge the input 2 effect object into another effect object, the input and output can be the same
   static void Merge( const Effect& , const Effect& , Effect* , Graph*  , ControlFlow* );
  private:
-  MemoryWrite*                            write_effect_;   // Write effect currently tracked
-  ::lavascript::zone::Vector<MemoryRead*> read_list_;      // All the read happened *after* the write
+  WriteEffect*                            write_effect_;   // Write effect currently tracked
+  ::lavascript::zone::Vector<ReadEffect*> read_list_;      // All the read happened *after* the write
   ::lavascript::zone::Zone*               zone_;           // Zone object for allocation of memory
 };
 

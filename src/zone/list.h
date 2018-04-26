@@ -176,8 +176,7 @@ template< typename T > class List : ZoneObject {
 
  private:
   NodeType* end() const {
-    return const_cast<NodeType*>(
-        static_cast<const NodeType*>(&end_));
+    return const_cast<NodeType*>(static_cast<const NodeType*>(&end_));
   }
 
   NodeBaseType end_;
@@ -265,13 +264,20 @@ void List<T>::Append( Zone* zone , const ITR& itr ) {
 
 template< typename T >
 void List<T>::Merge( List* another , ConstForwardIterator pos ) {
-  auto p = pos;
-  auto itr(another->GetForwardIterator());
-  while( itr.HasNext() ) {
-    auto node = itr.iter_;
-    itr.Move(); // move first since node will be relinked
-    p = InsertNode(p,node);
-    p.Move();
+  if(!another->empty()) {
+    auto p = pos.iter_;               // position to insert
+    auto pp= p->prev;                 // previous position to insert
+    auto first = another->end_.next;  // first node in the another list
+    auto last  = another->end_.prev;  // last node in the another list
+    // relink the first node
+    pp->next    = first;
+    first->prev = pp;
+    // relink the last node
+    last->next  = p;
+    p->prev     = last;
+    // modify the size
+    size_ += another->size();
+    another->Clear();
   }
 }
 

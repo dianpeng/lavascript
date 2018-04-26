@@ -1,0 +1,118 @@
+#ifndef CBASE_HIR_GUARD_H_
+#define CBASE_HIR_GUARD_H_
+#include "expr.h"
+
+namespace lavascript {
+namespace cbase      {
+namespace hir        {
+
+/* -------------------------------------------------------
+ * Testing node , used with Guard node or If node
+ * ------------------------------------------------------*/
+class Test : public Expr {
+ public:
+  // return the object this test node test against with
+  virtual Expr* object() const = 0;
+ protected:
+  Test( IRType type , std::uint32_t id , Graph* g ): Expr(type,id,g) {}
+};
+
+template<> struct MapIRClassToIRType<Test> {
+  static bool Test( IRType type ) {
+#define __(A,B,...) case HIR_##B: return true;
+    switch(type) { CBASE_HIR_TEST(__) default: return false; }
+#undef __ // __
+  }
+};
+
+class TestType : public Test {
+ public:
+  inline static TestType* New( Graph* , TypeKind , Expr* );
+  TypeKind type_kind() const { return type_kind_; }
+  const char* type_kind_name() const { return GetTypeKindName(type_kind_); }
+  virtual Expr* object() const { return operand_list()->First(); }
+
+  TestType( Graph* graph , std::uint32_t id , TypeKind tc , Expr* obj ):
+    Test(HIR_TEST_TYPE,id,graph),
+    type_kind_(tc)
+  {
+    AddOperand(obj);
+  }
+ public:
+  virtual std::uint64_t GVNHash() const {
+    return GVNHash2(type_name(),type_kind(),object()->GVNHash());
+  }
+  virtual bool Equal( const Expr* that ) const {
+    if(that->IsTestType()) {
+      auto n = that->AsTestType();
+      return type_kind() == n->type_kind() && object()->Equal(n->object());
+    }
+    return false;
+  }
+ private:
+  TypeKind type_kind_;
+  LAVA_DISALLOW_COPY_AND_ASSIGN(TestType)
+};
+
+class TestListOOB : public Test {
+ public:
+  inline static TestListOOB* New( Graph* , Expr* , Expr* );
+  virtual Expr* object() const { return operand_list()->First(); }
+  Expr* index () const { return operand_list()->Last (); }
+  TestListOOB( Graph* graph , std::uint32_t id , Expr* obj , Expr* idx ):
+    Test(HIR_TEST_LISTOOB,id,graph)
+  {
+    AddOperand(obj);
+    AddOperand(idx);
+  }
+ public:
+  virtual std::uint64_t GVNHash() const {
+    return GVNHash2(type_name(),object()->GVNHash(),index()->GVNHash());
+  }
+  virtual bool Equal( const Expr* that ) const {
+    if(that->IsTestListOOB()) {
+      auto n = that->AsTestListOOB();
+      return object()->Equal(n->object()) && index()->Equal(n->index());
+    }
+    return false;
+  }
+ private:
+  LAVA_DISALLOW_COPY_AND_ASSIGN(TestListOOB)
+};
+
+// -----------------------------------------------------
+// Guard
+// -----------------------------------------------------
+class Guard : public Expr {
+ public:
+  inline static Guard* New( Graph* , Test* , Checkpoint* );
+  Test*             test() const { return operand_list()->First()->AsTest(); }
+  Expr*           object() const { return test()->object(); }
+  Checkpoint* checkpoint() const { return operand_list()->Last(); }
+
+  Guard( Graph* graph , std::uint32_t id , Test* test , Checkpoint* cp ):
+    Expr(HIR_GUARD,id,graph)
+  {
+    AddOperand(test);
+    AddOperand(cp);
+  }
+ public:
+  virtual std::uint64_t GVNHash() const {
+    return GVNHash1(type_name(),test()->GVNHash());
+  }
+  virtual bool Equal( const Expr* that ) const {
+    if(that->IsGuard()) {
+      auto n = that->AsGuard();
+      return test()->Equal(n->test());
+    }
+    return false;
+  }
+ private:
+  LAVA_DISALLOW_COPY_AND_ASSIGN(Guard)
+};
+
+} // namespace hir
+} // namespace cbase
+} // namespace lavascript
+
+#endif // CBASE_HIR_GUARD_H_

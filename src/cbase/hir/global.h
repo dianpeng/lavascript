@@ -1,0 +1,45 @@
+#ifndef CBASE_HIR_GLOBAL_H_
+#define CBASE_HIR_GLOBAL_H_
+#include "memory.h"
+
+namespace lavascript {
+namespace cbase      {
+namespace hir        {
+
+// -------------------------------------------------------------------------
+// global set/get (side effect)
+// -------------------------------------------------------------------------
+class GGet : public MemoryNode {
+ public:
+  inline static GGet* New( Graph* , Expr* , ControlFlow* );
+  Expr* key() const { return operand_list()->First(); }
+
+  GGet( Graph* graph , std::uint32_t id , Expr* name ):
+    MemoryNode (HIR_GGET,id,graph)
+  {
+    AddOperand(name);
+  }
+ private:
+  LAVA_DISALLOW_COPY_AND_ASSIGN(GGet)
+};
+
+class GSet : public Expr {
+ public:
+  inline static GSet* New( Graph* , Expr* key , Expr* value , ControlFlow* );
+  Expr* key () const { return operand_list()->First(); }
+  Expr* value()const { return operand_list()->Last() ; }
+  GSet( Graph* graph , std::uint32_t id , Expr* key , Expr* value ):
+    Expr(HIR_GSET,id,graph)
+  {
+    AddOperand(key);
+    AddOperand(value);
+  }
+ private:
+  LAVA_DISALLOW_COPY_AND_ASSIGN(GSet)
+};
+
+} // namespace hir
+} // namespace cbase
+} // namespace lavascript
+
+#endif // CBASE_HIR_GLOBAL_H_

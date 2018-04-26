@@ -1,5 +1,5 @@
-#ifndef CBASE_HIR_INL_H_
-#define CBASE_HIR_INL_H_
+#ifndef CBASE_HIR_ALL_NODES_INL_H_
+#define CBASE_HIR_ALL_NODES_INL_H_
 
 namespace lavascript {
 namespace cbase      {
@@ -24,7 +24,6 @@ bool Float64BinaryGVNImpl<T>::EqualImpl( const Expr* that ) const {
   return false;
 }
 
-
 } // namespace detail
 
 #define __(A,B,...)                           \
@@ -41,8 +40,15 @@ CBASE_HIR_LIST(__)
 
 #undef __ // __
 
+inline zone::Zone* Node::zone() const {
+  return graph_->zone();
+}
+
 template< typename T >
-inline T* Node::As() { lava_debug(NORMAL,lava_verify(Is<T>());); return static_cast<T*>(this); }
+inline T* Node::As() {
+  lava_debug(NORMAL,lava_verify(Is<T>()););
+  return static_cast<T*>(this);
+}
 
 template< typename T >
 inline const T* Node::As() const {
@@ -50,9 +56,92 @@ inline const T* Node::As() const {
   return static_cast<const T*>(this);
 }
 
+template< typename T >
+inline bool Node::Is() const { return MapIRClassToIRType<T>::Test(type()); }
+
+inline bool Node::IsLeaf() const {
+#define __(A,B,C,D,...) case HIR_##B: return D;
+#define Leaf   true
+#define NoLeaf false
+  switch(type()) {
+    CBASE_HIR_EXPRESSION(__)
+    default: lava_die(); return false;
+  }
+#undef Leaf   // Leaf
+#undef NoLeaf // NoLeaf
+#undef __     // __
+}
+
+inline bool Node::IsExpr       () const { return Is<Expr>      ();  }
+inline bool Node::IsControlFlow() const { return Is<ControlFlow>(); }
+inline bool Node::IsMemoryRead () const { return Is<MemoryRead>();  }
+inline bool Node::IsMemoryWrite() const { return Is<MemoryWrite>(); }
+inline bool Node::IsMemoryNode () const { return Is<MemoryNode>();  }
+inline bool Node::IsTestNode   () const { return Is<Test>      ();  }
+
 inline const zone::String& Node::AsZoneString() const {
   lava_debug(NORMAL,lava_verify(IsString()););
   return IsLString() ? *AsLString()->value() : *AsSString()->value() ;
+}
+
+inline ControlFlow* Node::AsControlFlow() {
+  lava_debug(NORMAL,lava_verify(IsControlFlow()););
+  return static_cast<ControlFlow*>(this);
+}
+
+inline const ControlFlow* Node::AsControlFlow() const {
+  lava_debug(NORMAL,lava_verify(IsControlFlow()););
+  return static_cast<const ControlFlow*>(this);
+}
+
+inline Expr* Node::AsExpr() {
+  lava_debug(NORMAL,lava_verify(IsExpr()););
+  return static_cast<Expr*>(this);
+}
+
+inline const Expr* Node::AsExpr() const {
+  lava_debug(NORMAL,lava_verify(IsExpr()););
+  return static_cast<const Expr*>(this);
+}
+
+inline MemoryWrite* Node::AsMemoryWrite() {
+  lava_debug(NORMAL,lava_verify(IsMemoryWrite()););
+  return static_cast<MemoryWrite*>(this);
+}
+
+inline const MemoryWrite* Node::AsMemoryWrite() const {
+  lava_debug(NORMAL,lava_verify(IsMemoryWrite()););
+  return static_cast<const MemoryWrite*>(this);
+}
+
+inline MemoryRead* Node::AsMemoryRead() {
+  lava_debug(NORMAL,lava_verify(IsMemoryRead()););
+  return static_cast<MemoryRead*>(this);
+}
+
+inline const MemoryRead* Node::AsMemoryRead() const {
+  lava_debug(NORMAL,lava_verify(IsMemoryRead()););
+  return static_cast<const MemoryRead*>(this);
+}
+
+inline MemoryNode* Node::AsMemoryNode() {
+  lava_debug(NORMAL,lava_verify(IsMemoryNode()););
+  return static_cast<MemoryNode*>(this);
+}
+
+inline const MemoryNode* Node::AsMemoryNode() const {
+  lava_debug(NORMAL,lava_verify(IsMemoryNode()););
+  return static_cast<const MemoryNode*>(this);
+}
+
+inline Test* Node::AsTest() {
+  lava_debug(NORMAL,lava_verify(IsTestNode()););
+  return static_cast<Test*>(this);
+}
+
+inline const Test* Node::AsTest() const {
+  lava_debug(NORMAL,lava_verify(IsTestNode()););
+  return static_cast<const Test*>(this);
 }
 
 inline bool Expr::IsReplaceable( const Expr* that ) const {
@@ -76,7 +165,7 @@ inline void Expr::ReplaceOperand( std::size_t index , Expr* node ) {
 }
 
 inline void Expr::AddEffect ( Expr* node ) {
-  if( !node->IsNoMemoryEffectNode() ) {
+  if(!(node->IsNoReadEffect() || node->IsNoWriteEffect())) {
     auto itr = effect_list_.PushBack(zone(),node);
     node->AddRef(this,itr);
     SetHasSideEffect();
@@ -87,136 +176,6 @@ inline void Expr::AddEffectIfNotExist( Expr* node ) {
   auto itr = effect_list_.Find(node);
   if(itr.HasNext()) return;
   AddEffect(node);
-}
-
-inline ControlFlow* Node::AsControlFlow() {
-  lava_debug(NORMAL,lava_verify(IsControlFlow()););
-  return static_cast<ControlFlow*>(this);
-}
-
-inline const ControlFlow* Node::AsControlFlow() const {
-  lava_debug(NORMAL,lava_verify(IsControlFlow()););
-  return static_cast<const ControlFlow*>(this);
-}
-
-inline Expr* Node::AsExpr() {
-  lava_debug(NORMAL,lava_verify(IsExpr()););
-  return static_cast<Expr*>(this);
-}
-
-inline const Expr* Node::AsExpr() const {
-  lava_debug(NORMAL,lava_verify(IsExpr()););
-  return static_cast<const Expr*>(this);
-}
-
-inline zone::Zone* Node::zone() const {
-  return graph_->zone();
-}
-
-inline bool Expr::IsLeaf() const {
-#define __(A,B,C,D,...) case HIR_##B: return D;
-#define Leaf   true
-#define NoLeaf false
-  switch(type()) {
-    CBASE_HIR_EXPRESSION(__)
-    default: lava_die(); return false;
-  }
-#undef Leaf   // Leaf
-#undef NoLeaf // NoLeaf
-#undef __     // __
-}
-
-inline bool Expr::IsMemoryRead() const {
-  switch(type()) {
-    case HIR_IGET: case HIR_PGET: case HIR_OBJECT_GET: case HIR_LIST_GET:
-      return true;
-    case HIR_NO_READ_EFFECT: case HIR_READ_EFFECT_PHI:
-      return true;
-    default:
-      return false;
-  }
-}
-
-inline bool Expr::IsMemoryWrite() const {
-  switch(type()) {
-    case HIR_ISET: case HIR_PSET: case HIR_OBJECT_SET: case HIR_LIST_SET:
-      return true;
-    case HIR_NO_WRITE_EFFECT: case HIR_WRITE_EFFECT_PHI:
-      return true;
-    default:
-      return false;
-  }
-}
-
-inline bool Expr::IsMemoryNode() const {
-  switch(type()) {
-    case HIR_ARG: case HIR_GGET: case HIR_UGET: case HIR_LIST: case HIR_OBJECT:
-      return true;
-    default:
-      return false;
-  }
-}
-
-inline MemoryWrite* Expr::AsMemoryWrite() {
-  lava_debug(NORMAL,lava_verify(IsMemoryWrite()););
-  return static_cast<MemoryWrite*>(this);
-}
-
-inline const MemoryWrite* Expr::AsMemoryWrite() const {
-  lava_debug(NORMAL,lava_verify(IsMemoryWrite()););
-  return static_cast<const MemoryWrite*>(this);
-}
-
-inline MemoryRead* Expr::AsMemoryRead() {
-  lava_debug(NORMAL,lava_verify(IsMemoryRead()););
-  return static_cast<MemoryRead*>(this);
-}
-
-inline const MemoryRead* Expr::AsMemoryRead() const {
-  lava_debug(NORMAL,lava_verify(IsMemoryRead()););
-  return static_cast<const MemoryRead*>(this);
-}
-
-inline MemoryNode* Expr::AsMemoryNode() {
-  lava_debug(NORMAL,lava_verify(IsMemoryNode()););
-  return static_cast<MemoryNode*>(this);
-}
-
-inline const MemoryNode* Expr::AsMemoryNode() const {
-  lava_debug(NORMAL,lava_verify(IsMemoryNode()););
-  return static_cast<const MemoryNode*>(this);
-}
-
-inline bool Expr::IsNoMemoryEffectNode() const {
-  return type() == HIR_NO_READ_EFFECT || type() == HIR_NO_WRITE_EFFECT;
-}
-
-inline bool Expr::IsPhiNode() const {
-  switch(type()) {
-    case HIR_PHI: case HIR_READ_EFFECT_PHI: case HIR_WRITE_EFFECT_PHI:
-      return true;
-    default:
-      return false;
-  }
-}
-
-inline bool Expr::IsTestNode() const {
-#define __(A,B,...) case HIR_##B: return true;
-  switch(type()) {
-    CBASE_HIR_TEST(__)
-    default: return false;
-  }
-#undef __ // __
-}
-
-inline Test* Expr::AsTest() {
-  lava_debug(NORMAL,lava_verify(IsTestNode()););
-  return static_cast<Test*>(this);
-}
-
-inline const Test* Expr::AsTest() const {
-  lava_debug(NORMAL,lava_verify(IsTestNode()););
-  return static_cast<const Test*>(this);
 }
 
 inline Arg* Arg::New( Graph* graph , std::uint32_t index ) {
@@ -499,13 +458,13 @@ inline Phi* Phi::New( Graph* graph , ControlFlow* region ) {
 }
 
 inline ReadEffectPhi::ReadEffectPhi( Graph* graph , std::uint32_t id , ControlFlow* region ):
-  MemoryRead(HIR_READ_EFFECT_PHI,id,graph),
+  ReadEffect(HIR_READ_EFFECT_PHI,id,graph),
   region_   (region)
 {
   region->AddOperand(this);
 }
 
-inline ReadEffectPhi* ReadEffectPhi::New( Graph* graph , MemoryRead* lhs , MemoryRead* rhs ,
+inline ReadEffectPhi* ReadEffectPhi::New( Graph* graph , ReadEffect* lhs , ReadEffect* rhs ,
                                                                            ControlFlow* region ) {
   auto ret = graph->zone()->New<ReadEffectPhi>(graph,graph->AssignID(),region);
   ret->AddOperand(lhs);
@@ -518,13 +477,13 @@ inline ReadEffectPhi* ReadEffectPhi::New( Graph* graph , ControlFlow* region ) {
 }
 
 inline WriteEffectPhi::WriteEffectPhi( Graph* graph , std::uint32_t id , ControlFlow* region ):
-  MemoryWrite(HIR_WRITE_EFFECT_PHI,id,graph),
+  WriteEffect(HIR_WRITE_EFFECT_PHI,id,graph),
   region_    (region)
 {
   region->AddOperand(this);
 }
 
-inline WriteEffectPhi* WriteEffectPhi::New( Graph* graph , MemoryWrite* lhs , MemoryWrite* rhs ,
+inline WriteEffectPhi* WriteEffectPhi::New( Graph* graph , WriteEffect* lhs , WriteEffect* rhs ,
                                                                               ControlFlow* region ) {
   auto ret = graph->zone()->New<WriteEffectPhi>(graph,graph->AssignID(),region);
   ret->AddOperand(lhs);
@@ -560,16 +519,16 @@ inline OSRLoad* OSRLoad::New( Graph* graph , std::uint32_t index ) {
   return graph->zone()->New<OSRLoad>(graph,graph->AssignID(),index);
 }
 
-inline Checkpoint* Checkpoint::New( Graph* graph ) {
-  return graph->zone()->New<Checkpoint>(graph,graph->AssignID());
+inline Checkpoint* Checkpoint::New( Graph* graph , IRInfo* info ) {
+  return graph->zone()->New<Checkpoint>(graph,graph->AssignID(),info);
 }
 
 inline void Checkpoint::AddStackSlot( Expr* val , std::uint32_t index ) {
   AddOperand(StackSlot::New(graph(),val,index));
 }
 
-inline Guard* Guard::New( Graph* graph , Test* test , ControlFlow* region ) {
-  return graph->zone()->New<Guard>(graph,graph->AssignID(),test,region);
+inline Guard* Guard::New( Graph* graph , Test* test , Checkpoint* cp ) {
+  return graph->zone()->New<Guard>(graph,graph->AssignID(),test,cp);
 }
 
 inline TestType* TestType::New( Graph* graph , TypeKind tc , Expr* object ) {
@@ -771,4 +730,4 @@ struct HIRExprHasher {
 } // namespace cbase
 } // namespace lavascript
 
-#endif // CBASE_HIR_INL_H_
+#endif // CBASE_HIR_ALL_NODES_INL_H_

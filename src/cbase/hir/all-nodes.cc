@@ -1,6 +1,4 @@
-#include "hir.h"
-#include "type-inference.h"
-
+#include "all-nodes.h"
 #include <sstream>
 
 namespace lavascript {
@@ -18,21 +16,19 @@ const char* IRTypeGetName( IRType type ) {
 
 void Expr::Replace( Expr* another ) {
   if(IsIdentical(another)) return;
-  // 1. check all the operand_list and patch each operands reference
-  //    list to be new one
+  // 1. patch all the reference of |this| point to another node
   lava_foreach( auto &v , ref_list()->GetForwardIterator() ) {
     v.id.set_value(another);
   }
-  // 2. modify *this* if the node is a statement
-  if(IsStatement()) {
-    auto region = stmt_.region;
-    region->RemoveStatement(stmt_);
-    region->AddStatement(another);
-    stmt_.region = NULL;
+  another->ref_list_.Merge(&ref_list_);
+  // 2. modify *this* if the node is a pin
+  if(IsPin()) {
+    auto region = pin_.region;
+    region->RemovePin(pin_);
+    region->AddPin(another);
+    pin_.region = NULL;
   }
-  // 3. clear all the ref list since it is not referenced by any expression now
-  ref_list_.Clear();
-  // 4. clear all the operands since this node is dead
+  // 3. clear all the operands since this node is dead
   ClearOperand();
 }
 
@@ -54,29 +50,6 @@ void Expr::ClearOperand() {
     lava_verify(n->RemoveRef(itr,this));
   }
   operand_list_.Clear();
-}
-
-IRList* IRList::Clone( Graph* graph , const IRList& that ) {
-  auto ret = IRList::New(graph,that.Size());
-  lava_foreach( auto &v , that.operand_list()->GetForwardIterator() ) {
-    ret->Add(v);
-  }
-  return ret;
-}
-
-IRList* IRList::CloneExceptLastOne( Graph* graph , const IRList& that ) {
-  auto ret = IRList::New(graph,that.Size());
-  if(that.Size() == 0)
-    return ret;
-  else {
-    std::size_t count = 0;
-    std::size_t end   = that.Size() - 1;
-    lava_foreach( auto &v , that.operand_list()->GetForwardIterator() ) {
-      if(count >= end) break;
-      ret->Add(v);
-    }
-    return ret;
-  }
 }
 
 std::uint64_t ICall::GVNHash() const {
@@ -106,14 +79,22 @@ bool ICall::Equal( const Expr* that ) const {
   return false;
 }
 
+Checkpoint* ReadEffect::GetCheckpoint() const {
+  lava_foreach( auto k , effect_list()->GetForwardIterator() ) {
+    if(k->IsCheckpoint()) return k->AsCheckpoint();
+  }
+  return NULL;
+}
+
 void ControlFlow::Replace( ControlFlow* node ) {
   if(IsIdentical(node)) return;
   // 1. transfer all *use* node
   lava_foreach( auto &v , ref_list()->GetForwardIterator() ) {
     v.id.set_value(node);
   }
+  node->ref_list_.Merge(&ref_list_);
   // 2. transfer all the backward and forward edge to |node|
-  node->forward_edge_.Merge(&forward_edge_);
+  node->forward_edge_.Merge (&forward_edge_ );
   node->backward_edge_.Merge(&backward_edge_);
   // 3. clear all operand from *this* node
   ClearOperand();
@@ -149,9 +130,9 @@ void ControlFlow::RemoveForwardEdge( std::size_t index ) {
   return RemoveForwardEdge(forward_edge()->Index(index));
 }
 
-void ControlFlow::MoveStatement( ControlFlow* cf ) {
-  lava_foreach( auto &v , cf->statement_list()->GetForwardIterator() ) {
-    AddStatement(v);
+void ControlFlow::MovePin( ControlFlow* cf ) {
+  lava_foreach( auto &v , cf->pin_list()->GetForwardIterator() ) {
+    AddPin(v);
   }
 }
 

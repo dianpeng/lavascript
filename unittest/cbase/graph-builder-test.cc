@@ -132,7 +132,7 @@ bool CheckGraphOSR( const char* source , std::size_t offset ) {
 
 } // namespace
 
-#define CASE(...)         ASSERT_TRUE(CheckGraph(#__VA_ARGS__))
+#define CASE(...)         ASSERT_TRUE(CheckGraph   (#__VA_ARGS__))
 #define CASE_OSR(IDX,...) ASSERT_TRUE(CheckGraphOSR(#__VA_ARGS__,(IDX)))
 
 TEST(GraphBuilder,Basic) {

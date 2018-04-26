@@ -96,8 +96,8 @@ void DotPrinter::RenderControlFlow( const std::string& region_name ,
     Indent(1) << region_name << " -> " << name << "[color=blue style=dashed]\n";
   }
 
-  // for all the statment's bounded inside of this control flow node
-  lava_foreach( auto expr , region->statement_list()->GetForwardIterator() ) {
+  // for all the pined node
+  lava_foreach( auto expr , region->pin_list()->GetForwardIterator() ) {
     auto name = GetNodeName(expr);
     RenderExpr(name,expr);
     Indent(1) << region_name << " -> " << name << "[color=purple style=dashed label=stmt]\n";

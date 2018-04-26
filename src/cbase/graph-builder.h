@@ -29,19 +29,6 @@ class GraphBuilder {
   // all intenral class forward declaration
   struct FuncInfo;
 
-  // Used to track a value inside of the ValueStack
-  struct StackSlot {
-    static const std::uint32_t kMax = std::numeric_limits<std::uint32_t>::max();
-    Expr* node;
-    std::uint32_t index;
-    bool HasIndex() const { return index < kMax; }
-    explicit StackSlot( Expr* n , std::uint32_t i = kMax ): node(n),index(i) {}
-    StackSlot( StackSlot&& ss ) : node(ss.node), index(ss.index) {}
-    StackSlot& operator = ( StackSlot&& that ) {
-      node = that.node; index = that.index; return *this;
-    }
-  };
-
   // Environment --------------------------------------------------------------
   //
   // Track *all* program states in each lexical scope and created on the fly when
@@ -197,7 +184,6 @@ class GraphBuilder {
   void StackReset( std::uint32_t index )                     { vstk()->at(StackIndex(index)) = NULL; }
   Expr* StackGet( std::uint32_t index )                      { return vstk()->at(StackIndex(index)); }
   Expr* StackGet( std::uint32_t index , std::uint32_t base ) { return vstk()->at(base+index); }
-  StackSlot StackGetSlot( std::uint32_t index )              { return StackSlot(StackGet(index),index); }
 
  public: // Current FuncInfo
   std::uint32_t method_index()         const { return static_cast<std::uint32_t>(func_info_.size()); }
@@ -236,27 +222,26 @@ class GraphBuilder {
 
  private: // Guard handling
   // Add a type feedback with TypeKind into the stack slot pointed by index
-  Expr* AddTypeFeedbackIfNeed( const StackSlot& , TypeKind     , const interpreter::BytecodeLocation& );
-  Expr* AddTypeFeedbackIfNeed( const StackSlot& , const Value& , const interpreter::BytecodeLocation& );
+  Expr* AddTypeFeedbackIfNeed( Expr* , TypeKind     , const interpreter::BytecodeLocation& );
+  Expr* AddTypeFeedbackIfNeed( Expr* , const Value& , const interpreter::BytecodeLocation& );
   // Create a guard node and linked it back to the current graph
-  Guard* NewGuard            ( Expr* , Checkpoint* );
-
+  Guard* NewGuard            ( Test* , Checkpoint* );
  private: // Arithmetic
   // Unary
-  Expr* NewUnary            ( const StackSlot& , Unary::Operator , const interpreter::BytecodeLocation& );
-  Expr* TrySpeculativeUnary ( const StackSlot& , Unary::Operator , const interpreter::BytecodeLocation& );
-  Expr* NewUnaryFallback    ( const StackSlot& , Unary::Operator );
+  Expr* NewUnary            ( Expr* , Unary::Operator , const interpreter::BytecodeLocation& );
+  Expr* TrySpeculativeUnary ( Expr* , Unary::Operator , const interpreter::BytecodeLocation& );
+  Expr* NewUnaryFallback    ( Expr* , Unary::Operator );
 
   // Binary
-  Expr* NewBinary           ( const StackSlot& , const StackSlot& , Binary::Operator ,
+  Expr* NewBinary           ( Expr* , Expr* , Binary::Operator ,
                                                                     const interpreter::BytecodeLocation& );
-  Expr* TrySpecialTestBinary( const StackSlot& , const StackSlot& , Binary::Operator ,
+  Expr* TrySpecialTestBinary( Expr* , Expr* , Binary::Operator ,
                                                                     const interpreter::BytecodeLocation& );
-  Expr* TrySpeculativeBinary( const StackSlot& , const StackSlot& , Binary::Operator ,
+  Expr* TrySpeculativeBinary( Expr* , Expr* , Binary::Operator ,
                                                                     const interpreter::BytecodeLocation& );
-  Expr* NewBinaryFallback   ( const StackSlot& , const StackSlot& , Binary::Operator );
+  Expr* NewBinaryFallback   ( Expr* , Expr* , Binary::Operator );
   // Ternary
-  Expr* NewTernary( const StackSlot& , Expr* , Expr* , const interpreter::BytecodeLocation& );
+  Expr* NewTernary( Expr* , Expr* , Expr* , const interpreter::BytecodeLocation& );
   // Intrinsic
   Expr* NewICall  ( std::uint8_t ,std::uint8_t ,std::uint8_t ,bool );
   Expr* LowerICall( ICall* );

@@ -32,7 +32,9 @@ bool GVN::Perform( Graph* graph , HIRPass::Flag flag ) {
           if(tar) {
             if(!tar->IsIdentical(subexpr)) {
               subexpr->Replace(tar);          // okay, find a target, just replace the old one
-              if(tar == expr) expr = subexpr; // it is replaced, so use the replaced value
+              if(tar->IsIdentical(expr))
+                expr = subexpr;               // this whole expression is replaced, record it for
+                                              // marking later on to avoid visiting multiple times
             }
           } else {
             lava_verify(table.Insert(&zone,subexpr,subexpr).second);

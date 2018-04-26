@@ -19,23 +19,6 @@ Expr* TryFoldObjectGet( Graph* graph , Expr* obj , Expr* key ) {
   return NULL;
 }
 
-bool TryFoldObjectSet( Graph* graph , Expr* obj, Expr* key, Expr* value ) {
-  if(obj->IsIRObject() && key->IsString()) {
-    auto irobj = obj->AsIRObject();
-    auto zstr  = key->AsZoneString();
-    lava_foreach( auto e , irobj->operand_list()->GetForwardIterator() ) {
-      auto kv = e->AsIRObjectKV();
-      auto rk = kv->key()->AsZoneString();
-      if(rk == zstr) {
-        // the value are stored in the index 1 position , 0 is the key
-        kv->set_value(value);
-        return true;
-      }
-    }
-  }
-  return false;
-}
-
 } // namespace
 
 // Precondition of folding memory node
@@ -70,32 +53,6 @@ bailout:
 Expr* FoldPropGet( Graph* graph , Expr* obj , Expr* prop ) {
   if(!obj->HasRef()) {
     if(auto r = TryFoldObjectGet(graph,obj,prop); r != NULL) return r;
-  }
-  return NULL;
-}
-
-Expr* FoldIndexSet( Graph* graph , Expr* obj , Expr* idx , Expr* val ) {
-  if(!obj->HasRef()) {
-    // 1. try list literal
-    if(obj->IsIRList() && idx->IsFloat64()) {
-      std::uint32_t iidx;
-      if(!CastToIndex(idx->AsFloat64()->value(),&iidx)) goto bailout;
-      auto list = obj->AsIRList();
-      if(iidx >= list->Size()) goto bailout;
-      list->ReplaceOperand( iidx , val ); // replace the old value with new value
-      return list;
-    }
-    // 2. try object literal
-    if(TryFoldObjectSet(graph,obj,idx,val)) return obj;
-  }
-
-bailout:
-  return NULL;
-}
-
-Expr* FoldPropSet( Graph* graph , Expr* obj , Expr* idx , Expr* val ) {
-  if(!obj->HasRef()) {
-    if(TryFoldObjectSet(graph,obj,idx,val)) return obj;
   }
   return NULL;
 }

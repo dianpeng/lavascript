@@ -64,9 +64,9 @@ class GraphBuilder {
     // effect group list
     Effect* effect()   { return &effect_; }
    private:
-    ValueStack stack_;        // register stack
+    ValueStack    stack_;     // register stack
     UpValueVector upvalue_;   // upvalue's effect group
-    GlobalMap global_;        // global's effect group
+    GlobalMap     global_;    // global's effect group
     GraphBuilder* gb_;        // graph builder
     Effect        effect_;    // a list of tracked effect group
 

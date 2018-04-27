@@ -559,7 +559,7 @@ Expr* GraphBuilder::LowerICall( ICall* node ) {
 // ====================================================================
 Expr* GraphBuilder::NewPSet( Expr* object , Expr* key , Expr* value ) {
   auto ret = PSet::New(graph_,object,key,value,region());
-  env()->effect()->UpdateWriteEffect(ret);
+  env()->effect()->root()->UpdateWriteEffect(ret);
   region()->AddPin(ret);
   return ret;
 }
@@ -567,7 +567,7 @@ Expr* GraphBuilder::NewPSet( Expr* object , Expr* key , Expr* value ) {
 Expr* GraphBuilder::NewPGet( Expr* object , Expr* key ) {
   if(auto n = FoldPropGet(graph_,object,key); n) return n;
   auto ret = PGet::New(graph_,object,key,region());
-  env()->effect()->AddReadEffect(ret);
+  env()->effect()->root()->AddReadEffect(ret);
   return ret;
 }
 
@@ -578,7 +578,7 @@ Expr* GraphBuilder::NewPGet( Expr* object , Expr* key ) {
 // ====================================================================
 Expr* GraphBuilder::NewISet( Expr* object, Expr* index, Expr* value ) {
   auto ret = ISet::New(graph_,object,index,value,region());
-  env()->effect()->UpdateWriteEffect(ret);
+  env()->effect()->root()->UpdateWriteEffect(ret);
   region()->AddPin(ret);
   return ret;
 }
@@ -586,7 +586,7 @@ Expr* GraphBuilder::NewISet( Expr* object, Expr* index, Expr* value ) {
 Expr* GraphBuilder::NewIGet( Expr* object, Expr* index ) {
   if(auto n = FoldIndexGet(graph_,object,index); n) return n;
   auto ret = IGet::New(graph_,object,index,region());
-  env()->effect()->AddReadEffect(ret);
+  env()->effect()->root()->AddReadEffect(ret);
   return ret;
 }
 

@@ -7,6 +7,9 @@ namespace lavascript {
 namespace cbase      {
 namespace hir        {
 
+class RootEffectGroup;
+class LeafEffectGroup;
+
 /**
  * Helper module to do effect analyzing during graph construction.
  *
@@ -39,6 +42,11 @@ class EffectGroup {
   virtual void UpdateWriteEffect( WriteEffect* ) = 0;
   // add a new read effect
   virtual void AddReadEffect    ( ReadEffect*  ) = 0;
+ public:
+  WriteEffect*                                write_effect() const { return write_effect_; }
+  void                      set_write_effect( WriteEffect* );
+  const ::lavascript::zone::Vector<ReadEffect*>& read_list() const { return read_list_; }
+  ::lavascript::zone::Zone*                           zone() const { return zone_; }
  protected:
   // concrete implementation of Update/Add without propogation of the
   // effect into related group
@@ -49,6 +57,9 @@ class EffectGroup {
   WriteEffect*                             write_effect_;   // Write effect currently tracked
   ::lavascript::zone::Vector<ReadEffect*>  read_list_;      // All the read happened *after* the write
   ::lavascript::zone::Zone*                zone_;           // Zone object for allocation of memory
+
+  friend class RootEffectGroup;
+  friend class LeafEffectGroup;
 };
 
 class RootEffectGroup : public EffectGroup {
@@ -83,9 +94,12 @@ class Effect {
   Effect( ::lavascript::zone::Zone* , WriteEffect* );
   Effect( const Effect& );
   // accessor for different types of effect group
-  EffectGroup* root  () { return &root_;   }
-  EffectGroup* list  () { return &list_;   }
-  EffectGroup* object() { return &object_; }
+  EffectGroup*       root  ()       { return &root_;   }
+  EffectGroup*       list  ()       { return &list_;   }
+  EffectGroup*       object()       { return &object_; }
+  const EffectGroup* root  () const { return &root_;   }
+  const EffectGroup* list  () const { return &list_;   }
+  const EffectGroup* object() const { return &object_; }
  public:
   // merge the input 2 effect object into another effect object, the input and output can be the same
   static void Merge( const Effect& , const Effect& , Effect* , Graph*  , ControlFlow* );

@@ -11,7 +11,7 @@ namespace hir        {
 // -------------------------------------------------------------------------
 class PGet : public MemoryRead {
  public:
-  inline static PGet* New( Graph* , Expr* , Expr* , ControlFlow* );
+  inline static PGet* New( Graph* , Expr* , Expr* );
   Expr* object() const { return operand_list()->First(); }
   Expr* key   () const { return operand_list()->Last (); }
   virtual Expr* Memory() const { return object(); }
@@ -45,7 +45,7 @@ class PGet : public MemoryRead {
 
 class PSet : public MemoryWrite {
  public:
-  inline static PSet* New( Graph* , Expr* , Expr* , Expr* , ControlFlow* );
+  inline static PSet* New( Graph* , Expr* , Expr* , Expr* );
   Expr* object() const { return operand_list()->First(); }
   Expr* key   () const { return operand_list()->Index(1);}
   Expr* value () const { return operand_list()->Last (); }
@@ -85,7 +85,7 @@ class PSet : public MemoryWrite {
 
 class IGet : public MemoryRead {
  public:
-  inline static IGet* New( Graph* , Expr* , Expr* , ControlFlow* );
+  inline static IGet* New( Graph* , Expr* , Expr* );
   Expr* object() const { return operand_list()->First(); }
   Expr* index () const { return operand_list()->Last (); }
   virtual Expr* Memory() const { return object(); }
@@ -123,7 +123,7 @@ class IGet : public MemoryRead {
 
 class ISet : public MemoryWrite {
  public:
-  inline static ISet* New( Graph* , Expr* , Expr* , Expr* , ControlFlow* );
+  inline static ISet* New( Graph* , Expr* , Expr* , Expr* );
   Expr* object() const { return operand_list()->First(); }
   Expr* index () const { return operand_list()->Index(1);}
   Expr* value () const { return operand_list()->Last (); }

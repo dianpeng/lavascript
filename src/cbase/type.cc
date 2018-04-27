@@ -25,7 +25,9 @@ TypeKind MapValueTypeToTypeKind( ValueType type ) {
     case TYPE_ITERATOR:  return TPKIND_ITERATOR;
     case TYPE_EXTENSION: return TPKIND_EXTENSION;
     case TYPE_CLOSURE:   return TPKIND_CLOSURE;
-    default:             return TPKIND_UNKNOWN;
+    default:
+      lava_unreachF("we should never see value type %s appear in the value stack",GetValueTypeName(type));
+      return TPKIND_UNKNOWN;
   }
 }
 

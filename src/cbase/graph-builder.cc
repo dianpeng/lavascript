@@ -24,7 +24,8 @@ GraphBuilder::Environment::Environment( GraphBuilder* gb ):
   upvalue_(),
   global_ (),
   gb_     (gb),
-  effect_ (gb->temp_zone(),gb->graph()->no_write_effect())
+  effect_ (gb->temp_zone(),gb->graph()->no_write_effect()),
+  state_  (gb->InitCheckpoint())
 {}
 
 GraphBuilder::Environment::Environment( const Environment& env ):
@@ -32,7 +33,8 @@ GraphBuilder::Environment::Environment( const Environment& env ):
   upvalue_(env.upvalue_),
   global_ (env.global_),
   gb_     (env.gb_),
-  effect_ (env.effect_)
+  effect_ (env.effect_),
+  state_  (env.state_ )
 {}
 
 void GraphBuilder::Environment::EnterFunctionScope( const FuncInfo& func ) {
@@ -85,8 +87,9 @@ void GraphBuilder::Environment::SetUpValue( std::uint8_t index , Expr* value ) {
   upvalue_[index] = value;
 }
 
-void GraphBuilder::Environment::SetGlobal( const void* key , std::size_t length , const KeyProvider& key_provider ,
-                                                                                  Expr* value ) {
+void GraphBuilder::Environment::SetGlobal( const void* key , std::size_t length ,
+                                                             const KeyProvider& key_provider ,
+                                                             Expr* value ) {
   auto gset = GSet::New(gb_->graph_,key_provider(),value,gb_->region());
   gb_->region()->AddPin(gset);
 
@@ -279,12 +282,10 @@ Expr* GraphBuilder::AddTypeFeedbackIfNeed( Expr* n , TypeKind tp , const Bytecod
     return n;
   }
   lava_debug(NORMAL,lava_verify(tp != TPKIND_UNKNOWN););
-  // generate checkpoint
-  auto cp  = BuildCheckpoint(pc);
   // generate type test node
   auto tt  = TestType::New(graph_,tp,n);
   // generate guard node
-  auto gd  = NewGuard(tt,cp);
+  auto gd  = NewGuard(tt,env()->state());
   // return the new guarded node
   return gd;
 }
@@ -557,17 +558,32 @@ Expr* GraphBuilder::LowerICall( ICall* node ) {
 // Property Get/Set
 //
 // ====================================================================
-Expr* GraphBuilder::NewPSet( Expr* object , Expr* key , Expr* value ) {
-  auto ret = PSet::New(graph_,object,key,value,region());
-  env()->effect()->root()->UpdateWriteEffect(ret);
+Expr* GraphBuilder::NewPSet( Expr* object , Expr* key , Expr* value ,
+                                                        const BytecodeLocation& bc ) {
+  Expr* ret = NULL;
+  // check the type trace to get a speculative type can be OBJECT
+  if(IsTraceTypeSame(TPKIND_OBJECT,0,bc)) {
+    object  = AddTypeFeedbackIfNeed(object,TPKIND_OBJECT,bc);
+    ret     = PSet::New(graph_,object,key,value);
+    env()->effect()->object()->UpdateWriteEffect(ret);
+  } else {
+    ret = PSet::New(graph_,object,key,value);
+    auto cp = GenerateCheckpoint(bc);
+    cp->AddOperand(ret);
+    env()->effect()->root()->UpdateWriteEffect(ret);
+  }
   region()->AddPin(ret);
   return ret;
 }
 
 Expr* GraphBuilder::NewPGet( Expr* object , Expr* key ) {
   if(auto n = FoldPropGet(graph_,object,key); n) return n;
-  auto ret = PGet::New(graph_,object,key,region());
-  env()->effect()->root()->AddReadEffect(ret);
+  auto ret = PGet::New(graph_,object,key);
+  if(auto tp = GetTypeInference(object); tp == TPKIND_OBJECT) {
+    env()->effect()->object()->AddReadEffect(ret);
+  } else {
+    env()->effect()->root()->AddReadEffect(ret);
+  }
   return ret;
 }
 
@@ -577,8 +593,21 @@ Expr* GraphBuilder::NewPGet( Expr* object , Expr* key ) {
 //
 // ====================================================================
 Expr* GraphBuilder::NewISet( Expr* object, Expr* index, Expr* value ) {
-  auto ret = ISet::New(graph_,object,index,value,region());
-  env()->effect()->root()->UpdateWriteEffect(ret);
+  Expr* ret = NULL;
+  if(IsTraceTypeSame(TPKIND_LIST,0,bc)) {
+    object  = AddTypeFeedbackIfNeed(object,TPKIND_LIST,bc);
+    ret     = ISet::New(graph_,object,index,value);
+    env()->effect()->list()->UpdateWriteEffect(ret);
+  } else if(IsTraceTypeSame(TPKIND_OBJECT,0,bc)) {
+    object  = AddTypeFeedbackIfNeed(object,TPKIND_OBJECT,bc);
+    ret     = PSet::New(graph_,object,key,value);
+    env()->effect()->object()->UpdateWriteEffect(ret);
+  } else {
+    ret     = ISet::New(graph_,object,index,value);
+    auto cp = GenerateCheckpoint(bc);
+    cp->AddOperand(ret);
+    env()->effect()->root()->UpdateWriteEffect(ret);
+  }
   region()->AddPin(ret);
   return ret;
 }
@@ -586,7 +615,16 @@ Expr* GraphBuilder::NewISet( Expr* object, Expr* index, Expr* value ) {
 Expr* GraphBuilder::NewIGet( Expr* object, Expr* index ) {
   if(auto n = FoldIndexGet(graph_,object,index); n) return n;
   auto ret = IGet::New(graph_,object,index,region());
-  env()->effect()->root()->AddReadEffect(ret);
+  {
+    auto tp = GetTypeInference(object);
+    if(tp == TPKIND_OBJECT) {
+      env()->effect()->object()->AddReadEffect(ret);
+    } else if(tp == TPKIND_LIST) {
+      env()->effect()->list()->AddReadEffect(ret);
+    } else {
+      env()->effect()->root()->AddReadEffect(ret);
+    }
+  }
   return ret;
 }
 
@@ -639,6 +677,10 @@ Checkpoint* GraphBuilder::BuildCheckpoint( const BytecodeLocation& pc ) {
     if(node) cp->AddStackSlot(node,i);
   }
   return cp;
+}
+
+Checkpoint* GraphBuilder::InitCheckpoint() {
+  return Checkpoint::New(graph_,graph_->zone()->New<IRInfo>(method_index(),BytecodeLocation()));
 }
 
 // ====================================================================
@@ -881,7 +923,6 @@ GraphBuilder::BuildIf( BytecodeIterator* itr ) {
     }
     rhs = region();
   }
-
   // 2. Build code inside of the *false* branch
   if(have_false_branch) {
     set_region(false_region);

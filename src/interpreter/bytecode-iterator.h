@@ -55,15 +55,8 @@ class BytecodeLocation {
     ONE_BYTE = 0,
     TWO_BYTE
   };
-
-  BytecodeLocation( const std::uint32_t* address , int type ):
-    ptr_(address,type)
-  {}
-
-  BytecodeLocation():
-    ptr_(NULL,0)
-  {}
-
+  BytecodeLocation( const std::uint32_t* address , int type ): ptr_(address,type) {}
+  BytecodeLocation(): ptr_(NULL,0) {}
  public:
   const std::uint32_t* address() const { return ptr_.ptr(); }
   bool IsOneByte() const { return ptr_.state() == ONE_BYTE; }

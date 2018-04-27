@@ -62,13 +62,15 @@ class GraphBuilder {
     UpValueVector*   upvalue()  { return &upvalue_;}
     GlobalMap*       global()   { return &global_; }
     // effect group list
-    Effect* effect()   { return &effect_; }
+    Effect*          effect()   { return &effect_; }
+    Checkpoint*      state ()   { return state_;   }
    private:
     ValueStack    stack_;     // register stack
     UpValueVector upvalue_;   // upvalue's effect group
     GlobalMap     global_;    // global's effect group
     GraphBuilder* gb_;        // graph builder
     Effect        effect_;    // a list of tracked effect group
+    Checkpoint*   state_;     // current frame state for this environment
 
     friend class GraphBuilder;
     LAVA_DISALLOW_ASSIGN(Environment);
@@ -144,12 +146,13 @@ class GraphBuilder {
     inline FuncInfo( const Handle<Prototype>& , ControlFlow* , std::uint32_t );
     inline FuncInfo( const Handle<Prototype>& , ControlFlow* , const std::uint32_t* );
     inline FuncInfo( FuncInfo&& );
-    bool IsOSR() const { return osr_start != NULL; }
+
+    bool IsOSR                        () const { return osr_start != NULL; }
     bool IsLocalVar( std::uint8_t slot ) const { return slot < max_local_var_size; }
     // check whether we have loop currently
-    bool HasLoop() const { return !loop_info.empty(); }
+    bool HasLoop                      () const { return !loop_info.empty(); }
     // get the current loop
-    GraphBuilder::LoopInfo& current_loop() { return loop_info.back(); }
+    GraphBuilder::LoopInfo& current_loop()     { return loop_info.back(); }
     const GraphBuilder::LoopInfo& current_loop() const { return loop_info.back(); }
     const BytecodeAnalyze::LoopHeaderInfo* current_loop_header() const {
       return current_loop().loop_header_info;
@@ -158,7 +161,7 @@ class GraphBuilder {
     // Enter into a new loop scope, the corresponding basic block
     // information will be added into stack as part of the loop scope
     inline void EnterLoop( const std::uint32_t* pc );
-    void LeaveLoop() { loop_info.pop_back(); }
+    void        LeaveLoop() { loop_info.pop_back(); }
   };
 
  public:
@@ -260,11 +263,17 @@ class GraphBuilder {
   void NewUSet( std::uint8_t , std::uint8_t );
 
  private: // Checkpoint generation
+  // Create a checkpoint with snapshot of current stack status
   Checkpoint* BuildCheckpoint( const interpreter::BytecodeLocation& );
+  // Get a init checkpoint , checkpoint that has IRInfo points to the first of the bytecode ,
+  // of the top most inlined function.
+  Checkpoint* InitCheckpoint ();
+ private: // Helper for type trace
+  // Check whether the traced type for this bytecode is the expected one wrt the index's value
+  bool IsTraceTypeSame( TypeKind , std::size_t index , const interpreter::BytecodeLocation& );
 
  private: // Phi
   Expr* NewPhi( Expr* , Expr* , ControlFlow* );
-
  private: // Misc
   // Helper function to generate exit Phi node and also link the return and guard nodes to the
   // success and fail node of the HIR graph

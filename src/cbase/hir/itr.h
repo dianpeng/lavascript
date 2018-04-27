@@ -11,7 +11,7 @@ namespace hir        {
 // -------------------------------------------------------------------------
 class ItrNew : public Expr {
  public:
-  inline static ItrNew* New( Graph* , Expr* , ControlFlow* );
+  inline static ItrNew* New( Graph* , Expr* );
   Expr* operand() const { return operand_list()->First(); }
   ItrNew( Graph* graph , std::uint32_t id , Expr* operand ):
     Expr  (HIR_ITR_NEW,id,graph)
@@ -24,7 +24,7 @@ class ItrNew : public Expr {
 
 class ItrNext : public Expr {
  public:
-  inline static ItrNext* New( Graph* , Expr* , ControlFlow* );
+  inline static ItrNext* New( Graph* , Expr* );
   Expr* operand() const { return operand_list()->First(); }
   ItrNext( Graph* graph , std::uint32_t id , Expr* operand ):
     Expr  (HIR_ITR_NEXT,id,graph)
@@ -37,7 +37,7 @@ class ItrNext : public Expr {
 
 class ItrTest : public Expr {
  public:
-  inline static ItrTest* New( Graph* , Expr* , ControlFlow* );
+  inline static ItrTest* New( Graph* , Expr* );
   Expr* operand() const { return operand_list()->First(); }
   ItrTest( Graph* graph , std::uint32_t id , Expr* operand ):
     Expr  (HIR_ITR_TEST,id,graph)
@@ -62,7 +62,7 @@ class ItrDeref : public Expr {
     PROJECTION_KEY = 0,
     PROJECTION_VAL
   };
-  inline static ItrDeref* New( Graph* , Expr* , ControlFlow* );
+  inline static ItrDeref* New( Graph* , Expr* );
   Expr* operand() const { return operand_list()->First(); }
   ItrDeref( Graph* graph , std::uint32_t id , Expr* operand ):
     Expr   (HIR_ITR_DEREF,id,graph)

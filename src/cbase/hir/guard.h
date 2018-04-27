@@ -98,12 +98,12 @@ class Guard : public Expr {
   }
  public:
   virtual std::uint64_t GVNHash() const {
-    return GVNHash1(type_name(),test()->GVNHash());
+    return GVNHash1(type_name(),test()->GVNHash(),checkpoint()->GVNHash());
   }
   virtual bool Equal( const Expr* that ) const {
     if(that->IsGuard()) {
       auto n = that->AsGuard();
-      return test()->Equal(n->test());
+      return test()->Equal(n->test()) && checkpoint()->Equal(n->checkpoint());
     }
     return false;
   }

@@ -11,7 +11,7 @@ namespace hir        {
 // -------------------------------------------------------------------------
 class GGet : public MemoryNode {
  public:
-  inline static GGet* New( Graph* , Expr* , ControlFlow* );
+  inline static GGet* New( Graph* , Expr* );
   Expr* key() const { return operand_list()->First(); }
 
   GGet( Graph* graph , std::uint32_t id , Expr* name ):
@@ -25,7 +25,7 @@ class GGet : public MemoryNode {
 
 class GSet : public Expr {
  public:
-  inline static GSet* New( Graph* , Expr* key , Expr* value , ControlFlow* );
+  inline static GSet* New( Graph* , Expr* key , Expr* value );
   Expr* key () const { return operand_list()->First(); }
   Expr* value()const { return operand_list()->Last() ; }
   GSet( Graph* graph , std::uint32_t id , Expr* key , Expr* value ):

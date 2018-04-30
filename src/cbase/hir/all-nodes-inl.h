@@ -152,7 +152,6 @@ inline bool Expr::IsReplaceable( const Expr* that ) const {
 inline void Expr::AddOperand( Expr* node ) {
   auto itr = operand_list_.PushBack(zone(),node);
   node->AddRef(this,itr);
-  if(node->HasSideEffect()) SetHasSideEffect();
 }
 
 inline void Expr::ReplaceOperand( std::size_t index , Expr* node ) {
@@ -164,18 +163,30 @@ inline void Expr::ReplaceOperand( std::size_t index , Expr* node ) {
   itr.set_value(node);              // update to the new value
 }
 
-inline void Expr::AddEffect ( Expr* node ) {
-  if(!(node->IsNoReadEffect() || node->IsNoWriteEffect())) {
-    auto itr = effect_list_.PushBack(zone(),node);
-    node->AddRef(this,itr);
-    SetHasSideEffect();
+inline void Effect::SetEffect( Effect* effect ) {
+  auto peff = effect->prev_;
+  auto neff = effect->next_;
+
+  if(peff) {
+    peff->next_ = this;
+    prev_       = peff;
+  }
+
+  if(neff) {
+    neff->prev_ = this;
+    next_       = neff;
   }
 }
 
-inline void Expr::AddEffectIfNotExist( Expr* node ) {
-  auto itr = effect_list_.Find(node);
-  if(itr.HasNext()) return;
-  AddEffect(node);
+inline void Effect::RemoveEffect() {
+  if(prev_) {
+    prev_->next_ = next_;
+  }
+  if(next_) {
+    next_->prev_ = prev_;
+  }
+
+  prev_ = next_ = NULL;
 }
 
 inline Arg* Arg::New( Graph* graph , std::uint32_t index ) {

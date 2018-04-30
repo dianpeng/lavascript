@@ -98,7 +98,7 @@ class Guard : public Expr {
   }
  public:
   virtual std::uint64_t GVNHash() const {
-    return GVNHash1(type_name(),test()->GVNHash(),checkpoint()->GVNHash());
+    return GVNHash2(type_name(),test()->GVNHash(),checkpoint()->GVNHash());
   }
   virtual bool Equal( const Expr* that ) const {
     if(that->IsGuard()) {

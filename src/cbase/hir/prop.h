@@ -14,7 +14,6 @@ class PGet : public MemoryRead {
   inline static PGet* New( Graph* , Expr* , Expr* );
   Expr* object() const { return operand_list()->First(); }
   Expr* key   () const { return operand_list()->Last (); }
-  virtual Expr* Memory() const { return object(); }
 
   virtual std::uint64_t GVNHash() const {
     return GVNHash2(type_name(),object()->GVNHash(),key()->GVNHash());
@@ -88,7 +87,6 @@ class IGet : public MemoryRead {
   inline static IGet* New( Graph* , Expr* , Expr* );
   Expr* object() const { return operand_list()->First(); }
   Expr* index () const { return operand_list()->Last (); }
-  virtual Expr* Memory() const { return object(); }
 
   IGet( Graph* graph , std::uint32_t id , Expr* object , Expr* index ):
     MemoryRead (HIR_IGET,id,graph)

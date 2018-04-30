@@ -61,12 +61,12 @@ class StackSlot : public Expr {
   }
  public:
   virtual std::uint64_t GVNHash() const {
-    return GVNHash2(type_name(),index()->GVNHash(),expr()->GVNHash());
+    return GVNHash2(type_name(),index(),expr()->GVNHash());
   }
   virtual bool Equal( const Expr* that ) const {
     if(that->IsStackSlot()) {
       auto ss = that->AsStackSlot();
-      return index()->Equal(ss->index()) && expr()->Equal(ss->expr());
+      return index() == ss->index() && expr()->Equal(ss->expr());
     }
     return false;
   }

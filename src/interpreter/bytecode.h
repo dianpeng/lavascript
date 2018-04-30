@@ -101,58 +101,29 @@ class BytecodeUsage {
     UNUSED     // unused register
   };
 
-  BytecodeUsage( int arg1 , int arg2 , int arg3 , int arg4 , BytecodeType type ,
-                                                             bool fb ):
-    arg_       (),
-    used_size_ (0),
-    type_      (type),
-    feedback_  (fb)
-  {
-    if(arg1 != UNUSED) ++used_size_;
-    if(arg2 != UNUSED) ++used_size_;
-    if(arg3 != UNUSED) ++used_size_;
-    if(arg4 != UNUSED) ++used_size_;
+  inline BytecodeUsage( int , int , int , int , BytecodeType , bool );
 
-    arg_[0] = arg1;
-    arg_[1] = arg2;
-    arg_[2] = arg3;
-    arg_[3] = arg4;
-  }
-
-  BytecodeUsage():
-    arg_       (),
-    used_size_ (0),
-    type_      (TYPE_X),
-    feedback_  (false)
-  {
+  BytecodeUsage(): arg_(), used_size_(0), type_(TYPE_X), feedback_(false) {
     arg_[0] = arg_[1] = arg_[2] = arg_[3] = UNUSED;
   }
-
  public:
   int arg1() const { return arg_[0]; }
   int arg2() const { return arg_[1]; }
   int arg3() const { return arg_[2]; }
-
   // extra slot
-  int arg4() const { return arg_[3]; }
-
-  bool feedback() const { return feedback_; }
-
-  BytecodeType type() const { return type_; }
-
-  int used_size() const { return used_size_; }
-
- public:
+  int                arg4() const { return arg_[3]; }
+  bool           feedback() const { return feedback_; }
+  BytecodeType       type() const { return type_; }
+  std::uint32_t used_size() const { return used_size_; }
   int GetArgument( int index ) const {
     lava_debug(NORMAL,lava_verify(index >= 0 && index < 4););
     return arg_[index];
   }
-
  private:
-  int arg_[4];         // all argument's type
-  int used_size_;      // type of argument 5
-  BytecodeType type_;  // bytecode type
-  bool feedback_;      // whether this bytecode supports feedback
+  int arg_[4];               // all argument's type
+  std::uint32_t used_size_;  // type of argument 5
+  BytecodeType type_;        // bytecode type
+  bool feedback_;            // whether this bytecode supports feedback
 };
 
 
@@ -324,6 +295,24 @@ inline bool IsLoopEndBytecode( Bytecode bc ) {
 
 inline bool IsBlockJumpBytecode( Bytecode bc ) {
   return bc == BC_CONT || bc == BC_BRK || bc == BC_RET || bc == BC_RETNULL;
+}
+
+inline BytecodeUsage::BytecodeUsage( int arg1 , int arg2 , int arg3 , int arg4 ,
+                                                                      BytecodeType type ,
+                                                                      bool fb ):
+  arg_       (),
+  used_size_ (0),
+  type_      (type),
+  feedback_  (fb)
+{
+  if(arg1 != UNUSED) ++used_size_;
+  if(arg2 != UNUSED) ++used_size_;
+  if(arg3 != UNUSED) ++used_size_;
+  if(arg4 != UNUSED) ++used_size_;
+  arg_[0] = arg1;
+  arg_[1] = arg2;
+  arg_[2] = arg3;
+  arg_[3] = arg4;
 }
 
 } // namespace interpreter

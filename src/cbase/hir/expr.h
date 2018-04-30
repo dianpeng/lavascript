@@ -1,6 +1,7 @@
 #ifndef CBASE_HIR_EXPR_H_
 #define CBASE_HIR_EXPR_H_
 #include "node.h"
+#include <function>
 
 namespace lavascript {
 namespace cbase      {
@@ -23,18 +24,17 @@ class Expr : public Node {
   // are not supposed to be used again.
   virtual void Replace( Expr* );
  public:
-  // get node's GVN hash value
-  virtual std::uint64_t GVNHash()        const { return GVNHash1(type_name(),id()); }
+  // default GVNHash function implementation
+  virtual std::uint64_t GVNHash()        const { return static_cast<std::uint64_t>(id()); }
 
-  // check the input node is equal with |this| node in terms of GVN
-  virtual bool Equal( const Expr* that ) const { return IsIdentical(that);          }
+  // default GVN Equal comparison function implementation
+  virtual bool Equal( const Expr* that ) const { return IsIdentical(that); }
 
   // default operation to test whether 2 nodes are identical or not. it should be prefered
   // when 2 nodes are compared against identity. it means if they are equal , then one node
   // can be used to replace other
   inline bool IsReplaceable( const Expr* that ) const;
  public:
-
   // This list returns a list of operands used by this Expr/IR node. Most
   // of time operand_list will return at most 3 operands except for call
   // function
@@ -47,7 +47,6 @@ class Expr : public Node {
   // Clear all the operand inside of this node's operand list
   void ClearOperand();
  public:
-
   // This list returns a list of Ref object which allow user to
   //   1) get a list of expression that uses this expression, ie who uses me
   //   2) get the corresponding iterator where *me* is inserted into the list
@@ -58,7 +57,6 @@ class Expr : public Node {
   void AddRef( Node* who_uses_me , const OperandIterator& iter ) {
     ref_list_.PushBack(zone(),OperandRef(iter,who_uses_me));
   }
-
   // Remove a reference from the reference list whose ID == itr
   bool RemoveRef( const OperandIterator& itr , Node* who_uses_me );
   // check if this expression is used by any other expression, basically
@@ -69,46 +67,31 @@ class Expr : public Node {
   // essentially
   bool HasRef() const { return !ref_list()->empty(); }
  public:
+  typedef std::function<bool (Expr*)> DependencyVisitor;
 
-  // Used to develop dependency between expression which cannot be expressed
-  // as data flow operation. Mainly used to order certain operations
-  // Effect list is essentially loosed and it will have duplicated node. To
-  // avoid too much duplicated node we can use AddEffectIfNotExist to check
-  // whether we have that value added ; but it does a linear search so it is
-  // not performant. The effect list maintain is a best effort in terms of dedup.
-  const EffectList* effect_list() const { return &effect_list_; }
+  // go through all the dependency this expr node has. the dependency
+  // recorded here is the dependency that is used to express side effect
+  virtual bool VisitDependency( const DependencyVisitor& ) const = 0;
 
-  // add a node into the effect list, it will refuse to add effect node when
-  // it is either NoMemoryRead/NoMemoryWrite since these nodes are just placeholders
-  inline void AddEffect   ( Expr* node );
+  // get the dependnecy size
+  virtual std::size_t dependency_size() const = 0;
 
-  // add a node only when the effect node not show up inside of the effect list.
-  // this function should be invoked with cautious since it is time costy due to
-  // the linear finding internally
-  void AddEffectIfNotExist( Expr* );
+  // check whether this node has dependency
+  bool HasDependency() const { return dependency_size() != 0; }
  public:
-  // Check whether this expression has side effect , or namely one of its descendent
-  // operands has a none empty effect list
-  bool HasSideEffect()     const { return state_ == kHasSideEffect; }
-
   // constructor
   Expr( IRType type , std::uint32_t id , Graph* graph ):
-    Node             (type,id,graph),
-    operand_list_    (),
-    effect_list_     (),
-    ref_list_        (),
-    pin_            (),
-    state_           ()
+    Node            (type,id,graph),
+    operand_list_   (),
+    effect_list_    (),
+    ref_list_       (),
+    pin_            ()
   {}
  private:
-  // mark this node has side effect
-  void SetHasSideEffect() { state_ = kHasSideEffect; }
-
   OperandList        operand_list_;
   EffectList         effect_list_;
   OperandRefList     ref_list_;
   PinEdge            pin_;
-  std::uint64_t      state_;
 };
 
 template<> struct MapIRClassToIRType<Expr> {

@@ -40,7 +40,6 @@ void DecodeBytecode( const std::uint32_t* address ,
 // string representation for this bytecode
 std::string GetBytecodeRepresentation( const std::uint32_t* address );
 
-
 // Bytecode location encode a single bytecode's *address* within its
 // bytecode stream and it also encodes how long this bytecode will be
 // since we have bytecode can be encoded in 1 or 2 dwords. Internally
@@ -67,7 +66,7 @@ class BytecodeLocation {
   void Decode( Bytecode* bc , std::uint32_t* a1 ,
                               std::uint32_t* a2 ,
                               std::uint32_t* a3 ,
-                              std::uint32_t* a4 ) {
+                              std::uint32_t* a4 ) const {
     BytecodeType type;
     std::size_t offset;
     DecodeBytecode(ptr_.ptr(),bc,&type,a1,a2,a3,a4,&offset);

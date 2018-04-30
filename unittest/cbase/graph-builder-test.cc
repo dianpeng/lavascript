@@ -119,8 +119,7 @@ bool CheckGraphOSR( const char* source , std::size_t offset ) {
   GraphBuilder gb(scp,tt);
   Graph graph;
 
-  if(!gb.BuildOSR(scp->main(), scp->main()->code_buffer() + offset ,
-                               &graph)) {
+  if(!gb.BuildOSR(scp->main(), scp->main()->code_buffer() + offset , &graph)) {
     std::cerr<<"cannot build graph"<<std::endl;
     return false;
   }

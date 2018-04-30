@@ -197,6 +197,27 @@ enum IRType {
 CBASE_HIR_LIST(__)
 #undef __ // __
 
+const char* IRTypeGetName( IRType );
+
+// Forward class declaration
+#define __(A,...) class A;
+CBASE_HIR_LIST(__)
+#undef __ // __
+
+class Graph;
+class GraphBuilder;
+class Node;
+class Test;
+class Effect;
+class EffectRead;
+class EffectWrite;
+class MemoryOp;
+class MemoryWrite;
+class MemoryRead ;
+class MemoryNode;
+class Expr;
+class ControlFlow;
+
 // IRType value static mapping
 template< typename T > struct MapIRClassToIRType {};
 
@@ -211,26 +232,6 @@ template< typename T > struct MapIRClassToIRType {};
 CBASE_HIR_LIST(__)
 
 #undef __ // __
-
-const char* IRTypeGetName( IRType );
-
-// Forward class declaration
-#define __(A,...) class A;
-CBASE_HIR_LIST(__)
-#undef __ // __
-
-class Graph;
-class GraphBuilder;
-class Node;
-class Test;
-class EffectRead;
-class EffectWrite;
-class MemoryOp;
-class MemoryWrite;
-class MemoryRead ;
-class MemoryNode;
-class Expr;
-class ControlFlow;
 
 /**
  * This is a separate information maintained for each IR node. It contains
@@ -284,46 +285,6 @@ struct PinEdge {
   PinEdge(): region(NULL), iterator() {}
 };
 
-/**
- * Each expression will have 2 types of dependency with regards to other expression.
- *
- * 1) a data dependency, expressed via the code , things like c = a + b basically means
- *    c is data dependent on a and b. The ir node's operand is designed to express this
- *    sort of relationship
- * 2) effect dependenty, EffectList in expr node are used to represent this. In general
- *    effect represents alias information. Weak type language cannot do too much alias.
- *    example like:
- *      g.f = 1; // g is a global variable
- *      e.b = 2; // e is a global variable
- *
- *    these 2 statements has a effect dependency , the latter one depend on first one since
- *    g and e alias the same underly memory based on conservative guess. To express this
- *    types of information we just need to add g.f = 1's ir node into e.b's effect list then
- *    scheduler will take care of it.
- *
- *    another situation is the control flow , example like :
- *
- *    if(cond) { g.c = 200; } else { g.d = 200; g.e = 300; }
- *    return g.ret;
- *
- *    this example basically says that the expression g.ret should be executed *after* that
- *    control flow branch, however we cannot express this by simply add certain expression
- *    into our effect list. here to merge the side effect brought by this branch, we need
- *    a node called EffectPhi node , this node is used to represent that there're multiple
- *    expression executed which could bring us potential side effect ; and this side effect
- *    should be observed at statement of g.ret. We use EffectPhi node to merge the side
- *    effect in each branch, basically EffectPhi(g.e=300;g.c=200) , and then g.ret depend on
- *    this EffectPhi node.
- */
-
-// OperandList
-typedef zone::List<Expr*>               OperandList;
-typedef OperandList::ForwardIterator    OperandIterator;
-
-// EffectList
-typedef zone::List<Expr*>               EffectList;
-typedef EffectList::ForwardIterator     EffectIterator;
-
 // Reference
 template< typename ITR >
 struct Ref {
@@ -332,6 +293,11 @@ struct Ref {
   Ref( const ITR& iter , Node* n ): id(iter),node(n) {}
   Ref(): id(), node(NULL) {}
 };
+
+// OperandList
+typedef zone::List<Expr*>               OperandList;
+typedef OperandList::ForwardIterator    OperandIterator;
+
 
 typedef Ref<OperandIterator>            OperandRef;
 typedef zone::List<OperandRef>          OperandRefList;

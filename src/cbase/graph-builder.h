@@ -64,6 +64,7 @@ class GraphBuilder {
     // effect group list
     Effect*          effect()   { return &effect_; }
     Checkpoint*      state ()   { return state_;   }
+    void UpdateState( Checkpoint* cp ) { state_ = cp; }
    private:
     ValueStack    stack_;     // register stack
     UpValueVector upvalue_;   // upvalue's effect group
@@ -246,13 +247,13 @@ class GraphBuilder {
   // Ternary
   Expr* NewTernary( Expr* , Expr* , Expr* , const interpreter::BytecodeLocation& );
   // Intrinsic
-  Expr* NewICall  ( std::uint8_t ,std::uint8_t ,std::uint8_t ,bool );
-  Expr* LowerICall( ICall* );
+  Expr* NewICall  ( std::uint8_t ,std::uint8_t ,std::uint8_t ,bool , const interpreter::BytecodeLocation& );
+  Expr* LowerICall( ICall* , const interpreter::BytecodeLocation& );
  private: // Property/Index Get/Set
-  Expr* NewPSet( Expr* , Expr* , Expr* );
-  Expr* NewPGet( Expr* , Expr* );
-  Expr* NewISet( Expr* , Expr* , Expr* );
-  Expr* NewIGet( Expr* , Expr* );
+  Expr* NewPSet( Expr* , Expr* , Expr* , const interpreter::BytecodeLocation& );
+  Expr* NewPGet( Expr* , Expr* , const interpreter::BytecodeLocation& );
+  Expr* NewISet( Expr* , Expr* , Expr* , const interpreter::BytecodeLocation& );
+  Expr* NewIGet( Expr* , Expr* , const interpreter::BytecodeLocation& );
 
  private: // Global variables
   void NewGGet( std::uint8_t , std::uint8_t , bool sso );
@@ -264,14 +265,15 @@ class GraphBuilder {
 
  private: // Checkpoint generation
   // Create a checkpoint with snapshot of current stack status
-  Checkpoint* BuildCheckpoint( const interpreter::BytecodeLocation& );
+  Checkpoint* GenerateCheckpoint( const interpreter::BytecodeLocation& );
+  // Create a eager checkpoint at the new *merge* region node if needed
+  void GenerateMergeCheckpoint  ( const Environment& , const interpreter::BytecodeLocation& );
   // Get a init checkpoint , checkpoint that has IRInfo points to the first of the bytecode ,
   // of the top most inlined function.
   Checkpoint* InitCheckpoint ();
  private: // Helper for type trace
   // Check whether the traced type for this bytecode is the expected one wrt the index's value
   bool IsTraceTypeSame( TypeKind , std::size_t index , const interpreter::BytecodeLocation& );
-
  private: // Phi
   Expr* NewPhi( Expr* , Expr* , ControlFlow* );
  private: // Misc

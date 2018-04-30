@@ -52,8 +52,6 @@ void GraphBuilder::Environment::PopulateArgument ( const FuncInfo& func ) {
 }
 
 void GraphBuilder::Environment::ExitFunctionScope( const FuncInfo& func ) {
-  // TODO:: do we really need to resize it ? A new scope will have a new environment
-  //        created
   stack_.resize( func.base );
 }
 
@@ -75,7 +73,7 @@ Expr* GraphBuilder::Environment::GetGlobal ( const void* key , std::size_t lengt
   if(itr != global_.end()) {
     return itr->value;
   } else {
-    auto gget = GGet::New(gb_->graph_,key_provider(),gb_->region());
+    auto gget = GGet::New(gb_->graph_,key_provider());
     global_.push_back(GlobalVar(key,length,gget));
     return gget;
   }
@@ -90,7 +88,7 @@ void GraphBuilder::Environment::SetUpValue( std::uint8_t index , Expr* value ) {
 void GraphBuilder::Environment::SetGlobal( const void* key , std::size_t length ,
                                                              const KeyProvider& key_provider ,
                                                              Expr* value ) {
-  auto gset = GSet::New(gb_->graph_,key_provider(),value,gb_->region());
+  auto gset = GSet::New(gb_->graph_,key_provider(),value);
   gb_->region()->AddPin(gset);
 
   auto itr = std::find(global_.begin(),global_.end(),Str(key,length));
@@ -404,9 +402,11 @@ Expr* GraphBuilder::TrySpeculativeBinary( Expr* lhs , Expr* rhs , Binary::Operat
         if(lhs_val.IsReal() && rhs_val.IsReal()) {
           lhs = AddTypeFeedbackIfNeed(lhs,TPKIND_FLOAT64,pc);
           rhs = AddTypeFeedbackIfNeed(rhs,TPKIND_FLOAT64,pc);
-          return NewBoxNode<Float64Arithmetic>(graph_, TPKIND_FLOAT64,
-                   NewUnboxNode(graph_,lhs,TPKIND_FLOAT64),
-                   NewUnboxNode(graph_,rhs,TPKIND_FLOAT64), op);
+          {
+            auto l = NewUnboxNode(graph_,lhs,TPKIND_FLOAT64);
+            auto r = NewUnboxNode(graph_,rhs,TPKIND_FLOAT64);
+            return NewBoxNode<Float64Arithmetic>(graph_,TPKIND_FLOAT64,l,r,op);
+          }
         }
         break;
       case Binary::LT: case Binary::LE: case Binary::GT:
@@ -414,29 +414,33 @@ Expr* GraphBuilder::TrySpeculativeBinary( Expr* lhs , Expr* rhs , Binary::Operat
         if(lhs_val.IsReal() && rhs_val.IsReal()) {
           lhs = AddTypeFeedbackIfNeed(lhs,TPKIND_FLOAT64,pc);
           rhs = AddTypeFeedbackIfNeed(rhs,TPKIND_FLOAT64,pc);
-          return NewBoxNode<Float64Compare>(graph_, TPKIND_BOOLEAN,
-                   NewUnboxNode(graph_,lhs,TPKIND_FLOAT64),
-                   NewUnboxNode(graph_,rhs,TPKIND_FLOAT64), op);
+          {
+            auto l = NewUnboxNode(graph_,lhs,TPKIND_FLOAT64);
+            auto r = NewUnboxNode(graph_,rhs,TPKIND_FLOAT64);
+            return NewBoxNode<Float64Compare>(graph_,TPKIND_BOOLEAN,l,r,op);
+          }
 
         } else if(lhs_val.IsString() && rhs_val.IsString()) {
           if((lhs_val.IsSSO() && rhs_val.IsSSO()) && (op == Binary::EQ || op == Binary::NE)) {
             lhs = AddTypeFeedbackIfNeed(lhs,TPKIND_SMALL_STRING,pc);
             rhs = AddTypeFeedbackIfNeed(rhs,TPKIND_SMALL_STRING,pc);
             if(op == Binary::EQ) {
-              return NewBoxNode<SStringEq>(graph_, TPKIND_BOOLEAN,
-                       NewUnboxNode(graph_,lhs,TPKIND_SMALL_STRING),
-                       NewUnboxNode(graph_,rhs,TPKIND_SMALL_STRING));
+              auto l = NewUnboxNode(graph_,lhs,TPKIND_SMALL_STRING);
+              auto r = NewUnboxNode(graph_,rhs,TPKIND_SMALL_STRING);
+              return NewBoxNode<SStringEq>(graph_,TPKIND_BOOLEAN,l,r);
             } else {
-              return NewBoxNode<SStringNe>(graph_, TPKIND_BOOLEAN,
-                       NewUnboxNode(graph_,lhs,TPKIND_SMALL_STRING),
-                       NewUnboxNode(graph_,rhs,TPKIND_SMALL_STRING));
+              auto l = NewUnboxNode(graph_,lhs,TPKIND_SMALL_STRING);
+              auto r = NewUnboxNode(graph_,rhs,TPKIND_SMALL_STRING);
+              return NewBoxNode<SStringNe>(graph_,TPKIND_BOOLEAN,l,r);
             }
           } else {
             lhs = AddTypeFeedbackIfNeed(lhs,TPKIND_STRING,pc);
             rhs = AddTypeFeedbackIfNeed(rhs,TPKIND_STRING,pc);
-            return NewBoxNode<StringCompare>(graph_, TPKIND_BOOLEAN,
-                     NewUnboxNode(graph_,lhs,TPKIND_STRING),
-                     NewUnboxNode(graph_,rhs,TPKIND_STRING), op);
+            {
+              auto l = NewUnboxNode(graph_,lhs,TPKIND_STRING);
+              auto r = NewUnboxNode(graph_,rhs,TPKIND_STRING);
+              return NewBoxNode<StringCompare>(graph_,TPKIND_BOOLEAN,l,r,op);
+            }
           }
         }
         break;
@@ -449,9 +453,9 @@ Expr* GraphBuilder::TrySpeculativeBinary( Expr* lhs , Expr* rhs , Binary::Operat
           rhs = AddTypeFeedbackIfNeed(rhs,rhs_val,pc);
           if(GetTypeInference(lhs) == TPKIND_BOOLEAN &&
              GetTypeInference(rhs) == TPKIND_BOOLEAN) {
-            return NewBoxNode<BooleanLogic>(graph_, TPKIND_BOOLEAN,
-                     NewUnboxNode(graph_,lhs,TPKIND_BOOLEAN),
-                     NewUnboxNode(graph_,rhs,TPKIND_BOOLEAN), op);
+            auto l = NewUnboxNode(graph_,lhs,TPKIND_BOOLEAN);
+            auto r = NewUnboxNode(graph_,rhs,TPKIND_BOOLEAN);
+            return NewBoxNode<BooleanLogic>(graph_, TPKIND_BOOLEAN, l, r, op);
           }
         }
         break;
@@ -473,7 +477,8 @@ Expr* GraphBuilder::NewBinaryFallback( Expr* lhs , Expr* rhs , Binary::Operator 
 //
 // ========================================================================
 Expr* GraphBuilder::NewTernary ( Expr* cond , Expr* lhs, Expr* rhs, const BytecodeLocation& pc ) {
-  if(auto new_node = FoldTernary(graph_,cond,lhs,rhs); new_node) return new_node;
+  if(auto new_node = FoldTernary(graph_,cond,lhs,rhs); new_node)
+    return new_node;
 
   { // do a guess based on type trace
     auto tt = type_trace_.GetTrace(pc.address());
@@ -496,8 +501,10 @@ Expr* GraphBuilder::NewTernary ( Expr* cond , Expr* lhs, Expr* rhs, const Byteco
 //
 // ========================================================================
 Expr* GraphBuilder::NewPhi( Expr* lhs , Expr* rhs , ControlFlow* region ) {
-  auto n = FoldPhi(graph_,lhs,rhs,region);
-  return n ? n : Phi::New(graph_,lhs,rhs,region);
+  if( auto n = FoldPhi(graph_,lhs,rhs,region); n)
+    return n;
+  else
+    return Phi::New(graph_,lhs,rhs,region);
 }
 
 // ========================================================================
@@ -505,7 +512,9 @@ Expr* GraphBuilder::NewPhi( Expr* lhs , Expr* rhs , ControlFlow* region ) {
 // Intrinsic Call Node
 //
 // ========================================================================
-Expr* GraphBuilder::NewICall( std::uint8_t a1 , std::uint8_t a2 , std::uint8_t a3 , bool tcall ) {
+Expr* GraphBuilder::NewICall( std::uint8_t a1 , std::uint8_t a2 , std::uint8_t a3 ,
+                                                                  bool tcall ,
+                                                                  const BytecodeLocation& pc ) {
   IntrinsicCall ic = static_cast<IntrinsicCall>(a1);
   auto base = a2; // new base to get value from current stack
   auto node = ICall::New(graph_,ic,tcall);
@@ -519,19 +528,19 @@ Expr* GraphBuilder::NewICall( std::uint8_t a1 , std::uint8_t a2 , std::uint8_t a
   if(ret) {
     return ret;
   } else {
-    return (ret = LowerICall(node)) ? ret : node;
+    return (ret = LowerICall(node,pc)) ? ret : node;
   }
 }
 
-Expr* GraphBuilder::LowerICall( ICall* node ) {
+Expr* GraphBuilder::LowerICall( ICall* node , const BytecodeLocation& pc ) {
   switch(node->ic()) {
     case INTRINSIC_CALL_UPDATE:
       {
         auto k = node->GetArgument(1);
         if(k->IsString()) {
-          return NewPSet(node->GetArgument(0),k,node->GetArgument(2));
+          return NewPSet(node->GetArgument(0),k,node->GetArgument(2),pc);
         } else {
-          return NewISet(node->GetArgument(0),k,node->GetArgument(2));
+          return NewISet(node->GetArgument(0),k,node->GetArgument(2),pc);
         }
       }
       break;
@@ -539,14 +548,14 @@ Expr* GraphBuilder::LowerICall( ICall* node ) {
       {
         auto k = node->GetArgument(1);
         if(k->IsString()) {
-          return NewPGet(node->GetArgument(0),k);
+          return NewPGet(node->GetArgument(0),k,pc);
         } else {
-          return NewIGet(node->GetArgument(0),k);
+          return NewIGet(node->GetArgument(0),k,pc);
         }
       }
       break;
     case INTRINSIC_CALL_ITER:
-      return ItrNew::New(graph_,node->GetArgument(0),region());
+      return ItrNew::New(graph_,node->GetArgument(0));
       break;
     default: break;
   }
@@ -560,7 +569,7 @@ Expr* GraphBuilder::LowerICall( ICall* node ) {
 // ====================================================================
 Expr* GraphBuilder::NewPSet( Expr* object , Expr* key , Expr* value ,
                                                         const BytecodeLocation& bc ) {
-  Expr* ret = NULL;
+  WriteEffect* ret = NULL;
   // check the type trace to get a speculative type can be OBJECT
   if(IsTraceTypeSame(TPKIND_OBJECT,0,bc)) {
     object  = AddTypeFeedbackIfNeed(object,TPKIND_OBJECT,bc);
@@ -576,7 +585,9 @@ Expr* GraphBuilder::NewPSet( Expr* object , Expr* key , Expr* value ,
   return ret;
 }
 
-Expr* GraphBuilder::NewPGet( Expr* object , Expr* key ) {
+Expr* GraphBuilder::NewPGet( Expr* object , Expr* key , const BytecodeLocation& bc ) {
+  (void)bc;
+
   if(auto n = FoldPropGet(graph_,object,key); n) return n;
   auto ret = PGet::New(graph_,object,key);
   if(auto tp = GetTypeInference(object); tp == TPKIND_OBJECT) {
@@ -592,15 +603,15 @@ Expr* GraphBuilder::NewPGet( Expr* object , Expr* key ) {
 // Index Get/Set
 //
 // ====================================================================
-Expr* GraphBuilder::NewISet( Expr* object, Expr* index, Expr* value ) {
-  Expr* ret = NULL;
+Expr* GraphBuilder::NewISet( Expr* object, Expr* index, Expr* value , const BytecodeLocation& bc ) {
+  WriteEffect* ret = NULL;
   if(IsTraceTypeSame(TPKIND_LIST,0,bc)) {
     object  = AddTypeFeedbackIfNeed(object,TPKIND_LIST,bc);
     ret     = ISet::New(graph_,object,index,value);
     env()->effect()->list()->UpdateWriteEffect(ret);
   } else if(IsTraceTypeSame(TPKIND_OBJECT,0,bc)) {
     object  = AddTypeFeedbackIfNeed(object,TPKIND_OBJECT,bc);
-    ret     = PSet::New(graph_,object,key,value);
+    ret     = PSet::New(graph_,object,index,value);
     env()->effect()->object()->UpdateWriteEffect(ret);
   } else {
     ret     = ISet::New(graph_,object,index,value);
@@ -612,9 +623,11 @@ Expr* GraphBuilder::NewISet( Expr* object, Expr* index, Expr* value ) {
   return ret;
 }
 
-Expr* GraphBuilder::NewIGet( Expr* object, Expr* index ) {
+Expr* GraphBuilder::NewIGet( Expr* object, Expr* index , const BytecodeLocation& bc ) {
+  (void)bc;
+
   if(auto n = FoldIndexGet(graph_,object,index); n) return n;
-  auto ret = IGet::New(graph_,object,index,region());
+  auto ret = IGet::New(graph_,object,index);
   {
     auto tp = GetTypeInference(object);
     if(tp == TPKIND_OBJECT) {
@@ -660,27 +673,67 @@ void GraphBuilder::NewUSet( std::uint8_t a1, std::uint8_t a2 ) {
 
 // =========================================================================
 //
-// Graph Consturction
+// Checkpoint
 //
 // =========================================================================
-Checkpoint* GraphBuilder::BuildCheckpoint( const BytecodeLocation& pc ) {
+Checkpoint* GraphBuilder::GenerateCheckpoint( const BytecodeLocation& pc ) {
   // create the checkpoint object
   auto cp = Checkpoint::New(graph_,graph_->zone()->New<IRInfo>(method_index(),pc));
-  // get the register offset to decide offset for all the temporary register
-  const std::uint32_t* pc_start = func_info().prototype->code_buffer();
-  std::uint32_t diff = pc.address() - pc_start;
-  std::uint8_t offset = func_info().prototype->GetRegOffset(diff);
-  const std::uint32_t stack_end = func_info().base + offset;
-  // record all the stack value into the checkpoint object
-  for( std::uint32_t i = 0 ; i < stack_end ; ++i ) {
-    auto node = vstk()->at(i);
-    if(node) cp->AddStackSlot(node,i);
+
+  { // capture all stack recorded value
+    const std::uint32_t* pc_start = func_info().prototype->code_buffer();
+    std::uint32_t            diff = pc.address() - pc_start;
+    std::uint8_t           offset = func_info().prototype->GetRegOffset(diff);
+    const std::uint32_t stack_end = func_info().base + offset;
+    // record all the stack value into the checkpoint object
+    for( std::uint32_t i = 0 ; i < stack_end ; ++i ) {
+      auto node = vstk()->at(i);
+      if(node) cp->AddStackSlot(node,i);
+    }
   }
+
+  // update the checkpoint node from the environment object
+  env()->UpdateState(cp);
   return cp;
+}
+
+void GraphBuilder::GenerateMergeCheckpoint( const Environment& that ,
+                                            const BytecodeLocation& bc ) {
+  if(!that.state()->IsIdentical(env()->state())) {
+    GenerateCheckpoint(bc);
+  }
 }
 
 Checkpoint* GraphBuilder::InitCheckpoint() {
   return Checkpoint::New(graph_,graph_->zone()->New<IRInfo>(method_index(),BytecodeLocation()));
+}
+
+// =========================================================================
+//
+// Type Trace
+//
+// =========================================================================
+bool GraphBuilder::IsTraceTypeSame( TypeKind tp , std::size_t index , const BytecodeLocation& pc ) {
+  // sanity check against the input argument
+  lava_debug(CRAZY,
+    std::uint32_t a1,a2,a3,a4;
+    Bytecode bc;
+    pc.Decode(&bc,&a1,&a2,&a3,&a4);
+    auto &usage = GetBytecodeUsage(bc);
+    // the index must not be bigger than the instruction's accepted input argument size
+    lava_verify( usage.used_size() > index );
+    // the index must points to a register slot instead of other types of argument type
+    lava_verify( usage.GetArgument(index) == BytecodeUsage::INPUT ||
+                 usage.GetArgument(index) == BytecodeUsage::OUTPUT||
+                 usage.GetArgument(index) == BytecodeUsage::INOUT );
+  );
+
+  auto tt = type_trace_.GetTrace(pc.address());
+  if(tt) {
+    auto &v = tt->data[index];
+    return MapValueToTypeKind(v) == tp;
+  }
+  return false;
 }
 
 // ====================================================================
@@ -741,7 +794,7 @@ void GraphBuilder::InsertPhi( Environment* lhs , Environment* rhs , ControlFlow*
       Expr* rnode = NULL;
       if(itr == rhs->global()->end()) {
         lnode = e.value;
-        rnode = GGet::New(graph_,NewString(e.name),region);
+        rnode = GGet::New(graph_,NewString(e.name));
       } else {
         lnode = e.value;
         rnode = itr->value;
@@ -754,7 +807,7 @@ void GraphBuilder::InsertPhi( Environment* lhs , Environment* rhs , ControlFlow*
     for( auto &e : *rhs->global() ) {
       auto itr = std::find(lhs->global()->begin(),lhs->global()->end(),e.name);
       if(itr == lhs->global()->end()) {
-        auto phi = NewPhi(GGet::New(graph_,NewString(e.name),region),e.value,region);
+        auto phi = NewPhi(GGet::New(graph_,NewString(e.name)),e.value,region);
         // add a node when it is not scanned by the lhs
         temp.push_back(Environment::GlobalVar(e.name,phi));
       }
@@ -942,8 +995,12 @@ GraphBuilder::BuildIf( BytecodeIterator* itr ) {
   itr->BranchTo(final_cursor);
   set_region(merge);
 
-  // 3. handle PHI node
+  // 4. handle PHI node
   InsertPhi(env(),&true_env,merge);
+
+  // 5. generate new Checkpoint node eagerly after the merge if needed
+  GenerateMergeCheckpoint(true_env,itr->bytecode_location());
+
   return STOP_SUCCESS;
 }
 
@@ -951,8 +1008,10 @@ GraphBuilder::StopReason
 GraphBuilder::GotoLoopEnd( BytecodeIterator* itr ) {
   lava_verify(itr->SkipTo(
     []( BytecodeIterator* itr ) {
-      return !(itr->opcode() == BC_FEEND || itr->opcode() == BC_FEND1 ||
-               itr->opcode() == BC_FEND2 || itr->opcode() == BC_FEVREND);
+      return !(itr->opcode() == BC_FEEND ||
+               itr->opcode() == BC_FEND1 ||
+               itr->opcode() == BC_FEND2 ||
+               itr->opcode() == BC_FEVREND);
     }
   ));
 
@@ -965,12 +1024,10 @@ GraphBuilder::BuildLoopBlock( BytecodeIterator* itr ) {
     if(IsLoopEndBytecode(itr->opcode())) {
       return STOP_SUCCESS;
     } else if(IsBlockJumpBytecode(itr->opcode())) {
-      if(BuildBytecode(itr) == STOP_BAILOUT)
-        return STOP_BAILOUT;
+      if(BuildBytecode(itr) == STOP_BAILOUT) return STOP_BAILOUT;
       return GotoLoopEnd(itr);
     } else {
-      if(BuildBytecode(itr) == STOP_BAILOUT)
-        return STOP_BAILOUT;
+      if(BuildBytecode(itr) == STOP_BAILOUT) return STOP_BAILOUT;
     }
   }
 
@@ -1093,7 +1150,7 @@ Expr* GraphBuilder::BuildLoopEndCondition( BytecodeIterator* itr , ControlFlow* 
     std::uint8_t a1;
     std::uint16_t pc;
     itr->GetOperand(&a1,&pc);
-    ItrNext* comparison = ItrNext::New(graph_,StackGet(a1),region());
+    ItrNext* comparison = ItrNext::New(graph_,StackGet(a1));
     return comparison;
   } else {
     return NewBoolean(true);
@@ -1117,6 +1174,7 @@ GraphBuilder::BuildLoopBody( BytecodeIterator* itr , ControlFlow* loop_header ) 
 
   BytecodeLocation cont_pc;
   BytecodeLocation brk_pc ;
+
   {
     // backup the old environment and use a temporary environment
     BackupEnvironment backup(&loop_env,this);
@@ -1159,9 +1217,12 @@ GraphBuilder::BuildLoopBody( BytecodeIterator* itr , ControlFlow* loop_header ) 
       lava_verify(func_info().current_loop().phi_list.empty        ());
     );
   }
+
   set_region(after);
+
   // merge the loop header
   InsertPhi(env(),&loop_env,after);
+
   return STOP_SUCCESS;
 }
 
@@ -1182,9 +1243,9 @@ GraphBuilder::BuildLoop( BytecodeIterator* itr ) {
     itr->GetOperand(&a1,&a2);
     // create ir ItrNew which basically initialize the itr and also do
     // a test against the iterator to see whether it is workable
-    ItrNew* inew = ItrNew::New(graph_,StackGet(a1),region());
+    ItrNew* inew = ItrNew::New(graph_,StackGet(a1));
     StackSet(a1,inew);
-    ItrTest* itest = ItrTest::New(graph_,inew,region());
+    ItrTest* itest = ItrTest::New(graph_,inew);
     loop_header->set_condition(itest);
   } else {
     lava_debug(NORMAL,lava_verify(itr->opcode() == BC_FEVRSTART););
@@ -1407,7 +1468,7 @@ GraphBuilder::StopReason GraphBuilder::BuildBytecode( BytecodeIterator* itr ) {
         std::uint8_t a1,a2,a3;
         itr->GetOperand(&a1,&a2,&a3);
         Expr* key = (itr->opcode() == BC_PROPGET ? NewString(a3): NewSSO   (a3));
-        StackSet(a1,NewPGet(StackGet(a2),key));
+        StackSet(a1,NewPGet(StackGet(a2),key,itr->bytecode_location()));
       }
       break;
     case BC_PROPSET: case BC_PROPSETSSO:
@@ -1415,7 +1476,7 @@ GraphBuilder::StopReason GraphBuilder::BuildBytecode( BytecodeIterator* itr ) {
         std::uint8_t a1,a2,a3;
         itr->GetOperand(&a1,&a2,&a3);
         Expr* key = (itr->opcode() == BC_PROPSET ? NewString(a2): NewSSO   (a2));
-        NewPSet(StackGet(a1),key,StackGet(a3));
+        NewPSet(StackGet(a1),key,StackGet(a3),itr->bytecode_location());
       }
       break;
     case BC_IDXGET: case BC_IDXGETI:
@@ -1423,7 +1484,7 @@ GraphBuilder::StopReason GraphBuilder::BuildBytecode( BytecodeIterator* itr ) {
         std::uint8_t a1,a2,a3;
         itr->GetOperand(&a1,&a2,&a3);
         Expr* key = (itr->opcode() == BC_IDXGET ? StackGet(a3) : NewConstNumber(a3));
-        StackSet(a1,NewIGet(StackGet(a2),key));
+        StackSet(a1,NewIGet(StackGet(a2),key,itr->bytecode_location()));
       }
       break;
     case BC_IDXSET: case BC_IDXSETI:
@@ -1431,7 +1492,7 @@ GraphBuilder::StopReason GraphBuilder::BuildBytecode( BytecodeIterator* itr ) {
         std::uint8_t a1,a2,a3;
         itr->GetOperand(&a1,&a2,&a3);
         Expr* key = (itr->opcode() == BC_IDXSET ? StackGet(a2) : NewConstNumber(a2));
-        NewISet(StackGet(a1),key,StackGet(a3));
+        NewISet(StackGet(a1),key,StackGet(a3),itr->bytecode_location());
       }
       break;
 
@@ -1469,7 +1530,7 @@ GraphBuilder::StopReason GraphBuilder::BuildBytecode( BytecodeIterator* itr ) {
       {
         std::uint8_t a1,a2,a3;
         itr->GetOperand(&a1,&a2,&a3);
-        StackSet(kAccRegisterIndex,NewICall(a1,a2,a3,false));
+        StackSet(kAccRegisterIndex,NewICall(a1,a2,a3,false,itr->bytecode_location()));
       }
       break;
 
@@ -1477,7 +1538,7 @@ GraphBuilder::StopReason GraphBuilder::BuildBytecode( BytecodeIterator* itr ) {
       {
         std::uint8_t a1,a2,a3;
         itr->GetOperand(&a1,&a2,&a3);
-        StackSet(kAccRegisterIndex,NewICall(a1,a2,a3,true ));
+        StackSet(kAccRegisterIndex,NewICall(a1,a2,a3,true ,itr->bytecode_location()));
       }
       break;
     /* branch */
@@ -1492,7 +1553,7 @@ GraphBuilder::StopReason GraphBuilder::BuildBytecode( BytecodeIterator* itr ) {
       {
         std::uint8_t a1,a2,a3;
         itr->GetOperand(&a1,&a2,&a3);
-        ItrDeref*  iref = ItrDeref::New(graph_,StackGet(a3),region());
+        ItrDeref*  iref = ItrDeref::New(graph_,StackGet(a3));
         Projection* key = Projection::New(graph_,iref,ItrDeref::PROJECTION_KEY);
         Projection* val = Projection::New(graph_,iref,ItrDeref::PROJECTION_VAL);
         StackSet(a1,key);
@@ -1639,7 +1700,7 @@ void GraphBuilder::SetupOSRLoopCondition( BytecodeIterator* itr ) {
     std::uint8_t a1;
     std::uint16_t pc;
     itr->GetOperand(&a1,&pc);
-    ItrNext* comparison = ItrNext::New(graph_,StackGet(a1),region());
+    ItrNext* comparison = ItrNext::New(graph_,StackGet(a1));
     StackSet(a1,comparison);
   } else {
     lava_debug(NORMAL,lava_verify(itr->opcode() == BC_FEVREND););
@@ -1750,7 +1811,7 @@ GraphBuilder::BuildOSRStart( const Handle<Prototype>& entry ,  const std::uint32
     if(PeelOSRLoop(&itr) == STOP_BAILOUT) return STOP_BAILOUT;
     {
       // create a manual trap node to make sure after OSR we fallback to the interpreter
-      Trap* trap = Trap::New(graph_,BuildCheckpoint(itr.bytecode_location()),region());
+      Trap* trap = Trap::New(graph_,GenerateCheckpoint(itr.bytecode_location()),region());
       fail->AddBackwardEdge(trap);
     }
     // finish all exit node work

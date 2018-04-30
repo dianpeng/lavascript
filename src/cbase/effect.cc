@@ -16,26 +16,32 @@ EffectGroup::EffectGroup( const EffectGroup& that ):
   zone_        (that.zone_)
 {}
 
-void EffectGroup::DoUpdateWriteEffect( WriteEffect* node ) {
+void EffectGroup::UpdateWriteEffect( WriteEffect* node ) {
   if(read_list_.empty()) {
-    node->AddEffect(write_effect_); // we don't have any read effect node
+    // When we don't have any read node , then we need to make this write node
+    // *write after* the previous write since we cannot establish a correct partial
+    // order here otherwise.
+    node->AddEffect(write_effect_);
   } else {
     lava_foreach(ReadEffect* read,read_list_.GetForwardIterator()) {
       node->AddEffect(read);
     }
   }
-  write_effect_ = node;
-  read_list_.Clear();
+  PropagateWriteEffect(node);
 }
 
-void EffectGroup::DoAddReadEffect( ReadEffect* node ) {
+void EffectGroup::AddReadEffect( ReadEffect* node ) {
   node->AddEffect(write_effect_);
-  read_list_.Add(zone_,node);
+  PropagateReadEffect(node);
 }
 
-void EffectGroup::set_write_effect( WriteEffect* effect ) {
+void EffectGroup::PropagateWriteEffect( WriteEffect* effect ) {
   write_effect_ = effect;
   read_list_.Clear();
+}
+
+void EffectGroup::PropagateReadEffect( ReadEffect* node ) {
+  read_list_.Add(zone_,node);
 }
 
 RootEffectGroup::RootEffectGroup( ::lavascript::zone::Zone* zone , WriteEffect* effect ):
@@ -51,13 +57,24 @@ RootEffectGroup::RootEffectGroup( const RootEffectGroup& that ):
 {}
 
 void RootEffectGroup::UpdateWriteEffect( WriteEffect* effect ) {
-  DoUpdateWriteEffect(effect);
-  list_->DoUpdateWriteEffect(effect);
-  object_->DoUpdateWriteEffect(effect);
+  // due to the fact each group will propogate when read happened, so
+  // only observe |this| read_list_ will see all the ReadEffect happened
+  // before this write which is enough for us to establish the partial
+  // order.
+  EffectGroup::UpdateWriteEffect(effect);
+
+  // Since this is a new *WriteEffect* , we should just propogate it back
+  // to the list and object. The propogation could just set the write effect
+  // to these 2 effect group directly
+  list_->PropagateWriteEffect(effect);
+  object_->PropagateWriteEffect(effect);
 }
 
 void RootEffectGroup::AddReadEffect( ReadEffect* effect ) {
-  DoAddReadEffect(effect);
+  EffectGroup::AddReadEffect(effect);
+  // propogate the read effect to the list and object node
+  list_->PropagateReadEffect(effect);
+  object_->PropagateReadEffect(effect);
 }
 
 LeafEffectGroup::LeafEffectGroup( ::lavascript::zone::Zone* zone , WriteEffect* effect ):
@@ -69,12 +86,15 @@ LeafEffectGroup::LeafEffectGroup( const LeafEffectGroup& that ):
 {}
 
 void LeafEffectGroup::UpdateWriteEffect( WriteEffect* effect ) {
-  DoUpdateWriteEffect(effect);
-  parent_->DoUpdateWriteEffect(effect);
+  EffectGroup::UpdateWriteEffect(effect);
+  // Propagate back to the parental node with the write effect
+  parent_->PropagateWriteEffect(effect);
 }
 
 void LeafEffectGroup::AddReadEffect( ReadEffect* effect ) {
-  DoAddReadEffect(effect);
+  EffectGroup::AddReadEffect(effect);
+  // propogate the read effect back to the parental node
+  parent_->PropagateReadEffect(effect);
 }
 
 Effect::Effect( ::lavascript::zone::Zone* zone , WriteEffect* effect ):
@@ -107,9 +127,9 @@ void Effect::Merge( const Effect& lhs , const Effect& rhs , Effect* output , Gra
   lava_foreach( auto read , rhs_root->read_list().GetForwardIterator() ) {
     effect_phi->AddEffect(read);
   }
-  output->root_.set_write_effect  (effect_phi);
-  output->list_.set_write_effect  (effect_phi);
-  output->object_.set_write_effect(effect_phi);
+  output->root_.PropagateWriteEffect  (effect_phi);
+  output->list_.PropagateWriteEffect  (effect_phi);
+  output->object_.PropagateWriteEffect(effect_phi);
 }
 
 } // namespace hir

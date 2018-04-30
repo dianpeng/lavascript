@@ -7,8 +7,10 @@ namespace lavascript {
 namespace cbase      {
 namespace hir        {
 
+class EffectGroup;
 class RootEffectGroup;
 class LeafEffectGroup;
+class Effect;
 
 /**
  * Helper module to do effect analyzing during graph construction.
@@ -44,15 +46,13 @@ class EffectGroup {
   virtual void AddReadEffect    ( ReadEffect*  ) = 0;
  public:
   WriteEffect*                                write_effect() const { return write_effect_; }
-  void                      set_write_effect( WriteEffect* );
   const ::lavascript::zone::Vector<ReadEffect*>& read_list() const { return read_list_; }
   ::lavascript::zone::Zone*                           zone() const { return zone_; }
  protected:
   // concrete implementation of Update/Add without propogation of the
   // effect into related group
-  void DoUpdateWriteEffect( WriteEffect* );
-  void DoAddReadEffect    ( ReadEffect * );
-
+  void PropagateWriteEffect( WriteEffect* );
+  void PropagateReadEffect ( ReadEffect * );
  private:
   WriteEffect*                             write_effect_;   // Write effect currently tracked
   ::lavascript::zone::Vector<ReadEffect*>  read_list_;      // All the read happened *after* the write
@@ -60,6 +60,7 @@ class EffectGroup {
 
   friend class RootEffectGroup;
   friend class LeafEffectGroup;
+  friend class Effect;
 };
 
 class RootEffectGroup : public EffectGroup {

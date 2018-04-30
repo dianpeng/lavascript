@@ -13,7 +13,7 @@ class GraphPrinter : public AllStatic {
  public:
   struct Option {
     bool checkpoint;
-    Option() : checkpoint(false) {}
+    Option() : checkpoint(true) {}
   };
 
   // Function to print the graph into dot format for visualization purpose

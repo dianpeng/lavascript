@@ -86,6 +86,40 @@ Checkpoint* ReadEffect::GetCheckpoint() const {
   return NULL;
 }
 
+bool WriteEffect::VisitDependency( const DependencyVisitor& visitor ) const {
+  // get next write effect node after this one
+  lava_debug(NORMAL,lava_verify(next_););
+  lava_foreach( auto r , next_->read_effect_.GetForwardIterator() ) {
+    if(!visitor(r)) return false;
+  }
+  return true;
+}
+
+void WriteEffect::HappenAfter( WriteEffect* input ) {
+  lava_debug(NORMAL,lava_verify(input->prev_ == NULL););
+  next_ = input;
+  input->prev_ = this;
+}
+
+bool WriteEffectPhi::VisitDependency( const DependencyVisitor& visitor ) const {
+  lava_debug(NORMAL,lava_verify(operand_list()->size() == 2););
+
+  lava_foreach( auto k , operand_list()->GetFowardIterator() ) {
+    auto we = k->AsWriteEffect();
+    if(!we->VisitDependency(visitor)) return false;
+  }
+  return true;
+}
+
+std::size_t WriteEffectPhi::dependency_size() const {
+  std::size_t ret = 0;
+  lava_foreach( auto k , operand_list()->GetForwardIterator() ) {
+    auto we = k->AsWriteEffect();
+    ret += we->dependency_size();
+  }
+  return ret;
+}
+
 void ControlFlow::Replace( ControlFlow* node ) {
   if(IsIdentical(node)) return;
   // 1. transfer all *use* node
@@ -327,26 +361,22 @@ recursion:
 Expr* NewUnboxNode( Graph* graph , Expr* node , TypeKind tk ) {
   // we can only unbox a node when we know the type
   lava_debug(NORMAL,lava_verify(tk != TPKIND_UNKNOWN && tk == GetTypeInference(node)););
-
   // 1. check if the node is already unboxed , if so just return the node itself
   switch(node->type()) {
     case HIR_UNBOX:
       lava_debug(NORMAL,lava_verify(node->AsUnbox()->type_kind() == tk););
       return node;
-
     case HIR_FLOAT64_NEGATE:
     case HIR_FLOAT64_ARITHMETIC:
     case HIR_FLOAT64_BITWISE:
       lava_debug(NORMAL,lava_verify(tk == TPKIND_FLOAT64););
       return node;
-
     case HIR_FLOAT64_COMPARE:
     case HIR_STRING_COMPARE:
     case HIR_SSTRING_EQ:
     case HIR_SSTRING_NE:
       lava_debug(NORMAL,lava_verify(tk == TPKIND_BOOLEAN););
       return node;
-
     case HIR_BOX:
       {
         // if a node is just boxed, then we can just remove the previous box
@@ -357,7 +387,6 @@ Expr* NewUnboxNode( Graph* graph , Expr* node , TypeKind tk ) {
 
     default: break;
   }
-
   // 2. do a real unbox here
   return Unbox::New(graph,node,tk);
 }

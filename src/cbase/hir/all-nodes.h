@@ -1,7 +1,8 @@
 #ifndef CBASE_HIR_ALL_NODES_H_
 #define CBASE_HIR_ALL_NODES_H_
-
+// base
 #include "node.h"
+// expression node
 #include "expr.h"
 #include "arith.h"
 #include "cast.h"
@@ -19,6 +20,7 @@
 #include "effect.h"
 #include "guard.h"
 #include "prop.h"
+// control flow node
 #include "control-flow.h"
 #include "region.h"
 #include "loop.h"

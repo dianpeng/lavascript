@@ -468,25 +468,6 @@ inline Phi* Phi::New( Graph* graph , ControlFlow* region ) {
   return graph->zone()->New<Phi>(graph,graph->AssignID(),region);
 }
 
-inline ReadEffectPhi::ReadEffectPhi( Graph* graph , std::uint32_t id , ControlFlow* region ):
-  ReadEffect(HIR_READ_EFFECT_PHI,id,graph),
-  region_   (region)
-{
-  region->AddOperand(this);
-}
-
-inline ReadEffectPhi* ReadEffectPhi::New( Graph* graph , ReadEffect* lhs , ReadEffect* rhs ,
-                                                                           ControlFlow* region ) {
-  auto ret = graph->zone()->New<ReadEffectPhi>(graph,graph->AssignID(),region);
-  ret->AddOperand(lhs);
-  ret->AddOperand(rhs);
-  return ret;
-}
-
-inline ReadEffectPhi* ReadEffectPhi::New( Graph* graph , ControlFlow* region ) {
-  return graph->zone()->New<ReadEffectPhi>(graph,graph->AssignID(),region);
-}
-
 inline WriteEffectPhi::WriteEffectPhi( Graph* graph , std::uint32_t id , ControlFlow* region ):
   WriteEffect(HIR_WRITE_EFFECT_PHI,id,graph),
   region_    (region)

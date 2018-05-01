@@ -60,7 +60,6 @@ namespace hir        {
   /* phi */                                                            \
   __(Phi           ,PHI             ,"phi"             ,NoLeaf,NoEffect) \
   __(WriteEffectPhi,WRITE_EFFECT_PHI,"write_effect_phi",NoLeaf,NoEffect) \
-  __(ReadEffectPhi ,READ_EFFECT_PHI ,"read_effect_phi" ,NoLeaf,NoEffect) \
   __(NoReadEffect  ,NO_READ_EFFECT  ,"no_read_effect"  ,Leaf  ,NoEffect) \
   __(NoWriteEffect ,NO_WRITE_EFFECT ,"no_write_effect" ,Leaf  ,NoEffect) \
   /* statement */                                                      \

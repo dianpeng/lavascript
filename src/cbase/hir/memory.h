@@ -24,17 +24,6 @@ class MemoryNode : public Expr {
   MemoryNode( IRType type , std::uint32_t id , Graph* g ): Expr(type,id,g){}
 };
 
-template<>
-struct MapIRClassToIRType<MemoryNode> {
-  static bool Test( IRType type ) {
-    return type == HIR_ARG ||
-           type == HIR_GGET||
-           type == HIR_UGET||
-           type == HIR_LIST||
-           type == HIR_OBJECT;
-  }
-};
-
 // MemoryWrite
 // this node represents all possible memory store operation which essentially
 // can cause observable side effect inside of program. The node that is MemoryWrite
@@ -50,18 +39,6 @@ class MemoryWrite : public WriteEffect {
   MemoryWrite( IRType type , std::uint32_t id , Graph* g ): WriteEffect(type,id,g){}
 };
 
-template<>
-struct MapIRClassToIRType<MemoryWrite> {
-  static bool Test( IRType type ) {
-    return type == HIR_ISET ||
-           type == HIR_PSET ||
-           type == HIR_OBJECT_SET ||
-           type == HIR_LIST_SET   ||
-           type == HIR_NO_WRITE_EFFECT ||
-           type == HIR_WRITE_EFFECT_PHI ;
-  }
-};
-
 // MemoryRead
 //
 // this node represents all possible memory load operation which needs to depend
@@ -74,18 +51,6 @@ struct MapIRClassToIRType<MemoryWrite> {
 class MemoryRead : public ReadEffect {
  public:
   MemoryRead( IRType type , std::uint32_t id , Graph* g ): ReadEffect(type,id,g) {}
-};
-
-template<>
-struct MapIRClassToIRType<MemoryRead> {
-  static bool Test( IRType type ) {
-    return type == HIR_IGET ||
-           type == HIR_PGET ||
-           type == HIR_OBJECT_GET ||
-           type == HIR_LIST_GET   ||
-           type == HIR_NO_READ_EFFECT ||
-           type == HIR_READ_EFFECT_PHI;
-  }
 };
 
 // --------------------------------------------------------------------------

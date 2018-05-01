@@ -1,5 +1,5 @@
-#ifndef CBASE_HIR_ALL_NODES_H_
-#define CBASE_HIR_ALL_NODES_H_
+#ifndef CBASE_HIR_HIR_H_
+#define CBASE_HIR_HIR_H_
 // base
 #include "node.h"
 // expression node
@@ -46,10 +46,6 @@ class Graph {
   void Initialize( Start* start    , End* end );
   void Initialize( OSRStart* start , OSREnd* end  );
 
- public: // placeholder nodes
-  NoReadEffect*  no_read_effect()  const { return no_read_effect_; }
-  NoWriteEffect* no_write_effect() const { return no_write_effect_; }
-
  public: // getter and setter
   ControlFlow*      start() const { return start_; }
   ControlFlow*      end  () const { return end_;   }
@@ -79,9 +75,6 @@ class Graph {
   ControlFlow*                end_;
   zone::Vector<PrototypeInfo> prototype_info_;
   std::uint32_t               id_;
-  // placeholder nodes, context free nodes basically
-  NoReadEffect*               no_read_effect_;
-  NoWriteEffect*              no_write_effect_;
 
   friend class GraphBuilder;
   LAVA_DISALLOW_COPY_AND_ASSIGN(Graph)
@@ -324,6 +317,6 @@ Expr* NewUnboxNode( Graph* , Expr* node , TypeKind tk );
 } // namespace cbase
 } // namespace lavascript
 
-#include "all-nodes-inl.h"
+#include "hir-inl.h"
 
-#endif // CBASE_HIR_ALL_NODES_H_
+#endif // CBASE_HIR_HIR_H_

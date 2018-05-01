@@ -24,7 +24,7 @@ GraphBuilder::Environment::Environment( GraphBuilder* gb ):
   upvalue_(),
   global_ (),
   gb_     (gb),
-  effect_ (gb->temp_zone(),gb->graph()->no_write_effect()),
+  effect_ (gb->temp_zone(),NoWriteEffect::New(gb->graph())),
   state_  (gb->InitCheckpoint())
 {}
 

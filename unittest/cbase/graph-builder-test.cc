@@ -141,7 +141,11 @@ TEST(GraphBuilder,Basic) {
       a[1] = 20;
       g.c = 30;
       a[2] = 30;
-      return a[1] + a[2];
+      var ret = a[1] + a[2];
+      g.xx = 30;
+      t.vv = 30;
+      a[t] = 230;
+      return ret;
     );
 }
 

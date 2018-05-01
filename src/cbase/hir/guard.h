@@ -17,14 +17,6 @@ class Test : public Expr {
   Test( IRType type , std::uint32_t id , Graph* g ): Expr(type,id,g) {}
 };
 
-template<> struct MapIRClassToIRType<Test> {
-  static bool Test( IRType type ) {
-#define __(A,B,...) case HIR_##B: return true;
-    switch(type) { CBASE_HIR_TEST(__) default: return false; }
-#undef __ // __
-  }
-};
-
 class TestType : public Test {
  public:
   inline static TestType* New( Graph* , TypeKind , Expr* );

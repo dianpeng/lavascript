@@ -1,5 +1,5 @@
-#ifndef CBASE_HIR_ALL_NODES_INL_H_
-#define CBASE_HIR_ALL_NODES_INL_H_
+#ifndef CBASE_HIR_HIR_INL_H_
+#define CBASE_HIR_HIR_INL_H_
 
 namespace lavascript {
 namespace cbase      {
@@ -74,6 +74,8 @@ inline bool Node::IsLeaf() const {
 
 inline bool Node::IsExpr       () const { return Is<Expr>      ();  }
 inline bool Node::IsControlFlow() const { return Is<ControlFlow>(); }
+inline bool Node::IsReadEffect () const { return Is<ReadEffect>();  }
+inline bool Node::IsWriteEffect() const { return Is<WriteEffect>(); }
 inline bool Node::IsMemoryRead () const { return Is<MemoryRead>();  }
 inline bool Node::IsMemoryWrite() const { return Is<MemoryWrite>(); }
 inline bool Node::IsMemoryNode () const { return Is<MemoryNode>();  }
@@ -102,6 +104,26 @@ inline Expr* Node::AsExpr() {
 inline const Expr* Node::AsExpr() const {
   lava_debug(NORMAL,lava_verify(IsExpr()););
   return static_cast<const Expr*>(this);
+}
+
+inline WriteEffect* Node::AsWriteEffect() {
+  lava_debug(NORMAL,lava_verify(IsWriteEffect()););
+  return static_cast<WriteEffect*>(this);
+}
+
+inline const WriteEffect* Node::AsWriteEffect() const {
+  lava_debug(NORMAL,lava_verify(IsWriteEffect()););
+  return static_cast<const WriteEffect*>(this);
+}
+
+inline ReadEffect* Node::AsReadEffect() {
+  lava_debug(NORMAL,lava_verify(IsReadEffect()););
+  return static_cast<ReadEffect*>(this);
+}
+
+inline const ReadEffect* Node::AsReadEffect() const {
+  lava_debug(NORMAL,lava_verify(IsReadEffect()););
+  return static_cast<const ReadEffect*>(this);
 }
 
 inline MemoryWrite* Node::AsMemoryWrite() {
@@ -145,8 +167,7 @@ inline const Test* Node::AsTest() const {
 }
 
 inline bool Expr::IsReplaceable( const Expr* that ) const {
-  // the gvn should only work on node that doesn't have side effect
-  return Equal(that);
+  return !HasDependency() && Equal(that);
 }
 
 inline void Expr::AddOperand( Expr* node ) {
@@ -161,32 +182,6 @@ inline void Expr::ReplaceOperand( std::size_t index , Expr* node ) {
   node->AddRef(this,itr);           // add reference for the new node
   itr.value()->RemoveRef(itr,this); // remove reference from the old value's refernece list
   itr.set_value(node);              // update to the new value
-}
-
-inline void Effect::SetEffect( Effect* effect ) {
-  auto peff = effect->prev_;
-  auto neff = effect->next_;
-
-  if(peff) {
-    peff->next_ = this;
-    prev_       = peff;
-  }
-
-  if(neff) {
-    neff->prev_ = this;
-    next_       = neff;
-  }
-}
-
-inline void Effect::RemoveEffect() {
-  if(prev_) {
-    prev_->next_ = next_;
-  }
-  if(next_) {
-    next_->prev_ = prev_;
-  }
-
-  prev_ = next_ = NULL;
 }
 
 inline Arg* Arg::New( Graph* graph , std::uint32_t index ) {
@@ -468,6 +463,12 @@ inline Phi* Phi::New( Graph* graph , ControlFlow* region ) {
   return graph->zone()->New<Phi>(graph,graph->AssignID(),region);
 }
 
+inline void ReadEffect::SetWriteEffect( WriteEffect* effect ) {
+  auto itr = effect->AddReadEffect(this);
+  effect_edge_.node = effect;
+  effect_edge_.id   = itr;
+}
+
 inline WriteEffectPhi::WriteEffectPhi( Graph* graph , std::uint32_t id , ControlFlow* region ):
   WriteEffect(HIR_WRITE_EFFECT_PHI,id,graph),
   region_    (region)
@@ -722,4 +723,4 @@ struct HIRExprHasher {
 } // namespace cbase
 } // namespace lavascript
 
-#endif // CBASE_HIR_ALL_NODES_INL_H_
+#endif // CBASE_HIR_HIR_INL_H_

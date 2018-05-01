@@ -1,7 +1,7 @@
 #ifndef CBASE_HIR_EXPR_H_
 #define CBASE_HIR_EXPR_H_
 #include "node.h"
-#include <function>
+#include <functional>
 
 namespace lavascript {
 namespace cbase      {
@@ -11,8 +11,6 @@ namespace hir        {
 //   This node is the mother all other expression node and its solo
 //   goal is to expose def-use and use-def chain into different types
 class Expr : public Node {
-  static const std::uint32_t kHasSideEffect = 1;
-  static const std::uint32_t kNoSideEffect  = 0;
  public:
   bool  IsPin            ()                   const { return pin_.HasRef(); }
   void  set_pin_edge     ( const PinEdge& st )      { pin_= st; }
@@ -71,10 +69,11 @@ class Expr : public Node {
 
   // go through all the dependency this expr node has. the dependency
   // recorded here is the dependency that is used to express side effect
-  virtual bool VisitDependency( const DependencyVisitor& ) const = 0;
+  virtual bool VisitDependency( const DependencyVisitor& visitor ) const
+  { (void)visitor; return true; }
 
   // get the dependnecy size
-  virtual std::size_t dependency_size() const = 0;
+  virtual std::size_t dependency_size() const { return 0; }
 
   // check whether this node has dependency
   bool HasDependency() const { return dependency_size() != 0; }
@@ -83,23 +82,13 @@ class Expr : public Node {
   Expr( IRType type , std::uint32_t id , Graph* graph ):
     Node            (type,id,graph),
     operand_list_   (),
-    effect_list_    (),
     ref_list_       (),
     pin_            ()
   {}
  private:
   OperandList        operand_list_;
-  EffectList         effect_list_;
   OperandRefList     ref_list_;
   PinEdge            pin_;
-};
-
-template<> struct MapIRClassToIRType<Expr> {
-  static bool Test( IRType type ) {
-#define __(A,B,...) case HIR_##B: return true;
-    switch(type) { CBASE_HIR_EXPRESSION(__) default: return false; }
-#undef __ // __
-  }
 };
 
 } // namespace hir

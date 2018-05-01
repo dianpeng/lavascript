@@ -17,21 +17,12 @@ EffectGroup::EffectGroup( const EffectGroup& that ):
 {}
 
 void EffectGroup::UpdateWriteEffect( WriteEffect* node ) {
-  if(read_list_.empty()) {
-    // When we don't have any read node , then we need to make this write node
-    // *write after* the previous write since we cannot establish a correct partial
-    // order here otherwise.
-    node->AddEffect(write_effect_);
-  } else {
-    lava_foreach(ReadEffect* read,read_list_.GetForwardIterator()) {
-      node->AddEffect(read);
-    }
-  }
+  node->HappenAfter(write_effect_);
   PropagateWriteEffect(node);
 }
 
 void EffectGroup::AddReadEffect( ReadEffect* node ) {
-  node->AddEffect(write_effect_);
+  node->SetWriteEffect(write_effect_);
   PropagateReadEffect(node);
 }
 
@@ -120,13 +111,8 @@ void Effect::Merge( const Effect& lhs , const Effect& rhs , Effect* output , Gra
   auto rhs_root = rhs.root();
   // create an effect phi to join effect created by the root node
   auto effect_phi = WriteEffectPhi::New(graph,lhs_root->write_effect(),rhs_root->write_effect(),region);
-  // merge all the read effect from this effect phi
-  lava_foreach( auto read , lhs_root->read_list().GetForwardIterator() ) {
-    effect_phi->AddEffect(read);
-  }
-  lava_foreach( auto read , rhs_root->read_list().GetForwardIterator() ) {
-    effect_phi->AddEffect(read);
-  }
+
+  // propogate the effect
   output->root_.PropagateWriteEffect  (effect_phi);
   output->list_.PropagateWriteEffect  (effect_phi);
   output->object_.PropagateWriteEffect(effect_phi);

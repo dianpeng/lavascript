@@ -124,7 +124,7 @@ void DotPrinter::RenderEdge( ControlFlow* from , ControlFlow* to ) {
 void DotPrinter::RenderExpr( const std::string& name , Expr* node ) {
   if(existed_[node->id()]) return;
   existed_[node->id()] = true;
-  if(node->HasSideEffect()) Indent(1) << name << "[style=bold color=red]\n";
+  if(node->HasDependency()) Indent(1) << name << "[style=bold color=red]\n";
 
   switch(node->type()) {
     case HIR_FLOAT64:
@@ -486,9 +486,10 @@ void DotPrinter::RenderExpr( const std::string& name , Expr* node ) {
   }
 
   // effect list node
-  lava_foreach( auto n , node->effect_list()->GetForwardIterator() ) {
+  node->VisitDependency( [&] ( Expr* n ) {
     Indent(1) << name << " -> " << GetNodeName(n) << "[label=\"dep\" style=filled color=blue ]\n";
-  }
+    return true;
+  });
 }
 } // namespace
 

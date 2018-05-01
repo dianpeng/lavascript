@@ -6,7 +6,7 @@ namespace lavascript {
 namespace cbase      {
 namespace hir        {
 
-typedef zone::Vector<ReadEffect*>       ReadEffectList;
+typedef zone::List<ReadEffect*>         ReadEffectList;
 typedef ReadEffectList::ForwardIterator ReadEffectListIterator;
 
 struct ReadEffectEdge {
@@ -25,25 +25,23 @@ class ReadEffect : public Expr {
   // get attached write effect generated Checkpoint node
   Checkpoint* GetCheckpoint() const;
  public: // dependency implementation
-  virtual bool VisitDependency( const DependencyVisitor& visitor ) const {
-    if(!effect_edge_.IsEmpty()) return visitor(effect_edge_->node);
-  }
+  virtual bool VisitDependency( const DependencyVisitor& ) const;
   // only one dependency
   virtual std::size_t dependency_size() const { return effect_edge_.IsEmpty() ? 0 : 1; }
   // set the write effect this read effect needs to depend on
   inline void SetWriteEffect( WriteEffect* );
  private:
-  ReadEffectEdge effect_edge_;    // record the read effect and write effect relationship
+  ReadEffectEdge effect_edge_; // record the read effect and write effect relationship
 };
 
 // WriteEffect
 //
 // a write effect node is a node that represents a write operation
-class WriteEffect: public Effect {
+class WriteEffect: public Expr {
  public:
   // write effect constructor
   WriteEffect( IRType type , std::uint32_t id , Graph* graph ):
-    Effect(type,id,graph) ,
+    Expr(type,id,graph) ,
     next_(NULL),
     prev_(NULL),
     read_effect_()
@@ -55,7 +53,8 @@ class WriteEffect: public Effect {
   // |this| WriteEffect node must happen *After* the input WriteEffect node
   virtual void HappenAfter( WriteEffect* input );
   // add a new read effect
-  ReadEffectListIterator AddReadEffect( ReadEffect* effect ) { return read_effect_.PushBack(effect); }
+  ReadEffectListIterator AddReadEffect( ReadEffect* effect );
+  const ReadEffectList* read_effect() const { return &read_effect_; }
  private:
   // double linked list field for chaining all the write effect node together
   WriteEffect* next_;
@@ -88,6 +87,10 @@ class NoReadEffect : public ReadEffect {
  public:
   inline static NoReadEffect* New( Graph* );
   NoReadEffect( Graph* graph , std::uint32_t id ): ReadEffect(HIR_NO_READ_EFFECT,id,graph) {}
+ public:
+  virtual bool VisitDependency( const DependencyVisitor& visitor ) const
+  { (void)visitor; return true; }
+  virtual std::size_t dependency_size() const { return 0; }
  private:
   LAVA_DISALLOW_COPY_AND_ASSIGN(NoReadEffect);
 };
@@ -96,6 +99,10 @@ class NoWriteEffect: public WriteEffect {
  public:
   inline static NoWriteEffect* New( Graph* );
   NoWriteEffect( Graph* graph , std::uint32_t id ): WriteEffect(HIR_NO_WRITE_EFFECT,id,graph) {}
+ public:
+  virtual bool VisitDependency( const DependencyVisitor& visitor ) const
+  { (void)visitor; return true; }
+  virtual std::size_t dependency_size() const { return 0; }
  private:
   LAVA_DISALLOW_COPY_AND_ASSIGN(NoWriteEffect);
 };

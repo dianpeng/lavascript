@@ -63,7 +63,7 @@ class GraphBuilder {
     GlobalMap*       global()   { return &global_; }
     // effect group list
     Effect*          effect()   { return &effect_; }
-    Checkpoint*      state ()   { return state_;   }
+    Checkpoint*      state () const { return state_;   }
     void UpdateState( Checkpoint* cp ) { state_ = cp; }
    private:
     ValueStack    stack_;     // register stack

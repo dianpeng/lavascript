@@ -1,4 +1,4 @@
-#include "all-nodes.h"
+#include "hir.h"
 #include <sstream>
 
 namespace lavascript {
@@ -80,19 +80,39 @@ bool ICall::Equal( const Expr* that ) const {
 }
 
 Checkpoint* ReadEffect::GetCheckpoint() const {
-  lava_foreach( auto k , effect_list()->GetForwardIterator() ) {
-    if(k->IsCheckpoint()) return k->AsCheckpoint();
+  Expr* result = NULL;
+  if(VisitDependency([&result]( Expr* effect ) {
+    if(effect->IsCheckpoint()) {
+      result = effect;
+      return false;
+    }
+    return true;
+  })) {
+    lava_debug(NORMAL,lava_verify(!result););
+    return NULL;
+  } else {
+    lava_debug(NORMAL,lava_verify(result););
+    return result->AsCheckpoint();
   }
-  return NULL;
+}
+
+bool ReadEffect::VisitDependency( const DependencyVisitor& visitor ) const {
+  if(!effect_edge_.IsEmpty()) return visitor(effect_edge_.node);
 }
 
 bool WriteEffect::VisitDependency( const DependencyVisitor& visitor ) const {
   // get next write effect node after this one
   lava_debug(NORMAL,lava_verify(next_););
-  lava_foreach( auto r , next_->read_effect_.GetForwardIterator() ) {
-    if(!visitor(r)) return false;
+  if(next_->read_effect_.empty()) {
+    // no read list linked with this write node, then just visit this write node
+    return visitor(next_);
+  } else {
+    // visit all its linked write's read node
+    lava_foreach( auto r , next_->read_effect_.GetForwardIterator() ) {
+      if(!visitor(r)) return false;
+    }
+    return true;
   }
-  return true;
 }
 
 void WriteEffect::HappenAfter( WriteEffect* input ) {
@@ -101,12 +121,20 @@ void WriteEffect::HappenAfter( WriteEffect* input ) {
   input->prev_ = this;
 }
 
+ReadEffectListIterator WriteEffect::AddReadEffect( ReadEffect* effect ) {
+  auto itr = read_effect_.Find(effect);
+  if(itr.HasNext()) return itr;
+  return read_effect_.PushBack(zone(),effect);
+}
+
 bool WriteEffectPhi::VisitDependency( const DependencyVisitor& visitor ) const {
   lava_debug(NORMAL,lava_verify(operand_list()->size() == 2););
 
-  lava_foreach( auto k , operand_list()->GetFowardIterator() ) {
+  lava_foreach( auto k , operand_list()->GetForwardIterator() ) {
     auto we = k->AsWriteEffect();
-    if(!we->VisitDependency(visitor)) return false;
+    lava_foreach( auto n , we->read_effect()->GetForwardIterator() ) {
+      if(!visitor(n)) return false;
+    }
   }
   return true;
 }
@@ -115,7 +143,7 @@ std::size_t WriteEffectPhi::dependency_size() const {
   std::size_t ret = 0;
   lava_foreach( auto k , operand_list()->GetForwardIterator() ) {
     auto we = k->AsWriteEffect();
-    ret += we->dependency_size();
+    ret += we->read_effect()->size();
   }
   return ret;
 }
@@ -183,14 +211,8 @@ Graph::Graph():
   start_                (NULL),
   end_                  (NULL),
   prototype_info_       (),
-  id_                   (),
-  no_read_effect_       (),
-  no_write_effect_      ()
-{
-  // initialize placeholders
-  no_read_effect_ = NoReadEffect ::New(this);
-  no_write_effect_= NoWriteEffect::New(this);
-}
+  id_                   ()
+{}
 
 Graph::~Graph() {}
 

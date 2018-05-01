@@ -207,9 +207,8 @@ class Graph;
 class GraphBuilder;
 class Node;
 class Test;
-class Effect;
-class EffectRead;
-class EffectWrite;
+class ReadEffect;
+class WriteEffect;
 class MemoryOp;
 class MemoryWrite;
 class MemoryRead ;
@@ -231,6 +230,10 @@ template< typename T > struct MapIRClassToIRType {};
 CBASE_HIR_LIST(__)
 
 #undef __ // __
+
+
+// all inline definition for MapIRClassToIRType's specialized class
+#include "node-irtype-map-inl.cxx"
 
 /**
  * This is a separate information maintained for each IR node. It contains
@@ -326,8 +329,8 @@ class Node : public zone::ZoneObject {
   // is the same as using IsIdentical function.
   bool IsIdentical( const Node* that ) const { return id() == that->id(); }
  public: // type check and cast
-  template< typename T > bool Is() const;
-  template< typename T > inline T* As();
+  template< typename T > bool            Is() const;
+  template< typename T > inline       T* As();
   template< typename T > inline const T* As() const;
 
 #define __(A,B,...) bool Is##A() const { return Is<A>(); }
@@ -341,6 +344,8 @@ class Node : public zone::ZoneObject {
   bool                       IsString     () const { return IsSString() || IsLString(); }
   inline bool                IsControlFlow() const;
   inline bool                IsExpr       () const;
+  inline bool                IsReadEffect () const;
+  inline bool                IsWriteEffect() const;
   inline bool                IsMemoryWrite() const;
   inline bool                IsMemoryRead () const;
   inline bool                IsMemoryNode () const;
@@ -353,6 +358,10 @@ class Node : public zone::ZoneObject {
   inline ControlFlow*        AsControlFlow();
   inline const ControlFlow*  AsControlFlow() const;
   inline const zone::String& AsZoneString () const;
+  inline WriteEffect*        AsWriteEffect();
+  inline const WriteEffect*  AsWriteEffect() const;
+  inline ReadEffect*         AsReadEffect ();
+  inline const ReadEffect*   AsReadEffect () const;
   inline MemoryWrite*        AsMemoryWrite();
   inline const MemoryWrite*  AsMemoryWrite() const;
   inline MemoryRead *        AsMemoryRead ();

@@ -114,14 +114,6 @@ class ControlFlow : public Node {
   LAVA_DISALLOW_COPY_AND_ASSIGN(ControlFlow)
 };
 
-template<> struct MapIRClassToIRType<ControlFlow> {
-  static bool Test( IRType type ) {
-#define __(A,B,...) case HIR_##B: return true;
-    switch(type) { CBASE_HIR_CONTROL_FLOW(__) default: return false; }
-#undef __ // __
-  }
-};
-
 } // namespace hir
 } // namespace cbase
 } // namespace lavascript

@@ -46,7 +46,7 @@ bool Classifier::CheckVar( Expr* node ) {
 bool Classifier::Check( Expr* node ) {
   // if this node has side effect, just bailout , no need to evaluate it since
   // we cannot remove node that has side effect.
-  if(node->HasSideEffect()) return Bailout();
+  if(node->HasDependency()) return Bailout();
 
   switch(node->type()) {
     case HIR_BOOLEAN_LOGIC:

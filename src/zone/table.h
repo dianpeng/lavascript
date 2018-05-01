@@ -4,7 +4,7 @@
 #include "string.h"
 
 #include "src/util.h"
-#include "src/common.h"
+#include "src/macro.h"
 #include "src/hash.h"
 #include "src/bits.h"
 

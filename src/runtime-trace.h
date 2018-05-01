@@ -1,5 +1,5 @@
-#ifndef TYPE_TRACE_H_
-#define TYPE_TRACE_H_
+#ifndef RUNTIME_TRACE_H_
+#define RUNTIME_TRACE_H_
 
 #include "objects.h"
 
@@ -38,11 +38,11 @@ struct TypeTracePoint {
   }
 };
 
-class TypeTrace {
+class RuntimeTrace {
  public:
   typedef const std::uint32_t* BytecodeAddress;
 
-  TypeTrace() : forbidden_set_() , map_() {}
+  RuntimeTrace() : forbidden_set_() , map_() {}
 
   // Add a new trace into the trace map. If such entry is existed, then
   // we compare t2o TypeTracePoint's value and make sure they are same
@@ -62,13 +62,13 @@ class TypeTrace {
 
  private:
   typedef std::unordered_set<BytecodeAddress> ForbiddenSet;
-  typedef std::unordered_map<BytecodeAddress,TypeTracePoint> TypeTraceMap;
+  typedef std::unordered_map<BytecodeAddress,TypeTracePoint> RuntimeTraceMap;
 
   ForbiddenSet forbidden_set_;
-  TypeTraceMap map_;
+  RuntimeTraceMap map_;
 };
 
-inline const TypeTracePoint* TypeTrace::GetTrace( BytecodeAddress addr ) const {
+inline const TypeTracePoint* RuntimeTrace::GetTrace( BytecodeAddress addr ) const {
   auto itr = map_.find(addr);
   if(itr == map_.end()) return NULL;
   return &(itr->second);
@@ -76,4 +76,4 @@ inline const TypeTracePoint* TypeTrace::GetTrace( BytecodeAddress addr ) const {
 
 } // namespace lavascript
 
-#endif // TYPE_TRACE_H_
+#endif // RUNTIME_TRACE_H_

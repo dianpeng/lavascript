@@ -19,6 +19,7 @@
 #include <limits>
 #include <inttypes.h>
 
+#include "macro.h"
 #include "hash.h"
 #include "trace.h"
 
@@ -223,6 +224,66 @@ T* ConstructFromBuffer( void* buffer ) { return ::new (buffer) T(); }
 
 // Destructor , wrapper aroud std::destroy_at now
 template< typename T > void Destruct( T* object ) { std::destroy_at(object); }
+
+// ----------------------------------------------------------------------
+// LazyInstance
+//   Instantiate via a manual call instead of direct constructor. But the
+//   memory is embedded into enclosed object
+//
+//   The object itself will not check whether this object is already been
+//   initialized or not, user needs to make sure not call its Initialize
+//   multiple times
+// ----------------------------------------------------------------------
+template< typename T >
+class LazyInstance {
+ public:
+  LazyInstance() = default;
+  template< typename ... ARGS >
+  void Init  ( ARGS ...args )  { ConstructFromBuffer<T>(buffer_,args...); }
+  void Deinit()                { Destruct(ptr()); }
+  T*       ptr()               { return reinterpret_cast<T*>(buffer_); }
+  const T* ptr() const         { return reinterpret_cast<const T*>(buffer_); }
+  T&       operator * ()       { return *ptr(); }
+  const T& operator * () const { return *ptr(); }
+  T*       operator ->()       { return ptr();  }
+  const T* operator ->() const { return ptr();  }
+ private:
+  std::uint8_t buffer_[sizeof(T)];
+
+  LAVA_DISALLOW_COPY_AND_ASSIGN(LazyInstance);
+};
+
+// ----------------------------------------------------------------------
+// CheckedLazyInstance
+//   A LazyInstance object that records whether the object is intialized
+//   or not. Provides more automation to LazyInstance. Prefer this object
+//   than raw LazyInstance.
+// ----------------------------------------------------------------------
+template< typename T >
+class CheckedLazyInstance {
+ public:
+  CheckedLazyInstance() : instance_() , init_(false) {}
+  template< typename ... ARGS >
+  void Init( ARGS ... args ) { lava_verify(!init_); instance_.Init(args...); init_ = true;  }
+  void Deinit()              { lava_verify(init_) ; instance_.Deinit();      init_ = false; }
+  // check whether it is initialized or not
+  bool init()          const { return init_; }
+ public:
+  // accessors
+  T*       ptr()               { lava_verify(init_); return instance_.ptr(); }
+  const T* ptr() const         { lava_verify(init_); return instance_.ptr(); }
+  T*       checked_ptr()       { return init() ? ptr() : NULL; }
+  const T* checked_ptr() const { return init() ? ptr() : NULL; }
+  T&       operator * ()       { return *ptr(); }
+  const T& operator * () const { return *ptr(); }
+  T*       operator ->()       { return ptr();  }
+  const T* operator ->() const { return ptr();  }
+ private:
+  LazyInstance<T> instance_;
+  bool            init_;
+
+  LAVA_DISALLOW_COPY_AND_ASSIGN(CheckedLazyInstance);
+};
 
 // ----------------------------------------------------------------------
 // Optional

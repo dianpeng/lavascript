@@ -93,14 +93,14 @@ void DotPrinter::RenderControlFlow( const std::string& region_name ,
   lava_foreach( auto node , region->operand_list()->GetForwardIterator() ) {
     auto name = GetNodeName(node);
     RenderExpr(name,node);
-    Indent(1) << region_name << " -> " << name << "[color=blue style=dashed]\n";
+    Indent(1) << region_name << " -> " << name << "[color=blue style=bold]\n";
   }
 
   // for all the pined node
   lava_foreach( auto expr , region->pin_list()->GetForwardIterator() ) {
     auto name = GetNodeName(expr);
     RenderExpr(name,expr);
-    Indent(1) << region_name << " -> " << name << "[color=purple style=dashed label=stmt]\n";
+    Indent(1) << region_name << " -> " << name << "[color=purple style=dashed label=pin]\n";
   }
 }
 

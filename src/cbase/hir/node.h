@@ -257,16 +257,6 @@ class IRInfo {
   std::uint32_t method_;              // Index for method information
 };
 
-// Used to record each IR's corresponding prototype information
-struct PrototypeInfo : zone::ZoneObject {
-  std::uint32_t base;
-  Handle<Prototype> prototype;
-  PrototypeInfo( std::uint32_t b , const Handle<Prototype>& proto ):
-    base(b),
-    prototype(proto)
-  {}
-};
-
 // ----------------------------------------------------------------------------
 // Pin list
 //

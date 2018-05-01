@@ -63,7 +63,7 @@ bool PrintIter( const char* source ) {
   DumpWriter dw;
   sb.Dump(&dw);
 
-  TypeTrace tt;
+  RuntimeTrace tt;
   GraphBuilder gb(scp,tt);
   Graph graph;
 

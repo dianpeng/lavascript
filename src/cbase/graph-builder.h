@@ -2,16 +2,19 @@
 #define CBASE_GRAPH_BUILDER_H_
 #include "hir.h"
 #include "effect.h"
+#include "inliner.h"
 
+#include "src/util.h"
 #include "src/interpreter/intrinsic-call.h"
 #include "src/objects.h"
 #include "src/zone/zone.h"
-#include "src/type-trace.h"
+#include "src/runtime-trace.h"
 
 #include <cstdint>
 #include <vector>
 #include <map>
 #include <string>
+#include <memory>
 
 namespace lavascript {
 namespace cbase {
@@ -62,7 +65,7 @@ class GraphBuilder {
     UpValueVector*   upvalue()  { return &upvalue_;}
     GlobalMap*       global()   { return &global_; }
     // effect group list
-    Effect*          effect()   { return &effect_; }
+    Effect*          effect()   { return effect_.ptr(); }
     Checkpoint*      state () const { return state_;   }
     void UpdateState( Checkpoint* cp ) { state_ = cp; }
    private:
@@ -70,7 +73,7 @@ class GraphBuilder {
     UpValueVector upvalue_;   // upvalue's effect group
     GlobalMap     global_;    // global's effect group
     GraphBuilder* gb_;        // graph builder
-    Effect        effect_;    // a list of tracked effect group
+    CheckedLazyInstance<Effect> effect_; // a list of tracked effect group
     Checkpoint*   state_;     // current frame state for this environment
 
     friend class GraphBuilder;
@@ -176,7 +179,7 @@ class GraphBuilder {
   };
 
  public:
-  inline GraphBuilder( const Handle<Script>& , const TypeTrace& );
+  inline GraphBuilder( const Handle<Script>& , const RuntimeTrace& );
   // Build a normal function's IR graph
   bool Build( const Handle<Prototype>& , Graph* );
   // Build a function's graph assume OSR
@@ -331,16 +334,18 @@ class GraphBuilder {
  private:
   // Zone owned by the Graph object, and it is supposed to be stay around while the
   // optimization happenened
-  zone::Zone*             zone_;
-  Handle<Script>          script_;
-  Graph*                  graph_;
+  zone::Zone*              zone_;
+  Handle<Script>           script_;
+  Graph*                   graph_;
   // Working set data , used when doing inline and other stuff
-  Environment*            env_;
-  std::vector<FuncInfo>   func_info_;
+  Environment*             env_;
+  std::vector<FuncInfo>    func_info_;
   // Type trace for speculative operation generation
-  const TypeTrace&        type_trace_;
+  const RuntimeTrace&      runtime_trace_;
   // This zone is used for other transient memory costs during graph construction
-  zone::Zone              temp_zone_;
+  zone::Zone               temp_zone_;
+  // Inliner , checks for inline operation
+  std::unique_ptr<Inliner> inliner_;
  private:
   class OSRScope ;
   class FuncScope;
@@ -397,13 +402,15 @@ inline GraphBuilder::FuncInfo::FuncInfo( FuncInfo&& that ):
   osr_start         (that.osr_start)
 {}
 
-inline GraphBuilder::GraphBuilder( const Handle<Script>& script , const TypeTrace& tt ):
+inline GraphBuilder::GraphBuilder( const Handle<Script>& script , const RuntimeTrace& tt ):
   zone_             (NULL),
   script_           (script),
   graph_            (NULL),
   func_info_        (),
-  type_trace_       (tt),
-  temp_zone_        ()
+  runtime_trace_    (tt),
+  temp_zone_        (),
+  // TODO:: change inliner to runtime construction based on configuration
+  inliner_          ( new StaticInliner() )
 {}
 
 inline void GraphBuilder::FuncInfo::EnterLoop( const std::uint32_t* pc ) {

@@ -1,6 +1,7 @@
 #ifndef ZONE_ZONE_H_
 #define ZONE_ZONE_H_
-#include "src/common.h"
+#include "src/macro.h"
+#include "src/config.h"
 #include "src/util.h"
 #include "src/trace.h"
 #include "src/bump-allocator.h"

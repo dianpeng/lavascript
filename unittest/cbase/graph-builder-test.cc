@@ -68,7 +68,7 @@ bool CheckGraph( const char* source ) {
   DumpWriter dw;
   sb.Dump(&dw);
 
-  TypeTrace tt;
+  RuntimeTrace tt;
   GraphBuilder gb(scp,tt);
   Graph graph;
 
@@ -115,7 +115,7 @@ bool CheckGraphOSR( const char* source , std::size_t offset ) {
   DumpWriter dw;
   sb.Dump(&dw);
 
-  TypeTrace tt;
+  RuntimeTrace tt;
   GraphBuilder gb(scp,tt);
   Graph graph;
 
@@ -137,14 +137,15 @@ bool CheckGraphOSR( const char* source , std::size_t offset ) {
 TEST(GraphBuilder,Basic) {
   CASE(
       var a = [1,2,3,4,5];
-      g.x = 20;
       a[1] = 20;
-      g.c = 30;
       a[2] = 30;
       var ret = a[1] + a[2];
-      g.xx = 30;
-      t.vv = 30;
-      a[t] = 230;
+      g.x = 20;
+      if(t) {
+        g.t = 30;
+      } else {
+        g.h = 20;
+      }
       return ret;
     );
 }

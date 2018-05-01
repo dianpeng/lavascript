@@ -4,6 +4,7 @@
 #include "bytecode.h"
 
 #include "src/source-code-info.h"
+#include "src/config.h"
 #include "src/util.h"
 #include "src/trace.h"
 #include "src/objects.h"

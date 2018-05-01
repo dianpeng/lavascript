@@ -1,6 +1,6 @@
 #ifndef CBASE_TYPE_H_
 #define CBASE_TYPE_H_
-#include "src/common.h"
+#include "src/macro.h"
 #include "src/object-type.h"
 #include <vector>
 

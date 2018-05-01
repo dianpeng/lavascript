@@ -6,7 +6,7 @@
 #include <cstring>
 
 #include "config.h"
-#include "common.h"
+#include "macro.h"
 #include "heap-object-header.h"
 #include "heap-allocator.h"
 

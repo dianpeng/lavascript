@@ -6,7 +6,7 @@
 #include <cstring>
 #include <type_traits>
 
-#include "common.h"
+#include "macro.h"
 #include "bits.h"
 #include "hash.h"
 #include "trace.h"
@@ -132,7 +132,7 @@ class Value final {
   // For pointer type , since it only uses 48 bits on x64 platform, we can
   // reconstruct the pointer value from the full 64 bits machine word , but we
   // don't store the heap object type value directly inside of *Value* object
-  // but put along with the heap object's common header HeapObject.
+  // but put along with the heap object's macro.header HeapObject.
   //
   //
   // NOTES: The following *ORDER* matters and also the *VALUE* matters.

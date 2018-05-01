@@ -41,7 +41,14 @@ static const std::uint8_t kAccRegisterIndex        = 255;
 
 namespace compiler {
 
-static const std::size_t kHotCountArraySize = 256;
+// Size of the array for recording hotcount. 256 is choosed to make
+// assembler side hash function easy to implement and efficient since
+// the count is triggered always while we are in the interpreter.
+static const std::size_t   kHotCountArraySize = 256;
+
+// TODO:: move these 2 trigger counts into dynamic configurable field
+static const std::uint16_t kJITHotCallTrigger = 100;
+static const std::uint16_t kJITHotLoopTrigger = 1000;
 
 // type of hot count
 typedef std::uint16_t hotcount_t;

@@ -116,9 +116,7 @@ bool WriteEffect::VisitDependency( const DependencyVisitor& visitor ) const {
 }
 
 void WriteEffect::HappenAfter( WriteEffect* input ) {
-  lava_debug(NORMAL,lava_verify(input->prev_ == NULL););
   next_ = input;
-  input->prev_ = this;
 }
 
 ReadEffectListIterator WriteEffect::AddReadEffect( ReadEffect* effect ) {
@@ -210,7 +208,6 @@ Graph::Graph():
   zone_                 (),
   start_                (NULL),
   end_                  (NULL),
-  prototype_info_       (),
   id_                   ()
 {}
 

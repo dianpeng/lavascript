@@ -4,7 +4,7 @@
 #include <cstddef>
 #include <cstdint>
 
-#include "common.h"
+#include "macro.h"
 #include "util.h"
 #include "heap-allocator.h"
 

@@ -1,7 +1,7 @@
 #include <src/gc.h>
 #include <src/trace.h>
 #include <src/heap-object-header.h>
-#include <src/common.h>
+#include <src/macro.h>
 #include <src/objects.h>
 #include <gtest/gtest.h>
 

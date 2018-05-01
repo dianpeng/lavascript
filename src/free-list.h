@@ -3,7 +3,7 @@
 #include <cstdint>
 
 #include "heap-allocator.h"
-#include "common.h"
+#include "macro.h"
 #include "trace.h"
 
 namespace lavascript {

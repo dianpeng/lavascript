@@ -1,6 +1,6 @@
 #ifndef SCRIPT_BUILDER_H_
 #define SCRIPT_BUILDER_H_
-#include "common.h"
+#include "macro.h"
 #include "objects.h"
 #include "trace.h"
 #include "context.h"

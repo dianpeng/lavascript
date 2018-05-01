@@ -60,20 +60,10 @@ class Graph {
   }
   // Get all control flow nodes
   void GetControlFlowNode( std::vector<ControlFlow*>* ) const;
- public:
-  std::uint32_t AddPrototypeInfo( const Handle<Prototype>& proto ,
-      std::uint32_t base ) {
-    prototype_info_.Add(zone(),PrototypeInfo(base,proto));
-    return static_cast<std::uint32_t>(prototype_info_.size()-1);
-  }
-  const PrototypeInfo& GetProrotypeInfo( std::uint32_t index ) const {
-    return prototype_info_[index];
-  }
  private:
   zone::Zone                  zone_;
   ControlFlow*                start_;
   ControlFlow*                end_;
-  zone::Vector<PrototypeInfo> prototype_info_;
   std::uint32_t               id_;
 
   friend class GraphBuilder;

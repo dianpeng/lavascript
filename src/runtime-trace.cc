@@ -1,17 +1,17 @@
-#include "type-trace.h"
+#include "runtime-trace.h"
 #include "src/interpreter/bytecode-iterator.h"
 
 namespace lavascript {
 
-bool TypeTrace::AddTrace( BytecodeAddress addr , const Value& d1 ,
-                                                 const Value& d2 ,
-                                                 const Value& d3 ,
-                                                 std::uint32_t extra ) {
+bool RuntimeTrace::AddTrace( BytecodeAddress addr , const Value& d1 ,
+                                                    const Value& d2 ,
+                                                    const Value& d3 ,
+                                                    std::uint32_t extra ) {
   if(forbidden_set_.find(addr) != forbidden_set_.end()) return false;
 
   auto itr = map_.insert( std::make_pair(addr,TypeTracePoint(d1,d2,d3,extra)) );
   if(!itr.second) {
-    const TypeTracePoint& old = itr.first->second;
+    auto &old = itr.first->second;
 
     if(!old.data[0].Equal(d1) || !old.data[1].Equal(d2) ||
        !old.data[2].Equal(d3) || old.extra != extra) {
@@ -29,9 +29,9 @@ bool TypeTrace::AddTrace( BytecodeAddress addr , const Value& d1 ,
   return true;
 }
 
-void TypeTrace::Dump( DumpWriter* writer ) {
+void RuntimeTrace::Dump( DumpWriter* writer ) {
   writer->WriteL("***************************************");
-  writer->WriteL("          Type Trace                   ");
+  writer->WriteL("          Runtime Trace                ");
   writer->WriteL("***************************************");
 
   {

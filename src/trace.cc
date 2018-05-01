@@ -2,7 +2,7 @@
 #include "util.h"
 #include "env-var.h"
 #include "os.h"
-#include "common.h"
+#include "macro.h"
 
 #include <cstdlib>
 #include <string>

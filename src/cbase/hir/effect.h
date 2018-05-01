@@ -43,7 +43,6 @@ class WriteEffect: public Expr {
   WriteEffect( IRType type , std::uint32_t id , Graph* graph ):
     Expr(type,id,graph) ,
     next_(NULL),
-    prev_(NULL),
     read_effect_()
   {}
  public:
@@ -58,7 +57,6 @@ class WriteEffect: public Expr {
  private:
   // double linked list field for chaining all the write effect node together
   WriteEffect* next_;
-  WriteEffect* prev_;
   ReadEffectList read_effect_;    // all read effect that read |this| write effect
 };
 

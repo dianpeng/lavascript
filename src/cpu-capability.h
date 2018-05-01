@@ -1,6 +1,7 @@
 #ifndef CPU_CAPABILITY_H_
 #define CPU_CAPABILITY_H_
-#include "common.h"
+#include <cstdint>
+#include "macro.h"
 
 namespace lavascript {
 class DumpWriter;

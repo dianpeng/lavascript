@@ -24,18 +24,22 @@ GraphBuilder::Environment::Environment( GraphBuilder* gb ):
   upvalue_(),
   global_ (),
   gb_     (gb),
-  effect_ (gb->temp_zone(),NoWriteEffect::New(gb->graph())),
+  effect_ (),
   state_  (gb->InitCheckpoint())
-{}
+{
+  effect_.Init(gb->temp_zone(),NoWriteEffect::New(gb->graph()));
+}
 
 GraphBuilder::Environment::Environment( const Environment& env ):
   stack_  (env.stack_),
   upvalue_(env.upvalue_),
   global_ (env.global_),
   gb_     (env.gb_),
-  effect_ (env.effect_),
+  effect_ (),
   state_  (env.state_ )
-{}
+{
+  effect_.Init(*env.effect_);
+}
 
 void GraphBuilder::Environment::EnterFunctionScope( const FuncInfo& func ) {
   // resize the stack to have 256 slots for new prototype
@@ -100,10 +104,8 @@ void GraphBuilder::Environment::SetGlobal( const void* key , std::size_t length 
 }
 
 /* -------------------------------------------------------------
- *
  * RAII objects to handle different type of scopes when iterate
  * different bytecode along the way
- *
  * -----------------------------------------------------------*/
 class GraphBuilder::OSRScope {
  public:
@@ -147,6 +149,10 @@ class GraphBuilder::BackupEnvironment {
   GraphBuilder* gb_;
 };
 
+// A nicer way to use backup environment object to do backup
+#define backup_environment(env,gb)                                    \
+  if( auto __backup = BackupEnvironment((env),(gb)); true )
+
 GraphBuilder::OSRScope::OSRScope( GraphBuilder* gb , const Handle<Prototype>& proto ,
                                                      ControlFlow* region ,
                                                      const std::uint32_t* osr_start ):
@@ -170,8 +176,6 @@ GraphBuilder::OSRScope::OSRScope( GraphBuilder* gb , const Handle<Prototype>& pr
       temp.loop_info.push_back(LoopInfo(*ritr));
     }
   }
-  // add the prototype information into graph
-  gb->graph_->AddPrototypeInfo(proto,0);
   // push current FuncInfo object to the trackings tack
   gb->func_info_.push_back(FuncInfo(std::move(temp)));
   // initialize environment object for this OSRScope
@@ -185,9 +189,7 @@ GraphBuilder::FuncScope::FuncScope( GraphBuilder* gb , const Handle<Prototype>& 
                                                        std::uint32_t base  ):
   gb_(gb) {
 
-  gb->graph_->AddPrototypeInfo(proto,base);
   gb->func_info_.push_back(FuncInfo(proto,region,base));
-
   gb->env()->EnterFunctionScope(gb->func_info());
   if(gb->func_info_.size() == 1) {
     gb->env()->PopulateArgument(gb->func_info());
@@ -195,9 +197,7 @@ GraphBuilder::FuncScope::FuncScope( GraphBuilder* gb , const Handle<Prototype>& 
 }
 
 // ===============================================================================
-//
 // Graph Builder
-//
 // ===============================================================================
 
 Expr* GraphBuilder::NewConstNumber( std::int32_t ivalue ) {
@@ -289,9 +289,7 @@ Expr* GraphBuilder::AddTypeFeedbackIfNeed( Expr* n , TypeKind tp , const Bytecod
 }
 
 // ========================================================================
-//
 // Unary Node
-//
 // ========================================================================
 Expr* GraphBuilder::NewUnary( Expr* node , Unary::Operator op , const BytecodeLocation& pc ) {
   // 1. try to do a constant folding
@@ -305,7 +303,7 @@ Expr* GraphBuilder::NewUnary( Expr* node , Unary::Operator op , const BytecodeLo
 
 Expr* GraphBuilder::TrySpeculativeUnary( Expr* node , Unary::Operator op , const BytecodeLocation& pc ) {
   // try to get the value feedback from type trace operations
-  auto tt = type_trace_.GetTrace( pc.address() );
+  auto tt = runtime_trace_.GetTrace( pc.address() );
   if(tt) {
     auto v = tt->data[1]; // unary operation's 1st operand
     if(op == Unary::NOT) {
@@ -341,9 +339,7 @@ Expr* GraphBuilder::NewUnaryFallback( Expr* node , Unary::Operator op ) {
 }
 
 // ========================================================================
-//
 // Binary Node
-//
 // ========================================================================
 Expr* GraphBuilder::NewBinary  ( Expr* lhs , Expr* rhs , Binary::Operator op , const BytecodeLocation& pc ) {
   auto new_node = FoldBinary(graph_,op,lhs,rhs);
@@ -392,7 +388,7 @@ Expr* GraphBuilder::TrySpecialTestBinary( Expr* lhs , Expr* rhs , Binary::Operat
 
 Expr* GraphBuilder::TrySpeculativeBinary( Expr* lhs , Expr* rhs , Binary::Operator op,
                                                                   const BytecodeLocation& pc ) {
-  auto tt = type_trace_.GetTrace(pc.address());
+  auto tt = runtime_trace_.GetTrace(pc.address());
   if(tt) {
     auto lhs_val = tt->data[1];
     auto rhs_val = tt->data[2];
@@ -472,16 +468,14 @@ Expr* GraphBuilder::NewBinaryFallback( Expr* lhs , Expr* rhs , Binary::Operator 
 }
 
 // ========================================================================
-//
 // Ternary Node
-//
 // ========================================================================
 Expr* GraphBuilder::NewTernary ( Expr* cond , Expr* lhs, Expr* rhs, const BytecodeLocation& pc ) {
   if(auto new_node = FoldTernary(graph_,cond,lhs,rhs); new_node)
     return new_node;
 
   { // do a guess based on type trace
-    auto tt = type_trace_.GetTrace(pc.address());
+    auto tt = runtime_trace_.GetTrace(pc.address());
     if(tt) {
       auto a1 = tt->data[0]; // condition's value
       cond = AddTypeFeedbackIfNeed(cond,a1,pc);
@@ -496,9 +490,7 @@ Expr* GraphBuilder::NewTernary ( Expr* cond , Expr* lhs, Expr* rhs, const Byteco
 }
 
 // ========================================================================
-//
 // Phi
-//
 // ========================================================================
 Expr* GraphBuilder::NewPhi( Expr* lhs , Expr* rhs , ControlFlow* region ) {
   if( auto n = FoldPhi(graph_,lhs,rhs,region); n)
@@ -508,9 +500,7 @@ Expr* GraphBuilder::NewPhi( Expr* lhs , Expr* rhs , ControlFlow* region ) {
 }
 
 // ========================================================================
-//
 // Intrinsic Call Node
-//
 // ========================================================================
 Expr* GraphBuilder::NewICall( std::uint8_t a1 , std::uint8_t a2 , std::uint8_t a3 ,
                                                                   bool tcall ,
@@ -563,9 +553,7 @@ Expr* GraphBuilder::LowerICall( ICall* node , const BytecodeLocation& pc ) {
 }
 
 // ====================================================================
-//
 // Property Get/Set
-//
 // ====================================================================
 Expr* GraphBuilder::NewPSet( Expr* object , Expr* key , Expr* value ,
                                                         const BytecodeLocation& bc ) {
@@ -599,9 +587,7 @@ Expr* GraphBuilder::NewPGet( Expr* object , Expr* key , const BytecodeLocation& 
 }
 
 // ====================================================================
-//
 // Index Get/Set
-//
 // ====================================================================
 Expr* GraphBuilder::NewISet( Expr* object, Expr* index, Expr* value , const BytecodeLocation& bc ) {
   WriteEffect* ret = NULL;
@@ -642,9 +628,7 @@ Expr* GraphBuilder::NewIGet( Expr* object, Expr* index , const BytecodeLocation&
 }
 
 // ========================================================================
-//
 // Global Variable
-//
 // ========================================================================
 void GraphBuilder::NewGGet( std::uint8_t a1 , std::uint8_t a2 , bool sso ) {
   auto str  = NewStr(a2,sso);
@@ -658,9 +642,7 @@ void GraphBuilder::NewGSet( std::uint8_t a1 , std::uint8_t a2 , bool sso ) {
 }
 
 // ========================================================================
-//
 // UpValue
-//
 // ========================================================================
 void GraphBuilder::NewUGet( std::uint8_t a1 , std::uint8_t a2 ) {
   auto node = env()->GetUpValue(a2);
@@ -672,9 +654,7 @@ void GraphBuilder::NewUSet( std::uint8_t a1, std::uint8_t a2 ) {
 }
 
 // =========================================================================
-//
 // Checkpoint
-//
 // =========================================================================
 Checkpoint* GraphBuilder::GenerateCheckpoint( const BytecodeLocation& pc ) {
   // create the checkpoint object
@@ -709,9 +689,7 @@ Checkpoint* GraphBuilder::InitCheckpoint() {
 }
 
 // =========================================================================
-//
 // Type Trace
-//
 // =========================================================================
 bool GraphBuilder::IsTraceTypeSame( TypeKind tp , std::size_t index , const BytecodeLocation& pc ) {
   // sanity check against the input argument
@@ -728,7 +706,7 @@ bool GraphBuilder::IsTraceTypeSame( TypeKind tp , std::size_t index , const Byte
                  usage.GetArgument(index) == BytecodeUsage::INOUT );
   );
 
-  auto tt = type_trace_.GetTrace(pc.address());
+  auto tt = runtime_trace_.GetTrace(pc.address());
   if(tt) {
     auto &v = tt->data[index];
     return MapValueToTypeKind(v) == tp;
@@ -737,9 +715,7 @@ bool GraphBuilder::IsTraceTypeSame( TypeKind tp , std::size_t index , const Byte
 }
 
 // ====================================================================
-//
 // Misc
-//
 // ====================================================================
 void GraphBuilder::PatchExitNode( ControlFlow* succ , ControlFlow* fail ) {
   // patch succuess node and return value
@@ -759,9 +735,7 @@ void GraphBuilder::PatchExitNode( ControlFlow* succ , ControlFlow* fail ) {
 }
 
 // ====================================================================
-//
 // Branch Phi
-//
 // ====================================================================
 
 void GraphBuilder::GeneratePhi( ValueStack* dest , const ValueStack& lhs , const ValueStack& rhs ,
@@ -953,11 +927,11 @@ GraphBuilder::BuildIf( BytecodeIterator* itr ) {
 
   // 1. Build code inside of the *true* branch and it will also help us to
   //    identify whether we have dangling elif/else branch
-  {
-    // skip BC_JMP
-    itr->Move();
-    // backup the old stack and use the new stack to do simulation
-    BackupEnvironment backup(&true_env,this);
+  // skip BC_JMP
+  itr->Move();
+
+  // backup the old stack and use the new stack to do simulation
+  backup_environment(&true_env,this) {
     // swith to a true region
     set_region(true_region);
     {
@@ -976,6 +950,7 @@ GraphBuilder::BuildIf( BytecodeIterator* itr ) {
     }
     rhs = region();
   }
+
   // 2. Build code inside of the *false* branch
   if(have_false_branch) {
     set_region(false_region);
@@ -1036,9 +1011,7 @@ GraphBuilder::BuildLoopBlock( BytecodeIterator* itr ) {
 }
 
 // ===============================================================================
-//
 // Loop Phi
-//
 // ===============================================================================
 
 void GraphBuilder::GenerateLoopPhi() {
@@ -1126,9 +1099,7 @@ void GraphBuilder::PatchLoopPhi() {
 }
 
 // ============================================================
-//
 // Loop
-//
 // ============================================================
 Expr* GraphBuilder::BuildLoopEndCondition( BytecodeIterator* itr , ControlFlow* body ) {
   // now we should stop at the FEND1/FEND2/FEEND instruction
@@ -1175,9 +1146,8 @@ GraphBuilder::BuildLoopBody( BytecodeIterator* itr , ControlFlow* loop_header ) 
   BytecodeLocation cont_pc;
   BytecodeLocation brk_pc ;
 
-  {
-    // backup the old environment and use a temporary environment
-    BackupEnvironment backup(&loop_env,this);
+  // backup the old environment and use a temporary environment
+  backup_environment(&loop_env,this) {
     // entier the loop scope
     LoopScope lscope(this,itr->pc());
     // create new loop body node
@@ -1624,15 +1594,14 @@ bool GraphBuilder::Build( const Handle<Prototype>& entry , Graph* graph ) {
   // create the first region
   Region* region = Region::New(graph_,start);
 
-  // 2. start the basic block building
-  {
-    // setup the main environment object
-    Environment root_env(this);
-    BackupEnvironment backup(&root_env,this);
+  // 2. start the basic block building setup the main environment object
+  Environment root_env(this);
+
+  backup_environment(&root_env,this) {
     // enter into the top level function
     FuncScope scope(this,entry,region,0);
     // setup the bytecode iterator
-    BytecodeIterator itr(entry->GetBytecodeIterator());
+    auto itr = entry->GetBytecodeIterator();
     // set the current region
     set_region(region);
     // start to execute the build basic block
@@ -1642,6 +1611,7 @@ bool GraphBuilder::Build( const Handle<Prototype>& entry , Graph* graph ) {
     PatchExitNode(succ,fail);
     end = End::New(graph_,succ,fail);
   }
+
   // initialize the graph
   graph->Initialize(start,end);
   return true;
@@ -1791,10 +1761,11 @@ GraphBuilder::BuildOSRStart( const Handle<Prototype>& entry ,  const std::uint32
   // setup the fail node which accepts guard bailout
   Fail* fail = Fail::New(graph);
   Success* succ = Success::New(graph);
-  {
-    // set up the value stack/expression stack
-    Environment root_env(this);
-    BackupEnvironment backup(&root_env,this);
+
+  // set up the value stack/expression stack
+  Environment root_env(this);
+
+  backup_environment(&root_env,this) {
     // set up the OSR scope
     OSRScope scope(this,entry,header,pc);
     // set up OSR local variable
@@ -1819,6 +1790,7 @@ GraphBuilder::BuildOSRStart( const Handle<Prototype>& entry ,  const std::uint32
     // lastly create the end node for the osr graph
     end = OSREnd::New(graph_,succ,fail);
   }
+
   // initialize the graph via OSR compilation
   graph->Initialize(start,end);
   return STOP_SUCCESS;

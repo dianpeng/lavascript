@@ -8,7 +8,7 @@
 #include "src/config.h"
 #include "src/parser/ast/ast.h"
 #include "src/objects.h"
-#include "src/common.h"
+#include "src/macro.h"
 #include "src/util.h"
 #include "src/error-report.h"
 #include "src/context.h"

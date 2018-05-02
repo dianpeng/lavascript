@@ -5,7 +5,9 @@
 #include <src/parser/parser.h>
 #include <src/parser/ast/ast.h>
 #include <src/trace.h>
+#include <src/runtime-trace.h>
 
+#include <src/cbase/hir.h>
 #include <src/cbase/dominators.h>
 #include <src/cbase/graph-builder.h>
 #include <src/cbase/bytecode-analyze.h>
@@ -69,10 +71,9 @@ bool CheckGraph( const char* source ) {
   sb.Dump(&dw);
 
   RuntimeTrace tt;
-  GraphBuilder gb(scp,tt);
   Graph graph;
 
-  if(!gb.Build(scp->main(),&graph)) {
+  if(!BuildPrototype(scp,scp->main(),tt,&graph)) {
     std::cerr<<"cannot build graph"<<std::endl;
     return false;
   }
@@ -116,10 +117,9 @@ bool CheckGraphOSR( const char* source , std::size_t offset ) {
   sb.Dump(&dw);
 
   RuntimeTrace tt;
-  GraphBuilder gb(scp,tt);
   Graph graph;
 
-  if(!gb.BuildOSR(scp->main(), scp->main()->code_buffer() + offset , &graph)) {
+  if(!BuildPrototypeOSR(scp,scp->main(),tt,scp->main()->code_buffer() + offset,&graph)) {
     std::cerr<<"cannot build graph"<<std::endl;
     return false;
   }
@@ -136,16 +136,15 @@ bool CheckGraphOSR( const char* source , std::size_t offset ) {
 
 TEST(GraphBuilder,Basic) {
   CASE(
-      var a = [1,2,3,4,5];
-      a[1] = 20;
-      a[2] = 30;
-      var ret = a[1] + a[2];
-      g.x = 20;
-      if(t) {
-        g.t = 30;
-      } else {
-        g.h = 20;
+      var ret = 10;
+      if(bb) {
+        ret = 20;
+        return ret;
+
+        g.x = 20;
+        e.f = 20;
       }
+      ret= x.x;
       return ret;
     );
 }

@@ -102,11 +102,8 @@ void BytecodeAnalyze::BuildBasicBlock( BytecodeIterator* itr ) {
   current_bb()->end = itr->pc();
 }
 
-bool BytecodeAnalyze::BuildIfBlock( BytecodeIterator* itr ,
-                                    const std::uint32_t* pc ,
-                                    const std::uint32_t** end ) {
-  bool skip_bytecode = false;
-
+bool BytecodeAnalyze::BuildIfBlock( BytecodeIterator* itr , const std::uint32_t* pc ,
+                                                            const std::uint32_t** end ) {
   while( itr->HasNext() ) {
     if(itr->pc() == pc) {
       if(end) *end = itr->pc();
@@ -114,8 +111,12 @@ bool BytecodeAnalyze::BuildIfBlock( BytecodeIterator* itr ,
     } else if(itr->opcode() == BC_JMP) {
       if(end) *end = itr->pc();
       return true;
-    } else if(!skip_bytecode && !BuildBytecode(itr)) {
-      skip_bytecode = true;
+    } else {
+      // we cannot do skip here due to the nested if block. our bytecode doesn't have
+      // information to tell the range of bytecodes for each lexical scope. we have to
+      // do a full parse regardlessly. it is fine to do a full build since it doesn't
+      // cost that much memory overall
+      BuildBytecode(itr);
       if(end) *end = itr->pc();
     }
   }

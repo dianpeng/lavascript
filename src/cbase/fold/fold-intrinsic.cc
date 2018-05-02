@@ -1,5 +1,5 @@
 #include "fold-intrinsic.h"
-#include "hir.h"
+#include "src/cbase/hir.h"
 
 namespace lavascript {
 namespace cbase      {

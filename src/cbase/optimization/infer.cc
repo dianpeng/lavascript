@@ -1,8 +1,9 @@
 #include "infer.h"
 
-#include "src/cbase/fold-arith.h"
 #include "src/cbase/dominators.h"
 #include "src/cbase/predicate.h"
+#include "src/cbase/fold/fold-arith.h"
+
 #include "src/zone/vector.h"
 #include "src/zone/zone.h"
 #include "src/zone/table.h"

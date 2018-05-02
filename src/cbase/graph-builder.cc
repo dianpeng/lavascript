@@ -1,23 +1,434 @@
 #include "graph-builder.h"
+#include "hir.h"
+#include "effect.h"
+#include "inliner.h"
 #include "type-inference.h"
 
-#include "fold-arith.h"
-#include "fold-intrinsic.h"
-#include "fold-phi.h"
-#include "fold-memory.h"
+#include "fold/fold-arith.h"
+#include "fold/fold-intrinsic.h"
+#include "fold/fold-phi.h"
+#include "fold/fold-memory.h"
 
+#include "src/util.h"
+#include "src/interpreter/intrinsic-call.h"
+#include "src/objects.h"
+#include "src/zone/zone.h"
+#include "src/runtime-trace.h"
 #include "src/interpreter/bytecode.h"
 #include "src/interpreter/bytecode-iterator.h"
 
+#include <cstdint>
+#include <string>
+#include <memory>
 #include <cmath>
 #include <vector>
 #include <set>
 #include <map>
 
 namespace lavascript {
-namespace cbase {
-namespace hir    {
+namespace cbase      {
+namespace hir        {
+namespace            {
+
+typedef std::vector<Expr*> ValueStack;
 using namespace ::lavascript::interpreter;
+
+
+// -------------------------------------------------------------------------------------
+// This is a HIR/MIR graph consturction , the LIR is essentially a traditional CFG
+// The graph is a sea of nodes style and it is responsible for all optimization before
+// scheduling
+// The builder can build 1) normal function call 2) OSR style function IR
+class GraphBuilder {
+ public:
+  // all intenral class forward declaration
+  struct FuncInfo;
+
+  // Environment --------------------------------------------------------------
+  //
+  // Track *all* program states in each lexical scope and created on the fly when
+  // we enter into a new scope and merge it back when we exit the lexical scope.
+  class Environment {
+   public:
+    struct GlobalVar {
+      Str name; Expr* value;
+      GlobalVar( const void* k , std::size_t l , Expr* v ): name(k,l), value(v) {}
+      GlobalVar( const Str& k , Expr* v ) : name(k) , value(v) {}
+      bool operator == ( const Str& k ) const { return Str::Cmp(name,k) == 0; }
+    };
+    typedef std::vector<GlobalVar>     GlobalMap;
+    typedef std::vector<Expr*>         UpValueVector;
+    typedef std::function<Expr* ()>    KeyProvider;
+   public:
+    Environment( GraphBuilder* );
+    Environment( const Environment& );
+   public:
+    // init environment object from prototype object
+    void EnterFunctionScope  ( const FuncInfo& );
+    void PopulateArgument    ( const FuncInfo& );
+    void ExitFunctionScope   ( const FuncInfo& );
+    // getter/setter
+    Expr*  GetUpValue( std::uint8_t );
+    Expr*  GetGlobal ( const void* , std::size_t , const KeyProvider& );
+    bool   HasUpValue( std::uint8_t ) const;
+
+    void   SetUpValue( std::uint8_t , Expr* );
+    void   SetGlobal ( const void* , std::size_t , const KeyProvider& , Expr* );
+    // accessor
+    ValueStack*      stack()    { return &stack_;  }
+    UpValueVector*   upvalue()  { return &upvalue_;}
+    GlobalMap*       global()   { return &global_; }
+    // effect group list
+    Effect*          effect()   { return effect_.ptr(); }
+    Checkpoint*      state () const { return state_;   }
+    void UpdateState( Checkpoint* cp ) { state_ = cp; }
+   private:
+    ValueStack    stack_;     // register stack
+    UpValueVector upvalue_;   // upvalue's effect group
+    GlobalMap     global_;    // global's effect group
+    GraphBuilder* gb_;        // graph builder
+    CheckedLazyInstance<Effect> effect_; // a list of tracked effect group
+    Checkpoint*   state_;     // current frame state for this environment
+
+    friend class GraphBuilder;
+    LAVA_DISALLOW_ASSIGN(Environment);
+  };
+
+  // Data structure record the pending jump that happened inside of the loop
+  // body. It is typically break and continue keyword , since they cause a
+  // unconditional jump happened
+  struct UnconditionalJump {
+    Jump* node;                     // node that is created when break/continue jump happened
+    const std::uint32_t* pc;        // address of this unconditional jump
+    Environment         env;        // environment for this unconditional jump
+    UnconditionalJump( Jump* n , const std::uint32_t* p , const Environment& e ):node(n),pc(p),env(e){}
+  };
+
+  typedef std::vector<UnconditionalJump> UnconditionalJumpList;
+
+  // Hold information related IR graph during a loop is constructed. This is
+  // created on demand and pop out when loop is constructed
+  struct LoopInfo {
+    // all pending break happened inside of this loop
+    UnconditionalJumpList pending_break;
+    // all pending continue happened inside of this loop
+    UnconditionalJumpList pending_continue;
+    // a pointer points to a LoopHeaderInfo object
+    const BytecodeAnalyze::LoopHeaderInfo* loop_header_info;
+    // type of the PhiVar
+    enum PhiVarType { GLOBAL , UPVALUE , VAR };
+    // pending PHIs in this loop's body
+    struct PhiVar {
+      PhiVarType    type; // type of the var
+      std::uint32_t idx;  // register index
+      Phi*         phi;   // phi node
+      PhiVar( PhiVarType t , std::uint32_t i , Phi* p ): type(t), idx(i), phi(p) {}
+    };
+    std::vector<PhiVar> phi_list;
+   public:
+    bool HasParentLoop() const { return loop_header_info->prev != NULL; }
+    bool HasJump() const { return !pending_break.empty() || !pending_continue.empty(); }
+    void AddBreak( Jump* node , const std::uint32_t* target , const Environment& e ) {
+      pending_break.push_back(UnconditionalJump(node,target,e));
+    }
+    void AddContinue( Jump* node , const std::uint32_t* target , const Environment& e ) {
+      pending_continue.push_back(UnconditionalJump(node,target,e));
+    }
+    void AddPhi( PhiVarType type , std::uint32_t index , Phi* phi ) {
+      phi_list.push_back(PhiVar(type,index,phi));
+    }
+    LoopInfo( const BytecodeAnalyze::LoopHeaderInfo* info ):
+      pending_break(),
+      pending_continue(),
+      loop_header_info(info),
+      phi_list()
+    {}
+  };
+
+  // Structure to record function level information when we do IR construction.
+  // Once a inline happened, then we will push a new FuncInfo object into func_info
+  // stack/vector
+  struct FuncInfo {
+    /** member field **/
+    Handle<Prototype>         prototype; // cached for faster access
+    ControlFlow*              region;
+    std::uint32_t             base;
+    std::uint8_t              max_local_var_size;
+    std::vector<LoopInfo>     loop_info;
+    std::vector<Return*>      return_list;
+    std::vector<Guard*>       guard_list ;
+    BytecodeAnalyze           bc_analyze;
+    const std::uint32_t*      osr_start;
+
+   public:
+    inline FuncInfo( const Handle<Prototype>& , ControlFlow* , std::uint32_t );
+    inline FuncInfo( const Handle<Prototype>& , ControlFlow* , const std::uint32_t* );
+    inline FuncInfo( FuncInfo&& );
+
+    bool IsOSR                        () const { return osr_start != NULL; }
+    bool IsLocalVar( std::uint8_t slot ) const { return slot < max_local_var_size; }
+    // check whether we have loop currently
+    bool HasLoop                      () const { return !loop_info.empty(); }
+    // get the current loop
+    GraphBuilder::LoopInfo& current_loop()     { return loop_info.back(); }
+    const GraphBuilder::LoopInfo& current_loop() const { return loop_info.back(); }
+    const BytecodeAnalyze::LoopHeaderInfo* current_loop_header() const {
+      return current_loop().loop_header_info;
+    }
+   public: // Loop related stuff
+    // Enter into a new loop scope, the corresponding basic block
+    // information will be added into stack as part of the loop scope
+    inline void EnterLoop( const std::uint32_t* pc );
+    void        LeaveLoop() { loop_info.pop_back(); }
+  };
+
+ public:
+  // Build routine's return status code
+  enum StopReason {
+    STOP_BAILOUT = -1,   // the target is too complicated to be jitted
+    STOP_JUMP,
+    STOP_EOF ,
+    STOP_END ,
+    STOP_SUCCESS
+  };
+
+ public:
+  inline GraphBuilder( const Handle<Script>& , const RuntimeTrace& );
+  // Build a normal function's IR graph
+  bool Build( const Handle<Prototype>& , Graph* );
+  // Build a function's graph assume OSR
+  bool BuildOSR( const Handle<Prototype>& , const std::uint32_t* , Graph* );
+
+ public: // Stack accessing
+  std::uint32_t StackIndex( std::uint32_t index ) const      { return func_info().base+index; }
+  void StackSet( std::uint32_t index , Expr* value )         { vstk()->at(StackIndex(index)) = value; }
+  void StackReset( std::uint32_t index )                     { vstk()->at(StackIndex(index)) = NULL; }
+  Expr* StackGet( std::uint32_t index )                      { return vstk()->at(StackIndex(index)); }
+  Expr* StackGet( std::uint32_t index , std::uint32_t base ) { return vstk()->at(base+index); }
+
+ public: // Current FuncInfo
+  std::uint32_t method_index()         const { return static_cast<std::uint32_t>(func_info_.size()); }
+  FuncInfo& func_info()                      { return func_info_.back(); }
+  const FuncInfo& func_info()          const { return func_info_.back(); }
+  bool IsTopFunction()                 const { return func_info_.size() == 1; }
+  const Handle<Prototype>& prototype() const { return func_info().prototype; }
+  std::uint32_t base()                 const { return func_info().base; }
+  ControlFlow* region()                const { return func_info().region; }
+  void set_region( ControlFlow* new_region ) { func_info().region = new_region; }
+  Environment* env()                   const { return env_; }
+  ValueStack*  vstk()                  const { return env_->stack(); }
+  ValueStack*  upval()                 const { return env_->upvalue();}
+
+ public:
+  Graph*                    graph()     const { return graph_; }
+  ::lavascript::zone::Zone* temp_zone()       { return &temp_zone_; }
+  ::lavascript::zone::Zone* zone     () const { return zone_; }
+  // input argument size , the input argument size is the argument size that
+  // is belong to the top most function since this function's input argument
+  // remains as input argument, rest of the nested inlined function's input
+  // argument is not argument but just local variables
+  std::size_t input_argument_size()    const { return func_info_.front().prototype->argument_size(); }
+ private: // Constant handling
+  Expr* NewConstNumber( std::int32_t );
+  Expr* NewNumber     ( std::uint8_t );
+  Expr* NewString     ( std::uint8_t );
+  Expr* NewString     ( const Str&   );
+  Str   NewStr        ( std::uint32_t ref , bool sso );
+  Expr* NewSSO        ( std::uint8_t );
+  Expr* NewBoolean    ( bool         );
+
+ private: // IRList/IRObject
+  IRList*   NewIRList   ( std::size_t );
+  IRObject* NewIRObject ( std::size_t );
+
+ private: // Guard handling
+  // Add a type feedback with TypeKind into the stack slot pointed by index
+  Expr* AddTypeFeedbackIfNeed( Expr* , TypeKind     , const BytecodeLocation& );
+  Expr* AddTypeFeedbackIfNeed( Expr* , const Value& , const BytecodeLocation& );
+  // Create a guard node and linked it back to the current graph
+  Guard* NewGuard            ( Test* , Checkpoint* );
+ private: // Arithmetic
+  // Unary
+  Expr* NewUnary            ( Expr* , Unary::Operator , const BytecodeLocation& );
+  Expr* TrySpeculativeUnary ( Expr* , Unary::Operator , const BytecodeLocation& );
+  Expr* NewUnaryFallback    ( Expr* , Unary::Operator );
+
+  // Binary
+  Expr* NewBinary           ( Expr* , Expr* , Binary::Operator ,
+                                                                    const BytecodeLocation& );
+  Expr* TrySpecialTestBinary( Expr* , Expr* , Binary::Operator ,
+                                                                    const BytecodeLocation& );
+  Expr* TrySpeculativeBinary( Expr* , Expr* , Binary::Operator ,
+                                                                    const BytecodeLocation& );
+  Expr* NewBinaryFallback   ( Expr* , Expr* , Binary::Operator );
+  // Ternary
+  Expr* NewTernary( Expr* , Expr* , Expr* , const BytecodeLocation& );
+  // Intrinsic
+  Expr* NewICall  ( std::uint8_t ,std::uint8_t ,std::uint8_t ,bool , const BytecodeLocation& );
+  Expr* LowerICall( ICall* , const BytecodeLocation& );
+ private: // Property/Index Get/Set
+  Expr* NewPSet( Expr* , Expr* , Expr* , const BytecodeLocation& );
+  Expr* NewPGet( Expr* , Expr* , const BytecodeLocation& );
+  Expr* NewISet( Expr* , Expr* , Expr* , const BytecodeLocation& );
+  Expr* NewIGet( Expr* , Expr* , const BytecodeLocation& );
+
+ private: // Global variables
+  void NewGGet( std::uint8_t , std::uint8_t , bool sso );
+  void NewGSet( std::uint8_t , std::uint8_t , bool sso );
+
+ private: // Upvalue
+  void NewUGet( std::uint8_t , std::uint8_t );
+  void NewUSet( std::uint8_t , std::uint8_t );
+
+ private: // Checkpoint generation
+  // Create a checkpoint with snapshot of current stack status
+  Checkpoint* GenerateCheckpoint( const BytecodeLocation& );
+  // Create a eager checkpoint at the new *merge* region node if needed
+  void GenerateMergeCheckpoint  ( const Environment& , const BytecodeLocation& );
+  // Get a init checkpoint , checkpoint that has IRInfo points to the first of the bytecode ,
+  // of the top most inlined function.
+  Checkpoint* InitCheckpoint ();
+ private: // Helper for type trace
+  // Check whether the traced type for this bytecode is the expected one wrt the index's value
+  bool IsTraceTypeSame( TypeKind , std::size_t index , const BytecodeLocation& );
+ private: // Phi
+  Expr* NewPhi( Expr* , Expr* , ControlFlow* );
+ private: // Misc
+  // Helper function to generate exit Phi node and also link the return and guard nodes to the
+  // success and fail node of the HIR graph
+  void PatchExitNode( ControlFlow* , ControlFlow* );
+ private:
+  // ----------------------------------------------------------------------------------
+  // OSR compilation
+  // ----------------------------------------------------------------------------------
+  StopReason BuildOSRStart( const Handle<Prototype>& , const std::uint32_t* , Graph* );
+  void BuildOSRLocalVariable();
+  void SetupOSRLoopCondition( BytecodeIterator* );
+  StopReason BuildOSRLoop   ( BytecodeIterator* );
+  StopReason PeelOSRLoop    ( BytecodeIterator* );
+ private: // Build bytecode
+  // Just build *one* BC isntruction , this will not build certain type of BCs
+  // since it is expected other routine to consume those BCs
+  StopReason BuildBytecode  ( BytecodeIterator* itr );
+  StopReason BuildBasicBlock( BytecodeIterator* itr , const std::uint32_t* end_pc = NULL );
+
+  // Build branch IR graph
+  void InsertPhi( Environment* , Environment* , ControlFlow* );
+  void GeneratePhi( ValueStack* , const ValueStack& , const ValueStack& , std::size_t , ControlFlow* );
+
+  StopReason BuildIf     ( BytecodeIterator* itr );
+  StopReason BuildIfBlock( BytecodeIterator* , const std::uint32_t* );
+  // Build logical IR graph
+  StopReason BuildLogic  ( BytecodeIterator* itr );
+  // Build ternary IR graph
+  StopReason BuildTernary( BytecodeIterator* itr );
+  // Build loop IR graph
+  //
+  // The core/tricky part of the loop IR is where to insert PHI due to we cannot see
+  // a variable when we insert PHI in loop body. We know this information by using
+  // information from BytecodeAnalyze. It will tell us which list of variables are
+  // modified inside of the loop and these variables are not local variable inside of
+  // the loop. So we just insert PHI before hand and at last we patch the PHI to correct
+  // its *second input operand* since the modification comes later in the loop.
+  Expr* BuildLoopEndCondition( BytecodeIterator* itr , ControlFlow* );
+  StopReason BuildLoop       ( BytecodeIterator* itr );
+  StopReason BuildLoopBody   ( BytecodeIterator* itr , ControlFlow* );
+  StopReason BuildForeverLoop( BytecodeIterator* itr );
+  void GenerateLoopPhi       ();
+  void PatchLoopPhi          ();
+
+  // Iterate until we see FEEND/FEND1/FEND2/FEVREND
+  StopReason BuildLoopBlock  ( BytecodeIterator* itr );
+  void PatchUnconditionalJump( UnconditionalJumpList* , ControlFlow* , const BytecodeLocation& );
+ private:
+  // Zone owned by the Graph object, and it is supposed to be stay around while the
+  // optimization happenened
+  zone::Zone*              zone_;
+  Handle<Script>           script_;
+  Graph*                   graph_;
+  // Working set data , used when doing inline and other stuff
+  Environment*             env_;
+  std::vector<FuncInfo>    func_info_;
+  // Type trace for speculative operation generation
+  const RuntimeTrace&      runtime_trace_;
+  // This zone is used for other transient memory costs during graph construction
+  zone::Zone               temp_zone_;
+  // Inliner , checks for inline operation
+  std::unique_ptr<Inliner> inliner_;
+ private:
+  class OSRScope ;
+  class InlineScope;
+  class FuncScope;
+  class LoopScope;
+  class BackupEnvironment;
+
+  friend class OSRScope ;
+  friend class InlineScope;
+  friend class FuncScope;
+  friend class LoopScope;
+  friend class BackupEnvironment;
+  friend class Environment;
+};
+
+// --------------------------------------------------------------------------
+//
+// Inline
+//
+// --------------------------------------------------------------------------
+inline GraphBuilder::FuncInfo::FuncInfo( const Handle<Prototype>& proto , ControlFlow* start_region ,
+                                                                          std::uint32_t b ):
+  prototype         (proto),
+  region            (start_region),
+  base              (b),
+  max_local_var_size(proto->max_local_var_size()),
+  loop_info         (),
+  return_list       (),
+  guard_list        (),
+  bc_analyze        (proto),
+  osr_start         (NULL)
+{}
+
+inline GraphBuilder::FuncInfo::FuncInfo( const Handle<Prototype>& proto , ControlFlow* start_region ,
+                                                                          const std::uint32_t* ostart ):
+  prototype         (proto),
+  region            (start_region),
+  base              (0),
+  max_local_var_size(proto->max_local_var_size()),
+  loop_info         (),
+  return_list       (),
+  guard_list        (),
+  bc_analyze        (proto),
+  osr_start         (ostart)
+{}
+
+inline GraphBuilder::FuncInfo::FuncInfo( FuncInfo&& that ):
+  prototype         (that.prototype),
+  region            (that.region),
+  base              (that.base),
+  max_local_var_size(that.max_local_var_size),
+  loop_info         (std::move(that.loop_info)),
+  return_list       (std::move(that.return_list)),
+  guard_list        (std::move(that.guard_list)),
+  bc_analyze        (std::move(that.bc_analyze)),
+  osr_start         (that.osr_start)
+{}
+
+inline GraphBuilder::GraphBuilder( const Handle<Script>& script , const RuntimeTrace& tt ):
+  zone_             (NULL),
+  script_           (script),
+  graph_            (NULL),
+  func_info_        (),
+  runtime_trace_    (tt),
+  temp_zone_        (),
+  // TODO:: change inliner to runtime construction based on configuration
+  inliner_          ( new StaticInliner() )
+{}
+
+inline void GraphBuilder::FuncInfo::EnterLoop( const std::uint32_t* pc ) {
+  const BytecodeAnalyze::LoopHeaderInfo* info = bc_analyze.LookUpLoopHeader(pc);
+  lava_debug(NORMAL,lava_verify(info););
+  loop_info.push_back(LoopInfo(info));
+}
 
 GraphBuilder::Environment::Environment( GraphBuilder* gb ):
   stack_  (),
@@ -43,7 +454,7 @@ GraphBuilder::Environment::Environment( const Environment& env ):
 
 void GraphBuilder::Environment::EnterFunctionScope( const FuncInfo& func ) {
   // resize the stack to have 256 slots for new prototype
-  stack_.resize( stack_.size() + interpreter::kRegisterSize );
+  stack_.resize( stack_.size() + kRegisterSize );
   // resize the stack to have enough slots for the upvalues
   upvalue_.resize( func.prototype->upvalue_size() );
 }
@@ -71,6 +482,18 @@ Expr* GraphBuilder::Environment::GetUpValue( std::uint8_t index ) {
   }
 }
 
+void GraphBuilder::Environment::SetUpValue( std::uint8_t index , Expr* value ) {
+  auto uset = USet::New(gb_->graph_,index,gb_->method_index(),value);
+  gb_->region()->AddPin(uset);
+  upvalue_[index] = value;
+}
+
+bool GraphBuilder::Environment::HasUpValue( std::uint8_t index ) const {
+  lava_debug(NORMAL,lava_verify(index < upvalue_.size()););
+  auto v = upvalue_[index];
+  return v != NULL;
+}
+
 Expr* GraphBuilder::Environment::GetGlobal ( const void* key , std::size_t length ,
                                                                const KeyProvider& key_provider ) {
   auto itr = std::find(global_.begin(),global_.end(),Str(key,length));
@@ -81,12 +504,6 @@ Expr* GraphBuilder::Environment::GetGlobal ( const void* key , std::size_t lengt
     global_.push_back(GlobalVar(key,length,gget));
     return gget;
   }
-}
-
-void GraphBuilder::Environment::SetUpValue( std::uint8_t index , Expr* value ) {
-  auto uset = USet::New(gb_->graph_,index,gb_->method_index(),value);
-  gb_->region()->AddPin(uset);
-  upvalue_[index] = value;
 }
 
 void GraphBuilder::Environment::SetGlobal( const void* key , std::size_t length ,
@@ -120,7 +537,7 @@ class GraphBuilder::OSRScope {
 
 class GraphBuilder::FuncScope {
  public:
-  FuncScope( GraphBuilder* , const Handle<Prototype>& , ControlFlow* , std::uint32_t );
+  FuncScope( GraphBuilder* , const Handle<Prototype>& , ControlFlow* );
   ~FuncScope() {
     gb_->env()->ExitFunctionScope(gb_->func_info_.back());
     gb_->func_info_.pop_back();
@@ -185,15 +602,12 @@ GraphBuilder::OSRScope::OSRScope( GraphBuilder* gb , const Handle<Prototype>& pr
 }
 
 GraphBuilder::FuncScope::FuncScope( GraphBuilder* gb , const Handle<Prototype>& proto ,
-                                                       ControlFlow* region ,
-                                                       std::uint32_t base  ):
+                                                       ControlFlow* region ):
   gb_(gb) {
 
-  gb->func_info_.push_back(FuncInfo(proto,region,base));
+  gb->func_info_.push_back(FuncInfo(proto,region,0u));
   gb->env()->EnterFunctionScope(gb->func_info());
-  if(gb->func_info_.size() == 1) {
-    gb->env()->PopulateArgument(gb->func_info());
-  }
+  gb->env()->PopulateArgument(gb->func_info());
 }
 
 // ===============================================================================
@@ -722,7 +1136,7 @@ void GraphBuilder::PatchExitNode( ControlFlow* succ , ControlFlow* fail ) {
   {
     auto return_value = Phi::New(graph_,succ);
     for( auto &e : func_info().return_list ) {
-      return_value->AddOperand(e->AsReturn()->value());
+      return_value->AddOperand(e->value());
       succ->AddBackwardEdge(e);
     }
   }
@@ -864,40 +1278,15 @@ GraphBuilder::StopReason GraphBuilder::BuildTernary( BytecodeIterator* itr ) {
   return STOP_SUCCESS;
 }
 
-GraphBuilder::StopReason GraphBuilder::GotoIfEnd( BytecodeIterator* itr, const std::uint32_t* pc ) {
-  StopReason ret;
-  lava_verify(itr->SkipTo(
-    [pc,&ret]( BytecodeIterator* itr ) {
-      if(itr->pc() == pc) {
-        ret = STOP_END;
-        return false;
-      } else if(itr->opcode() == BC_JMP) {
-        ret = STOP_JUMP;
-        return false;
-      }
-      return true;
-    }
-    )
-  );
-  return ret;
-}
-
 GraphBuilder::StopReason GraphBuilder::BuildIfBlock( BytecodeIterator* itr , const std::uint32_t* pc ) {
   while( itr->HasNext() ) {
     // check whether we reache end of PC where we suppose to stop
-    if(pc == itr->pc()) return STOP_END;
-
-    // check whether we have a unconditional jump or not
-    if(itr->opcode() == BC_JMP) {
+    if(pc == itr->pc())
+      return STOP_END;
+    else if(itr->opcode() == BC_JMP)
       return STOP_JUMP;
-    } else if(IsBlockJumpBytecode(itr->opcode())) {
-      if(BuildBytecode(itr) == STOP_BAILOUT)
-        return STOP_BAILOUT;
-      return GotoIfEnd(itr,pc);
-    } else {
-      if(BuildBytecode(itr) == STOP_BAILOUT)
-        return STOP_BAILOUT;
-    }
+    else if(BuildBytecode(itr) == STOP_BAILOUT)
+      return STOP_BAILOUT;
   }
   lava_unreachF("cannot reach here since it is end of the stream %p:%p",itr->pc(),pc);
   return STOP_EOF;
@@ -927,7 +1316,6 @@ GraphBuilder::BuildIf( BytecodeIterator* itr ) {
 
   // 1. Build code inside of the *true* branch and it will also help us to
   //    identify whether we have dangling elif/else branch
-  // skip BC_JMP
   itr->Move();
 
   // backup the old stack and use the new stack to do simulation
@@ -980,29 +1368,12 @@ GraphBuilder::BuildIf( BytecodeIterator* itr ) {
 }
 
 GraphBuilder::StopReason
-GraphBuilder::GotoLoopEnd( BytecodeIterator* itr ) {
-  lava_verify(itr->SkipTo(
-    []( BytecodeIterator* itr ) {
-      return !(itr->opcode() == BC_FEEND ||
-               itr->opcode() == BC_FEND1 ||
-               itr->opcode() == BC_FEND2 ||
-               itr->opcode() == BC_FEVREND);
-    }
-  ));
-
-  return STOP_SUCCESS;
-}
-
-GraphBuilder::StopReason
 GraphBuilder::BuildLoopBlock( BytecodeIterator* itr ) {
   while(itr->HasNext()) {
     if(IsLoopEndBytecode(itr->opcode())) {
       return STOP_SUCCESS;
-    } else if(IsBlockJumpBytecode(itr->opcode())) {
-      if(BuildBytecode(itr) == STOP_BAILOUT) return STOP_BAILOUT;
-      return GotoLoopEnd(itr);
-    } else {
-      if(BuildBytecode(itr) == STOP_BAILOUT) return STOP_BAILOUT;
+    } else if(BuildBytecode(itr) == STOP_BAILOUT) {
+      return STOP_BAILOUT;
     }
   }
 
@@ -1207,7 +1578,7 @@ GraphBuilder::BuildLoop( BytecodeIterator* itr ) {
   if(itr->opcode() == BC_FSTART) {
     std::uint8_t a1; std::uint16_t a2;
     itr->GetOperand(&a1,&a2);
-    loop_header->set_condition(StackGet(interpreter::kAccRegisterIndex));
+    loop_header->set_condition(StackGet(kAccRegisterIndex));
   } else if(itr->opcode() == BC_FESTART) {
     std::uint8_t a1; std::uint16_t a2;
     itr->GetOperand(&a1,&a2);
@@ -1232,133 +1603,127 @@ GraphBuilder::BuildLoop( BytecodeIterator* itr ) {
 }
 
 GraphBuilder::StopReason GraphBuilder::BuildBytecode( BytecodeIterator* itr ) {
+  std::uint32_t a1,a2,a3,a4;
+  Expr* temp;
+  itr->FetchOperand(&a1,&a2,&a3,&a4);
+
   switch(itr->opcode()) {
-    /* binary arithmetic/comparison */
-    case BC_ADDRV: case BC_SUBRV: case BC_MULRV: case BC_DIVRV: case BC_MODRV: case BC_POWRV:
-    case BC_LTRV:  case BC_LERV : case BC_GTRV : case BC_GERV : case BC_EQRV : case BC_NERV :
-      {
-        std::uint8_t dest , a1, a2;
-        itr->GetOperand(&dest,&a1,&a2);
-        auto node = NewBinary(NewNumber(a1),StackGet(a1), Binary::BytecodeToOperator(itr->opcode()),
-                                                          itr->bytecode_location());
-        StackSet(dest,node);
-      }
+    case BC_ADDRV:
+    case BC_SUBRV:
+    case BC_MULRV:
+    case BC_DIVRV:
+    case BC_MODRV:
+    case BC_POWRV:
+    case BC_LTRV :
+    case BC_LERV :
+    case BC_GTRV :
+    case BC_GERV :
+    case BC_EQRV :
+    case BC_NERV :
+      temp = NewBinary(NewNumber(a2),StackGet(a3), Binary::BytecodeToOperator(itr->opcode()),
+                                                   itr->bytecode_location());
+      StackSet(a1,temp);
       break;
-    case BC_ADDVR: case BC_SUBVR: case BC_MULVR: case BC_DIVVR: case BC_MODVR: case BC_POWVR:
-    case BC_LTVR : case BC_LEVR : case BC_GTVR : case BC_GEVR : case BC_EQVR : case BC_NEVR :
-      {
-        std::uint8_t dest , a1, a2;
-        itr->GetOperand(&dest,&a1,&a2);
-        auto node = NewBinary(StackGet(a1), NewNumber(a2), Binary::BytecodeToOperator(itr->opcode()),
-                                                           itr->bytecode_location());
-        StackSet(dest,node);
-      }
+
+    case BC_ADDVR:
+    case BC_SUBVR:
+    case BC_MULVR:
+    case BC_DIVVR:
+    case BC_MODVR:
+    case BC_POWVR:
+    case BC_LTVR :
+    case BC_LEVR :
+    case BC_GTVR :
+    case BC_GEVR :
+    case BC_EQVR :
+    case BC_NEVR :
+      temp = NewBinary(StackGet(a2), NewNumber(a3), Binary::BytecodeToOperator(itr->opcode()),
+                                                    itr->bytecode_location());
+      StackSet(a1,temp);
       break;
-    case BC_ADDVV: case BC_SUBVV: case BC_MULVV: case BC_DIVVV: case BC_MODVV: case BC_POWVV:
-    case BC_LTVV : case BC_LEVV : case BC_GTVV : case BC_GEVV : case BC_EQVV : case BC_NEVV :
-      {
-        std::uint8_t dest, a1, a2;
-        itr->GetOperand(&dest,&a1,&a2);
-        auto node = NewBinary(StackGet(a1), StackGet(a2), Binary::BytecodeToOperator(itr->opcode()),
-                                                          itr->bytecode_location());
-        StackSet(dest,node);
-      }
+    case BC_ADDVV:
+    case BC_SUBVV:
+    case BC_MULVV:
+    case BC_DIVVV:
+    case BC_MODVV:
+    case BC_POWVV:
+    case BC_LTVV :
+    case BC_LEVV :
+    case BC_GTVV :
+    case BC_GEVV :
+    case BC_EQVV :
+    case BC_NEVV :
+      temp = NewBinary(StackGet(a2), StackGet(a3), Binary::BytecodeToOperator(itr->opcode()),
+                                                   itr->bytecode_location());
+      StackSet(a1,temp);
       break;
-    case BC_EQSV: case BC_NESV:
-      {
-        std::uint8_t dest, a1, a2;
-        itr->GetOperand(&dest,&a1,&a2);
-        auto node = NewBinary(NewString(a1), StackGet(a2), Binary::BytecodeToOperator(itr->opcode()),
-                                                           itr->bytecode_location());
-        StackSet(dest,node);
-      }
+
+    case BC_EQSV:
+    case BC_NESV:
+      temp = NewBinary(NewString(a2), StackGet(a3), Binary::BytecodeToOperator(itr->opcode()),
+                                                    itr->bytecode_location());
+      StackSet(a1,temp);
       break;
-    case BC_EQVS: case BC_NEVS:
-      {
-        std::uint8_t dest, a1, a2;
-        itr->GetOperand(&dest,&a1,&a2);
-        auto node = NewBinary(StackGet(a1),NewString(a2), Binary::BytecodeToOperator(itr->opcode()),
-                                                          itr->bytecode_location());
-        StackSet(dest,node);
-      }
+
+    case BC_EQVS:
+    case BC_NEVS:
+      temp = NewBinary(StackGet(a2),NewString(a3), Binary::BytecodeToOperator(itr->opcode()),
+                                                   itr->bytecode_location());
+      StackSet(a1,temp);
       break;
-    case BC_AND: case BC_OR:
+
+    case BC_AND:
+    case BC_OR:
       return BuildLogic(itr);
 
     case BC_TERN:
       return BuildTernary(itr);
 
-    /* unary operation */
     case BC_NEGATE: case BC_NOT:
-      {
-        std::uint8_t dest, src;
-        itr->GetOperand(&dest,&src);
-        auto node = NewUnary(StackGet(src), Unary::BytecodeToOperator(itr->opcode()) ,
-                                            itr->bytecode_location());
-        StackSet(dest,node);
-      }
+      temp = NewUnary(StackGet(a2), Unary::BytecodeToOperator(itr->opcode()) , itr->bytecode_location());
+      StackSet(a1,temp);
       break;
-    /* move */
+
     case BC_MOVE:
-      {
-        std::uint8_t dest,src;
-        itr->GetOperand(&dest,&src);
-        StackSet(dest,StackGet(src));
-      }
+      StackSet(a1,StackGet(a2));
       break;
-    /* loading */
-    case BC_LOAD0: case BC_LOAD1: case BC_LOADN1:
+
+    case BC_LOAD0:
+    case BC_LOAD1:
+    case BC_LOADN1:
       {
-        std::uint8_t dest;
-        itr->GetOperand(&dest);
-        std::int32_t num = 0;
+        std::int32_t num;
         if(itr->opcode() == BC_LOAD1)
           num = 1;
         else if(itr->opcode() == BC_LOADN1)
           num = -1;
-        StackSet(dest,NewConstNumber(num));
+        else
+          num = 0;
+        StackSet(a1,NewConstNumber(num));
       }
       break;
+
     case BC_LOADR:
-      {
-        std::uint8_t dest,src;
-        itr->GetOperand(&dest,&src);
-        StackSet(dest,NewNumber(src));
-      }
+      StackSet(a1,NewNumber(a2));
       break;
+
     case BC_LOADSTR:
-      {
-        std::uint8_t dest,src;
-        itr->GetOperand(&dest,&src);
-        StackSet(dest,NewString(src));
-      }
+      StackSet(a1,NewString(a2));
       break;
+
     case BC_LOADTRUE: case BC_LOADFALSE:
-      {
-        std::uint8_t dest;
-        itr->GetOperand(&dest);
-        StackSet(dest,NewBoolean(itr->opcode() == BC_LOADTRUE));
-      }
+      StackSet(a1,NewBoolean(itr->opcode() == BC_LOADTRUE));
       break;
+
     case BC_LOADNULL:
-      {
-        std::uint8_t dest;
-        itr->GetOperand(&dest);
-        StackSet(dest,Nil::New(graph_));
-      }
+      StackSet(a1,Nil::New(graph_));
       break;
-    /* list */
+
     case BC_LOADLIST0:
-      {
-        std::uint8_t a1;
-        itr->GetOperand(&a1);
-        StackSet(a1,NewIRList(0));
-      }
+      StackSet(a1,NewIRList(0));
       break;
     case BC_LOADLIST1:
       {
-        std::uint8_t a1,a2;
-        itr->GetOperand(&a1,&a2);
         auto list = NewIRList(0);
         list->Add(StackGet(a2));
         StackSet(a1,list);
@@ -1366,8 +1731,6 @@ GraphBuilder::StopReason GraphBuilder::BuildBytecode( BytecodeIterator* itr ) {
       break;
     case BC_LOADLIST2:
       {
-        std::uint8_t a1,a2,a3;
-        itr->GetOperand(&a1,&a2,&a3);
         auto list = NewIRList(0);
         list->Add(StackGet(a2));
         list->Add(StackGet(a3));
@@ -1376,153 +1739,99 @@ GraphBuilder::StopReason GraphBuilder::BuildBytecode( BytecodeIterator* itr ) {
       break;
     case BC_NEWLIST:
       {
-        std::uint8_t a1,a2;
-        itr->GetOperand(&a1,&a2);
         auto list = NewIRList(a2);
         StackSet(a1,list);
       }
       break;
     case BC_ADDLIST:
       {
-        std::uint8_t a1,a2,a3;
-        itr->GetOperand(&a1,&a2,&a3);
         IRList* l = StackGet(a1)->AsIRList();
         for( std::size_t i = 0 ; i < a3 ; ++i ) {
           l->Add(StackGet(a2+i));
         }
       }
       break;
-    /* objects */
+
     case BC_LOADOBJ0:
-      {
-        std::uint8_t a1;
-        itr->GetOperand(&a1);
-        StackSet(a1,NewIRObject(0));
-      }
+      StackSet(a1,NewIRObject(0));
       break;
     case BC_LOADOBJ1:
       {
-        std::uint8_t a1,a2,a3;
-        itr->GetOperand(&a1,&a2,&a3);
         auto obj = NewIRObject(1);
         obj->Add(StackGet(a2),StackGet(a3));
         StackSet(a1,obj);
       }
       break;
     case BC_NEWOBJ:
-      {
-        std::uint8_t a1,a2;
-        itr->GetOperand(&a1,&a2);
-        StackSet(a1,NewIRObject(a2));
-      }
+      StackSet(a1,NewIRObject(a2));
       break;
     case BC_ADDOBJ:
       {
-        std::uint8_t a1,a2,a3;
-        itr->GetOperand(&a1,&a2,&a3);
         IRObject* obj = StackGet(a1)->AsIRObject();
         obj->Add(StackGet(a2),StackGet(a3));
       }
       break;
     case BC_LOADCLS:
-      {
-        std::uint8_t a1;
-        std::uint16_t a2;
-        itr->GetOperand(&a1,&a2);
-        StackSet(a1,LoadCls::New(graph_,a2));
-      }
+      StackSet(a1,LoadCls::New(graph_,a2));
       break;
-    /* property/upvalue/globals */
-    case BC_PROPGET: case BC_PROPGETSSO:
-      {
-        std::uint8_t a1,a2,a3;
-        itr->GetOperand(&a1,&a2,&a3);
-        Expr* key = (itr->opcode() == BC_PROPGET ? NewString(a3): NewSSO   (a3));
-        StackSet(a1,NewPGet(StackGet(a2),key,itr->bytecode_location()));
-      }
+
+    case BC_PROPGET:
+    case BC_PROPGETSSO:
+      temp = (itr->opcode() == BC_PROPGET ? NewString(a3): NewSSO   (a3));
+      StackSet(a1,NewPGet(StackGet(a2),temp,itr->bytecode_location()));
       break;
-    case BC_PROPSET: case BC_PROPSETSSO:
-      {
-        std::uint8_t a1,a2,a3;
-        itr->GetOperand(&a1,&a2,&a3);
-        Expr* key = (itr->opcode() == BC_PROPSET ? NewString(a2): NewSSO   (a2));
-        NewPSet(StackGet(a1),key,StackGet(a3),itr->bytecode_location());
-      }
+
+    case BC_PROPSET:
+    case BC_PROPSETSSO:
+      temp = (itr->opcode() == BC_PROPSET ? NewString(a2): NewSSO   (a2));
+      NewPSet(StackGet(a1),temp,StackGet(a3),itr->bytecode_location());
       break;
-    case BC_IDXGET: case BC_IDXGETI:
-      {
-        std::uint8_t a1,a2,a3;
-        itr->GetOperand(&a1,&a2,&a3);
-        Expr* key = (itr->opcode() == BC_IDXGET ? StackGet(a3) : NewConstNumber(a3));
-        StackSet(a1,NewIGet(StackGet(a2),key,itr->bytecode_location()));
-      }
+
+    case BC_IDXGET:
+    case BC_IDXGETI:
+      temp = (itr->opcode() == BC_IDXGET ? StackGet(a3) : NewConstNumber(a3));
+      StackSet(a1,NewIGet(StackGet(a2),temp,itr->bytecode_location()));
       break;
-    case BC_IDXSET: case BC_IDXSETI:
-      {
-        std::uint8_t a1,a2,a3;
-        itr->GetOperand(&a1,&a2,&a3);
-        Expr* key = (itr->opcode() == BC_IDXSET ? StackGet(a2) : NewConstNumber(a2));
-        NewISet(StackGet(a1),key,StackGet(a3),itr->bytecode_location());
-      }
+
+    case BC_IDXSET:
+    case BC_IDXSETI:
+      temp = (itr->opcode() == BC_IDXSET ? StackGet(a2) : NewConstNumber(a2));
+      NewISet(StackGet(a1),temp,StackGet(a3),itr->bytecode_location());
       break;
 
     case BC_UVGET:
-      {
-        std::uint8_t a1,a2;
-        itr->GetOperand(&a1,&a2);
-        NewUGet(a1,a2);
-      }
+      NewUGet(a1,a2);
       break;
+
     case BC_UVSET:
-      {
-        std::uint8_t a1,a2;
-        itr->GetOperand(&a1,&a2);
-        NewUSet(a1,a2);
-      }
+      NewUSet(a1,a2);
       break;
+
     case BC_GGET: case BC_GGETSSO:
-      {
-        std::uint8_t a1,a2;
-        itr->GetOperand(&a1,&a2);
-        NewGGet(a1,a2,(itr->opcode() == BC_GGETSSO));
-      }
-      break;
-    case BC_GSET: case BC_GSETSSO:
-      {
-        std::uint8_t a1,a2;
-        itr->GetOperand(&a1,&a2);
-        NewGSet(a1,a2,(itr->opcode() == BC_GSETSSO));
-      }
+      NewGGet(a1,a2,(itr->opcode() == BC_GGETSSO));
       break;
 
-    /* call/icall */
+    case BC_GSET:
+    case BC_GSETSSO:
+      NewGSet(a1,a2,(itr->opcode() == BC_GSETSSO));
+      break;
+
     case BC_ICALL:
-      {
-        std::uint8_t a1,a2,a3;
-        itr->GetOperand(&a1,&a2,&a3);
-        StackSet(kAccRegisterIndex,NewICall(a1,a2,a3,false,itr->bytecode_location()));
-      }
+    case BC_TICALL:
+      StackSet(kAccRegisterIndex,NewICall(a1,a2,a3,(itr->opcode() == BC_TICALL),itr->bytecode_location()));
       break;
 
-    case BC_TICALL:
-      {
-        std::uint8_t a1,a2,a3;
-        itr->GetOperand(&a1,&a2,&a3);
-        StackSet(kAccRegisterIndex,NewICall(a1,a2,a3,true ,itr->bytecode_location()));
-      }
-      break;
-    /* branch */
     case BC_JMPF:
       return BuildIf(itr);
-    /* loop */
-    case BC_FSTART: case BC_FESTART: case BC_FEVRSTART:
+
+    case BC_FSTART   :
+    case BC_FESTART  :
+    case BC_FEVRSTART:
       return BuildLoop(itr);
-    /* iterator dereference */
+
     case BC_IDREF:
       lava_debug(NORMAL,lava_verify(func_info().HasLoop()););
       {
-        std::uint8_t a1,a2,a3;
-        itr->GetOperand(&a1,&a2,&a3);
         ItrDeref*  iref = ItrDeref::New(graph_,StackGet(a3));
         Projection* key = Projection::New(graph_,iref,ItrDeref::PROJECTION_KEY);
         Projection* val = Projection::New(graph_,iref,ItrDeref::PROJECTION_VAL);
@@ -1531,27 +1840,25 @@ GraphBuilder::StopReason GraphBuilder::BuildBytecode( BytecodeIterator* itr ) {
       }
       break;
 
-    /* loop control */
-    case BC_BRK: case BC_CONT:
+    case BC_BRK:
+    case BC_CONT:
       lava_debug(NORMAL,lava_verify(func_info().HasLoop()););
       {
-        std::uint16_t pc;
-        itr->GetOperand(&pc);
         /** OffsetAt(pc) returns jump target address **/
-        Jump* jump = Jump::New(graph_,itr->OffsetAt(pc),region());
+        Jump* jump = Jump::New(graph_,itr->OffsetAt(a1),region());
         set_region(jump);
         if(itr->opcode() == BC_BRK)
-          func_info().current_loop().AddBreak   (jump,itr->OffsetAt(pc),*env());
+          func_info().current_loop().AddBreak   (jump,itr->OffsetAt(a1),*env());
         else
-          func_info().current_loop().AddContinue(jump,itr->OffsetAt(pc),*env());
+          func_info().current_loop().AddContinue(jump,itr->OffsetAt(a1),*env());
       }
       break;
 
-    /* return/return null */
-    case BC_RET: case BC_RETNULL:
+    case BC_RET:
+    case BC_RETNULL:
       {
-        Expr* retval = itr->opcode() == BC_RET ? StackGet(interpreter::kAccRegisterIndex) : Nil::New(graph_);
-        Return* ret= Return::New(graph_,retval,region());
+        Expr* retval = itr->opcode() == BC_RET ? StackGet(kAccRegisterIndex) : Nil::New(graph_);
+        Return* ret  = Return::New(graph_,retval,region());
         set_region(ret);
         func_info().return_list.push_back(ret);
       }
@@ -1566,8 +1873,7 @@ GraphBuilder::StopReason GraphBuilder::BuildBytecode( BytecodeIterator* itr ) {
   return STOP_SUCCESS;
 }
 
-GraphBuilder::StopReason
-GraphBuilder::BuildBasicBlock( BytecodeIterator* itr , const std::uint32_t* end_pc ) {
+GraphBuilder::StopReason GraphBuilder::BuildBasicBlock( BytecodeIterator* itr , const std::uint32_t* end_pc ) {
   while(itr->HasNext()) {
     if(itr->pc() == end_pc) return STOP_END;
     // save the opcode from the bytecode iterator
@@ -1599,7 +1905,7 @@ bool GraphBuilder::Build( const Handle<Prototype>& entry , Graph* graph ) {
 
   backup_environment(&root_env,this) {
     // enter into the top level function
-    FuncScope scope(this,entry,region,0);
+    FuncScope scope(this,entry,region);
     // setup the bytecode iterator
     auto itr = entry->GetBytecodeIterator();
     // set the current region
@@ -1626,25 +1932,6 @@ void GraphBuilder::BuildOSRLocalVariable() {
   }
 }
 
-GraphBuilder::StopReason GraphBuilder::GotoOSRBlockEnd( BytecodeIterator* itr , const std::uint32_t* end_pc ) {
-  StopReason ret;
-  lava_verify(itr->SkipTo(
-    [end_pc,&ret]( BytecodeIterator* itr ) {
-      if(itr->pc() == end_pc) {
-        ret = STOP_END;
-        return false;
-      } else if(itr->opcode() == BC_FEND1 || itr->opcode() == BC_FEND2 ||
-                itr->opcode() == BC_FEEND || itr->opcode() == BC_FEVREND) {
-        ret = STOP_SUCCESS;
-        return false;
-      } else {
-        return true;
-      }
-    }
-  ));
-  return ret;
-}
-
 GraphBuilder::StopReason GraphBuilder::BuildOSRLoop( BytecodeIterator* itr ) {
   lava_debug(NORMAL, lava_verify(func_info().IsOSR());
                      lava_verify(func_info().osr_start == itr->pc()););
@@ -1657,7 +1944,7 @@ void GraphBuilder::SetupOSRLoopCondition( BytecodeIterator* itr ) {
     std::uint8_t a1,a2,a3; std::uint32_t a4;
     itr->GetOperand(&a1,&a2,&a3,&a4);
     auto comparison = NewBinary(StackGet(a1), StackGet(a2), Binary::LT , itr->bytecode_location());
-    StackSet(interpreter::kAccRegisterIndex,comparison);
+    StackSet(kAccRegisterIndex,comparison);
   } else if(itr->opcode() == BC_FEND2) {
     std::uint8_t a1,a2,a3; std::uint32_t a4;
     itr->GetOperand(&a1,&a2,&a3,&a4);
@@ -1665,7 +1952,7 @@ void GraphBuilder::SetupOSRLoopCondition( BytecodeIterator* itr ) {
     auto addition   = NewBinary(StackGet(a1),StackGet(a3), Binary::ADD, itr->bytecode_location());
     StackSet(a1,addition);
     auto comparison = NewBinary(StackGet(a1),StackGet(a2), Binary::LT , itr->bytecode_location());
-    StackSet(interpreter::kAccRegisterIndex,comparison);
+    StackSet(kAccRegisterIndex,comparison);
   } else if(itr->opcode() == BC_FEEND) {
     std::uint8_t a1;
     std::uint16_t pc;
@@ -1710,9 +1997,9 @@ GraphBuilder::StopReason GraphBuilder::PeelOSRLoop( BytecodeIterator* itr ) {
         if(IsBlockJumpBytecode(opcode)) {
           // skip util we hit a loop end bytecode
           lava_verify( itr->SkipTo(
-              []( BytecodeIterator* itr ) {
-                return !IsLoopEndBytecode(itr->opcode());
-              }
+            []( BytecodeIterator* itr ) {
+              return !IsLoopEndBytecode(itr->opcode());
+            }
           ));
           break;
         }
@@ -1798,6 +2085,22 @@ GraphBuilder::BuildOSRStart( const Handle<Prototype>& entry ,  const std::uint32
 
 bool GraphBuilder::BuildOSR( const Handle<Prototype>& entry , const std::uint32_t* osr_start , Graph* graph ) {
   return BuildOSRStart(entry,osr_start,graph) == STOP_SUCCESS;
+}
+
+} // namespace
+
+bool BuildPrototype( const Handle<Script>& script , const Handle<Prototype>& prototype , const RuntimeTrace& rt ,
+                                                                                         Graph* output ) {
+  GraphBuilder gb(script,rt);
+  return gb.Build(prototype,output);
+}
+
+bool BuildPrototypeOSR( const Handle<Script>& script , const Handle<Prototype>& prototype ,
+                                                       const RuntimeTrace& rt ,
+                                                       const std::uint32_t* address ,
+                                                       Graph* graph ) {
+  GraphBuilder gb(script,rt);
+  return gb.BuildOSR(prototype,address,graph);
 }
 
 } // namespace hir

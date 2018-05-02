@@ -1,6 +1,6 @@
 #ifndef CBASE_FOLD_PHI_H_
 #define CBASE_FOLD_PHI_H_
-#include "hir.h"
+#include "src/cbase/hir.h"
 
 namespace lavascript {
 namespace cbase      {

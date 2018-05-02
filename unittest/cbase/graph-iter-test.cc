@@ -6,6 +6,8 @@
 #include <src/parser/ast/ast.h>
 #include <src/trace.h>
 
+#include <src/cbase/hir.h>
+#include <src/runtime-trace.h>
 #include <src/cbase/dominators.h>
 #include <src/cbase/graph-builder.h>
 #include <src/cbase/bytecode-analyze.h>
@@ -64,18 +66,15 @@ bool PrintIter( const char* source ) {
   sb.Dump(&dw);
 
   RuntimeTrace tt;
-  GraphBuilder gb(scp,tt);
   Graph graph;
 
-  if(!gb.Build(scp->main(),&graph)) {
+  if(!BuildPrototype(scp,scp->main(),tt,&graph)) {
     std::cerr<<"cannot build graph"<<std::endl;
     return false;
   }
 
   std::cerr << GraphPrinter::Print(graph) << std::endl;
-
-  for( ControlFlowRPOIterator itr(graph) ; itr.HasNext() ; itr.Move() ) {
-    auto cf = itr.value();
+  lava_foreach( auto &cf , ControlFlowRPOIterator(graph) ) {
     std::cerr<< cf->type_name() << std::endl;
   }
   return true;
@@ -85,26 +84,26 @@ bool PrintIter( const char* source ) {
 
 TEST(Graph,Iter) {
   ASSERT_TRUE(PrintIter(stringify(
-          var b = g;
-          if(b) {
-            if(c) {
-              if(d) {
-                return 1;
-              }
+    var b = g;
+    if(b) {
+      if(c) {
+        if(d) {
+          return 1;
+        }
 
-             }
+       }
 
-             for( var i = 10 ; 100 ; 1 ) {}
-             for( var j = 20 ; 100 ; 1 ) {}
+       for( var i = 10 ; 100 ; 1 ) {}
+       for( var j = 20 ; 100 ; 1 ) {}
 
-           } else {
-             for( var i = 10 ; 100 ; 1 ) {}
-             for( var j = 20 ; 100 ; 1 ) {}
-             return 2;
-           }
+     } else {
+       for( var i = 10 ; 100 ; 1 ) {}
+       for( var j = 20 ; 100 ; 1 ) {}
+       return 2;
+     }
 
-           return b;
-          )));
+     return b;
+  )));
 }
 
 } // namespace hir

@@ -96,10 +96,12 @@ class BytecodeIterator {
     return BytecodeLocation( pc(),offset() == 1 ? BytecodeLocation::ONE_BYTE :
                                                   BytecodeLocation::TWO_BYTE );
   }
-
   std::size_t offset() const { return offset_; }
   const BytecodeUsage& usage() const { return GetBytecodeUsage(opcode()); }
-
+  // get operand genernally, the caller does type mappings impossible to fail.
+  inline void FetchOperand( std::uint32_t*, std::uint32_t*, std::uint32_t*, std::uint32_t* );
+ public:
+  // get operand based on the type mappings, fail with assertion
   inline void GetOperand( std::uint8_t* , std::uint8_t* , std::uint8_t* , std::uint32_t* );
   inline void GetOperand( std::uint8_t* , std::uint8_t* , std::uint8_t* );
   inline void GetOperand( std::uint8_t* , std::uint8_t* );
@@ -107,9 +109,8 @@ class BytecodeIterator {
   inline void GetOperand( std::uint16_t* );
   inline void GetOperand( std::uint16_t* , std::uint8_t* );
   inline void GetOperand( std::uint8_t* , std::uint16_t* );
-
+  // get the operand based on the operand index
   void GetOperandByIndex( int index , std::uint32_t*);
-
   // Get current code position pointer
   const std::uint32_t* code_buffer() const { return code_buffer_; }
   const std::uint32_t* end() const { return code_buffer_ + cursor_; }
@@ -173,19 +174,13 @@ inline BytecodeIterator::BytecodeIterator( const std::uint32_t* code_buffer ,
   a3_         (),
   a4_         ()
 {
-  if(HasNext()) {
-    Decode();
-  }
+  if(HasNext()) Decode();
 }
 
 inline bool BytecodeIterator::Move() {
-  lava_debug(NORMAL,
-      lava_verify( HasNext() );
-      );
+  lava_debug(NORMAL, lava_verify( HasNext() ););
   cursor_ += offset_;
-  if(HasNext()) {
-    Decode();
-  }
+  if(HasNext()) Decode();
   return HasNext();
 }
 
@@ -203,12 +198,19 @@ inline BytecodeType BytecodeIterator::type() const {
   return type_;
 }
 
+inline void BytecodeIterator::FetchOperand( std::uint32_t* a1 , std::uint32_t* a2 ,
+                                                                std::uint32_t* a3 ,
+                                                                std::uint32_t* a4 ) {
+  lava_debug(NORMAL,lava_verify(HasNext()););
+  *a1 = a1_;
+  *a2 = a2_;
+  *a3 = a3_;
+  *a4 = a4_;
+}
+
 inline void BytecodeIterator::GetOperand( std::uint8_t* a1 , std::uint8_t* a2 ,
                                                              std::uint8_t* a3 ) {
-  lava_debug(NORMAL,
-      lava_verify(HasNext());
-      lava_verify(type_ == TYPE_D);
-    );
+  lava_debug(NORMAL, lava_verify(HasNext()); lava_verify(type_ == TYPE_D););
   *a1 = static_cast<std::uint8_t>(a1_);
   *a2 = static_cast<std::uint8_t>(a2_);
   *a3 = static_cast<std::uint8_t>(a3_);
@@ -217,10 +219,7 @@ inline void BytecodeIterator::GetOperand( std::uint8_t* a1 , std::uint8_t* a2 ,
 inline void BytecodeIterator::GetOperand( std::uint8_t* a1, std::uint8_t* a2,
                                                             std::uint8_t* a3,
                                                             std::uint32_t* a4 ) {
-  lava_debug(NORMAL,
-      lava_verify(HasNext());
-      lava_verify(type_ == TYPE_H);
-    );
+  lava_debug(NORMAL, lava_verify(HasNext()); lava_verify(type_ == TYPE_H););
   *a1 = static_cast<std::uint8_t>(a1_);
   *a2 = static_cast<std::uint8_t>(a2_);
   *a3 = static_cast<std::uint8_t>(a3_);
@@ -228,44 +227,29 @@ inline void BytecodeIterator::GetOperand( std::uint8_t* a1, std::uint8_t* a2,
 }
 
 inline void BytecodeIterator::GetOperand( std::uint8_t* a1 , std::uint8_t* a2 ) {
-  lava_debug(NORMAL,
-      lava_verify(HasNext());
-      lava_verify(type_ == TYPE_E);
-    );
+  lava_debug(NORMAL, lava_verify(HasNext()); lava_verify(type_ == TYPE_E););
   *a1 = static_cast<std::uint8_t>(a1_);
   *a2 = static_cast<std::uint8_t>(a2_);
 }
 
 inline void BytecodeIterator::GetOperand( std::uint8_t* a1 ) {
-  lava_debug(NORMAL,
-      lava_verify(HasNext());
-      lava_verify(type_ == TYPE_F);
-    );
+  lava_debug(NORMAL, lava_verify(HasNext()); lava_verify(type_ == TYPE_F););
   *a1 = static_cast<std::uint8_t>(a1_);
 }
 
 inline void BytecodeIterator::GetOperand( std::uint16_t* a1 ) {
-  lava_debug(NORMAL,
-      lava_verify(HasNext());
-      lava_verify(type_ == TYPE_G);
-    );
+  lava_debug(NORMAL, lava_verify(HasNext()); lava_verify(type_ == TYPE_G););
   *a1 = static_cast<std::uint16_t>(a1_);
 }
 
 inline void BytecodeIterator::GetOperand( std::uint16_t* a1 , std::uint8_t* a2 ) {
-  lava_debug(NORMAL,
-      lava_verify(HasNext());
-      lava_verify(type_ == TYPE_C);
-    );
+  lava_debug(NORMAL, lava_verify(HasNext()); lava_verify(type_ == TYPE_C););
   *a1 = static_cast<std::uint16_t>(a1_);
   *a2 = static_cast<std::uint8_t>(a2_);
 }
 
 inline void BytecodeIterator::GetOperand( std::uint8_t* a1 , std::uint16_t* a2 ) {
-  lava_debug(NORMAL,
-      lava_verify(HasNext());
-      lava_verify(type_ == TYPE_B);
-    );
+  lava_debug(NORMAL, lava_verify(HasNext()); lava_verify(type_ == TYPE_B););
   *a1 = static_cast<std::uint8_t>(a1_);
   *a2 = static_cast<std::uint16_t>(a2_);
 }
@@ -277,46 +261,44 @@ void DecodeBytecode( const std::uint32_t* address , Bytecode* bc, BytecodeType* 
                                                                   T3* a3,
                                                                   T4* a4,
                                                                   std::size_t* offset ) {
-
   std::uint32_t raw = *address;
-
   *bc = static_cast<Bytecode>( raw & 0xff );
   *type = GetBytecodeType(*bc);
 
   switch(*type) {
     case TYPE_B:
       *a1 = static_cast<T1>((raw & 0x0000ff00) >>8);
-      *a2 = static_cast<T2>((raw >>16));
+      *a2 = static_cast<T2>((raw >>16) & 0xffff);
       *offset = 1;
       break;
     case TYPE_C:
       *a1 = static_cast<T1>((raw & 0x00ffff00)>>8);
-      *a2 = static_cast<T2>((raw >> 24));
+      *a2 = static_cast<T2>((raw >> 24)& 0xff);
       *offset = 1;
       break;
     case TYPE_D:
-      *a1 = static_cast<T1> ((raw>>8));
-      *a2 = static_cast<T2> ((raw>>16));
-      *a3 = static_cast<T3> ((raw>>24));
+      *a1 = static_cast<T1> ((raw>>8 ) & 0xff);
+      *a2 = static_cast<T2> ((raw>>16) & 0xff);
+      *a3 = static_cast<T3> ((raw>>24) & 0xff);
       *offset = 1;
       break;
     case TYPE_E:
-      *a1 = static_cast<T1> ((raw>>8));
-      *a2 = static_cast<T2> ((raw>>16));
+      *a1 = static_cast<T1> ((raw>>8 ) & 0xff);
+      *a2 = static_cast<T2> ((raw>>16) & 0xff);
       *offset = 1;
       break;
     case TYPE_F:
-      *a1 = static_cast<T1> ((raw>>8));
+      *a1 = static_cast<T1> ((raw>>8 ) & 0xff);
       *offset = 1;
       break;
     case TYPE_G:
-      *a1 = static_cast<T1> ((raw>>8));
+      *a1 = static_cast<T1> ((raw>>8 ) & 0xffff);
       *offset = 1;
       break;
     case TYPE_H:
-      *a1 = static_cast<T1> ((raw>>8));
-      *a2 = static_cast<T2> ((raw>>16));
-      *a3 = static_cast<T3> ((raw>>24));
+      *a1 = static_cast<T1> ((raw>>8 ) & 0xff);
+      *a2 = static_cast<T2> ((raw>>16) & 0xff);
+      *a3 = static_cast<T3> ((raw>>24) & 0xff);
       *a4 = address[1];
       *offset = 2;
       break;

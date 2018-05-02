@@ -1,5 +1,5 @@
 #include "fold-arith.h"
-#include "type-inference.h"
+#include "src/cbase/type-inference.h"
 #include "src/bits.h"
 #include <cmath>
 namespace lavascript {

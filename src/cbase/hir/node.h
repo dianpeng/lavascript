@@ -204,7 +204,6 @@ CBASE_HIR_LIST(__)
 #undef __ // __
 
 class Graph;
-class GraphBuilder;
 class Node;
 class Test;
 class ReadEffect;

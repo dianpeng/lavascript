@@ -3,8 +3,6 @@ template<>
 struct MapIRClassToIRType<MemoryNode> {
   static bool Test( IRType type ) {
     return type == HIR_ARG ||
-           type == HIR_GGET||
-           type == HIR_UGET||
            type == HIR_LIST||
            type == HIR_OBJECT;
   }
@@ -16,7 +14,9 @@ struct MapIRClassToIRType<MemoryWrite> {
     return type == HIR_ISET ||
            type == HIR_PSET ||
            type == HIR_OBJECT_SET ||
-           type == HIR_LIST_SET;
+           type == HIR_LIST_SET   ||
+           type == HIR_GSET       ||
+           type == HIR_USET;
   }
 };
 
@@ -26,7 +26,9 @@ struct MapIRClassToIRType<MemoryRead> {
     return type == HIR_IGET ||
            type == HIR_PGET ||
            type == HIR_OBJECT_GET ||
-           type == HIR_LIST_GET;
+           type == HIR_LIST_GET   ||
+           type == HIR_GGET       ||
+           type == HIR_UGET;
   }
 };
 

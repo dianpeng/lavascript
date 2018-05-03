@@ -43,8 +43,8 @@ RootEffectGroup::RootEffectGroup( ::lavascript::zone::Zone* zone , WriteEffect* 
 
 RootEffectGroup::RootEffectGroup( const RootEffectGroup& that ):
   EffectGroup(that),
-  list_      (that.list_),
-  object_    (that.object_)
+  list_      (NULL),
+  object_    (NULL)
 {}
 
 void RootEffectGroup::UpdateWriteEffect( WriteEffect* effect ) {
@@ -103,19 +103,32 @@ Effect::Effect( const Effect& that ):
   root_  (that.root_),
   list_  (that.list_),
   object_(that.object_)
-{}
+{
+  root_.set_list    (&list_);
+  root_.set_object  (&object_);
+  list_.set_parent  (&root_);
+  object_.set_parent(&root_);
+}
 
 void Effect::Merge( const Effect& lhs , const Effect& rhs , Effect* output , Graph* graph ,
                                                                              ControlFlow* region ) {
-  auto lhs_root = lhs.root();
-  auto rhs_root = rhs.root();
-  // create an effect phi to join effect created by the root node
-  auto effect_phi = WriteEffectPhi::New(graph,lhs_root->write_effect(),rhs_root->write_effect(),region);
+  auto lhs_eff = lhs.root()->write_effect();
+  auto rhs_eff = rhs.root()->write_effect();
 
-  // propogate the effect
-  output->root_.PropagateWriteEffect  (effect_phi);
-  output->list_.PropagateWriteEffect  (effect_phi);
-  output->object_.PropagateWriteEffect(effect_phi);
+  if(!lhs_eff->IsNoWriteEffect() || !rhs_eff->IsNoWriteEffect()) {
+    // create an effect phi to join effect created by the root node
+    auto effect_phi = WriteEffectPhi::New(graph,lhs_eff,rhs_eff,region);
+    // propogate the effect
+    output->root_.PropagateWriteEffect  (effect_phi);
+    output->list_.PropagateWriteEffect  (effect_phi);
+    output->object_.PropagateWriteEffect(effect_phi);
+  } else {
+    // propogate the no_write effect to output effect group since lhs and rhs
+    // are both no write effect group or basically means they are not needed
+    output->root_.PropagateWriteEffect  (lhs_eff);
+    output->list_.PropagateWriteEffect  (lhs_eff);
+    output->object_.PropagateWriteEffect(lhs_eff);
+  }
 }
 
 } // namespace hir

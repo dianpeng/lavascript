@@ -10,11 +10,17 @@ namespace hir        {
 // abort at current stage in the graph.
 class Trap : public ControlFlow {
  public:
+  inline static Trap* New( Graph* , Expr*  , Checkpoint* , ControlFlow* );
+  // create a Trap node that always trap or its condition is false literal
   inline static Trap* New( Graph* , Checkpoint* , ControlFlow* );
-  Checkpoint* checkpoint() const { return operand_list()->First()->AsCheckpoint(); }
-  Trap( Graph* graph , std::uint32_t id , Checkpoint* cp , ControlFlow* region ):
+
+  Expr*       condition () const { return operand_list()->First(); }
+  Checkpoint* checkpoint() const { return operand_list()->Last ()->AsCheckpoint(); }
+
+  Trap( Graph* graph , std::uint32_t id , Expr* condition , Checkpoint* cp , ControlFlow* region ):
     ControlFlow(HIR_TRAP,id,graph,region)
   {
+    AddOperand(condition);
     AddOperand(cp);
   }
  private:

@@ -39,19 +39,6 @@ class Success : public ControlFlow {
   LAVA_DISALLOW_COPY_AND_ASSIGN(Success)
 };
 
-class Return : public ControlFlow {
- public:
-  inline static Return* New( Graph* , Expr* , ControlFlow* );
-  Expr* value() const { return operand_list()->First(); }
-  Return( Graph* graph , std::uint32_t id , Expr* value , ControlFlow* region ):
-    ControlFlow(HIR_RETURN,id,graph,region)
-  {
-    AddOperand(value);
-  }
- private:
-  LAVA_DISALLOW_COPY_AND_ASSIGN(Return)
-};
-
 // Special node of the graph
 class Start : public ControlFlow {
  public:

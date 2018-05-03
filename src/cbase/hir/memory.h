@@ -10,10 +10,8 @@ namespace hir        {
 // This node represents those nodes that is 1) mutable and 2) stay on heap or potentially
 // stay on heap.
 // 1. Arg
-// 2. GGet
-// 3. UGet
-// 4. IRList
-// 5. IRObject
+// 2. IRList
+// 3. IRObject
 //
 // The above nodes are memory node since the mutation on these objects generates a observable
 // side effect which must be serialized. For each operation , we will find its memory node

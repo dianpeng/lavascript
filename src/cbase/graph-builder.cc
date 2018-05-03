@@ -159,10 +159,11 @@ class GraphBuilder {
     std::vector<Guard*>       guard_list ;
     BytecodeAnalyze           bc_analyze;
     const std::uint32_t*      osr_start;
+    bool                      tcall;     // whether it is a tail call
 
    public:
-    inline FuncInfo( const Handle<Prototype>& , ControlFlow* , std::uint32_t );
-    inline FuncInfo( const Handle<Prototype>& , ControlFlow* , const std::uint32_t* );
+    inline FuncInfo( const Handle<Prototype>& , ControlFlow* , std::uint32_t , bool tcall = false );
+    inline FuncInfo( const Handle<Prototype>& , ControlFlow* , const std::uint32_t* , bool tcall = false );
     inline FuncInfo( FuncInfo&& );
 
     bool IsOSR                        () const { return osr_start != NULL; }
@@ -209,6 +210,7 @@ class GraphBuilder {
  public: // Current FuncInfo
   std::uint32_t method_index()         const { return static_cast<std::uint32_t>(func_info_.size()); }
   FuncInfo& func_info()                      { return func_info_.back(); }
+  FuncInfo& top_func ()                      { return func_info_.front();}
   const FuncInfo& func_info()          const { return func_info_.back(); }
   bool IsTopFunction()                 const { return func_info_.size() == 1; }
   const Handle<Prototype>& prototype() const { return func_info().prototype; }
@@ -314,7 +316,7 @@ class GraphBuilder {
 
   // Build branch IR graph
   void InsertPhi( Environment* , Environment* , ControlFlow* );
-  void GeneratePhi( ValueStack* , const ValueStack& , const ValueStack& , std::size_t , ControlFlow* );
+  void GeneratePhi( ValueStack* , const ValueStack& , const ValueStack& , std::size_t , std::size_t , ControlFlow* );
 
   StopReason BuildIf     ( BytecodeIterator* itr );
   StopReason BuildIfBlock( BytecodeIterator* , const std::uint32_t* );
@@ -340,6 +342,18 @@ class GraphBuilder {
   // Iterate until we see FEEND/FEND1/FEND2/FEVREND
   StopReason BuildLoopBlock  ( BytecodeIterator* itr );
   void PatchUnconditionalJump( UnconditionalJumpList* , ControlFlow* , const BytecodeLocation& );
+ private:
+  // ----------------------------------------------------------------------------------
+  // Inline
+  // ----------------------------------------------------------------------------------
+  bool IsInlineFrame() const { return func_info_.size() > 1; }
+
+  // try to do an inline, if we cannot inline it, it will fallback to generate a call node.
+  // otherwise, it will inline the function into the graph directly
+  bool NewCall        ( BytecodeIterator* );
+  bool NewCallFallback( BytecodeIterator* );
+  bool DoInline       ( const Handle<Closure>& , BytecodeIterator* );
+
  private:
   // Zone owned by the Graph object, and it is supposed to be stay around while the
   // optimization happenened
@@ -376,7 +390,8 @@ class GraphBuilder {
 //
 // --------------------------------------------------------------------------
 inline GraphBuilder::FuncInfo::FuncInfo( const Handle<Prototype>& proto , ControlFlow* start_region ,
-                                                                          std::uint32_t b ):
+                                                                          std::uint32_t b ,
+                                                                          bool tcall ):
   prototype         (proto),
   region            (start_region),
   base              (b),
@@ -385,11 +400,13 @@ inline GraphBuilder::FuncInfo::FuncInfo( const Handle<Prototype>& proto , Contro
   return_list       (),
   guard_list        (),
   bc_analyze        (proto),
-  osr_start         (NULL)
+  osr_start         (NULL),
+  tcall             (tcall)
 {}
 
 inline GraphBuilder::FuncInfo::FuncInfo( const Handle<Prototype>& proto , ControlFlow* start_region ,
-                                                                          const std::uint32_t* ostart ):
+                                                                          const std::uint32_t* ostart ,
+                                                                          bool tcall ):
   prototype         (proto),
   region            (start_region),
   base              (0),
@@ -398,7 +415,8 @@ inline GraphBuilder::FuncInfo::FuncInfo( const Handle<Prototype>& proto , Contro
   return_list       (),
   guard_list        (),
   bc_analyze        (proto),
-  osr_start         (ostart)
+  osr_start         (ostart),
+  tcall             (tcall)
 {}
 
 inline GraphBuilder::FuncInfo::FuncInfo( FuncInfo&& that ):
@@ -477,6 +495,7 @@ Expr* GraphBuilder::Environment::GetUpValue( std::uint8_t index ) {
     return v;
   else {
     auto uget = UGet::New(gb_->graph_,index,gb_->method_index());
+    effect()->root()->AddReadEffect(uget);
     upvalue_[index] = uget;
     return uget;
   }
@@ -484,6 +503,7 @@ Expr* GraphBuilder::Environment::GetUpValue( std::uint8_t index ) {
 
 void GraphBuilder::Environment::SetUpValue( std::uint8_t index , Expr* value ) {
   auto uset = USet::New(gb_->graph_,index,gb_->method_index(),value);
+  effect()->root()->UpdateWriteEffect(uset);
   gb_->region()->AddPin(uset);
   upvalue_[index] = value;
 }
@@ -501,6 +521,7 @@ Expr* GraphBuilder::Environment::GetGlobal ( const void* key , std::size_t lengt
     return itr->value;
   } else {
     auto gget = GGet::New(gb_->graph_,key_provider());
+    effect()->root()->AddReadEffect(gget);
     global_.push_back(GlobalVar(key,length,gget));
     return gget;
   }
@@ -510,6 +531,7 @@ void GraphBuilder::Environment::SetGlobal( const void* key , std::size_t length 
                                                              const KeyProvider& key_provider ,
                                                              Expr* value ) {
   auto gset = GSet::New(gb_->graph_,key_provider(),value);
+  effect()->root()->UpdateWriteEffect(gset);
   gb_->region()->AddPin(gset);
 
   auto itr = std::find(global_.begin(),global_.end(),Str(key,length));
@@ -542,6 +564,14 @@ class GraphBuilder::FuncScope {
     gb_->env()->ExitFunctionScope(gb_->func_info_.back());
     gb_->func_info_.pop_back();
   }
+ private:
+  GraphBuilder* gb_;
+};
+
+class GraphBuilder::InlineScope {
+ public:
+  InlineScope( GraphBuilder* , const Handle<Closure>& , std::size_t new_base , bool tcall , ControlFlow* );
+  ~InlineScope();
  private:
   GraphBuilder* gb_;
 };
@@ -610,10 +640,58 @@ GraphBuilder::FuncScope::FuncScope( GraphBuilder* gb , const Handle<Prototype>& 
   gb->env()->PopulateArgument(gb->func_info());
 }
 
-// ===============================================================================
-// Graph Builder
-// ===============================================================================
+GraphBuilder::InlineScope::InlineScope( GraphBuilder* gb , const Handle<Closure>& cls ,
+                                                           std::size_t new_base ,
+                                                           bool tcall,
+                                                           ControlFlow* region ):
+  gb_(gb)
+{
+  auto proto = cls->prototype();
+  auto fi = FuncInfo(proto,region,new_base,tcall);  // get a new FuncInfo object
+  gb->func_info_.push_back(fi);                     // create a new function frame in stack
+  gb->env()->EnterFunctionScope(fi);                // prepare all the context object
 
+  // we don't need to do anything, the argument are in place and upvalue or global
+  // variable needs to be treated as memory read/write node so don't need to populate.
+  // we can do a specialized closure inline basically push all the upvalue into its
+  // position but it is relatively hard. one thing is to let bytecode analyzer pass
+  // to analyze a function whether modify its upvalue or not, then for none modified
+  // upvalue just push down for deep inline since they will not be modified througout
+  // the call. this will be done in the future.
+}
+
+GraphBuilder::InlineScope::~InlineScope() {
+  gb_->env()->ExitFunctionScope(gb_->func_info_.back());
+  gb_->func_info_.pop_back();
+}
+
+// ===============================================================================
+// Inline
+// ===============================================================================
+bool GraphBuilder::NewCall( BytecodeIterator* itr ) {
+  lava_debug(NORMAL,lava_verify(itr->opcode() == BC_CALL || itr->opcode() == BC_TCALL));
+
+  // get the closure out of the tracer and check whether we can do inline or not.
+  // if it is an extension ,then we cannot do anything but have to generate a
+  // real call afterwards
+  auto func = StackGet(input);
+  auto tt   = runtime_trace_.GetTrace( itr->pc() );
+  if(tt) {
+    auto &v = tt->data[0];
+    if(v.IsClosure()) {
+      auto proto = v.GetClosure()->prototype();
+      if(inliner_.ShouldInline(func_info_.size(),proto)) {
+        return DoInline(v,itr);
+      }
+    }
+  }
+  // cannot do anything, needs to do a dynamic call dispatch
+  return NewCallFallback(itr);
+}
+
+// ===============================================================================
+// Constant
+// ===============================================================================
 Expr* GraphBuilder::NewConstNumber( std::int32_t ivalue ) {
   return Float64::New(graph_,static_cast<double>(ivalue));
 }
@@ -1133,18 +1211,14 @@ bool GraphBuilder::IsTraceTypeSame( TypeKind tp , std::size_t index , const Byte
 // ====================================================================
 void GraphBuilder::PatchExitNode( ControlFlow* succ , ControlFlow* fail ) {
   // patch succuess node and return value
-  {
-    auto return_value = Phi::New(graph_,succ);
-    for( auto &e : func_info().return_list ) {
-      return_value->AddOperand(e->value());
-      succ->AddBackwardEdge(e);
-    }
+  auto return_value = Phi::New(graph_,succ);
+  for( auto &e : func_info().return_list ) {
+    return_value->AddOperand(e->value());
+    succ->AddBackwardEdge(e);
   }
   // patch all the failed node
-  {
-    for( auto &e : func_info().guard_list ) {
-      fail->AddOperand(e);
-    }
+  for( auto &e : func_info().guard_list ) {
+    fail->AddOperand(e);
   }
 }
 
@@ -1154,10 +1228,10 @@ void GraphBuilder::PatchExitNode( ControlFlow* succ , ControlFlow* fail ) {
 
 void GraphBuilder::GeneratePhi( ValueStack* dest , const ValueStack& lhs , const ValueStack& rhs ,
                                                                            std::size_t base ,
+                                                                           std::size_t limit,
                                                                            ControlFlow* region ) {
-  const std::size_t sz = std::min(lhs.size() , rhs.size());
-
-  for( std::size_t i = base ; i < sz ; ++i ) {
+  const std::size_t sz = std::min(lhs.size(),rhs.size());
+  for( std::size_t i = base ; i < sz && limit != 0 ; ++i , --limit ) {
     Expr* l = lhs[i];
     Expr* r = rhs[i];
     if(l && r) dest->at(i) = NewPhi(l,r,region);
@@ -1169,9 +1243,10 @@ void GraphBuilder::InsertPhi( Environment* lhs , Environment* rhs , ControlFlow*
   // 1. generate merge for both region's root effect group
   Effect::Merge(*lhs->effect(),*rhs->effect(),env()->effect(),graph_,region);
   // 2. generate phi for all the stack value
-  GeneratePhi(vstk() ,*lhs->stack()  ,*rhs->stack()  ,func_info().base ,region);
+  GeneratePhi(vstk() ,*lhs->stack()  ,*rhs->stack()  ,func_info().base ,
+      func_info().prototype->max_local_var_size(), region);
   // 3. generate phi for all the upvalue
-  GeneratePhi(upval(),*lhs->upvalue(),*rhs->upvalue(),0                ,region);
+  GeneratePhi(upval(),*lhs->upvalue(),*rhs->upvalue(),0                , kMaxUpValueSize , region);
   // 4. generate phi for all the global values
   {
     Environment::GlobalMap temp; temp.reserve( lhs->global()->size() );
@@ -1180,26 +1255,21 @@ void GraphBuilder::InsertPhi( Environment* lhs , Environment* rhs , ControlFlow*
       auto itr = std::find(rhs->global()->begin(),rhs->global()->end(),e.name);
       Expr* lnode = NULL;
       Expr* rnode = NULL;
-      if(itr == rhs->global()->end()) {
-        lnode = e.value;
-        rnode = GGet::New(graph_,NewString(e.name));
-      } else {
+      if(itr != rhs->global()->end()) {
         lnode = e.value;
         rnode = itr->value;
+        // add it to the temporarily list
+        temp.push_back(Environment::GlobalVar(e.name,NewPhi(lnode,rnode,region)));
       }
-      auto phi = NewPhi(lnode,rnode,region);
-      // add it to the temporarily list
-      temp.push_back(Environment::GlobalVar(e.name,phi));
+      // if this global variable is not found, then just do nothing since this
+      // brings this global variable back to the original state which requires
+      // a global variable read from memory
     }
-    // scanning the right hand side global variables
-    for( auto &e : *rhs->global() ) {
-      auto itr = std::find(lhs->global()->begin(),lhs->global()->end(),e.name);
-      if(itr == lhs->global()->end()) {
-        auto phi = NewPhi(GGet::New(graph_,NewString(e.name)),e.value,region);
-        // add a node when it is not scanned by the lhs
-        temp.push_back(Environment::GlobalVar(e.name,phi));
-      }
-    }
+
+    // for other globals that appear in rhs , we don't do anything for the new global
+    // variable array, then all of them becomes unclear state again and require a
+    // GGet node generated whenever a query/lookup for those global variable comes.
+
     // use the new global list
     env()->global_ = std::move(temp);
   }
@@ -1857,10 +1927,21 @@ GraphBuilder::StopReason GraphBuilder::BuildBytecode( BytecodeIterator* itr ) {
     case BC_RET:
     case BC_RETNULL:
       {
+        Return* ret;
         Expr* retval = itr->opcode() == BC_RET ? StackGet(kAccRegisterIndex) : Nil::New(graph_);
-        Return* ret  = Return::New(graph_,retval,region());
-        set_region(ret);
-        func_info().return_list.push_back(ret);
+
+        // generate a jump value node instead of return node when we are in
+        // 1) inline frame
+        // 2) not a tail call since tail call should directly return
+        if(IsInlineFrame() && !func_info().tcall) {
+          ret  = JumpValue::New(graph_,retval,region());
+          set_region(ret);
+          func_info().return_list.push_back(ret);
+        } else {
+          ret  = Return::New   (graph_,retval,region());
+          set_region(ret);
+          top_func ().return_list.push_back(ret);
+        }
       }
       break;
 

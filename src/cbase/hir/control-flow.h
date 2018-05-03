@@ -18,6 +18,7 @@ class ControlFlow : public Node {
     lava_debug(NORMAL,lava_verify(backward_edge()->size() == 1););
     return backward_edge()->First();
   }
+
   // Backward(Successor) ---------------------------------------------------
   const RegionList* backward_edge() const {
     return &backward_edge_;
@@ -29,6 +30,15 @@ class ControlFlow : public Node {
   void RemoveBackwardEdge( ControlFlow* );
   void RemoveBackwardEdge( std::size_t index );
   void ClearBackwardEdge () { backward_edge_.Clear(); }
+
+  // shortcuts for backward_edge
+  ControlFlow* In( std::size_t index ) const { return backward_edge()->Index(index); }
+
+  // check if a region is a merge region or not. A merge region is a region
+  // that points back to at least 2 region. Basically sizeof backward_edge
+  // list must be larger or equal than 2
+  bool IsMergeRegion() const { return backward_edge()->size() >= 2; }
+
   // Forward(Predecessor) --------------------------------------------------
   const RegionList* forward_edge() const {
     return &forward_edge_;
@@ -40,6 +50,10 @@ class ControlFlow : public Node {
   void RemoveForwardEdge( ControlFlow* edge );
   void RemoveForwardEdge( std::size_t index );
   void ClearForwardEdge () { forward_edge_.Clear(); }
+
+  // shortcuts for forward_edge
+  ControlFlow* Out( std::size_t index ) const { return forward_edge()->Index(index); }
+
   // Reference List ---------------------------------------------------------
   const RegionRefList* ref_list() const {
     return &ref_list_;
@@ -48,7 +62,8 @@ class ControlFlow : public Node {
   void AddRef( ControlFlow* who_uses_me , const RegionListIterator& iter ) {
     ref_list_.PushBack(zone(),RegionRef(iter,who_uses_me));
   }
-  // Pin -------------------------------------------------------------
+
+  // Pin --------------------------------------------------------------------
   // A list that is used to record those operations that cannot be categorized
   // as input/data dependency. Things like side effect operation, function call,
   // property set and index set , even checkpoint
@@ -64,7 +79,8 @@ class ControlFlow : public Node {
     pin_expr_.Remove(ee.iterator);
   }
   void MovePin( ControlFlow* );
-  // OperandList -----------------------------------------------------------
+
+  // OperandList -------------------------------------------------------------
   // All control flow's related data input should be stored via this list
   // since this list supports expression substitution/replacement. It is
   // used in all optimization pass
@@ -76,9 +92,10 @@ class ControlFlow : public Node {
     node->AddRef(this,itr);
   }
   bool RemoveOperand( Expr* node );
+
   // Clear all the operand from this control flow node
   void ClearOperand ();
- public:
+
   // Replace *this* with the input node. Internally this function only
   // modifies the input and output edge for the input node. For operand
   // list, the input node's operand list will be used.

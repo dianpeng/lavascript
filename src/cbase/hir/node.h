@@ -167,6 +167,7 @@ namespace hir        {
   __(Fail       ,FAIL       ,"fail"       ,Leaf  ,NoEffect)           \
   __(Success    ,SUCCESS    ,"success"    ,NoLeaf,NoEffect)           \
   __(Return     ,RETURN     ,"return"     ,NoLeaf,NoEffect)           \
+  __(JumpValue  ,JUMP_VALUE ,"jump_value" ,NoLeaf,NoEffect)           \
   __(Region     ,REGION     ,"region"     ,NoLeaf,NoEffect)           \
   __(Trap       ,TRAP       ,"trap"       ,NoLeaf,NoEffect)           \
   /* osr */                                                           \

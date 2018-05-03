@@ -167,7 +167,7 @@ inline const Test* Node::AsTest() const {
 }
 
 inline bool Expr::IsReplaceable( const Expr* that ) const {
-  return !HasDependency() && Equal(that);
+  return IsIdentical(that) || (!HasDependency() && Equal(that));
 }
 
 inline void Expr::AddOperand( Expr* node ) {
@@ -687,6 +687,10 @@ inline Return* Return::New( Graph* graph , Expr* value , ControlFlow* parent ) {
   return graph->zone()->New<Return>(graph,graph->AssignID(),value,parent);
 }
 
+inline JumpValue* JumpValue::New( Graph* graph , Expr* value , ControlFlow* parent ) {
+  return graph->zone()->New<JumpValue>(graph,graph->AssignID(),value,parent);
+}
+
 inline Start* Start::New( Graph* graph ) {
   return graph->zone()->New<Start>(graph,graph->AssignID());
 }
@@ -697,6 +701,10 @@ inline End* End::New( Graph* graph , Success* s , Fail* f ) {
 
 inline Trap* Trap::New( Graph* graph , Checkpoint* cp , ControlFlow* region ) {
   return graph->zone()->New<Trap>(graph,graph->AssignID(),cp,region);
+}
+
+inline Trap* Trap::New( Graph* graph , Expr* condition , Checkpoint* cp , ControlFlow* region ) {
+  return graph->zone()->New<Trap>(graph,graph->AssignID(),condition,cp,region);
 }
 
 inline OSRStart* OSRStart::New( Graph* graph ) {

@@ -98,6 +98,7 @@ Checkpoint* ReadEffect::GetCheckpoint() const {
 
 bool ReadEffect::VisitDependency( const DependencyVisitor& visitor ) const {
   if(!effect_edge_.IsEmpty()) return visitor(effect_edge_.node);
+  return true;
 }
 
 bool WriteEffect::VisitDependency( const DependencyVisitor& visitor ) const {

@@ -93,7 +93,7 @@ void DotPrinter::RenderControlFlow( const std::string& region_name ,
   lava_foreach( auto node , region->operand_list()->GetForwardIterator() ) {
     auto name = GetNodeName(node);
     RenderExpr(name,node);
-    Indent(1) << region_name << " -> " << name << "[color=blue style=bold]\n";
+    Indent(1) << region_name << " -> " << name << "[color=black style=bold]\n";
   }
 
   // for all the pined node
@@ -118,7 +118,7 @@ void DotPrinter::RenderEdge( ControlFlow* from , ControlFlow* to ) {
     RenderControlFlow(to_name,to);
   }
 
-  Indent(1) << from_name << " -> " << to_name << "[color=black style=bold]\n";
+  Indent(1) << from_name << " -> " << to_name << "[color=blue style=bold]\n";
 }
 
 void DotPrinter::RenderExpr( const std::string& name , Expr* node ) {
@@ -487,7 +487,7 @@ void DotPrinter::RenderExpr( const std::string& name , Expr* node ) {
 
   // effect list node
   node->VisitDependency( [&] ( Expr* n ) {
-    Indent(1) << name << " -> " << GetNodeName(n) << "[label=\"dep\" style=filled color=blue ]\n";
+    Indent(1) << name << " -> " << GetNodeName(n) << "[ style=bold color=green ]\n";
     return true;
   });
 }

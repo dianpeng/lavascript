@@ -9,13 +9,13 @@ namespace hir        {
 // -------------------------------------------------------------------------
 // global set/get (side effect)
 // -------------------------------------------------------------------------
-class GGet : public MemoryNode {
+class GGet : public MemoryRead {
  public:
   inline static GGet* New( Graph* , Expr* );
   Expr* key() const { return operand_list()->First(); }
 
   GGet( Graph* graph , std::uint32_t id , Expr* name ):
-    MemoryNode (HIR_GGET,id,graph)
+    MemoryRead (HIR_GGET,id,graph)
   {
     AddOperand(name);
   }
@@ -23,13 +23,13 @@ class GGet : public MemoryNode {
   LAVA_DISALLOW_COPY_AND_ASSIGN(GGet)
 };
 
-class GSet : public Expr {
+class GSet : public MemoryWrite {
  public:
   inline static GSet* New( Graph* , Expr* key , Expr* value );
   Expr* key () const { return operand_list()->First(); }
   Expr* value()const { return operand_list()->Last() ; }
   GSet( Graph* graph , std::uint32_t id , Expr* key , Expr* value ):
-    Expr(HIR_GSET,id,graph)
+    MemoryWrite (HIR_GSET,id,graph)
   {
     AddOperand(key);
     AddOperand(value);

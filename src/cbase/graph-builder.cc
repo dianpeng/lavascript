@@ -10,12 +10,14 @@
 #include "fold/fold-memory.h"
 
 #include "src/util.h"
-#include "src/interpreter/intrinsic-call.h"
 #include "src/objects.h"
-#include "src/zone/zone.h"
 #include "src/runtime-trace.h"
+#include "src/interpreter/intrinsic-call.h"
 #include "src/interpreter/bytecode.h"
 #include "src/interpreter/bytecode-iterator.h"
+
+#include "src/zone/zone.h"
+#include "src/zone/stl.h"
 
 #include <cstdint>
 #include <string>
@@ -30,7 +32,8 @@ namespace cbase      {
 namespace hir        {
 namespace            {
 
-typedef std::vector<Expr*> ValueStack;
+typedef zone::stl::ZoneVector<Expr*> ValueStack;
+
 using namespace ::lavascript::interpreter;
 
 
@@ -56,17 +59,19 @@ class GraphBuilder {
       GlobalVar( const Str& k , Expr* v ) : name(k) , value(v) {}
       bool operator == ( const Str& k ) const { return Str::Cmp(name,k) == 0; }
     };
-    typedef std::vector<GlobalVar>     GlobalMap;
-    typedef std::vector<Expr*>         UpValueVector;
-    typedef std::function<Expr* ()>    KeyProvider;
+    typedef zone::stl::ZoneVector<GlobalVar>     GlobalMap;
+    typedef zone::stl::ZoneVector<Expr*>         UpValueVector;
+    typedef zone::stl::ZoneVector<UpValueVector> UpValueVectorStack;
+    typedef std::function<Expr* ()>              KeyProvider;
    public:
-    Environment( GraphBuilder* );
+    Environment( zone::Zone* , GraphBuilder* );
     Environment( const Environment& );
    public:
     // init environment object from prototype object
     void EnterFunctionScope  ( const FuncInfo& );
     void PopulateArgument    ( const FuncInfo& );
     void ExitFunctionScope   ( const FuncInfo& );
+
     // getter/setter
     Expr*  GetUpValue( std::uint8_t );
     Expr*  GetGlobal ( const void* , std::size_t , const KeyProvider& );
@@ -75,20 +80,26 @@ class GraphBuilder {
     void   SetUpValue( std::uint8_t , Expr* );
     void   SetGlobal ( const void* , std::size_t , const KeyProvider& , Expr* );
     // accessor
-    ValueStack*      stack()    { return &stack_;  }
-    UpValueVector*   upvalue()  { return &upvalue_;}
-    GlobalMap*       global()   { return &global_; }
+    ValueStack*      stack()    { return &stack_;          }
+    UpValueVector*   upvalue()  { return &upval_stk_.back(); }
+    GlobalMap*       global()   { return &global_;         }
+
+    const ValueStack*      stack() const { return &stack_; }
+    const UpValueVector* upvalue() const { return &upval_stk_.back(); }
+    const GlobalMap*     global () const { return &global_; }
     // effect group list
-    Effect*          effect()   { return effect_.ptr(); }
-    Checkpoint*      state () const { return state_;   }
+    Effect*          effect()          { return effect_.ptr(); }
+    Checkpoint*      state () const    { return state_;  }
+    zone::Zone*      zone  () const    { return zone_ ;  }
     void UpdateState( Checkpoint* cp ) { state_ = cp; }
    private:
-    ValueStack    stack_;     // register stack
-    UpValueVector upvalue_;   // upvalue's effect group
-    GlobalMap     global_;    // global's effect group
-    GraphBuilder* gb_;        // graph builder
-    CheckedLazyInstance<Effect> effect_; // a list of tracked effect group
-    Checkpoint*   state_;     // current frame state for this environment
+    zone::Zone*        zone_;                 // zone allocator
+    ValueStack         stack_;                // register stack
+    UpValueVectorStack upval_stk_;            // upvalue's value stack
+    GlobalMap          global_;               // global's effect group
+    GraphBuilder*      gb_;                   // graph builder
+    CheckedLazyInstance<Effect> effect_;      // a list of tracked effect group
+    Checkpoint*        state_;                // current frame state for this environment
 
     friend class GraphBuilder;
     LAVA_DISALLOW_ASSIGN(Environment);
@@ -219,7 +230,7 @@ class GraphBuilder {
   void set_region( ControlFlow* new_region ) { func_info().region = new_region; }
   Environment* env()                   const { return env_; }
   ValueStack*  vstk()                  const { return env_->stack(); }
-  ValueStack*  upval()                 const { return env_->upvalue();}
+  Environment::UpValueVector*  upval() const { return env_->upvalue();}
 
  public:
   Graph*                    graph()     const { return graph_; }
@@ -357,18 +368,20 @@ class GraphBuilder {
  private:
   // Zone owned by the Graph object, and it is supposed to be stay around while the
   // optimization happenened
-  zone::Zone*              zone_;
-  Handle<Script>           script_;
-  Graph*                   graph_;
+  zone::Zone*                zone_;
+  zone::Zone                 temp_zone_;
+
+  Handle<Script>             script_;
+  Graph*                     graph_;
   // Working set data , used when doing inline and other stuff
-  Environment*             env_;
-  std::vector<FuncInfo>    func_info_;
+  Environment*               env_;
   // Type trace for speculative operation generation
-  const RuntimeTrace&      runtime_trace_;
-  // This zone is used for other transient memory costs during graph construction
-  zone::Zone               temp_zone_;
+  const RuntimeTrace&        runtime_trace_;
   // Inliner , checks for inline operation
-  std::unique_ptr<Inliner> inliner_;
+  std::unique_ptr<Inliner>   inliner_;
+  // Tracked information
+  zone::stl::ZoneVector<FuncInfo>     func_info_;
+  zone::stl::ZoneVector<ControlFlow*> trap_list_;
  private:
   class OSRScope ;
   class InlineScope;
@@ -433,13 +446,14 @@ inline GraphBuilder::FuncInfo::FuncInfo( FuncInfo&& that ):
 
 inline GraphBuilder::GraphBuilder( const Handle<Script>& script , const RuntimeTrace& tt ):
   zone_             (NULL),
+  temp_zone_        (),
   script_           (script),
   graph_            (NULL),
-  func_info_        (),
   runtime_trace_    (tt),
-  temp_zone_        (),
   // TODO:: change inliner to runtime construction based on configuration
-  inliner_          ( new StaticInliner() )
+  inliner_          (new StaticInliner()),
+  func_info_        (&temp_zone_),
+  trap_list_        (&temp_zone_)
 {}
 
 inline void GraphBuilder::FuncInfo::EnterLoop( const std::uint32_t* pc ) {
@@ -448,20 +462,22 @@ inline void GraphBuilder::FuncInfo::EnterLoop( const std::uint32_t* pc ) {
   loop_info.push_back(LoopInfo(info));
 }
 
-GraphBuilder::Environment::Environment( GraphBuilder* gb ):
-  stack_  (),
-  upvalue_(),
-  global_ (),
-  gb_     (gb),
-  effect_ (),
-  state_  (gb->InitCheckpoint())
+GraphBuilder::Environment::Environment( zone::Zone* zone , GraphBuilder* gb ):
+  zone_     (zone),
+  stack_    (zone),
+  upval_stk_(zone),
+  global_   (zone),
+  gb_       (gb),
+  effect_   (),
+  state_    (gb->InitCheckpoint())
 {
   effect_.Init(gb->temp_zone(),NoWriteEffect::New(gb->graph()));
 }
 
 GraphBuilder::Environment::Environment( const Environment& env ):
+  zone_   (env.zone_ ),
   stack_  (env.stack_),
-  upvalue_(env.upvalue_),
+  upval_stk_(env.upval_stk_),
   global_ (env.global_),
   gb_     (env.gb_),
   effect_ (),
@@ -472,9 +488,10 @@ GraphBuilder::Environment::Environment( const Environment& env ):
 
 void GraphBuilder::Environment::EnterFunctionScope( const FuncInfo& func ) {
   // resize the stack to have 256 slots for new prototype
-  stack_.resize( stack_.size() + kRegisterSize );
+  stack_.resize       ( stack_.size() + kRegisterSize );
   // resize the stack to have enough slots for the upvalues
-  upvalue_.resize( func.prototype->upvalue_size() );
+  upval_stk_.push_back( UpValueVector(zone_) );
+  upvalue()->resize   ( func.prototype->upvalue_size() );
 }
 
 void GraphBuilder::Environment::PopulateArgument ( const FuncInfo& func ) {
@@ -486,17 +503,18 @@ void GraphBuilder::Environment::PopulateArgument ( const FuncInfo& func ) {
 
 void GraphBuilder::Environment::ExitFunctionScope( const FuncInfo& func ) {
   stack_.resize( func.base );
+  upval_stk_.pop_back();
 }
 
 Expr* GraphBuilder::Environment::GetUpValue( std::uint8_t index ) {
-  lava_debug(NORMAL,lava_verify(index < upvalue_.size()););
-  auto v = upvalue_[index];
+  lava_debug(NORMAL,lava_verify(index < upvalue()->size()););
+  auto v = upvalue()->at(index);
   if(!v)
     return v;
   else {
     auto uget = UGet::New(gb_->graph_,index,gb_->method_index());
     effect()->root()->AddReadEffect(uget);
-    upvalue_[index] = uget;
+    upvalue()->at(index) = uget;
     return uget;
   }
 }
@@ -505,12 +523,12 @@ void GraphBuilder::Environment::SetUpValue( std::uint8_t index , Expr* value ) {
   auto uset = USet::New(gb_->graph_,index,gb_->method_index(),value);
   effect()->root()->UpdateWriteEffect(uset);
   gb_->region()->AddPin(uset);
-  upvalue_[index] = value;
+  upvalue()->at(index) = value;
 }
 
 bool GraphBuilder::Environment::HasUpValue( std::uint8_t index ) const {
-  lava_debug(NORMAL,lava_verify(index < upvalue_.size()););
-  auto v = upvalue_[index];
+  lava_debug(NORMAL,lava_verify(index < upvalue()->size()););
+  auto v = upvalue()->at(index);
   return v != NULL;
 }
 
@@ -647,9 +665,10 @@ GraphBuilder::InlineScope::InlineScope( GraphBuilder* gb , const Handle<Closure>
   gb_(gb)
 {
   auto proto = cls->prototype();
-  auto fi = FuncInfo(proto,region,new_base,tcall);  // get a new FuncInfo object
-  gb->func_info_.push_back(fi);                     // create a new function frame in stack
-  gb->env()->EnterFunctionScope(fi);                // prepare all the context object
+  gb->func_info_.push_back(FuncInfo(proto,region,new_base,tcall));
+  gb->env()->EnterFunctionScope(gb->func_info());   // prepare all the context object
+
+  // TODO:: generate checkpoint for newly created function
 
   // we don't need to do anything, the argument are in place and upvalue or global
   // variable needs to be treated as memory read/write node so don't need to populate.
@@ -668,13 +687,60 @@ GraphBuilder::InlineScope::~InlineScope() {
 // ===============================================================================
 // Inline
 // ===============================================================================
+bool GraphBuilder::DoInline( const Value& v , BytecodeIterator* itr ) {
+  auto tcall = itr->opcode() == BC_TCALL;
+  std::uint8_t func,base,arg;
+  itr->GetArgument(&func,&base,&arg);
+
+  // the callable node in IR graph
+  auto f = StackGet(func);
+
+  if(auto tp = GetTypeInference(f); tp != TPKIND_CLOSURE) {
+    // generate a CondTrap here. we cannot simply do a Guard node since our Guard
+    // node is an expression node instead of a control flow. The guard for this
+    // inline function call must be done *before* the function body generated, so
+    // we need to add a CondTrap which is a control flow node instead of expression.
+    auto tt = TestType::New(graph_,TPKIND_CLOSURE,f);
+    auto ct = CondTrap::New(graph_,tt,env()->state(),region());
+    auto rg = Region::New(graph_,ct);
+    set_region(rg);
+    trap_list_.push_back(ct);
+  }
+
+  Expr* ret = NULL;
+
+  {
+    auto cls = v.GetClosure();
+    auto pro = cls.prototype();
+
+    InlineScope scope(graph_,cls,func_info().base + base ,tcall,region());
+
+    auto new_itr = proto->GetBytecodeIterator();
+    if(BuildBasicBlock(&itr) == STOP_BAILOUT)
+      return false;
+
+    // generate return value
+    if( func_info().return_list.size() == 1 ) {
+      ret = func_info().return_list[0]->value();
+    } else {
+      auto phi = Phi::New(graph_,region());
+      for( auto &e : func_info().return_list ) {
+        phi->AddOperand(e->value());
+      }
+      ret = phi;
+    }
+  }
+
+  StackSet(kAccRegisterIndex,ret); // set the return value into the previous function's stack
+  return true;                     // inline is done
+}
+
 bool GraphBuilder::NewCall( BytecodeIterator* itr ) {
   lava_debug(NORMAL,lava_verify(itr->opcode() == BC_CALL || itr->opcode() == BC_TCALL));
 
   // get the closure out of the tracer and check whether we can do inline or not.
   // if it is an extension ,then we cannot do anything but have to generate a
   // real call afterwards
-  auto func = StackGet(input);
   auto tt   = runtime_trace_.GetTrace( itr->pc() );
   if(tt) {
     auto &v = tt->data[0];
@@ -1249,7 +1315,7 @@ void GraphBuilder::InsertPhi( Environment* lhs , Environment* rhs , ControlFlow*
   GeneratePhi(upval(),*lhs->upvalue(),*rhs->upvalue(),0                , kMaxUpValueSize , region);
   // 4. generate phi for all the global values
   {
-    Environment::GlobalMap temp; temp.reserve( lhs->global()->size() );
+    Environment::GlobalMap temp(temp_zone()); temp.reserve( lhs->global()->size() );
     // scanning the left hand side global variables
     for( auto &e : *lhs->global() ) {
       auto itr = std::find(rhs->global()->begin(),rhs->global()->end(),e.name);
@@ -1982,7 +2048,7 @@ bool GraphBuilder::Build( const Handle<Prototype>& entry , Graph* graph ) {
   Region* region = Region::New(graph_,start);
 
   // 2. start the basic block building setup the main environment object
-  Environment root_env(this);
+  Environment root_env(temp_zone(),this);
 
   backup_environment(&root_env,this) {
     // enter into the top level function
@@ -2131,7 +2197,7 @@ GraphBuilder::BuildOSRStart( const Handle<Prototype>& entry ,  const std::uint32
   Success* succ = Success::New(graph);
 
   // set up the value stack/expression stack
-  Environment root_env(this);
+  Environment root_env(temp_zone(),this);
 
   backup_environment(&root_env,this) {
     // set up the OSR scope

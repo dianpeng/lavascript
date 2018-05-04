@@ -169,6 +169,7 @@ namespace hir        {
   __(Return     ,RETURN     ,"return"     ,NoLeaf,NoEffect)           \
   __(JumpValue  ,JUMP_VALUE ,"jump_value" ,NoLeaf,NoEffect)           \
   __(Region     ,REGION     ,"region"     ,NoLeaf,NoEffect)           \
+  __(CondTrap   ,COND_TRAP  ,"cond_trap"  ,NoLeaf,NoEffect)           \
   __(Trap       ,TRAP       ,"trap"       ,NoLeaf,NoEffect)           \
   /* osr */                                                           \
   __(OSRStart   ,OSR_START  ,"osr_start"  ,NoLeaf,NoEffect)           \

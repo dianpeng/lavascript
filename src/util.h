@@ -209,18 +209,26 @@ template< typename T > T Align( T value , T alignment ) {
 
 // Placement new
 template< typename T , typename Allocator , typename ... ARGS >
-T* Construct( Allocator* allocator , ARGS ...args ) {
-  return ::new (allocator->Grab(sizeof(T))) T(std::forward(args)...);
+T* Construct( Allocator* allocator , ARGS&& ...args ) {
+  return ::new (allocator->Grab(sizeof(T))) T(std::forward<ARGS>(args)...);
 }
 
 template< typename T , typename Allocator >
 T* Construct( Allocator* allocator ) { return ::new (allocator->Grab(sizeof(T))) T(); }
 
 template< typename T , typename ... ARGS >
-T* ConstructFromBuffer( void* buffer , ARGS ...args ) { return ::new (buffer) T(args...); }
+T* ConstructFromBuffer( void* buffer , ARGS&& ...args ) {
+  return ::new (buffer) T(std::forward<ARGS>(args)...);
+}
 
-template< typename T >
-T* ConstructFromBuffer( void* buffer ) { return ::new (buffer) T(); }
+template< typename T , typename ... ARGS >
+T* ConstructArrayFromBuffer( std::size_t n , void* buffer , ARGS&& ...args ) {
+  T* b = static_cast<T*>(buffer);
+  for( std::size_t i = 0 ; i < n ; ++i ) {
+    ::new (b+i) T(std::forward<ARGS>(args)...);
+  }
+  return b;
+}
 
 // Destructor , wrapper aroud std::destroy_at now
 template< typename T > void Destruct( T* object ) { std::destroy_at(object); }

@@ -51,7 +51,7 @@ class ZoneAllocator {
   T*             address(T& x) const { return &x; }
   const T* address(const T& x) const { return &x; }
   T* allocate(size_t n, const void* hint = 0) {
-    return static_cast<T*>(zone_->NewArray<T>(static_cast<int>(n)));
+    return static_cast<T*>(zone_->Malloc(sizeof(T)*n));
   }
   void deallocate(T* p, size_t) { /* noop for Zones */
   }
@@ -61,7 +61,7 @@ class ZoneAllocator {
   template <typename U, typename... Args>
   void construct(U* p, Args&&... args) {
     void* v_p = const_cast<void*>(static_cast<const void*>(p));
-    ::lavascript::ConstructFromBuffer(v_p,args...);
+    ::new (v_p) U(std::forward<Args>(args)...);
   }
 
   template <typename U>
@@ -85,9 +85,6 @@ class ZoneVector : public std::vector<T, ZoneAllocator<T>> {
   explicit ZoneVector(Zone* zone)
       : std::vector<T, ZoneAllocator<T>>(ZoneAllocator<T>(zone)) {}
 
-  ZoneVector(Zone* zone , std::size_t size)
-      : std::vector<T, ZoneAllocator<T>>(size, T(), ZoneAllocator<T>(zone)) {}
-
   ZoneVector(Zone* zone , T def, std::size_t size)
       : std::vector<T, ZoneAllocator<T>>(size, def, ZoneAllocator<T>(zone)) {}
 
@@ -100,11 +97,11 @@ class ZoneVector : public std::vector<T, ZoneAllocator<T>> {
 };
 
 template <typename T>
-class ZoneDeque : public std::deque<T, RecyclingZoneAllocator<T>> {
+class ZoneDeque : public std::deque<T, ZoneAllocator<T>> {
  public:
   explicit ZoneDeque(Zone* zone)
-      : std::deque<T, RecyclingZoneAllocator<T>>(
-            RecyclingZoneAllocator<T>(zone)) {}
+      : std::deque<T, ZoneAllocator<T>>(
+            ZoneAllocator<T>(zone)) {}
 };
 
 template <typename T>
@@ -163,7 +160,7 @@ class ZoneMap
 
 static const std::size_t kSTLDefaultBucketCount = 64;
 
-template <typename K, typename V, typename Hash = base::hash<K>,
+template <typename K, typename V, typename Hash = std::hash<K>,
           typename KeyEqual = std::equal_to<K>>
 class ZoneUnorderedMap
     : public std::unordered_map<K, V, Hash, KeyEqual,
@@ -176,7 +173,7 @@ class ZoneUnorderedMap
             ZoneAllocator<std::pair<const K, V>>(zone)) {}
 };
 
-template <typename K, typename Hash = base::hash<K>,
+template <typename K, typename Hash = std::hash<K>,
           typename KeyEqual = std::equal_to<K>>
 class ZoneUnorderedSet
     : public std::unordered_set<K, Hash, KeyEqual, ZoneAllocator<K>> {

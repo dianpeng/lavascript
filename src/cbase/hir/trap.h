@@ -10,21 +10,36 @@ namespace hir        {
 // abort at current stage in the graph.
 class Trap : public ControlFlow {
  public:
-  inline static Trap* New( Graph* , Expr*  , Checkpoint* , ControlFlow* );
-  // create a Trap node that always trap or its condition is false literal
   inline static Trap* New( Graph* , Checkpoint* , ControlFlow* );
 
-  Expr*       condition () const { return operand_list()->First(); }
-  Checkpoint* checkpoint() const { return operand_list()->Last ()->AsCheckpoint(); }
+  Checkpoint* checkpoint() const { return operand_list()->First()->AsCheckpoint(); }
 
-  Trap( Graph* graph , std::uint32_t id , Expr* condition , Checkpoint* cp , ControlFlow* region ):
+  Trap( Graph* graph , std::uint32_t id , Checkpoint* cp , ControlFlow* region ):
     ControlFlow(HIR_TRAP,id,graph,region)
   {
-    AddOperand(condition);
     AddOperand(cp);
   }
  private:
   LAVA_DISALLOW_COPY_AND_ASSIGN(Trap)
+};
+
+
+class CondTrap : public ControlFlow {
+ public:
+  inline static CondTrap* New( Graph* , Test* , Checkpoint* , ControlFlow* );
+
+  Test*             test() const { return operand_list()->First()->AsTest();      }
+  Checkpoint* checkpoint() const { return operand_list()->Last()->AsCheckpoint(); }
+
+  CondTrap( Graph* graph , std::uint32_t id , Test* test , Checkpoint* cp , ControlFlow* region ):
+    ControlFlow(HIR_COND_TRAP,id,graph,region)
+  {
+    AddOperand(test);
+    AddOperand(cp);
+  }
+
+ private:
+  LAVA_DISALLOW_COPY_AND_ASSIGN(CondTrap)
 };
 
 } // namespace hir

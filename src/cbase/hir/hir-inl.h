@@ -703,8 +703,9 @@ inline Trap* Trap::New( Graph* graph , Checkpoint* cp , ControlFlow* region ) {
   return graph->zone()->New<Trap>(graph,graph->AssignID(),cp,region);
 }
 
-inline Trap* Trap::New( Graph* graph , Expr* condition , Checkpoint* cp , ControlFlow* region ) {
-  return graph->zone()->New<Trap>(graph,graph->AssignID(),condition,cp,region);
+inline CondTrap* CondTrap::New( Graph* graph , Test* test , Checkpoint* cp ,
+                                                            ControlFlow* region ) {
+  return graph->zone()->New<CondTrap>(graph,graph->AssignID(),test,cp,region);
 }
 
 inline OSRStart* OSRStart::New( Graph* graph ) {

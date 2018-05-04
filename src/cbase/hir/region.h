@@ -93,6 +93,30 @@ class OSREnd : public ControlFlow {
   LAVA_DISALLOW_COPY_AND_ASSIGN(OSREnd)
 };
 
+class InlineStart : public ControlFlow {
+ public:
+  inline static InlineStart* New( Graph* , ControlFlow* );
+
+  InlineStart( Graph* graph , std::uint32_t id , ControlFlow* region ):
+    ControlFlow (HIR_INLINE_START,id,graph,region)
+  {}
+
+ private:
+  LAVA_DISALLOW_COPY_AND_ASSIGN(InlineStart)
+};
+
+class InlineEnd : public ControlFlow {
+ public:
+  inline static InlineEnd* New( Graph* , ControlFlow* );
+
+  InlineEnd( Graph* graph , std::uint32_t id , ControlFlow* region ):
+    ControlFlow (HIR_INLINE_END,id,graph,region)
+  {}
+
+ private:
+  LAVA_DISALLOW_COPY_AND_ASSIGN(InlineEnd)
+};
+
 } // namespace hir
 } // namespace cbase
 } // namespace lavascript

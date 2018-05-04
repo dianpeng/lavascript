@@ -120,6 +120,12 @@ bool BytecodeAnalyze::BuildIfBlock( BytecodeIterator* itr , const std::uint32_t*
       if(end) *end = itr->pc();
     }
   }
+
+  if(pc == itr->pc()) {
+    if(end) *end = itr->pc();
+    return false;
+  }
+
   lava_unreachF("%s","should never reach here since we meet a EOF of bytecode stream");
   return false;
 }
@@ -131,6 +137,8 @@ bool BytecodeAnalyze::CheckElifBranch( BytecodeIterator* itr , const std::uint32
     if(itr->opcode() == BC_JMPF) return true;
     if(itr->pc() == end)         return false;
   }
+
+  if(end == itr->pc()) return false;
 
   lava_unreachF("%s","cannot reach here since there must be a jmpf or end of stream");
   return false;

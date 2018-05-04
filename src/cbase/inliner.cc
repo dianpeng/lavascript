@@ -12,6 +12,8 @@ bool StaticInliner::ShouldInline( std::size_t depth , const Handle<Prototype>& p
   // last resort
   if(bccnt < max_inline_bytecode_per_func_) {
     total_inlined_bytecode_ += bccnt;
+    if(total_inlined_bytecode_ > max_inline_bytecode_total_)
+      return false;
     return true;
   }
   return false;

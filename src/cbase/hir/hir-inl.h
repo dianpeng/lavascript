@@ -500,8 +500,8 @@ inline ICall* ICall::New( Graph* graph , interpreter::IntrinsicCall ic , bool tc
   return graph->zone()->New<ICall>(graph,graph->AssignID(),ic,tc);
 }
 
-inline LoadCls* LoadCls::New( Graph* graph , std::uint32_t ref ) {
-  return graph->zone()->New<LoadCls>(graph,graph->AssignID(),ref);
+inline Closure* Closure::New( Graph* graph , std::uint32_t ref ) {
+  return graph->zone()->New<Closure>(graph,graph->AssignID(),ref);
 }
 
 inline Projection* Projection::New( Graph* graph , Expr* operand , std::uint32_t index ) {
@@ -691,14 +691,6 @@ inline JumpValue* JumpValue::New( Graph* graph , Expr* value , ControlFlow* pare
   return graph->zone()->New<JumpValue>(graph,graph->AssignID(),value,parent);
 }
 
-inline Start* Start::New( Graph* graph ) {
-  return graph->zone()->New<Start>(graph,graph->AssignID());
-}
-
-inline End* End::New( Graph* graph , Success* s , Fail* f ) {
-  return graph->zone()->New<End>(graph,graph->AssignID(),s,f);
-}
-
 inline Trap* Trap::New( Graph* graph , Checkpoint* cp , ControlFlow* region ) {
   return graph->zone()->New<Trap>(graph,graph->AssignID(),cp,region);
 }
@@ -708,12 +700,28 @@ inline CondTrap* CondTrap::New( Graph* graph , Test* test , Checkpoint* cp ,
   return graph->zone()->New<CondTrap>(graph,graph->AssignID(),test,cp,region);
 }
 
+inline Start* Start::New( Graph* graph ) {
+  return graph->zone()->New<Start>(graph,graph->AssignID());
+}
+
+inline End* End::New( Graph* graph , Success* s , Fail* f ) {
+  return graph->zone()->New<End>(graph,graph->AssignID(),s,f);
+}
+
 inline OSRStart* OSRStart::New( Graph* graph ) {
   return graph->zone()->New<OSRStart>(graph,graph->AssignID());
 }
 
 inline OSREnd* OSREnd::New( Graph* graph , Success* s , Fail* f ) {
   return graph->zone()->New<OSREnd>(graph,graph->AssignID(),s,f);
+}
+
+inline InlineStart* InlineStart::New( Graph* graph , ControlFlow* region ) {
+  return graph->zone()->New<InlineStart>(graph,graph->AssignID(),region);
+}
+
+inline InlineEnd*   InlineEnd::New( Graph* graph , ControlFlow* region ) {
+  return graph->zone()->New<InlineEnd>(graph,graph->AssignID(),region);
 }
 
 // ----------------------------------------------------------------------------

@@ -319,8 +319,7 @@ class TypePredicate : public Predicate {
   LAVA_DISALLOW_ASSIGN(TypePredicate)
 };
 
-inline
-bool Float64Predicate::NumberPoint::operator ==( const NumberPoint& that ) const {
+inline bool Float64Predicate::NumberPoint::operator ==( const NumberPoint& that ) const {
   if(value == that.value) {
     if((close && that.close) || (!close && !that.close))
       return true;
@@ -328,13 +327,11 @@ bool Float64Predicate::NumberPoint::operator ==( const NumberPoint& that ) const
   return false;
 }
 
-inline
-bool Float64Predicate::NumberPoint::operator !=( const NumberPoint& that ) const {
+inline bool Float64Predicate::NumberPoint::operator !=( const NumberPoint& that ) const {
   return !(*this == that);
 }
 
-inline
-bool Float64Predicate::Range::IsSingleton() const {
+inline bool Float64Predicate::Range::IsSingleton() const {
   auto r = (upper == lower);
   lava_debug(NORMAL,if(r) lava_verify(lower.close);); // we should not have empty set
   return r;

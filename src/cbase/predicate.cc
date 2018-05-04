@@ -304,7 +304,8 @@ void Float64Predicate::UnionRange( const Range& range ) {
   } else {
     std::int64_t lower, upper;
     auto ret = Scan(range,&lower,&upper);
-    std::int64_t modify_pos;
+    std::int64_t modify_pos = -1;
+
     switch(ret) {
       case Predicate::SAME:
       case Predicate::INCLUDE:
@@ -333,7 +334,12 @@ void Float64Predicate::UnionRange( const Range& range ) {
 
       default: lava_die(); break;
     }
-    if(ret == Predicate::REXCLUDE || ret == Predicate::LEXCLUDE || ret == Predicate::OVERLAP) {
+
+    if(ret == Predicate::REXCLUDE ||
+       ret == Predicate::LEXCLUDE ||
+       ret == Predicate::OVERLAP) {
+
+      lava_debug(NORMAL,lava_verify(modify_pos != -1););
       Merge(modify_pos);
     }
   }

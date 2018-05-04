@@ -184,18 +184,6 @@ void DotPrinter::RenderExpr( const std::string& name , Expr* node ) {
         }
       }
       break;
-    case HIR_LOAD_CLS:
-      {
-        auto obj = node->AsLoadCls();
-        Indent(1) << name << "[label=\"ref(" << obj->ref() << ")\"]\n";
-      }
-      break;
-    case HIR_ARG:
-      {
-        auto arg = node->AsArg();
-        Indent(1) << name << "[label=\"index(" << arg->index() << ")\"]\n";
-      }
-      break;
     case HIR_BINARY:
     case HIR_FLOAT64_BITWISE:
     case HIR_FLOAT64_ARITHMETIC:
@@ -246,14 +234,14 @@ void DotPrinter::RenderExpr( const std::string& name , Expr* node ) {
       }
       break;
     case HIR_UGET:
-      Indent(1) << name << "[label=\"uget(" << node->AsUGet()->index() << ")\"]\n";
+      Indent(1) << name << "[label=\"uget(" << (std::uint32_t)node->AsUGet()->index() << ")\"]\n";
       break;
     case HIR_USET:
       {
         auto uset = node->AsUSet();
         auto opr_name = GetNodeName(uset->value());
         RenderExpr(opr_name,uset->value());
-        Indent(1) << name << "[label=\"uset\"]\n";
+        Indent(1) << name << "[label=\"uset(" << (std::uint32_t)uset->index() << ")\"]\n";
         Indent(1) << name << opr_name << '\n';
       }
       break;

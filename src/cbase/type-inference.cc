@@ -53,6 +53,25 @@ TypeKind GetICallType( ICall* icall ) {
   }
 }
 
+TypeKind GetPhiType( Phi* node ) {
+  if(node->operand_list()->size() == 0)
+    return TPKIND_UNKNOWN;
+  else {
+    auto tk = GetTypeInference(node->operand_list()->Index(0));
+    if(tk == TPKIND_UNKNOWN)
+      return TPKIND_UNKNOWN;
+    auto itr = node->operand_list()->GetForwardIterator();
+    // skip the first element since we peel it out
+    itr.Move();
+
+    lava_foreach( auto &k , itr ) {
+      auto t = GetTypeInference(k);
+      if(t != tk) return TPKIND_UNKNOWN;
+    }
+    return tk;
+  }
+}
+
 } // namespace
 
 
@@ -68,6 +87,8 @@ TypeKind GetTypeInference( Expr* node ) {
     case HIR_OBJECT:             return TPKIND_OBJECT;
     case HIR_ITR_NEW:            return TPKIND_ITERATOR;
     case HIR_ITR_TEST:           return TPKIND_BOOLEAN ;
+    // phi
+    case HIR_PHI:                return GetPhiType(node->AsPhi());
     // guard
     case HIR_GUARD:
       {
@@ -88,6 +109,8 @@ TypeKind GetTypeInference( Expr* node ) {
     case HIR_BOOLEAN_LOGIC:      return TPKIND_BOOLEAN;
     case HIR_BOOLEAN_NOT:        return TPKIND_BOOLEAN;
     case HIR_ICALL:              return GetICallType(node->AsICall());
+    // closure
+    case HIR_CLOSURE:            return TPKIND_CLOSURE;
     default:                     return TPKIND_UNKNOWN;
   }
 }

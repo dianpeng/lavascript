@@ -1945,6 +1945,13 @@ Handle<Prototype> Generator::VisitFunction( const ast::Function& node ) {
 
     if(!VisitChunk(*node.body,false))
       return Handle<Prototype>();
+
+    // emit last dangling retnull instruction as fallback
+    if( auto ret = func_scope()->bb()->retnull(func_scope()->ra()->base(),
+                                               SourceCodeInfo()); !ret ) {
+      Error(ERR_FUNCTION_TOO_LONG,func_scope()->body());
+      return Handle<Prototype>();
+    }
   }
   return BytecodeBuilder::New(context_->gc(),*scope.bb(),node);
 }

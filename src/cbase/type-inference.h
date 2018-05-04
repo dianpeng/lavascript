@@ -16,8 +16,7 @@ namespace cbase      {
 namespace hir        {
 class Expr;
 
-// Do type inference based on TypeAnnotation node. The graph itself is annotated
-// with type already so no external information is needed to do type inference.
+// Do simple type inference based on the input type
 TypeKind GetTypeInference( Expr* );
 
 } // namespace hir

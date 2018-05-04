@@ -164,12 +164,12 @@ class GraphBuilder {
     Handle<Prototype>         prototype; // cached for faster access
     ControlFlow*              region;
     std::uint32_t             base;
-    std::uint8_t              max_local_var_size;
     std::vector<LoopInfo>     loop_info;
     std::vector<Return*>      return_list;
     std::vector<Guard*>       guard_list ;
     BytecodeAnalyze           bc_analyze;
     const std::uint32_t*      osr_start;
+    std::uint8_t              max_local_var_size;
     bool                      tcall;     // whether it is a tail call
 
    public:
@@ -226,8 +226,8 @@ class GraphBuilder {
   bool IsTopFunction()                 const { return func_info_.size() == 1; }
   const Handle<Prototype>& prototype() const { return func_info().prototype; }
   std::uint32_t base()                 const { return func_info().base; }
-  ControlFlow* region()                const { return func_info().region; }
-  void set_region( ControlFlow* new_region ) { func_info().region = new_region; }
+  ControlFlow* region()                const { lava_debug(NORMAL,lava_verify(region_);); return region_; }
+  void set_region( ControlFlow* new_region ) { region_ = new_region; }
   Environment* env()                   const { return env_; }
   ValueStack*  vstk()                  const { return env_->stack(); }
   Environment::UpValueVector*  upval() const { return env_->upvalue();}
@@ -361,15 +361,17 @@ class GraphBuilder {
 
   // try to do an inline, if we cannot inline it, it will fallback to generate a call node.
   // otherwise, it will inline the function into the graph directly
-  bool NewCall        ( BytecodeIterator* );
-  bool NewCallFallback( BytecodeIterator* );
-  bool DoInline       ( const Handle<Closure>& , BytecodeIterator* );
+  bool NewCall           ( BytecodeIterator* );
+  bool NewCallFallback   ( BytecodeIterator* );
+  bool SpeculativeInline ( const Handle<Prototype>& , BytecodeIterator* );
+  bool DoInline          ( const Handle<Prototype>& , std::uint8_t , bool );
 
  private:
   // Zone owned by the Graph object, and it is supposed to be stay around while the
   // optimization happenened
   zone::Zone*                zone_;
   zone::Zone                 temp_zone_;
+  ControlFlow*               region_;
 
   Handle<Script>             script_;
   Graph*                     graph_;
@@ -408,12 +410,12 @@ inline GraphBuilder::FuncInfo::FuncInfo( const Handle<Prototype>& proto , Contro
   prototype         (proto),
   region            (start_region),
   base              (b),
-  max_local_var_size(proto->max_local_var_size()),
   loop_info         (),
   return_list       (),
   guard_list        (),
   bc_analyze        (proto),
   osr_start         (NULL),
+  max_local_var_size(proto->max_local_var_size()),
   tcall             (tcall)
 {}
 
@@ -423,12 +425,12 @@ inline GraphBuilder::FuncInfo::FuncInfo( const Handle<Prototype>& proto , Contro
   prototype         (proto),
   region            (start_region),
   base              (0),
-  max_local_var_size(proto->max_local_var_size()),
   loop_info         (),
   return_list       (),
   guard_list        (),
   bc_analyze        (proto),
   osr_start         (ostart),
+  max_local_var_size(proto->max_local_var_size()),
   tcall             (tcall)
 {}
 
@@ -436,17 +438,19 @@ inline GraphBuilder::FuncInfo::FuncInfo( FuncInfo&& that ):
   prototype         (that.prototype),
   region            (that.region),
   base              (that.base),
-  max_local_var_size(that.max_local_var_size),
   loop_info         (std::move(that.loop_info)),
   return_list       (std::move(that.return_list)),
   guard_list        (std::move(that.guard_list)),
   bc_analyze        (std::move(that.bc_analyze)),
-  osr_start         (that.osr_start)
+  osr_start         (that.osr_start),
+  max_local_var_size(that.max_local_var_size),
+  tcall             (that.tcall)
 {}
 
 inline GraphBuilder::GraphBuilder( const Handle<Script>& script , const RuntimeTrace& tt ):
   zone_             (NULL),
   temp_zone_        (),
+  region_           (),
   script_           (script),
   graph_            (NULL),
   runtime_trace_    (tt),
@@ -502,14 +506,14 @@ void GraphBuilder::Environment::PopulateArgument ( const FuncInfo& func ) {
 }
 
 void GraphBuilder::Environment::ExitFunctionScope( const FuncInfo& func ) {
-  stack_.resize( func.base );
+  stack_.resize( func.base + kRegisterSize );
   upval_stk_.pop_back();
 }
 
 Expr* GraphBuilder::Environment::GetUpValue( std::uint8_t index ) {
   lava_debug(NORMAL,lava_verify(index < upvalue()->size()););
   auto v = upvalue()->at(index);
-  if(!v)
+  if(v)
     return v;
   else {
     auto uget = UGet::New(gb_->graph_,index,gb_->method_index());
@@ -588,7 +592,7 @@ class GraphBuilder::FuncScope {
 
 class GraphBuilder::InlineScope {
  public:
-  InlineScope( GraphBuilder* , const Handle<Closure>& , std::size_t new_base , bool tcall , ControlFlow* );
+  InlineScope( GraphBuilder* , const Handle<Prototype>& , std::size_t new_base , bool tcall , ControlFlow* );
   ~InlineScope();
  private:
   GraphBuilder* gb_;
@@ -658,25 +662,15 @@ GraphBuilder::FuncScope::FuncScope( GraphBuilder* gb , const Handle<Prototype>& 
   gb->env()->PopulateArgument(gb->func_info());
 }
 
-GraphBuilder::InlineScope::InlineScope( GraphBuilder* gb , const Handle<Closure>& cls ,
+GraphBuilder::InlineScope::InlineScope( GraphBuilder* gb , const Handle<Prototype>& proto,
                                                            std::size_t new_base ,
                                                            bool tcall,
                                                            ControlFlow* region ):
   gb_(gb)
 {
-  auto proto = cls->prototype();
   gb->func_info_.push_back(FuncInfo(proto,region,new_base,tcall));
   gb->env()->EnterFunctionScope(gb->func_info());   // prepare all the context object
-
   // TODO:: generate checkpoint for newly created function
-
-  // we don't need to do anything, the argument are in place and upvalue or global
-  // variable needs to be treated as memory read/write node so don't need to populate.
-  // we can do a specialized closure inline basically push all the upvalue into its
-  // position but it is relatively hard. one thing is to let bytecode analyzer pass
-  // to analyze a function whether modify its upvalue or not, then for none modified
-  // upvalue just push down for deep inline since they will not be modified througout
-  // the call. this will be done in the future.
 }
 
 GraphBuilder::InlineScope::~InlineScope() {
@@ -687,10 +681,56 @@ GraphBuilder::InlineScope::~InlineScope() {
 // ===============================================================================
 // Inline
 // ===============================================================================
-bool GraphBuilder::DoInline( const Value& v , BytecodeIterator* itr ) {
+bool GraphBuilder::DoInline( const Handle<Prototype>& proto , std::uint8_t base ,
+                                                              bool tcall ) {
+  Expr* ret    = NULL;
+  auto new_itr = proto->GetBytecodeIterator();
+  {
+    InlineScope scope(this,proto,func_info().base + base ,tcall,region());
+
+    // create the inline start node to mark the Graph
+    auto istart = InlineStart::New(graph_,region());
+    set_region(istart);
+    // do the recursive graph construction
+    if(BuildBasicBlock(&new_itr) == STOP_BAILOUT) return false;
+    // setup the inline end block
+    auto iend = InlineEnd::New(graph_,region());
+    // handle return value of inline frame here
+    if(func_info().tcall) {
+      lava_verify(func_info().return_list.empty());
+      // if it is a tail call inline frame then it doesn't generate anything
+      // but we still need to put something as placeholder
+      ret = Nil::New(graph_);
+    } else {
+
+      // generate return value
+      if( func_info().return_list.size() == 1 ) {
+        auto rnode = func_info().return_list[0];
+        ret = rnode->value();
+      } else {
+        // if the inlined function has multiple return/exit point then
+        // we need to do a jump value merge node here to fan in all the
+        // inlined functino conrol flow
+        auto phi = Phi::New(graph_,iend);
+        for( auto &e : func_info().return_list ) {
+          iend->AddBackwardEdge(e);
+          phi->AddOperand(e->value());
+        }
+        ret = phi;
+      }
+    }
+
+    set_region(iend);
+  }
+
+  StackSet(kAccRegisterIndex,ret); // set the return value into the previous function's stack
+  return true;                     // inline is done
+}
+
+bool GraphBuilder::SpeculativeInline( const Handle<Prototype>& proto , BytecodeIterator* itr ) {
   auto tcall = itr->opcode() == BC_TCALL;
   std::uint8_t func,base,arg;
-  itr->GetArgument(&func,&base,&arg);
+  itr->GetOperand(&func,&base,&arg);
 
   // the callable node in IR graph
   auto f = StackGet(func);
@@ -707,52 +747,46 @@ bool GraphBuilder::DoInline( const Value& v , BytecodeIterator* itr ) {
     trap_list_.push_back(ct);
   }
 
-  Expr* ret = NULL;
-
-  {
-    auto cls = v.GetClosure();
-    auto pro = cls.prototype();
-
-    InlineScope scope(graph_,cls,func_info().base + base ,tcall,region());
-
-    auto new_itr = proto->GetBytecodeIterator();
-    if(BuildBasicBlock(&itr) == STOP_BAILOUT)
-      return false;
-
-    // generate return value
-    if( func_info().return_list.size() == 1 ) {
-      ret = func_info().return_list[0]->value();
-    } else {
-      auto phi = Phi::New(graph_,region());
-      for( auto &e : func_info().return_list ) {
-        phi->AddOperand(e->value());
-      }
-      ret = phi;
-    }
-  }
-
-  StackSet(kAccRegisterIndex,ret); // set the return value into the previous function's stack
-  return true;                     // inline is done
+  // start the inline
+  return DoInline(proto,base,tcall);
 }
 
 bool GraphBuilder::NewCall( BytecodeIterator* itr ) {
-  lava_debug(NORMAL,lava_verify(itr->opcode() == BC_CALL || itr->opcode() == BC_TCALL));
+  lava_debug(NORMAL,lava_verify(itr->opcode() == BC_CALL || itr->opcode() == BC_TCALL););
 
-  // get the closure out of the tracer and check whether we can do inline or not.
-  // if it is an extension ,then we cannot do anything but have to generate a
-  // real call afterwards
-  auto tt   = runtime_trace_.GetTrace( itr->pc() );
-  if(tt) {
-    auto &v = tt->data[0];
-    if(v.IsClosure()) {
-      auto proto = v.GetClosure()->prototype();
-      if(inliner_.ShouldInline(func_info_.size(),proto)) {
-        return DoInline(v,itr);
+  std::uint8_t func,base,arg;
+  itr->GetOperand(&func,&base,&arg);
+  auto f = StackGet(func);
+  if(f->IsClosure()) {
+    // okay this object/expression node is an closure node, then we could just
+    // use this to do static inline without needing to know the type trace and
+    // this is most useful since it helps do inline locally.
+    auto proto = script_->GetFunction(f->AsClosure()->ref()).prototype;
+    return DoInline(proto,base,itr->opcode() == BC_TCALL);
+  } else {
+    // this is the general case inline when we don't know the type of our function.
+    // it mostly happened at cross file/module function inline
+    auto tt   = runtime_trace_.GetTrace( itr->pc() );
+    if(tt) {
+      auto &v = tt->data[0];
+      if(v.IsClosure()) {
+        auto proto = v.GetClosure()->prototype();
+        if(inliner_->ShouldInline(func_info_.size(),proto)) {
+          return SpeculativeInline(v.GetClosure()->prototype(),itr);
+        }
       }
     }
   }
-  // cannot do anything, needs to do a dynamic call dispatch
+
+  // okay, we need a dynamic call site for performing the function call
   return NewCallFallback(itr);
+}
+
+bool GraphBuilder::NewCallFallback( BytecodeIterator* itr ) {
+  (void)itr;
+  // TODO:: add implementation
+  lava_die();
+  return false;
 }
 
 // ===============================================================================
@@ -1424,6 +1458,8 @@ GraphBuilder::StopReason GraphBuilder::BuildIfBlock( BytecodeIterator* itr , con
     else if(BuildBytecode(itr) == STOP_BAILOUT)
       return STOP_BAILOUT;
   }
+  if(pc == itr->pc()) return STOP_END;
+
   lava_unreachF("cannot reach here since it is end of the stream %p:%p",itr->pc(),pc);
   return STOP_EOF;
 }
@@ -1908,7 +1944,7 @@ GraphBuilder::StopReason GraphBuilder::BuildBytecode( BytecodeIterator* itr ) {
       }
       break;
     case BC_LOADCLS:
-      StackSet(a1,LoadCls::New(graph_,a2));
+      StackSet(a1,Closure::New(graph_,a2));
       break;
 
     case BC_PROPGET:
@@ -1955,6 +1991,11 @@ GraphBuilder::StopReason GraphBuilder::BuildBytecode( BytecodeIterator* itr ) {
     case BC_ICALL:
     case BC_TICALL:
       StackSet(kAccRegisterIndex,NewICall(a1,a2,a3,(itr->opcode() == BC_TICALL),itr->bytecode_location()));
+      break;
+
+    case BC_TCALL:
+    case BC_CALL:
+      NewCall(itr);
       break;
 
     case BC_JMPF:
@@ -2242,10 +2283,9 @@ bool BuildPrototype( const Handle<Script>& script , const Handle<Prototype>& pro
   return gb.Build(prototype,output);
 }
 
-bool BuildPrototypeOSR( const Handle<Script>& script , const Handle<Prototype>& prototype ,
-                                                       const RuntimeTrace& rt ,
-                                                       const std::uint32_t* address ,
-                                                       Graph* graph ) {
+bool BuildPrototypeOSR( const Handle<Script>& script , const Handle<Prototype>& prototype , const RuntimeTrace& rt ,
+                                                                                            const std::uint32_t* address ,
+                                                                                            Graph* graph ) {
   GraphBuilder gb(script,rt);
   return gb.BuildOSR(prototype,address,graph);
 }

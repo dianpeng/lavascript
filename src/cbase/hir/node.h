@@ -30,7 +30,8 @@ namespace hir        {
   __(IRObjectKV   ,OBJECT_KV,"object_kv",NoLeaf,NoEffect)              \
   __(IRObject     ,OBJECT   ,"object"   ,NoLeaf,NoEffect)              \
   /* closure */                                                        \
-  __(LoadCls      ,LOAD_CLS ,"load_cls" ,Leaf,Effect)                  \
+  __(Closure      ,CLOSURE  ,"closure"  ,Leaf,Effect)                  \
+  __(InitCls      ,INIT_CLS        ,"init_cls"  ,NoLeaf,Effect)        \
   /* argument node */                                                  \
   __(Arg          ,ARG      ,"arg"      ,Leaf,NoEffect)                \
   /* arithmetic/comparison node */                                     \
@@ -38,7 +39,7 @@ namespace hir        {
   __(Binary       ,BINARY   ,"binary"   ,NoLeaf,Effect)                \
   __(Ternary      ,TERNARY  ,"ternary"  ,NoLeaf,NoEffect)              \
   /* upvalue */                                                        \
-  __(UGet         ,UGET     ,"uval"     ,Leaf  ,NoEffect)              \
+  __(UGet         ,UGET     ,"uget"     ,Leaf  ,NoEffect)              \
   __(USet         ,USET     ,"uset"     ,Leaf  ,Effect)                \
   /* property/idx */                                                   \
   __(PGet         ,PGET     ,"pget"     ,NoLeaf,NoEffect)              \
@@ -62,8 +63,7 @@ namespace hir        {
   __(WriteEffectPhi,WRITE_EFFECT_PHI,"write_effect_phi",NoLeaf,NoEffect) \
   __(NoReadEffect  ,NO_READ_EFFECT  ,"no_read_effect"  ,Leaf  ,NoEffect) \
   __(NoWriteEffect ,NO_WRITE_EFFECT ,"no_write_effect" ,Leaf  ,NoEffect) \
-  /* statement */                                                      \
-  __(InitCls      ,INIT_CLS        ,"init_cls"  ,NoLeaf,Effect)        \
+  /* misc */                                                      \
   __(Projection   ,PROJECTION      ,"projection",NoLeaf,NoEffect)      \
   /* osr */                                                            \
   __(OSRLoad      ,OSR_LOAD        ,"osr_load"  ,Leaf,Effect)          \
@@ -157,6 +157,12 @@ namespace hir        {
 #define CBASE_HIR_CONTROL_FLOW(__)                                    \
   __(Start      ,START      ,"start"      ,NoLeaf,NoEffect)           \
   __(End        ,END        ,"end"        ,NoLeaf,NoEffect)           \
+  /* osr */                                                           \
+  __(OSRStart   ,OSR_START  ,"osr_start"  ,NoLeaf,NoEffect)           \
+  __(OSREnd     ,OSR_END    ,"osr_end"    ,NoLeaf,NoEffect)           \
+  /* inline */                                                        \
+  __(InlineStart,INLINE_START,"inline_start",NoLeaf,NoEffect)         \
+  __(InlineEnd  ,INLINE_END  ,"inline_end"  ,NoLeaf,NoEffect)         \
   __(LoopHeader ,LOOP_HEADER,"loop_header",NoLeaf,NoEffect)           \
   __(Loop       ,LOOP       ,"loop"       ,NoLeaf,NoEffect)           \
   __(LoopExit   ,LOOP_EXIT  ,"loop_exit"  ,NoLeaf,NoEffect)           \
@@ -170,10 +176,7 @@ namespace hir        {
   __(JumpValue  ,JUMP_VALUE ,"jump_value" ,NoLeaf,NoEffect)           \
   __(Region     ,REGION     ,"region"     ,NoLeaf,NoEffect)           \
   __(CondTrap   ,COND_TRAP  ,"cond_trap"  ,NoLeaf,NoEffect)           \
-  __(Trap       ,TRAP       ,"trap"       ,NoLeaf,NoEffect)           \
-  /* osr */                                                           \
-  __(OSRStart   ,OSR_START  ,"osr_start"  ,NoLeaf,NoEffect)           \
-  __(OSREnd     ,OSR_END    ,"osr_end"    ,NoLeaf,NoEffect)
+  __(Trap       ,TRAP       ,"trap"       ,NoLeaf,NoEffect)
 
 #define CBASE_HIR_LIST(__)                                            \
   CBASE_HIR_EXPRESSION(__)                                            \

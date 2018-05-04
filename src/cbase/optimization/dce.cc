@@ -25,7 +25,7 @@ bool InferPredicate( Expr* predicate , bool* output ) {
     case HIR_SMALL_STRING:
     case HIR_LIST:
     case HIR_OBJECT:
-    case HIR_LOAD_CLS:
+    case HIR_CLOSURE:
     case HIR_ITR_NEW:
     case HIR_FLOAT64_NEGATE:
     case HIR_FLOAT64_ARITHMETIC:

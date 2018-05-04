@@ -100,8 +100,7 @@ release: build_dep $(OBJECT) $(INTERP_OBJECT)
 
 .PHONY:clean
 clean:
-	rm -rf $(OBJECT)
-	rm -rf $(INTERP_OBJECT)
+	find src/ -type f -name *.o -exec rm {} \;
 	rm -rf $(INTERP_SOURCE)
 	rm -rf $(TESTOBJECT)
 	rm -rf liblavascript.a

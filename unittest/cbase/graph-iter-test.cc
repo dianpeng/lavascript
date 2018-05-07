@@ -11,9 +11,6 @@
 #include <src/cbase/dominators.h>
 #include <src/cbase/graph-builder.h>
 #include <src/cbase/bytecode-analyze.h>
-
-#include <src/cbase/optimization/gvn.h>
-#include <src/cbase/optimization/dce.h>
 #include <src/cbase/graph-printer.h>
 
 #include <gtest/gtest.h>

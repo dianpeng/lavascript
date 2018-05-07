@@ -12,8 +12,6 @@
 #include <src/cbase/graph-builder.h>
 #include <src/cbase/bytecode-analyze.h>
 
-#include <src/cbase/optimization/gvn.h>
-#include <src/cbase/optimization/dce.h>
 #include <src/cbase/graph-printer.h>
 
 #include <gtest/gtest.h>
@@ -123,10 +121,14 @@ bool CheckGraphOSR( const char* source , std::size_t offset ) {
 
 TEST(GraphBuilder,Basic) {
   CASE(
-      var ret = a + b + c;
-      x.xx = 20;
-      ret  = ret  + d;
-      return ret;
+      g.x = 10;
+      var a = [1,2,3,4];
+      var x = 10;
+      if(xx) {
+        x = 20;
+      }
+      a[2] = 2;
+      return a[2] + x;
   );
 }
 

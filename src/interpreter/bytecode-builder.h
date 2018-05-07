@@ -510,12 +510,6 @@ inline BytecodeBuilder::Label BytecodeBuilder::fevrstart_( std::uint8_t reg ,
 
 inline bool BytecodeBuilder::AddUpValue( UpValueState state , std::uint8_t idx ,
                                                               std::uint8_t* output ) {
-  lava_debug(NORMAL,
-      if(state == UV_EMBED) {
-        lava_verify(idx >=0 && idx <= 255);
-      }
-    );
-
   if(upvalue_slot_.size() == kMaxUpValueSize) {
     return false;
   }

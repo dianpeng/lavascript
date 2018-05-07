@@ -1,5 +1,5 @@
-#ifndef CBASE_OPTIMIZATION_INFER_H_
-#define CBASE_OPTIMIZATION_INFER_H_
+#ifndef CBASE_PASS_INFER_H_
+#define CBASE_PASS_INFER_H_
 #include "src/cbase/hir-pass.h"
 
 namespace lavascript {
@@ -21,4 +21,4 @@ class Infer : public HIRPass {
 } // namespace cbase
 } // namespace lavascript
 
-#endif // CBASE_OPTIMIZATION_INFER_H_
+#endif // CBASE_PASS_INFER_H_

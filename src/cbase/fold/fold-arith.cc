@@ -155,6 +155,7 @@ Expr* Float64Reassociate( Graph* graph , Binary::Operator op , Expr* lhs , Expr*
 Expr* SimplifyLogicAnd( Graph* graph , TypeKind lhs_type , TypeKind rhs_type , Expr* lhs , Expr* rhs ) {
   (void)lhs_type;
   (void)rhs_type;
+
   if(IsFalse(lhs,lhs_type)) { return Boolean::New(graph,false); }  // false && any ==> false
   if(IsTrue (lhs,lhs_type)) { return rhs; }                                 // true  && any ==> any
   if(lhs->IsReplaceable(rhs)) return lhs; // a && a ==> a
@@ -169,6 +170,8 @@ Expr* SimplifyLogicAnd( Graph* graph , TypeKind lhs_type , TypeKind rhs_type , E
   return NULL;
 }
 Expr* SimplifyLogicOr ( Graph* graph , TypeKind lhs_type , TypeKind rhs_type , Expr* lhs, Expr* rhs ) {
+  (void)rhs_type;
+
   if(IsTrue (lhs,lhs_type)) { return Boolean::New(graph,true); }  // true || any ==> true
   if(IsFalse(lhs,lhs_type)) { return rhs; }                                // false|| any ==> any
   if(lhs->IsReplaceable(rhs)) return lhs; // a || a ==> a
@@ -186,6 +189,7 @@ Expr* SimplifyBooleanCompare( Graph* graph , Binary::Operator op, TypeKind lhs_t
                                                                   TypeKind rhs_type ,
                                                                   Expr* lhs,
                                                                   Expr* rhs ) {
+  (void)op;
   if(lhs_type == TPKIND_BOOLEAN && rhs->IsBoolean()) {
     return rhs->AsBoolean()->value() ?  lhs :
       NewBoxNode<BooleanNot>(graph,TPKIND_BOOLEAN,NewUnboxNode(graph,lhs,TPKIND_FLOAT64));
@@ -307,17 +311,17 @@ Expr* Fold( Graph* graph , Expr* cond , Expr* lhs , Expr* rhs ) {
   //    if it is side effect free then just return lhs/rhs
   if(lhs->IsReplaceable(rhs)) return lhs;
   // 2. check following cases
-  // 1) value = cond ? true : false ==> value = cast_to_boolean(cond)
-  // 2) value = cond ? false: true  ==> value = cast_to_boolean(cond,negate)
+  // 1) value = cond ? true : false ==> value = conv_boolean (cond)
+  // 2) value = cond ? false: true  ==> value = conv_nboolean(cond)
   if( lhs->IsBoolean() && rhs->IsBoolean() ) {
     auto lb = lhs->AsBoolean()->value();
     auto rb = rhs->AsBoolean()->value();
     if(lb) {
       lava_debug(NORMAL,lava_verify(!rb););
-      return CastToBoolean::New(graph,cond);
+      return ConvBoolean::NewBox(graph,cond);
     } else {
       lava_debug(NORMAL,lava_verify(rb););
-      return CastToBoolean::NewNegateCast(graph,cond);
+      return ConvNBoolean::NewBox(graph,cond);
     }
   }
 

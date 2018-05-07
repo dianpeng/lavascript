@@ -39,11 +39,16 @@ using namespace ::lavascript::builtin;
 // Used in dynasm library
 int ResolveExternalAddress( void**,unsigned char*,int,int );
 
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wimplicit-fallthrough"
+
 // Workaround for ODR
 #include "dep/dynasm/dasm_proto.h"
-
+// Resolver macro
 #define DASM_EXTERN_FUNC(a,b,c,d) ResolveExternalAddress((void**)a,b,c,d)
 #include "dep/dynasm/dasm_x86.h"
+
+#pragma GCC diagnostic pop
 
 // -------------------------------------------------------------
 // BuildContext
@@ -759,6 +764,7 @@ void InterpreterFEEnd( Runtime* sandbox , const Value& expr , std::uint32_t offs
 INTERPRETER_REGISTER_EXTERN_SYMBOL(InterpreterFEEnd)
 
 void InterpreterIDref( Runtime* sandbox , Value* key , Value* val , const Value& expr ) {
+  (void)sandbox;
   Handle<Iterator> itr(expr.GetIterator());
   itr->Deref(key,val);
 }
@@ -861,6 +867,7 @@ enum { HC_LOOP = 0 , HC_CALL };
 // Triggering the JIT compilation
 const void* JITProfileStart( Runtime* runtime , int type , const std::uint32_t* pc ) {
   (void)type;
+  (void)pc;
 
   lava_debug(NORMAL,
       lava_verify(dynamic_cast<AssemblerInterpreter*>(runtime->interp) != NULL););
@@ -1296,7 +1303,7 @@ static_assert( sizeof(compiler::hotcount_t) == 2 );
 
 // This byte offset in little endian for type pattern inside of
 // heap object header
-#define HOH_TYPE_OFFSET 7
+#define HOH_TYPE_OFFSET 15
 
 // Set a pointer into a register , this is really painful
 |.macro StHeap,val

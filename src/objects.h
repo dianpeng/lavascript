@@ -2433,6 +2433,8 @@ inline bool Map::Set( GC* gc , const std::string& key , const Value& value ) {
 }
 
 inline void Map::Put( GC* gc , const Handle<String>& key , const Value& value ) {
+  (void)gc;
+
   lava_debug(NORMAL,lava_verify(!NeedRehash()););
 
   std::uint32_t f = Hash(key);
@@ -2467,6 +2469,8 @@ inline void Map::Put( GC* gc , const char* key , const Value& value ) {
 }
 
 inline void Map::Put( GC* gc , const std::string& key , const Value& value ) {
+  (void)gc;
+
   lava_debug(NORMAL,lava_verify(!NeedRehash()););
 
   std::uint32_t f = Hash(key);
@@ -2484,6 +2488,8 @@ inline void Map::Put( GC* gc , const std::string& key , const Value& value ) {
 }
 
 inline bool Map::Update( GC* gc , const Handle<String>& key , const Value& value ) {
+  (void)gc;
+
   if(size_ == 0) return false;
 
   std::uint32_t f = Hash(key);
@@ -2501,6 +2507,8 @@ inline bool Map::Update( GC* gc , const Handle<String>& key , const Value& value
 }
 
 inline bool Map::Update( GC* gc , const char* key , const Value& value ) {
+  (void)gc;
+
   if(size_ == 0) return false;
 
   std::uint32_t f = Hash(key);
@@ -2518,6 +2526,8 @@ inline bool Map::Update( GC* gc , const char* key , const Value& value ) {
 }
 
 inline bool Map::Update( GC* gc , const std::string& key , const Value& value ) {
+  (void)gc;
+
   if(size_ == 0) return false;
 
   std::uint32_t f = Hash(key);

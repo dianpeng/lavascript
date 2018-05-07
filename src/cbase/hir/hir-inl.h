@@ -610,14 +610,24 @@ inline Unbox* Unbox::New( Graph* graph , Expr* obj , TypeKind tk ) {
   return graph->zone()->New<Unbox>(graph,graph->AssignID(),obj,tk);
 }
 
-inline CastToBoolean* CastToBoolean::New( Graph* graph , Expr* value ) {
-  return graph->zone()->New<CastToBoolean>(graph,graph->AssignID(),value);
+inline ConvBoolean* ConvBoolean::New( Graph* graph , Expr* value ) {
+  return graph->zone()->New<ConvBoolean>(graph,graph->AssignID(),value);
 }
 
-inline Expr* CastToBoolean::NewNegateCast( Graph* graph , Expr* value ) {
-  auto cast = New(graph,value);
-  auto unbox= Unbox::New(graph,cast,TPKIND_BOOLEAN);
-  return BooleanNot::New(graph,unbox);
+inline Box* ConvBoolean::NewBox( Graph* graph , Expr* value ) {
+  auto unbox = New(graph,value);
+  auto box   = Box::New(graph,unbox,TPKIND_BOOLEAN);
+  return box;
+}
+
+inline ConvNBoolean* ConvNBoolean::New( Graph* graph , Expr* value ) {
+  return graph->zone()->New<ConvNBoolean>(graph,graph->AssignID(),value);
+}
+
+inline Box* ConvNBoolean::NewBox( Graph* graph , Expr* value ) {
+  auto unbox = New(graph,value);
+  auto box   = Box::New(graph,unbox,TPKIND_BOOLEAN);
+  return box;
 }
 
 inline StackSlot* StackSlot::New( Graph* graph , Expr* expr , std::uint32_t index ) {

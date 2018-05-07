@@ -51,9 +51,11 @@ class ZoneAllocator {
   T*             address(T& x) const { return &x; }
   const T* address(const T& x) const { return &x; }
   T* allocate(size_t n, const void* hint = 0) {
+    (void)hint;
     return static_cast<T*>(zone_->Malloc(sizeof(T)*n));
   }
-  void deallocate(T* p, size_t) { /* noop for Zones */
+  void deallocate(T* p, size_t sz) { /* noop for Zones */
+    (void)p;(void)sz;
   }
 
   size_t max_size() const throw() { return std::numeric_limits<int>::max() / sizeof(T); }

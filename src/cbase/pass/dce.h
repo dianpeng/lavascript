@@ -1,5 +1,5 @@
-#ifndef CBASE_OPTIMIZATION_DCE_H_
-#define CBASE_OPTIMIZATION_DCE_H_
+#ifndef CBASE_PASS_DCE_H_
+#define CBASE_PASS_DCE_H_
 #include "src/cbase/hir-pass.h"
 
 namespace lavascript {
@@ -23,4 +23,4 @@ class DCE : public HIRPass {
 } // namespace cbase
 } // namespace lavascript
 
-#endif // CBASE_OPTIMIZATION_DCE_H_
+#endif // CBASE_PASS_DCE_H_

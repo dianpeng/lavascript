@@ -64,12 +64,12 @@ TEST(HeapObjectHeader,SetterGetter) {
       HeapObjectHeader v(RandUInt64());
       v.set_size(100);
       ASSERT_EQ(100,v.size());
-      ASSERT_EQ(108,v.total_size());
+      ASSERT_EQ(100 + sizeof(HeapObjectHeader),v.total_size());
 
       v.set_size( std::numeric_limits<std::uint32_t>::max() );
       ASSERT_EQ(std::numeric_limits<std::uint32_t>::max(),v.size());
       ASSERT_EQ(static_cast<std::size_t>(
-            std::numeric_limits<std::uint32_t>::max()) + 8 , v.total_size());
+            std::numeric_limits<std::uint32_t>::max()) + sizeof(HeapObjectHeader), v.total_size());
     }
   }
 
@@ -97,7 +97,7 @@ TEST(HeapObjectHeader,EncodeDecode) {
   ASSERT_TRUE(result.IsLongString());
   ASSERT_TRUE(result.IsEndOfChunk());
   ASSERT_TRUE(result.size() == 1024);
-  ASSERT_TRUE(result.total_size() == 1024+8);
+  ASSERT_TRUE(result.total_size() == 1024+sizeof(HeapObjectHeader));
 }
 
 TEST(HeapObjectHeader,GCState) {

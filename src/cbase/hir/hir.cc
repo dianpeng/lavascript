@@ -160,25 +160,42 @@ class WriteEffectPhi::WriteEffectPhiDependencyIterator {
     itr2_()
   {
     if(itr1_.HasNext()) {
-      itr2_ = itr1_.value()->GetDependencyIterator();
+      auto node = itr1_.value()->AsWriteEffect();
+      itr2_ = node->read_effect()->GetForwardIterator();
     }
   }
 
-  bool HasNext() const { return itr2_.HasNext(); }
-
+  bool HasNext() const { return itr1_.HasNext(); }
   bool Move   () const {
     lava_debug(NORMAL,lava_verify(HasNext()););
-    if(!itr2_.Move()) {
+    if(itr2_.HasNext() || !itr2_.Move()) {
       if(!itr1_.Move()) return false;
-      itr2_ = itr1_.value()->GetDependencyIterator();
+      auto node = itr1_.value()->AsWriteEffect();
+      itr2_ = node->read_effect()->GetForwardIterator();
     }
     return true;
   }
-  Expr* value()       { return itr2_.value(); }
-  Expr* value() const { return itr2_.value(); }
+
+  Expr* value() {
+    auto node = itr1_.value()->AsWriteEffect();
+    if(node->read_effect()->empty()) {
+      return node;
+    } else {
+      return itr2_.value();
+    }
+  }
+
+  Expr* value() const {
+    auto node = itr1_.value()->AsWriteEffect();
+    if(node->read_effect()->empty()) {
+      return node;
+    } else {
+      return itr2_.value();
+    }
+  }
  private:
   const OperandIterator    itr1_;
-  mutable Expr::DependencyIterator itr2_;
+  mutable ReadEffectListIterator itr2_;
 };
 
 Expr::DependencyIterator WriteEffectPhi::GetDependencyIterator() const {

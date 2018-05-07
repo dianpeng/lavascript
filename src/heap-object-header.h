@@ -62,7 +62,7 @@ class HeapObjectHeader : DoNotAllocateOnNormalHeap {
  public:
   typedef std::uint64_t Type;
 
-  static const size_t kHeapObjectHeaderSize = 8;
+  static const size_t kHeapObjectHeaderSize = 16;
 
   static const std::uint32_t kGCStateMask = 3;         // 0b11
   static const std::uint32_t kLongStringMask = (1<<7); // 0b10000000
@@ -160,11 +160,13 @@ class HeapObjectHeader : DoNotAllocateOnNormalHeap {
   }
 
   explicit HeapObjectHeader( Type raw ) :
-    raw_(raw)
+    raw_(raw),
+    id_ ()
   {}
 
   explicit HeapObjectHeader( void* raw ):
-    raw_ ( *reinterpret_cast<Type*>(raw) )
+    raw_ ( *reinterpret_cast<Type*>(raw) ),
+    id_  ()
   {}
 
  private:
@@ -197,10 +199,11 @@ class HeapObjectHeader : DoNotAllocateOnNormalHeap {
     };
 #endif // LAVA_LTTILE_ENDIAN
   };
+  std::uint64_t id_;
 };
 
 static_assert( std::is_standard_layout<HeapObjectHeader>::value );
-static_assert( sizeof(HeapObjectHeader::Type) == sizeof(HeapObjectHeader) );
+static_assert( sizeof(HeapObjectHeader::Type)*2 == sizeof(HeapObjectHeader) );
 
 template< std::size_t index >
 inline std::uint8_t HeapObjectHeader::high() const {

@@ -6,8 +6,11 @@ namespace lavascript {
 namespace cbase      {
 namespace hir        {
 
-Expr* FoldIndexGet( Graph* , Expr* , Expr* );
-Expr* FoldPropGet ( Graph* , Expr* , Expr* );
+// effect analyzing node
+class Effect;
+
+Expr* FoldIndexGet( Graph* , Expr* , Expr* , Effect* );
+Expr* FoldPropGet ( Graph* , Expr* , Expr* , Effect* );
 
 } // namespace hir
 } // namespace cbase

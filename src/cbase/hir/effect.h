@@ -31,7 +31,8 @@ class ReadEffect : public Expr {
   // set the write effect this read effect needs to depend on
   inline void SetWriteEffect( WriteEffect* );
 
-  const ReadEffectEdge& effect_edge() const { return effect_edge_; }
+  const ReadEffectEdge& effect_edge () const { return effect_edge_; }
+  WriteEffect*          write_effect() const { return effect_edge_.node; }
  private:
   ReadEffectEdge effect_edge_; // record the read effect and write effect relationship
 

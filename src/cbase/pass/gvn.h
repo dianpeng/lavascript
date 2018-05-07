@@ -1,5 +1,5 @@
-#ifndef CBASE_OPTIMIZATION_GVN_H_
-#define CBASE_OPTIMIZATION_GVN_H_
+#ifndef CBASE_PASS_GVN_H_
+#define CBASE_PASS_GVN_H_
 #include "src/cbase/hir-pass.h"
 
 namespace lavascript {
@@ -22,4 +22,4 @@ class GVN: public HIRPass {
 } // namespace cbase
 } // namespace lavascript
 
-#endif // CBASE_OPTIMIZATION_GVN_H_
+#endif // CBASE_PASS_GVN_H_

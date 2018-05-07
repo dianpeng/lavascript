@@ -141,7 +141,8 @@ namespace hir        {
  * the compiler
  */
 #define CBASE_HIR_CAST(__)                                            \
-  __(CastToBoolean,CAST_TO_BOOLEAN,"cast_to_boolean",NoLeaf,NoEffect)
+  __(ConvBoolean ,CONV_BOOLEAN ,"conv_boolean" ,NoLeaf,NoEffect)      \
+  __(ConvNBoolean,CONV_NBOOLEAN,"conv_nboolean",NoLeaf,NoEffect)
 
 // All the expression IR nodes
 #define CBASE_HIR_EXPRESSION(__)                                      \
@@ -387,10 +388,10 @@ class Node : public zone::ZoneObject {
  *    any float64 node with same value should have exactly same GVNHash value and also the
  *    Equal function should behave correctly
  *
- * 2) for any type that has side effect , then the GVNHash value should take into consideration
- *    of its node identity. A generaly rules is put the node's id() value into the GVNHash
- *    generation. Prefer using id() function instead of use this pointer address as seed.
- *
+ * 2) for any type that has side effect , then the GVNHash value should take into consider-
+ *    ation of its node identity. A generaly rules is put the node's id() value into the
+ *    GVNHash generation. Prefer using id() function instead of use this pointer address as
+ *    seed.
  */
 
 template< typename T >

@@ -7,6 +7,8 @@ namespace hir        {
 namespace {
 
 Expr* TryFoldObjectGet( Graph* graph , Expr* obj , Expr* key ) {
+  (void)graph;
+
   if(obj->IsIRObject() && key->IsString()) {
     auto irobj = obj->AsIRObject();
     auto zstr  = key->AsZoneString();

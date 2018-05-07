@@ -70,7 +70,7 @@ class ControlFlowKit {
     bool IsBR  () const { return type == BR; }
     bool IsLoop() const { return type == LOOP; }
     Context( ControlFlow* r ): br(), bb(r)   , type(BB) {}
-    Context( int t          ): br(), bb(NULL), type(BR) {}
+    Context( int t          ): br(), bb(NULL), type(t) {}
   };
   struct InlineBlock {
     InlineStart*start;

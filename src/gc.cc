@@ -556,6 +556,7 @@ bool GC::GrowInterpreterStack( interpreter::Runtime* runtime ) {
  */
 
 void GC::PhaseMark( MarkResult* result ) {
+  (void)result;
 }
 
 void GC::PhaseSwap( std::size_t new_heap_size ) {

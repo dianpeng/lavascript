@@ -17,7 +17,7 @@ LUA               =luajit
 # All interesting CXX flags needed to compile lavascript
 ## c++17 support
 CXXFLAGS          += -std=c++17
-CXXFLAGS          += -Wall -pipe
+CXXFLAGS          += -Wall -Wextra -pipe
 # -------------------------------------------------------------------------------
 #
 # Dependency flags

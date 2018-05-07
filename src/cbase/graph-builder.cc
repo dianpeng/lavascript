@@ -856,6 +856,7 @@ Expr* GraphBuilder::AddTypeFeedbackIfNeed( Expr* node , const Value& value , con
 }
 
 Expr* GraphBuilder::AddTypeFeedbackIfNeed( Expr* n , TypeKind tp , const BytecodeLocation& pc ) {
+  (void)pc;
   auto stp = GetTypeInference(n);
   if(stp != TPKIND_UNKNOWN) {
     /**
@@ -945,6 +946,7 @@ Expr* GraphBuilder::NewBinary  ( Expr* lhs , Expr* rhs , Binary::Operator op , c
 
 Expr* GraphBuilder::TrySpecialTestBinary( Expr* lhs , Expr* rhs , Binary::Operator op ,
                                                                   const BytecodeLocation& pc ) {
+  (void)pc;
   if(op == Binary::EQ || op == Binary::NE) {
     if((lhs->IsICall() && rhs->IsString()) || (rhs->IsICall() && lhs->IsString())) {
       /**
@@ -1643,6 +1645,7 @@ void GraphBuilder::PatchLoopPhi() {
 // Loop
 // ============================================================
 Expr* GraphBuilder::BuildLoopEndCondition( BytecodeIterator* itr , ControlFlow* body ) {
+  (void)body;
   // now we should stop at the FEND1/FEND2/FEEND instruction
   if(itr->opcode() == BC_FEND1) {
     std::uint8_t a1,a2,a3; std::uint32_t a4;

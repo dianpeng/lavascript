@@ -405,6 +405,7 @@ bool Generator::GetBinaryOperatorBytecode( const SourceCodeInfo& sci ,
                                            bool lhs ,
                                            bool rhs ,
                                            Bytecode* output ) const {
+  (void)sci;
   lava_debug(NORMAL, lava_verify(!(rhs && lhs)); );
 
   int index = static_cast<int>(rhs) << 1 | static_cast<int>(lhs);

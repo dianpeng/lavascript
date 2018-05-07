@@ -511,6 +511,7 @@ inline bool BuiltinDelete( Context* ctx , const Value& obj , const Value& idx ,
 
 inline bool BuiltinClear( Context* ctx , const Value& obj , Value* output ,
                                                             std::string* error ) {
+  (void)error;
   (void)ctx;
 
   if(obj.IsObject()) {

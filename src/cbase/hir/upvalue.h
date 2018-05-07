@@ -9,7 +9,7 @@ namespace hir        {
 class UGet : public MemoryRead {
  public:
   inline static UGet* New( Graph* , std::uint8_t , std::uint32_t );
-  std::uint8_t  index()   const { return index_;  }
+  std::uint8_t  index () const { return index_;  }
   std::uint32_t method() const { return method_; }
 
   UGet( Graph* graph , std::uint32_t id , std::uint8_t index , std::uint32_t method ):

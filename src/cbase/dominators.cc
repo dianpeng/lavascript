@@ -11,14 +11,23 @@ namespace lavascript {
 namespace cbase      {
 namespace hir        {
 
+Dominators::Dominators( zone::Zone* zone , const Graph& graph ):
+  dominators_    (zone),
+  imm_dominators_(zone),
+  zone_          (zone)
+{
+  Build(graph);
+}
+
 void Dominators::AddSet( DominatorSet* set , ControlFlow* node ) const {
   auto itr = std::upper_bound(set->begin(),set->end(),node);
   set->insert(itr,node);
 }
 
 void Dominators::IntersectSet( DominatorSet* set , const DominatorSet& another ) const {
-  DominatorSet temp;
-  std::set_intersection(set->begin(),set->end(),another.begin(),another.end(), std::back_inserter(temp));
+  DominatorSet temp(zone_);
+  std::set_intersection(set->begin(),set->end(),another.begin(),another.end(),
+                                                                std::back_inserter(temp));
   *set = std::move(temp);
 }
 
@@ -26,11 +35,11 @@ void Dominators::IntersectSet( DominatorSet* set , const DominatorSet& l , const
   std::set_intersection(l.begin(),l.end(),r.begin(),r.end(),std::back_inserter(*set));
 }
 
-Dominators::DominatorSet* Dominators::GetDomSet( const Graph& graph , const std::vector<ControlFlow*>& cf ,
+Dominators::DominatorSet* Dominators::GetDomSet( const Graph& graph , const DominatorSet& cf ,
                                                                       ControlFlow* node ) {
   auto i = dominators_.find(node);
   if(i == dominators_.end()) {
-    auto ret = dominators_.insert(std::make_pair(node,DominatorSet()));
+    auto ret = dominators_.insert(std::make_pair(node,DominatorSet(zone_)));
     auto set = &(ret.first->second);
     if(node == graph.start()) {
       AddSet(set,node);
@@ -47,7 +56,7 @@ void Dominators::Build( const Graph& graph ) {
   dominators_.clear();
   imm_dominators_.clear();
   // timestamp recorder
-  std::vector<std::int32_t> ts(graph.MaxID());
+  zone::stl::ZoneVector<std::int32_t> ts(zone_,0,graph.MaxID());
   // current timestamp
   std::int32_t cur_ts = 0;
   // do a timestamp mark using a DFS iteration algorithm
@@ -56,10 +65,10 @@ void Dominators::Build( const Graph& graph ) {
     ts[n->id()] = ++cur_ts;
   }
   // do a dominator set generation using data flow algorithm
-  std::vector<ControlFlow*> all_cf;
+  zone::stl::ZoneVector<ControlFlow*> all_cf(zone_);
   bool has_change = false;
-  DominatorSet temp;
-  temp.reserve(64);
+  DominatorSet temp(zone_);
+  temp.reserve  (64);
   all_cf.reserve(64);
   graph.GetControlFlowNode(&all_cf);
 
@@ -112,13 +121,12 @@ const Dominators::DominatorSet& Dominators::GetDominatorSet( ControlFlow* node )
   return itr->second;
 }
 
-Dominators::DominatorSet Dominators::GetCommonDominatorSet( ControlFlow* n1 ,
-                                                            ControlFlow* n2 ) const {
-  DominatorSet temp;
+void Dominators::GetCommonDominatorSet( ControlFlow* n1 , ControlFlow* n2 ,
+                                                          DominatorSet* output ) const {
+  output->clear();
   auto l = GetDominatorSet(n1);
   auto r = GetDominatorSet(n2);
-  IntersectSet(&temp,l,r);
-  return std::move(temp);
+  IntersectSet(output,l,r);
 }
 
 ControlFlow* Dominators::GetImmDominator( ControlFlow* node ) const {

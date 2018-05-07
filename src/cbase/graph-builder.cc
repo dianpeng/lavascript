@@ -56,7 +56,7 @@ class GraphBuilder {
     struct GlobalVar {
       Str name; Expr* value;
       GlobalVar( const void* k , std::size_t l , Expr* v ): name(k,l), value(v) {}
-      GlobalVar( const Str& k , Expr* v ) : name(k) , value(v) {}
+      GlobalVar( const Str&  k , Expr* v                 ): name(k)  , value(v) {}
       bool operator == ( const Str& k ) const { return Str::Cmp(name,k) == 0; }
     };
     typedef zone::stl::ZoneVector<GlobalVar>     GlobalMap;
@@ -702,11 +702,9 @@ bool GraphBuilder::DoInline( const Handle<Prototype>& proto , std::uint8_t base 
       // but we still need to put something as placeholder
       ret = Nil::New(graph_);
     } else {
-
       // generate return value
       if( func_info().return_list.size() == 1 ) {
-        auto rnode = func_info().return_list[0];
-        ret = rnode->value();
+        ret = func_info().return_list[0]->value();
       } else {
         // if the inlined function has multiple return/exit point then
         // we need to do a jump value merge node here to fan in all the
@@ -2236,7 +2234,6 @@ GraphBuilder::BuildOSRStart( const Handle<Prototype>& entry ,  const std::uint32
   // setup the fail node which accepts guard bailout
   Fail* fail = Fail::New(graph);
   Success* succ = Success::New(graph);
-
   // set up the value stack/expression stack
   Environment root_env(temp_zone(),this);
 
@@ -2255,11 +2252,8 @@ GraphBuilder::BuildOSRStart( const Handle<Prototype>& entry ,  const std::uint32
     lava_debug(NORMAL,lava_verify(itr.HasNext()););
     // peel all nested loop until hit the outermost one
     if(PeelOSRLoop(&itr) == STOP_BAILOUT) return STOP_BAILOUT;
-    {
-      // create a manual trap node to make sure after OSR we fallback to the interpreter
-      Trap* trap = Trap::New(graph_,GenerateCheckpoint(itr.bytecode_location()),region());
-      fail->AddBackwardEdge(trap);
-    }
+    // add a trap right after the OSR generation
+    fail->AddBackwardEdge(Trap::New(graph_,GenerateCheckpoint(itr.bytecode_location()),region()));
     // finish all exit node work
     PatchExitNode(succ,fail);
     // lastly create the end node for the osr graph
@@ -2271,21 +2265,24 @@ GraphBuilder::BuildOSRStart( const Handle<Prototype>& entry ,  const std::uint32
   return STOP_SUCCESS;
 }
 
-bool GraphBuilder::BuildOSR( const Handle<Prototype>& entry , const std::uint32_t* osr_start , Graph* graph ) {
+bool GraphBuilder::BuildOSR( const Handle<Prototype>& entry , const std::uint32_t* osr_start ,
+                                                              Graph* graph ) {
   return BuildOSRStart(entry,osr_start,graph) == STOP_SUCCESS;
 }
 
 } // namespace
 
-bool BuildPrototype( const Handle<Script>& script , const Handle<Prototype>& prototype , const RuntimeTrace& rt ,
-                                                                                         Graph* output ) {
+bool BuildPrototype( const Handle<Script>& script , const Handle<Prototype>& prototype ,
+                                                    const RuntimeTrace& rt ,
+                                                    Graph* output ) {
   GraphBuilder gb(script,rt);
   return gb.Build(prototype,output);
 }
 
-bool BuildPrototypeOSR( const Handle<Script>& script , const Handle<Prototype>& prototype , const RuntimeTrace& rt ,
-                                                                                            const std::uint32_t* address ,
-                                                                                            Graph* graph ) {
+bool BuildPrototypeOSR( const Handle<Script>& script , const Handle<Prototype>& prototype ,
+                                                       const RuntimeTrace& rt ,
+                                                       const std::uint32_t* address ,
+                                                       Graph* graph ) {
   GraphBuilder gb(script,rt);
   return gb.BuildOSR(prototype,address,graph);
 }

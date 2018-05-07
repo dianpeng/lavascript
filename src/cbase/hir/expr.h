@@ -1,6 +1,7 @@
 #ifndef CBASE_HIR_EXPR_H_
 #define CBASE_HIR_EXPR_H_
 #include "node.h"
+#include "src/iterator.h"
 #include <functional>
 
 namespace lavascript {
@@ -68,12 +69,11 @@ class Expr : public Node {
   // essentially
   bool HasRef() const { return !ref_list()->empty(); }
  public:
-  typedef std::function<bool (Expr*)> DependencyVisitor;
+  // immutable iterator, so user cannot set value
+  typedef PolyIterator<Expr*> DependencyIterator;
 
-  // go through all the dependency this expr node has. the dependency
-  // recorded here is the dependency that is used to express side effect
-  virtual bool VisitDependency( const DependencyVisitor& visitor ) const
-  { (void)visitor; return true; }
+  // get dependency iteration iterator
+  virtual DependencyIterator GetDependencyIterator() const { return DependencyIterator(); }
 
   // get the dependnecy size
   virtual std::size_t dependency_size() const { return 0; }

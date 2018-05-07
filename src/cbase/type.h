@@ -57,79 +57,59 @@ class TPKind {
  public:
   // convert a TypeKind into a TPKind node object
   static TPKind* Node( TypeKind tk );
-
   // check whether the *second* typekind is included by *first* typekind
   static bool Contain( TypeKind , TypeKind , bool* );
-
   // check whether the *second* valuetype is included by *first* typekind
   static bool Contain( TypeKind , ValueType, bool* );
-
   // check whether we can compare both types
   static bool Equal  ( TypeKind , TypeKind , bool* );
-
  public:
   // try to convert type kind to a boolean value if we can
   inline static bool ToBoolean( TypeKind , bool* );
-
   // check whether this TypeKind is a string type or not
   inline static bool IsString( TypeKind tp );
-
  public:
   TypeKind type_kind() const { return type_kind_; }
-
   const char* type_kind_name() const {
     return GetTypeKindName(type_kind());
   }
-
   // Get the parent node of this TypeKind, if it returns NULL,
   // it means it is the root of the type system, ie TPKIND_UNKNOWN
   TPKind*  parent() const    { return parent_; }
-
   bool IsParent( const TPKind& kind ) const {
     return parent_ == &kind;
   }
-
   // Check whether the input |kind| is the one of the children of
   // this PTKind object
   bool HasChild( const TPKind& kind ) const;
-
   bool HasChild( TypeKind kind ) const {
     return HasChild(*Node(kind));
   }
-
   // Check whether this type node is a *LEAF* node
   bool IsLeaf() const { return children_.empty(); }
-
   // Check whether |this| is the ancestor of the input kind
   bool IsAncestor( const TPKind& kind ) const;
-
   bool IsAncestor( TypeKind kind ) const {
     return IsAncestor( *Node(kind) );
   }
-
   // Check whether |this| is the descendent of the input *kind*
   bool IsDescendent( const TPKind& kind ) const;
-
   bool IsDescendent( TypeKind kind ) const {
     return IsDescendent( *Node(kind) );
   }
 
  private:
   TPKind(): type_kind_(), parent_(NULL),children_() {}
-
   class TPKindBuilder;
-
   // Get TPKindBuilder object. This object is a static variable
   // and it is global
   static TPKindBuilder* GetTPKindBuilder();
-
 
   TypeKind type_kind_;
   TPKind* parent_;
   std::vector<TPKind*> children_;
 
   friend class TPKindBuilder;
-
   LAVA_DISALLOW_COPY_AND_ASSIGN(TPKind);
 };
 

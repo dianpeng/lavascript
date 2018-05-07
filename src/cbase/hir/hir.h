@@ -59,7 +59,7 @@ class Graph {
     return start_->IsOSRStart();
   }
   // Get all control flow nodes
-  void GetControlFlowNode( std::vector<ControlFlow*>* ) const;
+  template< typename T > void GetControlFlowNode( T* ) const;
  private:
   zone::Zone                  zone_;
   ControlFlow*                start_;

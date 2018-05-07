@@ -76,8 +76,7 @@ struct BitOff {
     ~detail::BitOnImpl<T,Start,End>::value;
 };
 
-inline
-std::uint16_t NextPowerOf2( std::uint16_t v ) {
+inline std::uint16_t NextPowerOf2( std::uint16_t v ) {
   --v;
   v |= v >> 1;
   v |= v >> 2;
@@ -86,8 +85,7 @@ std::uint16_t NextPowerOf2( std::uint16_t v ) {
   return v + 1;
 }
 
-inline
-std::uint32_t NextPowerOf2( std::uint32_t v ) {
+inline std::uint32_t NextPowerOf2( std::uint32_t v ) {
   --v;
   v |= v >> 1;
   v |= v >> 2;
@@ -97,8 +95,7 @@ std::uint32_t NextPowerOf2( std::uint32_t v ) {
   return v+1;
 }
 
-inline
-std::uint64_t NextPowerOf2( std::uint64_t v ) {
+inline std::uint64_t NextPowerOf2( std::uint64_t v ) {
   --v;
   v |= v >> 1;
   v |= v >> 2;
@@ -110,13 +107,11 @@ std::uint64_t NextPowerOf2( std::uint64_t v ) {
 }
 
 // mimic rol/ror x64 instruction since C++ doesn't have builtin operator supports
-inline
-std::uint32_t BRol( std::uint32_t lhs , std::uint8_t rhs ) {
+inline std::uint32_t BRol( std::uint32_t lhs , std::uint8_t rhs ) {
   return (lhs << rhs) | (lhs >> (32-rhs));
 }
 
-inline
-std::uint32_t BRor( std::uint32_t lhs , std::uint8_t rhs ) {
+inline std::uint32_t BRor( std::uint32_t lhs , std::uint8_t rhs ) {
   return (lhs >> rhs) | (lhs << (32-rhs));
 }
 

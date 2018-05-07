@@ -439,28 +439,46 @@ inline ItrDeref* ItrDeref::New( Graph* graph , Expr* operand ) {
   return ret;
 }
 
+inline void Phi::set_region( ControlFlow* region ) {
+	lava_debug(NORMAL,lava_verify(!region_););
+	region_ = region;
+	region->AddOperand(this);
+}
+
 inline void Phi::RemovePhiFromRegion( Phi* phi ) {
   if(phi->region()) {
     lava_verify(phi->region()->RemoveOperand(phi));
   }
 }
 
-inline Phi::Phi( Graph* graph , std::uint32_t id , ControlFlow* region ):
+inline Phi::Phi( Graph* graph , std::uint32_t id ):
   Expr           (HIR_PHI,id,graph),
-  region_        (region)
-{
-  region->AddOperand(this);
-}
+  region_        ()
+{}
 
 inline Phi* Phi::New( Graph* graph , Expr* lhs , Expr* rhs , ControlFlow* region ) {
-  auto ret = graph->zone()->New<Phi>(graph,graph->AssignID(),region);
+  auto ret = graph->zone()->New<Phi>(graph,graph->AssignID());
   ret->AddOperand(lhs);
   ret->AddOperand(rhs);
+  ret->set_region(region);
   return ret;
 }
 
 inline Phi* Phi::New( Graph* graph , ControlFlow* region ) {
-  return graph->zone()->New<Phi>(graph,graph->AssignID(),region);
+  auto ret = graph->zone()->New<Phi>(graph,graph->AssignID());
+  ret->set_region(region);
+  return ret;
+}
+
+inline Phi* Phi::New( Graph* graph ) {
+  return graph->zone()->New<Phi>(graph,graph->AssignID());
+}
+
+inline Phi* Phi::New( Graph* graph , Expr* lhs , Expr* rhs ) {
+  auto phi = Phi::New(graph);
+  phi->AddOperand(lhs);
+  phi->AddOperand(rhs);
+  return phi;
 }
 
 inline void ReadEffect::SetWriteEffect( WriteEffect* effect ) {
@@ -722,6 +740,18 @@ inline InlineStart* InlineStart::New( Graph* graph , ControlFlow* region ) {
 
 inline InlineEnd*   InlineEnd::New( Graph* graph , ControlFlow* region ) {
   return graph->zone()->New<InlineEnd>(graph,graph->AssignID(),region);
+}
+
+inline InlineEnd*   InlineEnd::New( Graph* graph ) {
+  return graph->zone()->New<InlineEnd>(graph,graph->AssignID());
+}
+
+template< typename T >
+void Graph::GetControlFlowNode( T* output ) const {
+  output->clear();
+  lava_foreach( auto v , ControlFlowBFSIterator(*this) ) {
+    output->push_back(v);
+  }
 }
 
 // ----------------------------------------------------------------------------

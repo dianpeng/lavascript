@@ -1442,7 +1442,6 @@ inline const char* Value::type_name() const {
   return GetValueTypeName( type() );
 }
 
-
 inline bool Value::IsString() const {
   return IsHeapObject() && (*heap_object())->IsString();
 }
@@ -2629,7 +2628,6 @@ template< typename T >
 bool Prototype::Visit( T* visitor ) {
   if(visitor->Begin(this)) {
     if(!visitor->VisitString(proto_string_)) return false;
-
     {
       String*** arr = string_table();
       for( std::size_t i = 0 ; i < string_table_size_ ; ++i ) {

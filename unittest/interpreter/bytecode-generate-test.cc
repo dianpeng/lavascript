@@ -50,8 +50,6 @@ TEST(BytecodeGenerate,Basic) {
 
     ScriptBuilder sb("a",script);
     ASSERT_TRUE(Compile(&ctx,script.c_str(),&sb,&error)) << error;
-    DumpWriter dw;
-    sb.Dump(&dw);
   }
 }
 

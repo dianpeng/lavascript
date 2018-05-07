@@ -111,6 +111,7 @@ inline Zone* StackZone<Size>::fallback() {
 
 template< std::size_t Size >
 inline void* StackZone<Size>::Malloc( std::size_t size ) {
+  size = Align(size,kMemoryAlignment);
   if((Size - size_) >= size) {
     void* ret = static_cast<void*>(buffer_ + size_);
     size_ += size;

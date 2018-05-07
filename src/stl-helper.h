@@ -35,7 +35,12 @@ namespace lavascript {
 // use real bit set to make memory efficient.
 typedef std::vector<bool> DynamicBitSet;
 
-void BitSetReset( DynamicBitSet* set , bool value = false );
+template< typename T >
+void BitSetReset( T* set , bool value = false ) {
+  for( std::size_t i = 0 ; i < set->size() ; ++i ) {
+    set->at(i) = value;
+  }
+}
 
 template< typename T >
 typename T::iterator IteratorAt( T& container , std::size_t pos ) {

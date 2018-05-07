@@ -10,6 +10,8 @@ namespace hir        {
 // A Phi node is a control flow related merged node. It can accept *at most* 2 input nodes.
 class Phi : public Expr {
  public:
+  inline static Phi* New( Graph* );
+  inline static Phi* New( Graph* , Expr* , Expr* );
   inline static Phi* New( Graph* , ControlFlow* );
   inline static Phi* New( Graph* , Expr* , Expr* , ControlFlow* );
   // Remove the phi node from its belonged region. The reason this one is just
@@ -17,6 +19,8 @@ class Phi : public Expr {
   // so its ref_list will still have its belonged region's reference there and
   // it is invalid. This function should be used under strict condition.
   static inline void RemovePhiFromRegion( Phi* );
+  // Set the bounded region, only applicable when the region is not set
+  inline void set_region( ControlFlow* );
   // Get the boundede region
   ControlFlow* region() const { return region_; }
   // Check if this Phi node is not used. We cannot use HasRef function since
@@ -36,7 +40,7 @@ class Phi : public Expr {
   // Each phi node is bounded to a control flow regional node
   // and by this we can easily decide which region contributs
   // to a certain input node of Phi node
-  inline Phi( Graph* , std::uint32_t , ControlFlow* );
+  inline Phi( Graph* , std::uint32_t );
  private:
   ControlFlow* region_;
   LAVA_DISALLOW_COPY_AND_ASSIGN(Phi)

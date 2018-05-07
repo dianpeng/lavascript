@@ -202,8 +202,8 @@ void DotPrinter::RenderExpr( const std::string& name , Expr* node ) {
                           << binary->op_name()
                           << ")\"]\n";
 
-        Indent(1) << name << " -> " << lhs_name << '\n';
-        Indent(1) << name << " -> " << rhs_name << '\n';
+        Indent(1) << name << " -> " << lhs_name << "[label=L]\n";
+        Indent(1) << name << " -> " << rhs_name << "[label=R]\n";
       }
       break;
     case HIR_UNARY:
@@ -474,10 +474,9 @@ void DotPrinter::RenderExpr( const std::string& name , Expr* node ) {
   }
 
   // effect list node
-  node->VisitDependency( [&] ( Expr* n ) {
+  lava_foreach( auto n , node->GetDependencyIterator() ) {
     Indent(1) << name << " -> " << GetNodeName(n) << "[ style=bold color=green ]\n";
-    return true;
-  });
+  }
 }
 } // namespace
 

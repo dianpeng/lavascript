@@ -6,13 +6,11 @@ namespace hir        {
 
 EffectGroup::EffectGroup( ::lavascript::zone::Zone* zone , WriteEffect* write ):
   write_effect_(write),
-  read_list_   (),
   zone_        (zone)
 {}
 
 EffectGroup::EffectGroup( const EffectGroup& that ):
   write_effect_(that.write_effect_),
-  read_list_   (that.zone_,that.read_list_),
   zone_        (that.zone_)
 {}
 
@@ -23,16 +21,10 @@ void EffectGroup::UpdateWriteEffect( WriteEffect* node ) {
 
 void EffectGroup::AddReadEffect( ReadEffect* node ) {
   node->SetWriteEffect(write_effect_);
-  PropagateReadEffect(node);
 }
 
 void EffectGroup::PropagateWriteEffect( WriteEffect* effect ) {
   write_effect_ = effect;
-  read_list_.Clear();
-}
-
-void EffectGroup::PropagateReadEffect( ReadEffect* node ) {
-  read_list_.Add(zone_,node);
 }
 
 RootEffectGroup::RootEffectGroup( ::lavascript::zone::Zone* zone , WriteEffect* effect ):
@@ -63,9 +55,6 @@ void RootEffectGroup::UpdateWriteEffect( WriteEffect* effect ) {
 
 void RootEffectGroup::AddReadEffect( ReadEffect* effect ) {
   EffectGroup::AddReadEffect(effect);
-  // propogate the read effect to the list and object node
-  list_->PropagateReadEffect(effect);
-  object_->PropagateReadEffect(effect);
 }
 
 LeafEffectGroup::LeafEffectGroup( ::lavascript::zone::Zone* zone , WriteEffect* effect ):
@@ -84,8 +73,6 @@ void LeafEffectGroup::UpdateWriteEffect( WriteEffect* effect ) {
 
 void LeafEffectGroup::AddReadEffect( ReadEffect* effect ) {
   EffectGroup::AddReadEffect(effect);
-  // propogate the read effect back to the parental node
-  parent_->PropagateReadEffect(effect);
 }
 
 Effect::Effect( ::lavascript::zone::Zone* zone , WriteEffect* effect ):

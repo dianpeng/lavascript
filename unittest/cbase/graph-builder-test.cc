@@ -81,25 +81,12 @@ bool CheckGraph( const char* source ) {
   std::cerr << GraphPrinter::Print(graph) << std::endl;
   PrintHeap(graph);
 
-  {
-    GVN gvn;
-    gvn.Perform(&graph,HIRPass::NORMAL);
-  }
-
-  {
-    DCE dce;
-    dce.Perform(&graph,HIRPass::NORMAL);
-  }
-
-  std::cerr << GraphPrinter::Print(graph) << std::endl;
-  PrintHeap(graph);
-
   // generate dominator graph information
-  Dominators dom;
-  dom.Build(graph);
-
-  std::cerr<< dom.PrintToDotFormat() << std::endl;
-
+  {
+    zone::StackZone<10240> stack_zone;
+    Dominators dom(&stack_zone,graph);
+    std::cerr<< dom.PrintToDotFormat() << std::endl;
+  }
   return true;
 }
 
@@ -136,20 +123,11 @@ bool CheckGraphOSR( const char* source , std::size_t offset ) {
 
 TEST(GraphBuilder,Basic) {
   CASE(
-      var gg = function (a) {
-        var foo = function(a,b) { return a + b; };
-        var bar = function(a,b) {
-          if(a >0) return a + b;
-          else     return a - b;
-        };
-
-        if(bar(1,2) || foo(3)) {
-         return 20;
-        }
-        return gg + a;
-      };
-      return gg(x);
-    );
+      var ret = a + b + c;
+      x.xx = 20;
+      ret  = ret  + d;
+      return ret;
+  );
 }
 
 } // namespace hir

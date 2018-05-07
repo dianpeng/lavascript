@@ -14,7 +14,6 @@ class CPUCapability {
   // Common C++11 style singleton and it is thread safe for now due to
   // new memory order model added into the language.
   static CPUCapability& GetInstance();
-
  public:
   // At least SSE2 instruction set is needed to make our interpreter work
   bool IsSSE2() const { return is_sse2_; }
@@ -23,17 +22,13 @@ class CPUCapability {
   bool IsSSE41()const { return is_sse41_; }
   bool IsSSE42()const { return is_sse42_; }
   bool IsSSE4a() const { return is_sse4a_; }
-
   // Get the vender type
   bool IsAMD() const { return is_amd_; }
   bool IsIntel() const { return is_intel_; }
-
   void Dump( DumpWriter* ) const;
-
  private:
   CPUCapability();
 
- private:
   bool is_sse_;
   bool is_sse2_;
   bool is_sse3_;

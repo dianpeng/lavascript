@@ -80,40 +80,67 @@ bool ICall::Equal( const Expr* that ) const {
 }
 
 Checkpoint* ReadEffect::GetCheckpoint() const {
-  Expr* result = NULL;
-  if(VisitDependency([&result]( Expr* effect ) {
-    if(effect->IsCheckpoint()) {
-      result = effect;
-      return false;
-    }
-    return true;
-  })) {
-    lava_debug(NORMAL,lava_verify(!result););
-    return NULL;
-  } else {
-    lava_debug(NORMAL,lava_verify(result););
-    return result->AsCheckpoint();
+  lava_foreach( auto k , GetDependencyIterator() ) {
+    if(k->IsCheckpoint()) return k->AsCheckpoint();
   }
+  return NULL;
 }
 
-bool ReadEffect::VisitDependency( const DependencyVisitor& visitor ) const {
-  if(!effect_edge_.IsEmpty()) return visitor(effect_edge_.node);
-  return true;
+class ReadEffect::ReadEffectDependencyIterator {
+ public:
+  ReadEffectDependencyIterator( const ReadEffect* node ):
+    node_(node) ,
+    has_(!node->effect_edge_.IsEmpty())
+  {}
+
+  bool HasNext() const { return has_; }
+  bool Move   () const { has_ = false; return false; }
+  Expr* value () const { return node_->effect_edge_.node; }
+  Expr* value ()       { return node_->effect_edge_.node; }
+
+ private:
+  const ReadEffect* node_;
+  mutable bool has_;
+};
+
+Expr::DependencyIterator ReadEffect::GetDependencyIterator() const {
+  return DependencyIterator(ReadEffectDependencyIterator(this));
 }
 
-bool WriteEffect::VisitDependency( const DependencyVisitor& visitor ) const {
-  // get next write effect node after this one
-  lava_debug(NORMAL,lava_verify(next_););
-  if(next_->read_effect_.empty()) {
-    // no read list linked with this write node, then just visit this write node
-    return visitor(next_);
-  } else {
-    // visit all its linked write's read node
-    lava_foreach( auto r , next_->read_effect_.GetForwardIterator() ) {
-      if(!visitor(r)) return false;
-    }
-    return true;
+class WriteEffect::WriteEffectDependencyIterator {
+ public:
+  WriteEffectDependencyIterator( const WriteEffect* node ):
+    next_( node->next_->read_effect_.empty () ? node->next_ : NULL ),
+    itr_ ( node->next_->read_effect_.GetForwardIterator() )
+  {
+    lava_error("SIZE:%zu",node->next_->read_effect_.size());
   }
+
+  bool HasNext() const { return next_ || itr_.HasNext(); }
+  bool Move   () const {
+    lava_debug(NORMAL,HasNext(););
+    if(next_) { next_ = NULL; return false; }
+    else      return itr_.Move();
+  }
+
+  Expr* value () const {
+    lava_debug(NORMAL,lava_verify(HasNext()););
+    if(next_) return next_;
+    else      return itr_.value();
+  }
+  Expr* value () {
+    lava_debug(NORMAL,lava_verify(HasNext()););
+    if(next_) return next_;
+    else      return itr_.value();
+  }
+
+ private:
+  mutable WriteEffect* next_;
+  const ReadEffectListIterator itr_;
+};
+
+Expr::DependencyIterator WriteEffect::GetDependencyIterator() const {
+  return DependencyIterator(WriteEffectDependencyIterator(this));
 }
 
 void WriteEffect::HappenAfter( WriteEffect* input ) {
@@ -126,16 +153,36 @@ ReadEffectListIterator WriteEffect::AddReadEffect( ReadEffect* effect ) {
   return read_effect_.PushBack(zone(),effect);
 }
 
-bool WriteEffectPhi::VisitDependency( const DependencyVisitor& visitor ) const {
-  lava_debug(NORMAL,lava_verify(operand_list()->size() == 2););
-
-  lava_foreach( auto k , operand_list()->GetForwardIterator() ) {
-    auto we = k->AsWriteEffect();
-    lava_foreach( auto n , we->read_effect()->GetForwardIterator() ) {
-      if(!visitor(n)) return false;
+class WriteEffectPhi::WriteEffectPhiDependencyIterator {
+ public:
+  WriteEffectPhiDependencyIterator( const WriteEffectPhi* node ):
+    itr1_( node->operand_list()->GetForwardIterator() ),
+    itr2_()
+  {
+    if(itr1_.HasNext()) {
+      itr2_ = itr1_.value()->GetDependencyIterator();
     }
   }
-  return true;
+
+  bool HasNext() const { return itr2_.HasNext(); }
+
+  bool Move   () const {
+    lava_debug(NORMAL,lava_verify(HasNext()););
+    if(!itr2_.Move()) {
+      if(!itr1_.Move()) return false;
+      itr2_ = itr1_.value()->GetDependencyIterator();
+    }
+    return true;
+  }
+  Expr* value()       { return itr2_.value(); }
+  Expr* value() const { return itr2_.value(); }
+ private:
+  const OperandIterator    itr1_;
+  mutable Expr::DependencyIterator itr2_;
+};
+
+Expr::DependencyIterator WriteEffectPhi::GetDependencyIterator() const {
+  return DependencyIterator(WriteEffectPhiDependencyIterator(this));
 }
 
 std::size_t WriteEffectPhi::dependency_size() const {
@@ -222,13 +269,6 @@ void Graph::Initialize( Start* start , End* end ) {
 void Graph::Initialize( OSRStart* start , OSREnd* end ) {
   start_ = start;
   end_   = end;
-}
-
-void Graph::GetControlFlowNode( std::vector<ControlFlow*>* output ) const {
-  output->clear();
-  lava_foreach( auto v , ControlFlowBFSIterator(*this) ) {
-    output->push_back(v);
-  }
 }
 
 SetList::SetList( const Graph& graph ):

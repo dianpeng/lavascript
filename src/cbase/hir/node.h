@@ -307,13 +307,13 @@ typedef zone::List<RegionRef>           RegionRefList;
 class Node : public zone::ZoneObject {
  public:
   // type of the node
-  IRType type() const { return type_; }
+  IRType type()           const { return type_; }
   // name/string of the type
   const char* type_name() const { return IRTypeGetName(type()); }
   // a unique id for this node , it can be used to indexed into secondary storage
-  std::uint32_t id() const { return id_; }
+  std::uint32_t id()      const { return id_; }
   // get the belonged graph object
-  Graph* graph() const { return graph_; }
+  Graph* graph()          const { return graph_; }
   // get the belonged zone object from graph
   inline zone::Zone* zone() const;
   // check whether 2 nodes are same , pls do not use pointer comparison

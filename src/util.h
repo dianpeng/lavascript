@@ -56,8 +56,8 @@ template< typename ITR > class CountedIterator {
 // ----------------------------------------------------------------
 template< typename ITR >
 ITR FindIf( ITR itr , const std::function< bool ( typename ITR::ConstReferenceType ) >& predicate ) {
-  lava_foreach( typename ITR::ConstReferenceType v , itr ) {
-    if(predicate(v)) break;
+  for( ; itr.HasNext(); itr.Move() ) {
+    if(predicate(itr.value())) return itr;
   }
   return itr;
 }

@@ -46,16 +46,13 @@ class EffectGroup {
   virtual void AddReadEffect    ( ReadEffect*  ) = 0;
  public:
   WriteEffect*                                write_effect() const { return write_effect_; }
-  const ::lavascript::zone::Vector<ReadEffect*>& read_list() const { return read_list_; }
   ::lavascript::zone::Zone*                           zone() const { return zone_; }
  protected:
   // concrete implementation of Update/Add without propogation of the
   // effect into related group
   void PropagateWriteEffect( WriteEffect* );
-  void PropagateReadEffect ( ReadEffect * );
  private:
   WriteEffect*                             write_effect_;   // Write effect currently tracked
-  ::lavascript::zone::Vector<ReadEffect*>  read_list_;      // All the read happened *after* the write
   ::lavascript::zone::Zone*                zone_;           // Zone object for allocation of memory
 
   friend class RootEffectGroup;

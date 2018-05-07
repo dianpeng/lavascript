@@ -108,11 +108,15 @@ class InlineStart : public ControlFlow {
 class InlineEnd : public ControlFlow {
  public:
   inline static InlineEnd* New( Graph* , ControlFlow* );
+  inline static InlineEnd* New( Graph* );
 
   InlineEnd( Graph* graph , std::uint32_t id , ControlFlow* region ):
     ControlFlow (HIR_INLINE_END,id,graph,region)
   {}
 
+  InlineEnd( Graph* graph , std::uint32_t id ):
+    ControlFlow (HIR_INLINE_END,id,graph)
+  {}
  private:
   LAVA_DISALLOW_COPY_AND_ASSIGN(InlineEnd)
 };

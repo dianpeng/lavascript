@@ -25,13 +25,18 @@ class ReadEffect : public Expr {
   // get attached write effect generated Checkpoint node
   Checkpoint* GetCheckpoint() const;
  public: // dependency implementation
-  virtual bool VisitDependency( const DependencyVisitor& ) const;
+  virtual DependencyIterator GetDependencyIterator() const;
   // only one dependency
   virtual std::size_t dependency_size() const { return effect_edge_.IsEmpty() ? 0 : 1; }
   // set the write effect this read effect needs to depend on
   inline void SetWriteEffect( WriteEffect* );
+
+  const ReadEffectEdge& effect_edge() const { return effect_edge_; }
  private:
   ReadEffectEdge effect_edge_; // record the read effect and write effect relationship
+
+  class ReadEffectDependencyIterator;
+  friend class ReadEffectDependencyIterator;
 };
 
 // WriteEffect
@@ -46,7 +51,7 @@ class WriteEffect: public Expr {
     read_effect_()
   {}
  public:
-  virtual bool           VisitDependency( const DependencyVisitor& ) const;
+  virtual DependencyIterator GetDependencyIterator() const;
   virtual std::size_t    dependency_size() const { return next_->read_effect_.size(); }
   // insert |this| *before* input WriteEffect node; this operation basically means the
   // |this| WriteEffect node must happen *After* the input WriteEffect node
@@ -58,6 +63,9 @@ class WriteEffect: public Expr {
   // double linked list field for chaining all the write effect node together
   WriteEffect* next_;
   ReadEffectList read_effect_;    // all read effect that read |this| write effect
+
+  class WriteEffectDependencyIterator;
+  friend class WriteEffectDependencyIterator;
 };
 
 // EffectPhi
@@ -71,13 +79,16 @@ class WriteEffectPhi : public WriteEffect {
   ControlFlow* region() const { return region_; }
   inline WriteEffectPhi( Graph* , std::uint32_t , ControlFlow* );
  public:
-  virtual bool        VisitDependency( const DependencyVisitor& ) const;
+  virtual DependencyIterator GetDependencyIterator() const;
   virtual std::size_t dependency_size() const;
   // should never call this function on a WriteEffectPhi
   virtual void        HappenAfter    ( WriteEffect* input ) { (void)input; lava_die(); }
  private:
   ControlFlow* region_;
   LAVA_DISALLOW_COPY_AND_ASSIGN(WriteEffectPhi);
+
+  class WriteEffectPhiDependencyIterator;
+  friend class WriteEffectPhiDependencyIterator;
 };
 
 // placeholder for empty read/write effect to avoid checking NULL pointer
@@ -86,9 +97,8 @@ class NoReadEffect : public ReadEffect {
   inline static NoReadEffect* New( Graph* );
   NoReadEffect( Graph* graph , std::uint32_t id ): ReadEffect(HIR_NO_READ_EFFECT,id,graph) {}
  public:
-  virtual bool VisitDependency( const DependencyVisitor& visitor ) const
-  { (void)visitor; return true; }
-  virtual std::size_t dependency_size() const { return 0; }
+  virtual DependencyIterator GetDependencyIterator() const { return DependencyIterator(); }
+  virtual std::size_t              dependency_size() const { return 0; }
  private:
   LAVA_DISALLOW_COPY_AND_ASSIGN(NoReadEffect);
 };
@@ -98,9 +108,8 @@ class NoWriteEffect: public WriteEffect {
   inline static NoWriteEffect* New( Graph* );
   NoWriteEffect( Graph* graph , std::uint32_t id ): WriteEffect(HIR_NO_WRITE_EFFECT,id,graph) {}
  public:
-  virtual bool VisitDependency( const DependencyVisitor& visitor ) const
-  { (void)visitor; return true; }
-  virtual std::size_t dependency_size() const { return 0; }
+  virtual DependencyIterator GetDependencyIterator() const { return DependencyIterator(); }
+  virtual std::size_t              dependency_size() const { return 0; }
  private:
   LAVA_DISALLOW_COPY_AND_ASSIGN(NoWriteEffect);
 };

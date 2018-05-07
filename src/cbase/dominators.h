@@ -1,6 +1,8 @@
 #ifndef CBASE_DOMINATORS_H_
 #define CBASE_DOMINATORS_H_
 #include "src/util.h"
+#include "src/zone/zone.h"
+#include "src/zone/stl.h"
 
 #include <vector>
 #include <map>
@@ -19,33 +21,34 @@ class Graph;
 // the graph data structure
 class Dominators {
  public:
-  typedef std::vector<ControlFlow*> DominatorSet;
-  // This function is used to construct the dominator information and
-  // it can be called multiple times whenever the graph changes
-  void Build( const Graph& );
+  typedef zone::stl::ZoneVector<ControlFlow*> DominatorSet;
+  // create a dominator set based on input graph
+  Dominators( zone::Zone* , const Graph& );
  public:
   // Get the dominator set for a specific node. The dominator set
   // returned by this function will contain the node itself
   const DominatorSet& GetDominatorSet( ControlFlow* ) const;
   // Get the immediate dominator for the input control flow node
-  ControlFlow* GetImmDominator( ControlFlow* ) const;
-  // Get common dominator set for 2 nodes
-  DominatorSet GetCommonDominatorSet ( ControlFlow* , ControlFlow* ) const;
+  ControlFlow*        GetImmDominator( ControlFlow* ) const;
   // Check whether the first node is dominator of the second node
-  bool IsDominator( ControlFlow* , ControlFlow* ) const;
- public:
+  bool  IsDominator   ( ControlFlow* , ControlFlow* ) const;
+  // Get common dominator set for 2 nodes
+  void  GetCommonDominatorSet( ControlFlow* , ControlFlow* , DominatorSet* ) const;
   // Print the dominator information into dot format for debugging purpose
   std::string PrintToDotFormat() const;
  private: // Helper to mainpulate the std::vector
+  void Build       ( const Graph& );
   void AddSet      ( DominatorSet* , ControlFlow* ) const;
   void IntersectSet( DominatorSet* , const DominatorSet& ) const;
   void IntersectSet( DominatorSet* , const DominatorSet& , const DominatorSet& ) const;
-  DominatorSet* GetDomSet( const Graph& , const std::vector<ControlFlow*>& , ControlFlow* );
+
+  DominatorSet* GetDomSet( const Graph& , const DominatorSet& , ControlFlow* );
  private: // Helper to generate dot format representation of dominators
   std::string GetNodeName( ControlFlow* node ) const;
 
-  std::map<ControlFlow*,DominatorSet> dominators_;
-  std::map<ControlFlow*,ControlFlow*> imm_dominators_;
+  zone::stl::ZoneMap<ControlFlow*,DominatorSet> dominators_;
+  zone::stl::ZoneMap<ControlFlow*,ControlFlow*> imm_dominators_;
+  zone::Zone* zone_;
 };
 
 } // namespace hir

@@ -391,7 +391,7 @@ bool Infer::Perform( Graph* graph , HIRPass::Flag flag ) {
   // setup tracking vector
   zone::OOLVector<ConditionGroup*> cg_vec(&zone,graph->MaxID());
   // setup dominator information
-  Dominators dom; dom.Build(*graph);
+  Dominators dom(&zone,*graph);
   // traversal the control flow graph via RPO order
   for( ControlFlowRPOIterator itr(*graph) ; itr.HasNext() ; itr.Move() ) {
     auto cf   = itr.value();

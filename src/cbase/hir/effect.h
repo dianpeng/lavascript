@@ -6,6 +6,16 @@ namespace lavascript {
 namespace cbase      {
 namespace hir        {
 
+/**
+ * Effect -----------------------------------------------------------
+ *
+ * To have good optimization, we need good alias analyzing. Typically
+ * for language that uses weak type , it is extreamly hard to get good
+ * alias analyzing. So during the IR construction, we should construct
+ * more high level construct to make our AA easier to work or at least
+ * easier to analyze.
+ * ------------------------------------------------------------------*/
+
 typedef zone::List<ReadEffect*>         ReadEffectList;
 typedef ReadEffectList::ForwardIterator ReadEffectListIterator;
 
@@ -17,7 +27,7 @@ struct ReadEffectEdge {
   bool IsEmpty() const { return node == NULL; }
 };
 
-// Represent a read effect. A read effect can only watch one write effect
+// Represents a general read which should depend on certain node's side effect.
 class ReadEffect : public Expr {
  public:
   // read effect constructor
@@ -40,9 +50,7 @@ class ReadEffect : public Expr {
   friend class ReadEffectDependencyIterator;
 };
 
-// WriteEffect
-//
-// a write effect node is a node that represents a write operation
+// Represent a general write which should bring some side effect
 class WriteEffect: public Expr {
  public:
   // write effect constructor
@@ -51,9 +59,10 @@ class WriteEffect: public Expr {
     next_(NULL),
     read_effect_()
   {}
+
  public:
   virtual DependencyIterator GetDependencyIterator() const;
-  virtual std::size_t    dependency_size() const { return next_->read_effect_.size(); }
+  virtual std::size_t    dependency_size() const { return next_ ? next_->read_effect_.size() : 0; }
   // insert |this| *before* input WriteEffect node; this operation basically means the
   // |this| WriteEffect node must happen *After* the input WriteEffect node
   virtual void HappenAfter( WriteEffect* input );
@@ -67,6 +76,16 @@ class WriteEffect: public Expr {
 
   class WriteEffectDependencyIterator;
   friend class WriteEffectDependencyIterator;
+};
+
+// Represent a memory region mutation
+// This is a very important node since it represents a potential resize of all
+// the memory node inside of the function which means all the *reference* node
+// invalid
+class WriteBarrier : public WriteEffect {
+ public:
+  WriteBarrier( IRType type , Graph* graph , std::uint32_t id ):
+    WriteEffect( type , id , graph ) {}
 };
 
 // EffectPhi

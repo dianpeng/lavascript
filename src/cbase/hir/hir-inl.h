@@ -5,27 +5,6 @@ namespace lavascript {
 namespace cbase      {
 namespace hir        {
 
-namespace detail {
-
-template< typename T >
-std::uint64_t Float64BinaryGVNImpl<T>::GVNHashImpl() const {
-  auto self = static_cast<const T*>(this);
-  return GVNHash3(self->type_name(),self->op(),self->lhs()->GVNHash(),self->rhs()->GVNHash());
-}
-
-template< typename T >
-bool Float64BinaryGVNImpl<T>::EqualImpl( const Expr* that ) const {
-  auto self = static_cast<const T*>(this);
-  if(that->Is<T>()) {
-    auto n = that->As<T>();
-    return self->op() == n->op() && self->lhs()->Equal(n->lhs()) &&
-                                    self->rhs()->Equal(n->rhs());
-  }
-  return false;
-}
-
-} // namespace detail
-
 #define __(A,B,...)                           \
   inline A* Node::As##A() {                   \
     lava_debug(NORMAL,lava_verify(Is##A());); \
@@ -273,10 +252,6 @@ inline IRObject* IRObject::New( Graph* graph , std::size_t size ) {
   return graph->zone()->New<IRObject>(graph,graph->AssignID(),size);
 }
 
-inline Binary* Binary::New( Graph* graph , Expr* lhs , Expr* rhs, Operator op ) {
-  return graph->zone()->New<Binary>(graph,graph->AssignID(),lhs,rhs,op);
-}
-
 inline bool Binary::IsComparisonOperator( Operator op ) {
   switch(op) {
     case LT : case LE : case GT : case GE : case EQ : case NE :
@@ -304,7 +279,7 @@ inline bool Binary::IsBitwiseOperator( Operator op ) {
   }
 }
 
-inline bool Binary::IsLogicOperator( Operator op ) {
+inline bool Binary::IsLogicalOperator( Operator op ) {
   return op == AND || op == OR;
 }
 
@@ -356,6 +331,18 @@ inline const char* Binary::GetOperatorName( Operator op ) {
     default:
       lava_die(); return NULL;
   }
+}
+
+inline Arithmetic* Arithmetic::New( Graph* graph , Expr* lhs , Expr* rhs, Operator op ) {
+  return graph->zone()->New<Arithmetic>(graph,graph->AssignID(),lhs,rhs,op);
+}
+
+inline Compare* Compare::New( Graph* graph , Expr* lhs , Expr* rhs , Operator op ) {
+  return graph->zone()->New<Compare>(graph,graph->AssignID(),lhs,rhs,op);
+}
+
+inline Logical* Logical::New( Graph* graph , Expr* lhs , Expr* rhs , Operator op ) {
+  return graph->zone()->New<Logical>(graph,graph->AssignID(),lhs,rhs,op);
 }
 
 inline Unary::Operator Unary::BytecodeToOperator( interpreter::Bytecode bc ) {

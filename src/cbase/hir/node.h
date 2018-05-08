@@ -36,7 +36,9 @@ namespace hir        {
   __(Arg          ,ARG      ,"arg"      ,Leaf,NoEffect)                \
   /* arithmetic/comparison node */                                     \
   __(Unary        ,UNARY    ,"unary"    ,NoLeaf,NoEffect)              \
-  __(Binary       ,BINARY   ,"binary"   ,NoLeaf,Effect)                \
+  __(Arithmetic   ,ARITHMETIC,"arithmetic",NoLeaf,Effect)              \
+  __(Compare      ,COMPARE  ,"compare"  ,NoLeaf,Effect)                \
+  __(Logical      ,LOGICAL   ,"logical" ,NoLeaf,NoEffect)              \
   __(Ternary      ,TERNARY  ,"ternary"  ,NoLeaf,NoEffect)              \
   /* upvalue */                                                        \
   __(UGet         ,UGET     ,"uget"     ,Leaf  ,NoEffect)              \
@@ -214,6 +216,10 @@ class Node;
 class Test;
 class ReadEffect;
 class WriteEffect;
+class WriteBarrier;
+class Binary;
+class DynamicBinary;
+class SpecializeBinary;
 class MemoryOp;
 class MemoryWrite;
 class MemoryRead ;

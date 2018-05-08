@@ -52,6 +52,18 @@ void Expr::ClearOperand() {
   operand_list_.Clear();
 }
 
+std::uint64_t SpecializeBinary::GVNHash () const {
+  return GVNHash3(type_name(),op(),lhs()->GVNHash(),rhs()->GVNHash());
+}
+
+bool SpecializeBinary::Equal( const Expr* that ) const {
+  if(that->type() == type()) {
+    auto n = dynamic_cast<const BinaryNode*>(that);
+    return op() == n->op() && lhs()->Equal(n->lhs()) && rhs()->Equal(n->rhs());
+  }
+  return false;
+}
+
 std::uint64_t ICall::GVNHash() const {
   GVNHashN hasher(type_name());
   hasher.Add(static_cast<std::uint32_t>(ic()));
@@ -112,9 +124,7 @@ class WriteEffect::WriteEffectDependencyIterator {
   WriteEffectDependencyIterator( const WriteEffect* node ):
     next_( node->next_->read_effect_.empty () ? node->next_ : NULL ),
     itr_ ( node->next_->read_effect_.GetForwardIterator() )
-  {
-    lava_error("SIZE:%zu",node->next_->read_effect_.size());
-  }
+  {}
 
   bool HasNext() const { return next_ || itr_.HasNext(); }
   bool Move   () const {

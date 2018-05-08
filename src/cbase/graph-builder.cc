@@ -1056,7 +1056,20 @@ Expr* GraphBuilder::TrySpeculativeBinary( Expr* lhs , Expr* rhs , Binary::Operat
 }
 
 Expr* GraphBuilder::NewBinaryFallback( Expr* lhs , Expr* rhs , Binary::Operator op ) {
-  return Binary::New(graph_,lhs,rhs,op);
+  WriteEffect* write_effect = NULL;
+  if(Binary::IsArithmeticOperator(op)) {
+    write_effect = Arithmetic::New(graph_,lhs,rhs,op);
+  } else if(Binary::IsComparisonOperator(op)) {
+    write_effect = Compare::New(graph_,lhs,rhs,op);
+  } else if(Binary::IsLogicalOperator(op)) {
+    return Logical::New(graph_,lhs,rhs,op);
+  } else {
+    lava_die();
+    return NULL;
+  }
+
+  env()->effect()->root()->UpdateWriteEffect(write_effect);
+  return write_effect;
 }
 
 // ========================================================================

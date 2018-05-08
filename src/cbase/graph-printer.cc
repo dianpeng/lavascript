@@ -184,24 +184,25 @@ void DotPrinter::RenderExpr( const std::string& name , Expr* node ) {
         }
       }
       break;
-    case HIR_BINARY:
+    // node that implements BinaryNode interface
     case HIR_FLOAT64_BITWISE:
     case HIR_FLOAT64_ARITHMETIC:
     case HIR_FLOAT64_COMPARE:
+    case HIR_BOOLEAN_LOGIC:
+    case HIR_STRING_COMPARE:
+    case HIR_SSTRING_EQ:
+    case HIR_SSTRING_NE:
+    case HIR_ARITHMETIC:
+    case HIR_COMPARE:
+    case HIR_LOGICAL:
       {
-        auto binary = static_cast<Binary*>(node);
-
+        auto binary   = dynamic_cast<BinaryNode*>(node);
         auto lhs_name = GetNodeName(binary->lhs());
         auto rhs_name = GetNodeName(binary->rhs());
         RenderExpr(lhs_name,binary->lhs());
         RenderExpr(rhs_name,binary->rhs());
-
-        Indent(1) << name << "[label=\""
-                          << binary->type_name()
-                          << '('
-                          << binary->op_name()
-                          << ")\"]\n";
-
+        Indent(1) << name << "[label=\"" << node->type_name()
+                          << '(' << binary->op_name() << ")\"]\n";
         Indent(1) << name << " -> " << lhs_name << "[label=L]\n";
         Indent(1) << name << " -> " << rhs_name << "[label=R]\n";
       }

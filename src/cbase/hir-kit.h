@@ -175,7 +175,7 @@ inline bool E::IsBool( const E& l , const E& r ) const {
   E E::operator V ( const T& v ) const {                                                    \
     E rhs(graph_,v);                                                                        \
     return IsF64(*this,rhs) ? E(graph_,New<Float64Arithmetic>(node_,rhs.node_,Binary::OP)): \
-                              E(graph_,New<Binary>           (node_,rhs.node_,Binary::OP)); \
+                              E(graph_,New<Arithmetic>       (node_,rhs.node_,Binary::OP)); \
   }
 
 _ARITH(+,ADD)
@@ -196,7 +196,7 @@ _ARITH(%,MOD)
       else if(IsStr(*this,rhs)) {                                                \
         return E(graph_,New<StringCompare>(node_,rhs.node_,Binary::OP));         \
       } else {                                                                   \
-        return E(graph_,New<Binary>(node_,rhs.node_,Binary::OP));                \
+        return E(graph_,New<Compare>(node_,rhs.node_,Binary::OP));               \
       }                                                                          \
     }
 
@@ -216,7 +216,7 @@ _COMP(<=,LE,)
       if(IsBool(*this,rhs)) {                                                  \
         return E(graph_,New<BooleanLogic>(node_,rhs.node_,Binary::OP));        \
       } else {                                                                 \
-        return E(graph_,New<Binary>(node_,rhs.node_,Binary::OP));              \
+        return E(graph_,New<Logical>(node_,rhs.node_,Binary::OP));             \
       }                                                                        \
     }
 

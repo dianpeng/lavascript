@@ -1,6 +1,7 @@
 #ifndef CBASE_HIR_ARITH_H_
 #define CBASE_HIR_ARITH_H_
-#include "expr.h"
+#include "effect.h"
+#include "src/all-static.h"
 
 namespace lavascript {
 namespace cbase      {
@@ -43,7 +44,7 @@ class Unary : public Expr {
   LAVA_DISALLOW_COPY_AND_ASSIGN(Unary)
 };
 
-class Binary : public Expr {
+class Binary : public AllStatic {
  public:
   enum Operator {
     // arithmetic
@@ -59,34 +60,88 @@ class Binary : public Expr {
   inline static bool        IsComparisonOperator( Operator );
   inline static bool        IsArithmeticOperator( Operator );
   inline static bool        IsBitwiseOperator   ( Operator );
-  inline static bool        IsLogicOperator     ( Operator );
+  inline static bool        IsLogicalOperator   ( Operator );
   inline static Operator    BytecodeToOperator  ( interpreter::Bytecode );
   inline static const char* GetOperatorName     ( Operator );
+};
+
+// A virtual base class to let all different types of Binary node have similar
+// APIs/interfaces
+class BinaryNode {
  public:
-  // Create a binary node
-  inline static Binary* New( Graph* , Expr* , Expr* , Operator );
-  Expr*           lhs() const { return operand_list()->First(); }
-  Expr*           rhs() const { return operand_list()->Last (); }
-  Operator         op() const { return op_;  }
-  const char* op_name() const { return GetOperatorName(op()); }
-  Binary( Graph* graph , std::uint32_t id , Expr* lhs , Expr* rhs , Operator op ):
-    Expr  (HIR_BINARY,id,graph),
-    op_   (op)
+  virtual Expr*             lhs() const = 0;
+  virtual Expr*             rhs() const = 0;
+  virtual Binary::Operator  op () const = 0;
+  const char*          op_name () const { return Binary::GetOperatorName(op()); }
+  virtual ~BinaryNode () {}
+};
+
+// DynamicBinary represents a dynamic dispatched binary operation node. This node generates
+// a effect barrier and also generates a checkpoint because of the side effect
+class DynamicBinary : public WriteBarrier , public BinaryNode {
+ public:
+  typedef Binary::Operator Operator;
+
+  DynamicBinary( IRType type , Graph* graph , std::uint32_t id , Expr* lhs , Expr* rhs ,
+                                                                             Binary::Operator op ):
+    WriteBarrier(type ,graph ,id),
+    op_         (op)
   {
     AddOperand(lhs);
     AddOperand(rhs);
   }
- protected:
-  Binary( IRType irtype ,Graph* graph ,std::uint32_t id ,Expr* lhs ,Expr* rhs ,Operator op ):
-    Expr  (irtype,id,graph),
-    op_   (op)
-  {
-    AddOperand(lhs);
-    AddOperand(rhs);
-  }
+
+  virtual Expr*            lhs() const { return operand_list()->First(); }
+  virtual Expr*            rhs() const { return operand_list()->Last (); }
+  virtual Binary::Operator op () const { return op_; }
  private:
-  Operator op_;
-  LAVA_DISALLOW_COPY_AND_ASSIGN(Binary)
+  Binary::Operator op_;
+};
+
+class Arithmetic : public DynamicBinary {
+ public:
+  static inline Arithmetic* New( Graph* , Expr* , Expr* , Binary::Operator );
+
+  Arithmetic( Graph* graph , std::uint32_t id , Expr* lhs, Expr* rhs, Binary::Operator op ) :
+    DynamicBinary( HIR_ARITHMETIC , graph, id, lhs, rhs, op )
+  {
+    lava_debug(NORMAL,lava_verify(Binary::IsArithmeticOperator(op)););
+  }
+};
+
+class Compare: public DynamicBinary {
+ public:
+  static inline Compare* New( Graph* , Expr* , Expr* , Binary::Operator );
+
+  Compare( Graph* graph , std::uint32_t id , Expr* lhs , Expr* rhs , Binary::Operator op ):
+    DynamicBinary( HIR_COMPARE, graph, id, lhs, rhs, op )
+  {
+    lava_debug(NORMAL,lava_verify(Binary::IsComparisonOperator(op)););
+  }
+};
+
+// This is a binary node but it is not a dynamic dispatched node so not inherit from the
+// the dynamic binary node. logical node is a normal node which will not do dynamic dispatch
+class Logical : public Expr , public BinaryNode {
+ public:
+  typedef Binary::Operator Operator;
+
+  static inline Logical* New( Graph* , Expr* , Expr* , Binary::Operator );
+
+  Logical( Graph* graph , std::uint32_t id , Expr* lhs , Expr* rhs , Binary::Operator op ):
+   Expr(HIR_LOGICAL,id,graph),
+   op_ (op)
+  {
+    lava_debug(NORMAL,lava_verify(Binary::IsLogicalOperator(op)););
+    AddOperand(lhs);
+    AddOperand(rhs);
+  }
+
+  virtual Expr*            lhs() const { return operand_list()->First(); }
+  virtual Expr*            rhs() const { return operand_list()->Last (); }
+  virtual Binary::Operator op () const { return op_; }
+ private:
+  Binary::Operator op_;
 };
 
 class Ternary: public Expr {
@@ -164,133 +219,126 @@ class BooleanNot: public Expr {
   LAVA_DISALLOW_COPY_AND_ASSIGN(BooleanNot)
 };
 
-namespace detail {
+// SpecializeBinary represents all binary operation that is specialized
+// with type information builtin. These nodes take into unboxed value and
+// generate unboxed value
+class SpecializeBinary : public Expr , public BinaryNode {
+ public:
+  typedef Binary::Operator Operator;
 
-template< typename T > struct Float64BinaryGVNImpl {
- protected:
-  std::uint64_t GVNHashImpl() const;
-  bool EqualImpl( const Expr* that ) const;
+  SpecializeBinary( IRType type , Graph* graph , std::uint32_t id , Expr* lhs ,
+                                                                    Expr* rhs ,
+                                                                    Binary::Operator op ):
+    Expr(type,id,graph),
+    op_ (op)
+  {
+    AddOperand(lhs);
+    AddOperand(rhs);
+  }
+
+  virtual Expr*            lhs() const { return operand_list()->First(); }
+  virtual Expr*            rhs() const { return operand_list()->Last (); }
+  virtual Binary::Operator op () const { return op_; }
+
+  // GVN implementation
+  virtual std::uint64_t GVNHash ()              const;
+  virtual bool          Equal   ( const Expr* ) const;
+
+ private:
+  Binary::Operator op_;
 };
 
-} // namespace detail
-
-class Float64Arithmetic : public Binary , public detail::Float64BinaryGVNImpl<Float64Arithmetic> {
+class Float64Arithmetic : public SpecializeBinary {
  public:
-  using Binary::Operator;
+  typedef Binary::Operator Operator;
+
   inline static Float64Arithmetic* New( Graph* , Expr*, Expr*, Operator );
+
   Float64Arithmetic( Graph* graph , std::uint32_t id , Expr* lhs, Expr* rhs, Operator op ):
-    Binary(HIR_FLOAT64_ARITHMETIC,graph,id,lhs,rhs,op)
+    SpecializeBinary(HIR_FLOAT64_ARITHMETIC,graph,id,lhs,rhs,op)
   {
     lava_debug(NORMAL,lava_verify(Binary::IsArithmeticOperator(op)););
   }
 
- public:
-  virtual std::uint64_t GVNHash()        const { return GVNHashImpl(); }
-  virtual bool Equal( const Expr* that ) const { return EqualImpl(that); }
-
  private:
-
   LAVA_DISALLOW_COPY_AND_ASSIGN(Float64Arithmetic)
 };
 
-class Float64Bitwise: public Binary , public detail::Float64BinaryGVNImpl<Float64Bitwise> {
+class Float64Bitwise: public SpecializeBinary {
  public:
-  using Binary::Operator;
+  typedef Binary::Operator Operator;
+
   inline static Float64Bitwise* New( Graph* , Expr*, Expr*, Operator );
+
   Float64Bitwise( Graph* graph , std::uint32_t id , Expr* lhs, Expr* rhs, Operator op ):
-    Binary(HIR_FLOAT64_BITWISE,graph,id,lhs,rhs,op)
+    SpecializeBinary(HIR_FLOAT64_BITWISE,graph,id,lhs,rhs,op)
   {
     lava_debug(NORMAL,lava_verify(Binary::IsBitwiseOperator(op)););
   }
 
- public:
-  virtual std::uint64_t GVNHash()        const { return GVNHashImpl(); }
-  virtual bool Equal( const Expr* that ) const { return EqualImpl(that); }
-
  private:
-
   LAVA_DISALLOW_COPY_AND_ASSIGN(Float64Bitwise)
 };
 
-class Float64Compare : public Binary , public detail::Float64BinaryGVNImpl<Float64Compare> {
+class Float64Compare : public SpecializeBinary {
  public:
-  using Binary::Operator;
+  typedef Binary::Operator Operator;
+
   inline static Float64Compare* New( Graph* , Expr* , Expr* , Operator );
+
   Float64Compare( Graph* graph , std::uint32_t id , Expr* lhs , Expr* rhs , Operator op ):
-    Binary(HIR_FLOAT64_COMPARE,graph,id,lhs,rhs,op)
+    SpecializeBinary(HIR_FLOAT64_COMPARE,graph,id,lhs,rhs,op)
   {
     lava_debug(NORMAL,lava_verify(Binary::IsComparisonOperator(op)););
   }
-
- public:
-  virtual std::uint64_t GVNHash()        const { return GVNHashImpl(); }
-  virtual bool Equal( const Expr* that ) const { return EqualImpl(that); }
 
  private:
   LAVA_DISALLOW_COPY_AND_ASSIGN(Float64Compare)
 };
 
-class StringCompare : public Binary , public detail::Float64BinaryGVNImpl<StringCompare> {
+class StringCompare : public SpecializeBinary {
  public:
-  using Binary::Operator;
+  typedef Binary::Operator Operator;
   inline static StringCompare* New( Graph* , Expr* , Expr* , Operator );
   StringCompare( Graph* graph , std::uint32_t id , Expr* lhs , Expr* rhs , Operator op ):
-    Binary(HIR_STRING_COMPARE,graph,id,lhs,rhs,op)
+    SpecializeBinary(HIR_STRING_COMPARE,graph,id,lhs,rhs,op)
   {
     lava_debug(NORMAL,lava_verify(Binary::IsComparisonOperator(op)););
   }
- public:
-  virtual std::uint64_t GVNHash()        const { return GVNHashImpl(); }
-  virtual bool Equal( const Expr* that ) const { return EqualImpl(that); }
-
  private:
   LAVA_DISALLOW_COPY_AND_ASSIGN(StringCompare);
 };
 
-class SStringEq : public Binary , public detail::Float64BinaryGVNImpl<SStringEq> {
+class SStringEq : public SpecializeBinary {
  public:
   inline static SStringEq* New( Graph* , Expr* , Expr* );
   SStringEq( Graph* graph , std::uint32_t id , Expr* lhs , Expr* rhs ):
-    Binary(HIR_SSTRING_EQ,graph,id,lhs,rhs,Binary::EQ)
+    SpecializeBinary(HIR_SSTRING_EQ,graph,id,lhs,rhs,Binary::EQ)
   {}
 
- public:
-  virtual std::uint64_t GVNHash()        const { return GVNHashImpl(); }
-  virtual bool Equal( const Expr* that ) const { return EqualImpl(that); }
+ private:
+  LAVA_DISALLOW_COPY_AND_ASSIGN(SStringEq)
 };
 
-class SStringNe : public Binary , public detail::Float64BinaryGVNImpl<SStringNe> {
+class SStringNe : public SpecializeBinary {
  public:
   inline static SStringNe* New( Graph* , Expr* , Expr* );
   SStringNe( Graph* graph , std::uint32_t id , Expr* lhs , Expr* rhs ):
-    Binary(HIR_SSTRING_EQ,graph,id,lhs,rhs,Binary::NE)
+    SpecializeBinary(HIR_SSTRING_EQ,graph,id,lhs,rhs,Binary::NE)
   {}
 
- public:
-  virtual std::uint64_t GVNHash()        const { return GVNHashImpl(); }
-  virtual bool Equal( const Expr* that ) const { return EqualImpl(that); }
+ private:
+  LAVA_DISALLOW_COPY_AND_ASSIGN(SStringNe)
 };
 
-class BooleanLogic : public Binary {
+class BooleanLogic : public SpecializeBinary {
  public:
    inline static BooleanLogic* New( Graph* , Expr* , Expr* , Operator op );
    BooleanLogic( Graph* graph , std::uint32_t id , Expr* lhs , Expr* rhs , Operator op ):
-     Binary(HIR_BOOLEAN_LOGIC,graph,id,lhs,rhs,op)
+     SpecializeBinary(HIR_BOOLEAN_LOGIC,graph,id,lhs,rhs,op)
   {
     lava_debug(NORMAL,lava_verify( GetTypeInference(lhs) == TPKIND_BOOLEAN &&
                                    GetTypeInference(rhs) == TPKIND_BOOLEAN ););
-  }
-
- public:
-  virtual std::uint64_t GVNHash()        const {
-    return GVNHash3(type_name(), lhs()->GVNHash(), op (), rhs()->GVNHash());
-  }
-  virtual bool Equal( const Expr* that ) const {
-    if(that->IsBooleanLogic()) {
-      auto bl = that->AsBooleanLogic();
-      return bl->op() == op() && bl->lhs()->Equal(lhs()) && bl->rhs()->Equal(rhs());
-    }
-    return false;
   }
  private:
   LAVA_DISALLOW_COPY_AND_ASSIGN(BooleanLogic)

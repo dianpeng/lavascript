@@ -126,7 +126,7 @@ TEST(GC,GCRefPool) {
 }
 
 HeapObjectHeader GetHeader( void* data ) {
-  return HeapObjectHeader( reinterpret_cast<char*>(data) - 8 );
+  return HeapObjectHeader( reinterpret_cast<char*>(data) - HeapObjectHeader::kHeapObjectHeaderSize );
 }
 
 TEST(Heap,HeaderCheck) {

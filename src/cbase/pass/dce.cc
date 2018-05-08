@@ -64,7 +64,7 @@ bool DCEImpl::VisitIf( ControlFlow* node ) {
 void DCEImpl::Visit( Graph* graph ) {
 
   // mark all blocks that needs to be DCEed
-  lava_foreach( auto cf , ControlFlowRPOIterator(*graph) ) {
+  lava_foreach( auto cf , ControlFlowRPOIterator(&zone_,*graph) ) {
     if(cf->IsIf())              VisitIf(cf);
     else if(cf->IsLoopHeader()) VisitIf(cf);
   }

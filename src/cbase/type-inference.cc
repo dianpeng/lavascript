@@ -53,6 +53,7 @@ TypeKind GetICallType( ICall* icall ) {
   }
 }
 
+// TODO:: This is buggy since Phi node can have cycle due to loop induction variable
 TypeKind GetPhiType( Phi* node ) {
   if(node->operand_list()->size() == 0)
     return TPKIND_UNKNOWN;
@@ -65,6 +66,8 @@ TypeKind GetPhiType( Phi* node ) {
     itr.Move();
 
     lava_foreach( auto &k , itr ) {
+      // avoid cycle since loop induction variable has cycle
+      if(k->IsIdentical(node)) return TPKIND_UNKNOWN;
       auto t = GetTypeInference(k);
       if(t != tk) return TPKIND_UNKNOWN;
     }

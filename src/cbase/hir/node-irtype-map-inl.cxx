@@ -33,10 +33,19 @@ struct MapIRClassToIRType<MemoryRead> {
 };
 
 template<>
+struct MapIRClassToIRType<WriteBarrier> {
+  static bool Test ( IRType type ) {
+    return type == HIR_ARITHMETIC ||
+           type == HIR_COMPARE;
+  }
+};
+
+template<>
 struct MapIRClassToIRType<WriteEffect> {
   static bool Test( IRType type ) {
-    return MapIRClassToIRType<MemoryWrite>::Test(type) ||
-           type == HIR_WRITE_EFFECT_PHI                ||
+    return MapIRClassToIRType<MemoryWrite>::Test(type)   ||
+           MapIRClassToIRType<WriteBarrier>::Test(type) ||
+           type == HIR_WRITE_EFFECT_PHI                  ||
            type == HIR_NO_WRITE_EFFECT;
   }
 };

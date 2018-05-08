@@ -64,6 +64,7 @@ bool PrintIter( const char* source ) {
 
   RuntimeTrace tt;
   Graph graph;
+  zone::SmallZone zone;
 
   if(!BuildPrototype(scp,scp->main(),tt,&graph)) {
     std::cerr<<"cannot build graph"<<std::endl;
@@ -71,7 +72,7 @@ bool PrintIter( const char* source ) {
   }
 
   std::cerr << GraphPrinter::Print(graph) << std::endl;
-  lava_foreach( auto &cf , ControlFlowRPOIterator(graph) ) {
+  lava_foreach( auto &cf , ControlFlowRPOIterator(&zone,graph) ) {
     std::cerr<< cf->type_name() << std::endl;
   }
   return true;

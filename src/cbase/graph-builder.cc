@@ -512,10 +512,9 @@ void GraphBuilder::Environment::ExitFunctionScope( const FuncInfo& func ) {
 
 Expr* GraphBuilder::Environment::GetUpValue( std::uint8_t index ) {
   lava_debug(NORMAL,lava_verify(index < upvalue()->size()););
-  auto v = upvalue()->at(index);
-  if(v)
+  if( auto v = upvalue()->at(index); v ) {
     return v;
-  else {
+  } else {
     auto uget = UGet::New(gb_->graph_,index,gb_->method_index());
     effect()->root()->AddReadEffect(uget);
     upvalue()->at(index) = uget;
@@ -933,8 +932,7 @@ Expr* GraphBuilder::NewUnaryFallback( Expr* node , Unary::Operator op ) {
 // Binary Node
 // ========================================================================
 Expr* GraphBuilder::NewBinary  ( Expr* lhs , Expr* rhs , Binary::Operator op , const BytecodeLocation& pc ) {
-  auto new_node = FoldBinary(graph_,op,lhs,rhs);
-  if(new_node) return new_node;
+  if(auto new_node = FoldBinary(graph_,op,lhs,rhs); new_node) return new_node;
   // try to specialize it into certain specific common cases which doesn't
   // require guard instruction and deoptimization
   if(auto new_node = TrySpecialTestBinary(lhs,rhs,op,pc); new_node) return new_node;
@@ -985,8 +983,12 @@ Expr* GraphBuilder::TrySpeculativeBinary( Expr* lhs , Expr* rhs , Binary::Operat
     auto lhs_val = tt->data[1];
     auto rhs_val = tt->data[2];
     switch(op) {
-      case Binary::ADD: case Binary::SUB: case Binary::MUL:
-      case Binary::DIV: case Binary::POW: case Binary::MOD:
+      case Binary::ADD:
+      case Binary::SUB:
+      case Binary::MUL:
+      case Binary::DIV:
+      case Binary::POW:
+      case Binary::MOD:
         if(lhs_val.IsReal() && rhs_val.IsReal()) {
           lhs = AddTypeFeedbackIfNeed(lhs,TPKIND_FLOAT64,pc);
           rhs = AddTypeFeedbackIfNeed(rhs,TPKIND_FLOAT64,pc);
@@ -997,8 +999,12 @@ Expr* GraphBuilder::TrySpeculativeBinary( Expr* lhs , Expr* rhs , Binary::Operat
           }
         }
         break;
-      case Binary::LT: case Binary::LE: case Binary::GT:
-      case Binary::GE: case Binary::EQ: case Binary::NE:
+      case Binary::LT:
+      case Binary::LE:
+      case Binary::GT:
+      case Binary::GE:
+      case Binary::EQ:
+      case Binary::NE:
         if(lhs_val.IsReal() && rhs_val.IsReal()) {
           lhs = AddTypeFeedbackIfNeed(lhs,TPKIND_FLOAT64,pc);
           rhs = AddTypeFeedbackIfNeed(rhs,TPKIND_FLOAT64,pc);
@@ -1032,7 +1038,8 @@ Expr* GraphBuilder::TrySpeculativeBinary( Expr* lhs , Expr* rhs , Binary::Operat
           }
         }
         break;
-      case Binary::AND: case Binary::OR:
+      case Binary::AND:
+      case Binary::OR :
         {
           lhs = AddTypeFeedbackIfNeed(lhs,lhs_val,pc);
           // simplify the logic expression if we can do so
@@ -1084,10 +1091,8 @@ Expr* GraphBuilder::NewTernary ( Expr* cond , Expr* lhs, Expr* rhs, const Byteco
     if(tt) {
       auto a1 = tt->data[0]; // condition's value
       cond = AddTypeFeedbackIfNeed(cond,a1,pc);
-      bool bval;
-      if(TPKind::ToBoolean(MapValueToTypeKind(a1),&bval)) {
-        return (bval ? lhs : rhs);
-      }
+      if( auto bval = false; TPKind::ToBoolean(MapValueToTypeKind(a1),&bval) )
+        return bval ? lhs : rhs;
     }
   }
   // Fallback

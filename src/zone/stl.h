@@ -195,6 +195,9 @@ class ZoneMultimap
             Compare(), ZoneAllocator<std::pair<const K, V>>(zone)) {}
 };
 
+// Compatible bitset
+typedef ZoneVector<bool> BitSet;
+
 } // namespace stl
 } // namespace zone
 } // namespace lavascript

@@ -393,7 +393,7 @@ bool Infer::Perform( Graph* graph , HIRPass::Flag flag ) {
   // setup dominator information
   Dominators dom(&zone,*graph);
   // traversal the control flow graph via RPO order
-  for( ControlFlowRPOIterator itr(*graph) ; itr.HasNext() ; itr.Move() ) {
+  for( ControlFlowRPOIterator itr(&zone,*graph) ; itr.HasNext() ; itr.Move() ) {
     auto cf   = itr.value();
     if(cf->IsIf() || cf->IsLoopHeader()) {
       auto idom           = dom.GetImmDominator(cf);

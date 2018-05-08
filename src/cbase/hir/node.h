@@ -146,6 +146,21 @@ namespace hir        {
   __(ConvBoolean ,CONV_BOOLEAN ,"conv_boolean" ,NoLeaf,NoEffect)      \
   __(ConvNBoolean,CONV_NBOOLEAN,"conv_nboolean",NoLeaf,NoEffect)
 
+/**
+ * Special variable
+ *
+ * Special variable needs to be marked to help certain pass , ie the
+ * loop induction variable. It generates self reference Phi node which
+ * makes most of the pass not working , even simply things like type
+ * inference will not work as well. But it is easy for us to figure out
+ * its type by looking at its initial value , step value to figure out
+ * the type of it. For these nodes, we use special variable node to
+ * mark it out and with corresponding proper type.
+ */
+
+#define CBASE_HIR_SPECIAL_VARIABLE(__)                                \
+  __(LoopVar,LOOP_VAR,"loop_var",NoLeaf,NoEffect)
+
 // All the expression IR nodes
 #define CBASE_HIR_EXPRESSION(__)                                      \
   CBASE_HIR_CONSTANT(__)                                              \
@@ -154,7 +169,7 @@ namespace hir        {
   CBASE_HIR_TEST(__)                                                  \
   CBASE_HIR_BOXOP(__)                                                 \
   CBASE_HIR_CAST (__)                                                 \
-  CBASE_HIR_GUARD(__)
+  CBASE_HIR_GUARD(__)                                                 \
 
 // All the control flow IR nodes
 #define CBASE_HIR_CONTROL_FLOW(__)                                    \

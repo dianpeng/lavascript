@@ -152,10 +152,10 @@ ControlFlowKit::ControlFlowKit( Graph* graph ):
 // Expression
 // ---------------------------------------------------------------------
 
-E::E( Graph* graph , double value ) : node_(Float64::New(graph,value)),graph_(graph) {}
+E::E( Graph* graph , double value ) : node_(Float64::New(graph,value))        , graph_(graph) {}
 E::E( Graph* graph , int    value ) : node_(Float64::New(graph,(double)value)), graph_(graph) {}
-E::E( Graph* graph , bool   value ) : node_(Boolean::New(graph,value)), graph_(graph) {}
-E::E( Graph* graph , const char* v) : node_(NewString(graph,v)),graph_(graph) {}
+E::E( Graph* graph , bool   value ) : node_(Boolean::New(graph,value))        , graph_(graph) {}
+E::E( Graph* graph , const char* v) : node_(NewString(graph,v))               , graph_(graph) {}
 
 E::E( Graph* graph , const std::string& v ):
   node_ (NewString(graph,v.c_str())), graph_(graph) {}

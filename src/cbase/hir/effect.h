@@ -31,9 +31,12 @@ struct ReadEffectEdge {
 class ReadEffect : public Expr {
  public:
   // read effect constructor
-  ReadEffect( IRType type , std::uint32_t id , Graph* graph ): Expr(type,id,graph) , effect_edge_() {}
+  ReadEffect( IRType type , std::uint32_t id , Graph* graph ):
+    Expr(type,id,graph) , effect_edge_() {}
+
   // get attached write effect generated Checkpoint node
   Checkpoint* GetCheckpoint() const;
+
  public: // dependency implementation
   virtual DependencyIterator GetDependencyIterator() const;
   // only one dependency
@@ -62,7 +65,9 @@ class WriteEffect: public Expr {
 
  public:
   virtual DependencyIterator GetDependencyIterator() const;
-  virtual std::size_t    dependency_size() const { return next_ ? next_->read_effect_.size() : 0; }
+  virtual std::size_t              dependency_size() const {
+    return next_ ? next_->read_effect_.size() : 0;
+  }
   // insert |this| *before* input WriteEffect node; this operation basically means the
   // |this| WriteEffect node must happen *After* the input WriteEffect node
   virtual void HappenAfter( WriteEffect* input );

@@ -150,7 +150,10 @@ class WriteEffect::WriteEffectDependencyIterator {
 };
 
 Expr::DependencyIterator WriteEffect::GetDependencyIterator() const {
-  return DependencyIterator(WriteEffectDependencyIterator(this));
+  if(next_)
+    return DependencyIterator(WriteEffectDependencyIterator(this));
+  else
+    return DependencyIterator();
 }
 
 void WriteEffect::HappenAfter( WriteEffect* input ) {
@@ -298,9 +301,16 @@ void Graph::Initialize( OSRStart* start , OSREnd* end ) {
   end_   = end;
 }
 
-SetList::SetList( const Graph& graph ):
-  existed_(graph.MaxID()),
-  array_  ()
+SetList::SetList( zone::Zone* zone , const Graph& graph ):
+  zone_   (zone),
+  existed_(zone,false,graph.MaxID()),
+  array_  (zone)
+{}
+
+SetList::SetList( zone::Zone* zone , std::size_t size ):
+  zone_   (zone),
+  existed_(zone,false,size),
+  array_  (zone)
 {}
 
 bool SetList::Push( Node* node ) {
@@ -319,9 +329,16 @@ void SetList::Pop() {
   array_.pop_back();
 }
 
-OnceList::OnceList( const Graph& graph ):
-  existed_(graph.MaxID()),
-  array_  ()
+OnceList::OnceList( zone::Zone* zone , const Graph& graph ):
+  zone_   (zone),
+  existed_(zone,false,graph.MaxID()),
+  array_  (zone)
+{}
+
+OnceList::OnceList( zone::Zone* zone , std::size_t size ):
+  zone_   (zone),
+  existed_(zone,false,size),
+  array_  (zone)
 {}
 
 bool OnceList::Push( Node* node ) {

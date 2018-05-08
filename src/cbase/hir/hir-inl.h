@@ -744,9 +744,9 @@ inline InlineEnd*   InlineEnd::New( Graph* graph ) {
 }
 
 template< typename T >
-void Graph::GetControlFlowNode( T* output ) const {
+void Graph::GetControlFlowNode( zone::Zone* zone , T* output ) const {
   output->clear();
-  lava_foreach( auto v , ControlFlowBFSIterator(*this) ) {
+  lava_foreach( auto v , ControlFlowBFSIterator(zone,*this) ) {
     output->push_back(v);
   }
 }

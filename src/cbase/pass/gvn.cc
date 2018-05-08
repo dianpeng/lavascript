@@ -21,12 +21,12 @@ bool GVN::Perform( Graph* graph , HIRPass::Flag flag ) {
   ::lavascript::zone::OOLVector<bool>                  visited(&zone,graph->MaxID());
   ::lavascript::zone::Table<Expr*,Expr*,HIRExprHasher> table(&zone,kTableSize);
 
-  lava_foreach( auto cf , ControlFlowRPOIterator(*graph) ) {
+  lava_foreach( auto cf , ControlFlowRPOIterator(&zone,*graph) ) {
     lava_foreach( auto expr , cf->operand_list()->GetForwardIterator() ) {
     // all the operands node
       if(!visited.Get(&zone,expr->id())) {
         // number valuing
-        lava_foreach( auto subexpr , ExprDFSIterator(*graph,expr) ) {
+        lava_foreach( auto subexpr , ExprDFSIterator(&zone,*graph,expr) ) {
           auto itr = table.Find(subexpr);
           auto tar = itr.HasNext() ? itr.value() : NULL;
           if(tar) {

@@ -60,7 +60,7 @@ void Dominators::Build( const Graph& graph ) {
   // current timestamp
   std::int32_t cur_ts = 0;
   // do a timestamp mark using a DFS iteration algorithm
-  lava_foreach( auto n , ControlFlowPOIterator(graph) ) {
+  lava_foreach( auto n , ControlFlowPOIterator(zone_,graph) ) {
     lava_debug(NORMAL,lava_verify(ts[n->id()] == 0););
     ts[n->id()] = ++cur_ts;
   }
@@ -70,11 +70,11 @@ void Dominators::Build( const Graph& graph ) {
   DominatorSet temp(zone_);
   temp.reserve  (64);
   all_cf.reserve(64);
-  graph.GetControlFlowNode(&all_cf);
+  graph.GetControlFlowNode(zone_,&all_cf);
 
   do {
     has_change = false;
-    lava_foreach( auto n , ControlFlowRPOIterator(graph) ) {
+    lava_foreach( auto n , ControlFlowRPOIterator(zone_,graph) ) {
       DominatorSet* set = GetDomSet(graph,all_cf,n);
       // iterate against this node's predecessor's
       {

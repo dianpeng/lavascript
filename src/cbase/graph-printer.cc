@@ -1,5 +1,6 @@
 #include "graph-printer.h"
 #include "hir.h"
+#include "src/zone/zone.h"
 
 #include <sstream>
 
@@ -10,9 +11,9 @@ namespace            {
 
 class DotPrinter {
  public:
-  DotPrinter(): graph_(NULL), existed_(), output_() , opt_() {}
+  DotPrinter(): zone_ () , graph_(NULL), existed_(&zone_), output_() , opt_() {}
   // Visiualize the graph into DOT representation and return the string
-  std::string Visualize( const Graph& , const GraphPrinter::Option& opt );
+  std::string Visualize ( const Graph& , const GraphPrinter::Option& opt );
  private:
   void RenderControlFlow( const std::string& , ControlFlow* );
   void RenderExpr       ( const std::string& , Expr* );
@@ -21,10 +22,13 @@ class DotPrinter {
 
   std::stringstream& Indent( int level );
   std::string GetNodeName( Node* );
+
+  zone::Zone* zone() { return &zone_; }
  private:
-  const Graph* graph_;
-  DynamicBitSet existed_;
-  std::stringstream output_;
+  zone::SmallZone      zone_;
+  const Graph*         graph_;
+  zone::stl::BitSet    existed_;
+  std::stringstream    output_;
   GraphPrinter::Option opt_;
 };
 
@@ -37,7 +41,7 @@ std::string DotPrinter::Visualize( const Graph& graph , const GraphPrinter::Opti
 
   // 2. edge iterator
   output_ << "digraph IR {\n";
-  lava_foreach( auto edge , ControlFlowEdgeIterator(graph) ) {
+  lava_foreach( auto edge , ControlFlowEdgeIterator(zone(),graph) ) {
     RenderEdge(edge.from,edge.to);
   }
   output_ << "}\n";
@@ -464,7 +468,11 @@ void DotPrinter::RenderExpr( const std::string& name , Expr* node ) {
       return RenderCheckpoint(name,node->AsCheckpoint());
     default:
       {
-        Indent(1) << name << "[label=\"" << node->type_name() << "\"]\n";
+        if(node->IsNoReadEffect() || node->IsNoWriteEffect()) {
+          Indent(1) << name << "[label=\"" << node->type_name() << "\" style=dashed]\n";
+        } else {
+          Indent(1) << name << "[label=\"" << node->type_name() << "\"]\n";
+        }
         lava_foreach( auto opr , node->operand_list()->GetForwardIterator() ) {
           auto opr_name = GetNodeName(opr);
           RenderExpr(opr_name,opr);

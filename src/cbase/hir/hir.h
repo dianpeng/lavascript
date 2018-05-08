@@ -1,5 +1,8 @@
 #ifndef CBASE_HIR_HIR_H_
 #define CBASE_HIR_HIR_H_
+// helper
+#include "src/zone/stl.h"
+
 // base
 #include "node.h"
 // expression node
@@ -59,7 +62,7 @@ class Graph {
     return start_->IsOSRStart();
   }
   // Get all control flow nodes
-  template< typename T > void GetControlFlowNode( T* ) const;
+  template< typename T > void GetControlFlowNode( zone::Zone* , T* ) const;
  private:
   zone::Zone                  zone_;
   ControlFlow*                start_;
@@ -75,7 +78,8 @@ class Graph {
 // adding element that is already in the list back to list again
 class SetList {
  public:
-  explicit SetList( const Graph& );
+  SetList( zone::Zone* , const Graph& );
+  SetList( zone::Zone* , std::size_t  );
   bool Push( Node* node );
   void Pop();
   Node* Top() const { return array_.back(); }
@@ -84,8 +88,9 @@ class SetList {
   std::size_t size() const { return array_.size(); }
   void Clear() { array_.clear(); BitSetReset(&existed_); }
  private:
-  DynamicBitSet existed_;
-  std::vector<Node*> array_ ;
+  zone::Zone*                  zone_;
+  zone::stl::BitSet            existed_;
+  zone::stl::ZoneVector<Node*> array_;
 };
 
 // --------------------------------------------------------------------------
@@ -93,7 +98,9 @@ class SetList {
 // avoids adding element that has been added once to list again
 class OnceList {
  public:
-  explicit OnceList( const Graph& );
+  OnceList( zone::Zone* , const Graph& );
+  OnceList( zone::Zone* , std::size_t  );
+
   bool Push( Node* node );
   void Pop();
   Node* Top() const { return array_.back(); }
@@ -102,8 +109,9 @@ class OnceList {
   std::size_t size() const { return array_.size(); }
   void Clear() { array_.clear(); BitSetReset(&existed_); }
  private:
-  DynamicBitSet existed_;
-  std::vector<Node*> array_;
+  zone::Zone*                  zone_;
+  zone::stl::BitSet            existed_;
+  zone::stl::ZoneVector<Node*> array_;
 };
 
 // For concept check when used with dispatch routine
@@ -131,8 +139,8 @@ class ControlFlowBFSIterator: public ControlFlowIterator {
   typedef       ValueType& ReferenceType;
   typedef ValueType const& ConstReferenceType;
 
-  ControlFlowBFSIterator( const Graph& graph ):
-    stack_(graph),
+  ControlFlowBFSIterator( zone::Zone* zone , const Graph& graph ):
+    stack_(zone,graph),
     graph_(&graph),
     next_ (NULL)
   {
@@ -160,8 +168,8 @@ class ControlFlowPOIterator : public ControlFlowIterator {
   typedef       ValueType& ReferenceType;
   typedef ValueType const& ConstReferenceType;
 
-  ControlFlowPOIterator( const Graph& graph ):
-    stack_(graph),
+  ControlFlowPOIterator( zone::Zone* zone , const Graph& graph ):
+    stack_(zone,graph),
     graph_(&graph),
     next_ (NULL)
   {
@@ -188,9 +196,9 @@ class ControlFlowRPOIterator : public ControlFlowIterator {
   typedef       ValueType& ReferenceType;
   typedef ValueType const& ConstReferenceType;
 
-  ControlFlowRPOIterator( const Graph& graph ):
-    mark_ (graph.MaxID()),
-    stack_(graph),
+  ControlFlowRPOIterator( zone::Zone* zone , const Graph& graph ):
+    mark_ (zone,false,graph.MaxID()),
+    stack_(zone,graph),
     graph_(&graph),
     next_ (NULL)
   {
@@ -201,10 +209,10 @@ class ControlFlowRPOIterator : public ControlFlowIterator {
   bool Move();
   ConstReferenceType value() const { lava_debug(NORMAL,lava_verify(HasNext());); return next_; }
  private:
-  DynamicBitSet mark_;
-  OnceList     stack_;
-  const Graph* graph_;
-  ControlFlow* next_;
+  zone::stl::BitSet mark_;
+  OnceList          stack_;
+  const Graph*      graph_;
+  ControlFlow*      next_;
 };
 
 // -------------------------------------------------------------------------------
@@ -226,9 +234,9 @@ class ControlFlowEdgeIterator {
   typedef       Edge& ReferenceType;
   typedef const Edge& ConstReferenceType;
  public:
-  ControlFlowEdgeIterator( const Graph& graph ):
-    stack_  (graph),
-    results_(),
+  ControlFlowEdgeIterator( zone::Zone* zone, const Graph& graph ):
+    stack_  (zone,graph),
+    results_(zone),
     graph_  (&graph),
     next_   ()
   {
@@ -240,10 +248,10 @@ class ControlFlowEdgeIterator {
   bool Move();
   ConstReferenceType value() const { lava_debug(NORMAL,lava_verify(HasNext());); return next_; }
  private:
-  OnceList stack_;
-  std::deque<Edge> results_;
-  const Graph* graph_;
-  Edge next_;
+  OnceList                   stack_;
+  zone::stl::ZoneDeque<Edge> results_;
+  const Graph*               graph_;
+  Edge                       next_;
 };
 
 // ---------------------------------------------------------------------------------
@@ -254,16 +262,16 @@ class ExprDFSIterator : public ExprIterator {
   typedef       ValueType& ReferenceType;
   typedef ValueType const& ConstReferenceType;
 
-  ExprDFSIterator( const Graph& graph , Expr* node ):
+  ExprDFSIterator( zone::Zone* zone , const Graph& graph , Expr* node ):
     root_(node),
     next_(NULL),
-    stack_(graph)
+    stack_(zone,graph)
   { stack_.Push(node); Move(); }
 
-  ExprDFSIterator( const Graph& graph ):
+  ExprDFSIterator( zone::Zone* zone , const Graph& graph ):
     root_(NULL),
     next_(NULL),
-    stack_(graph)
+    stack_(zone,graph)
   {}
 
  public:

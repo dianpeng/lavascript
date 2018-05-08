@@ -763,6 +763,63 @@ struct HIRExprHasher {
   }
 };
 
+namespace detail {
+
+template< typename GETTER >
+template< typename T >
+T* NodeDFSIterator<GETTER>::Next() {
+  while(!stack_.empty()) {
+recursion:
+    auto top = stack_.Top();
+    lava_foreach( auto &v , GETTER().Get(top) ) {
+      if(stack_.Push(v)) goto recursion;
+    }
+    // when we reach here it means we scan through all its predecessor nodes and
+    // don't see any one not visited , or maybe this node is a singleton/leaf.
+    stack_.Pop();
+    return static_cast<T*>(top);
+  }
+  return NULL;
+}
+
+template< typename GETTER >
+template< typename T >
+T* NodeRPOIterator<GETTER>::Next() {
+  while(!stack_.empty()) {
+recursion:
+    auto top = stack_.Top();
+    // 1. check whether all its predecessuor has been visited or not
+    lava_foreach( auto cf , GETTER().Get(top) ) {
+      if(!mark_[cf->id()] && stack_.Push(cf)) {
+        goto recursion;
+      }
+    }
+    // 2. visit the top node
+    lava_debug(NORMAL,lava_verify(!mark_[top->id()]););
+    mark_[top->id()] = true;
+    stack_.Pop();
+    return static_cast<T*>(top);
+  }
+  return NULL;
+}
+
+inline RegionListIterator ControlFlowForwardIteratorGetter::Get( Node* region ) const {
+  auto cf = region->AsControlFlow();
+  return cf->forward_edge()->GetForwardIterator();
+}
+
+inline RegionListIterator ControlFlowBackwardIteratorGetter::Get( Node* region ) const {
+  auto cf = region->AsControlFlow();
+  return cf->backward_edge()->GetForwardIterator();
+}
+
+inline OperandIterator ExprIteratorGetter::Get( Node* node ) const {
+  auto expr = node->AsExpr();
+  return expr->operand_list()->GetForwardIterator();
+}
+
+} // namespace detail
+
 } // namespace hir
 } // namespace cbase
 } // namespace lavascript

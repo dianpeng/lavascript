@@ -31,7 +31,8 @@ void Dominators::IntersectSet( DominatorSet* set , const DominatorSet& another )
   *set = std::move(temp);
 }
 
-void Dominators::IntersectSet( DominatorSet* set , const DominatorSet& l , const DominatorSet& r ) const {
+void Dominators::IntersectSet( DominatorSet* set , const DominatorSet& l ,
+                                                   const DominatorSet& r ) const {
   std::set_intersection(l.begin(),l.end(),r.begin(),r.end(),std::back_inserter(*set));
 }
 
@@ -60,7 +61,7 @@ void Dominators::Build( const Graph& graph ) {
   // current timestamp
   std::int32_t cur_ts = 0;
   // do a timestamp mark using a DFS iteration algorithm
-  lava_foreach( auto n , ControlFlowPOIterator(zone_,graph) ) {
+  lava_foreach( auto n , ControlFlowDFSIterator(zone_,graph) ) {
     lava_debug(NORMAL,lava_verify(ts[n->id()] == 0););
     ts[n->id()] = ++cur_ts;
   }

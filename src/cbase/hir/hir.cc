@@ -358,69 +358,9 @@ bool ControlFlowBFSIterator::Move() {
   while(!stack_.empty()) {
     auto top = stack_.Top()->AsControlFlow();
     stack_.Pop();
-    lava_foreach( ControlFlow* cf , top->forward_edge()->GetForwardIterator() ) {
+    lava_foreach( auto cf , top->forward_edge()->GetForwardIterator() ) {
       stack_.Push(cf);
     }
-    next_ = top;
-    return true;
-  }
-  next_ = NULL;
-  return false;
-}
-
-namespace {
-
-struct ForwardEdgeGetter {
-  const RegionList* Get() const { return node_->forward_edge(); }
-  ForwardEdgeGetter( ControlFlow* node ) : node_(node) {}
- private:
-  ControlFlow* node_;
-};
-
-struct BackwardEdgeGetter {
-  const RegionList* Get() const { return node_->backward_edge(); }
-  BackwardEdgeGetter( ControlFlow* node ) : node_(node) {}
- private:
-  ControlFlow* node_;
-};
-
-// Helper function to do DFS iterator move
-template< typename GETTER >
-ControlFlow* ControlFlowDFSIterMove( OnceList* stack ) {
-  while(!stack->empty()) {
-recursion:
-    ControlFlow* top = stack->Top()->AsControlFlow();
-    lava_foreach( auto &v , GETTER(top).Get()->GetForwardIterator() ) {
-      if(stack->Push(v)) goto recursion;
-    }
-    // when we reach here it means we scan through all its predecessor nodes and
-    // don't see any one not visited , or maybe this node is a singleton/leaf.
-    stack->Pop();
-    return top;
-  }
-  return NULL;
-}
-
-} // namespace
-
-bool ControlFlowPOIterator::Move() {
-  return (next_ = ControlFlowDFSIterMove<ForwardEdgeGetter>(&stack_));
-}
-
-bool ControlFlowRPOIterator::Move() {
-  while(!stack_.empty()) {
-recursion:
-    ControlFlow* top = stack_.Top()->AsControlFlow();
-    // 1. check whether all its predecessuor has been visited or not
-    lava_foreach( ControlFlow* cf , top->backward_edge()->GetForwardIterator() ) {
-      if(!mark_[cf->id()] && stack_.Push(cf)) {
-        goto recursion;
-      }
-    }
-    // 2. visit the top node
-    lava_debug(NORMAL,lava_verify(!mark_[top->id()]););
-    mark_[top->id()] = true;
-    stack_.Pop();
     next_ = top;
     return true;
   }
@@ -432,7 +372,7 @@ bool ControlFlowEdgeIterator::Move() {
   if(!stack_.empty()) {
     ControlFlow* top = stack_.Top()->AsControlFlow();
     stack_.Pop();
-    lava_foreach( ControlFlow* cf , top->backward_edge()->GetBackwardIterator() ) {
+    lava_foreach( auto cf , top->backward_edge()->GetBackwardIterator() ) {
       stack_.Push(cf);
       results_.push_back(Edge(top,cf));
     }
@@ -445,21 +385,6 @@ bool ControlFlowEdgeIterator::Move() {
     results_.pop_front();
     return true;
   }
-}
-
-bool ExprDFSIterator::Move() {
-  if(!stack_.empty()) {
-recursion:
-    Expr* top = stack_.Top()->AsExpr();
-    lava_foreach( Expr* val , top->operand_list()->GetForwardIterator() ) {
-      if(stack_.Push(val)) goto recursion;
-    }
-    next_ = top;
-    stack_.Pop();
-    return true;
-  }
-  next_ = NULL;
-  return false;
 }
 
 Expr* NewUnboxNode( Graph* graph , Expr* node , TypeKind tk ) {

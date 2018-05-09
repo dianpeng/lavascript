@@ -440,17 +440,12 @@ std::uint64_t GVNHash3( T* ptr , const V1& v1 , const V2& v2 , const V3& v3 ) {
   return GVNHash2(ptr,v1,v2) ^ (uv3);
 }
 
-class GVNHashN {
- public:
-  template< typename T >
-  GVNHashN( T* seed ): value_(reinterpret_cast<std::uint64_t>(seed)<<7) {}
-  template< typename T >
-  void Add( const T& value ) { value_ ^= static_cast<std::uint64_t>(value); }
-  std::uint64_t value() const { return value_; }
- private:
-  std::uint64_t value_;
-  LAVA_DISALLOW_COPY_AND_ASSIGN(GVNHashN)
-};
+template< typename T , typename V1, typename V2, typename V3 , typename V4 >
+std::uint64_t GVNHash4( T* ptr , const V1& v1 , const V2& v2 , const V3& v3 ,
+                                                               const V4& v4 ) {
+  std::uint64_t uv4 = static_cast<std::uint64_t>(v4);
+  return GVNHash3(ptr,v1,v2,v3) ^ (uv4);
+}
 
 } // namespace hir
 } // namespace cbase

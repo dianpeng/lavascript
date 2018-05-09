@@ -1167,32 +1167,22 @@ Expr* GraphBuilder::LowerICall( ICall* node , const BytecodeLocation& pc ) {
 // ====================================================================
 Expr* GraphBuilder::NewPSet( Expr* object , Expr* key , Expr* value ,
                                                         const BytecodeLocation& bc ) {
-  WriteEffect* ret = NULL;
-  // check the type trace to get a speculative type can be OBJECT
-  if(IsTraceTypeSame(TPKIND_OBJECT,0,bc)) {
-    object  = AddTypeFeedbackIfNeed(object,TPKIND_OBJECT,bc);
-    ret     = PSet::New(graph_,object,key,value);
-    env()->effect()->object()->UpdateWriteEffect(ret);
-  } else {
-    ret = PSet::New(graph_,object,key,value);
-    auto cp = GenerateCheckpoint(bc);
-    cp->AddOperand(ret);
-    env()->effect()->root()->UpdateWriteEffect(ret);
-  }
+  auto ret = PSet::New(graph_,object,key,value);
+  auto cp = GenerateCheckpoint(bc);
+  cp->AddOperand(ret);
+  env()->effect()->root()->UpdateWriteEffect(ret);
   region()->AddPin(ret);
   return ret;
 }
 
 Expr* GraphBuilder::NewPGet( Expr* object , Expr* key , const BytecodeLocation& bc ) {
-  (void)bc;
-
   if(auto n = FoldPropGet(graph_,object,key); n) return n;
+
   auto ret = PGet::New(graph_,object,key);
-  if(auto tp = GetTypeInference(object); tp == TPKIND_OBJECT) {
-    env()->effect()->object()->AddReadEffect(ret);
-  } else {
-    env()->effect()->root()->AddReadEffect(ret);
-  }
+  auto cp = GenerateCheckpoint(bc);
+  cp->AddOperand(ret);
+  env()->effect()->root()->UpdateWriteEffect(ret);
+  region()->AddPin(ret);
   return ret;
 }
 
@@ -1200,40 +1190,22 @@ Expr* GraphBuilder::NewPGet( Expr* object , Expr* key , const BytecodeLocation& 
 // Index Get/Set
 // ====================================================================
 Expr* GraphBuilder::NewISet( Expr* object, Expr* index, Expr* value , const BytecodeLocation& bc ) {
-  WriteEffect* ret = NULL;
-  if(IsTraceTypeSame(TPKIND_LIST,0,bc)) {
-    object  = AddTypeFeedbackIfNeed(object,TPKIND_LIST,bc);
-    ret     = ISet::New(graph_,object,index,value);
-    env()->effect()->list()->UpdateWriteEffect(ret);
-  } else if(IsTraceTypeSame(TPKIND_OBJECT,0,bc)) {
-    object  = AddTypeFeedbackIfNeed(object,TPKIND_OBJECT,bc);
-    ret     = PSet::New(graph_,object,index,value);
-    env()->effect()->object()->UpdateWriteEffect(ret);
-  } else {
-    ret     = ISet::New(graph_,object,index,value);
-    auto cp = GenerateCheckpoint(bc);
-    cp->AddOperand(ret);
-    env()->effect()->root()->UpdateWriteEffect(ret);
-  }
+  auto ret = ISet::New(graph_,object,index,value);
+  auto cp  = GenerateCheckpoint(bc);
+  cp->AddOperand(ret);
+  env()->effect()->root()->UpdateWriteEffect(ret);
   region()->AddPin(ret);
   return ret;
 }
 
 Expr* GraphBuilder::NewIGet( Expr* object, Expr* index , const BytecodeLocation& bc ) {
-  (void)bc;
-
   if(auto n = FoldIndexGet(graph_,object,index); n) return n;
+
   auto ret = IGet::New(graph_,object,index);
-  {
-    auto tp = GetTypeInference(object);
-    if(tp == TPKIND_OBJECT) {
-      env()->effect()->object()->AddReadEffect(ret);
-    } else if(tp == TPKIND_LIST) {
-      env()->effect()->list()->AddReadEffect(ret);
-    } else {
-      env()->effect()->root()->AddReadEffect(ret);
-    }
-  }
+  auto cp  = GenerateCheckpoint(bc);
+  cp->AddOperand(ret);
+  env()->effect()->root()->UpdateWriteEffect(ret);
+  region()->AddPin(ret);
   return ret;
 }
 

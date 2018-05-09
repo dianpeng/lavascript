@@ -468,11 +468,7 @@ void DotPrinter::RenderExpr( const std::string& name , Expr* node ) {
       return RenderCheckpoint(name,node->AsCheckpoint());
     default:
       {
-        if(node->IsNoReadEffect() || node->IsNoWriteEffect()) {
-          Indent(1) << name << "[label=\"" << node->type_name() << "\" style=dashed]\n";
-        } else {
-          Indent(1) << name << "[label=\"" << node->type_name() << "\"]\n";
-        }
+        Indent(1) << name << "[label=\"" << node->type_name() << "\"]\n";
         lava_foreach( auto opr , node->operand_list()->GetForwardIterator() ) {
           auto opr_name = GetNodeName(opr);
           RenderExpr(opr_name,opr);

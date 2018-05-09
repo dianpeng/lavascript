@@ -41,9 +41,9 @@ class ReadEffect : public Expr {
   virtual DependencyIterator GetDependencyIterator() const;
   // only one dependency
   virtual std::size_t dependency_size() const { return effect_edge_.IsEmpty() ? 0 : 1; }
-  // set the write effect this read effect needs to depend on
-  inline void SetWriteEffect( WriteEffect* );
 
+  void  set_effect_edge( const ReadEffectListIterator& itr , WriteEffect* node )
+  { effect_edge_.id = itr; effect_edge_.node = node; }
   const ReadEffectEdge& effect_edge () const { return effect_edge_; }
   WriteEffect*          write_effect() const { return effect_edge_.node; }
  private:
@@ -59,24 +59,28 @@ class WriteEffect: public Expr {
   // write effect constructor
   WriteEffect( IRType type , std::uint32_t id , Graph* graph ):
     Expr(type,id,graph) ,
-    next_(NULL),
+    prev_(NULL),
     read_effect_()
   {}
 
  public:
   virtual DependencyIterator GetDependencyIterator() const;
   virtual std::size_t              dependency_size() const {
-    return next_ ? next_->read_effect_.size() : 0;
+    return prev_ ? prev_->read_effect_.size() : 0;
   }
+ public:
   // insert |this| *before* input WriteEffect node; this operation basically means the
   // |this| WriteEffect node must happen *After* the input WriteEffect node
   virtual void HappenAfter( WriteEffect* input );
   // add a new read effect
-  ReadEffectListIterator AddReadEffect( ReadEffect* effect );
+  void  AddReadEffect( ReadEffect* effect );
+  // get the read effect list , ie all the read happened after this write effect
   const ReadEffectList* read_effect() const { return &read_effect_; }
+  // get the previous write effect
+  virtual WriteEffect* prev() const { return prev_; }
  private:
   // double linked list field for chaining all the write effect node together
-  WriteEffect* next_;
+  WriteEffect* prev_;
   ReadEffectList read_effect_;    // all read effect that read |this| write effect
 
   class WriteEffectDependencyIterator;
@@ -86,57 +90,96 @@ class WriteEffect: public Expr {
 // Represent a memory region mutation
 // This is a very important node since it represents a potential resize of all
 // the memory node inside of the function which means all the *reference* node
-// invalid
-class WriteBarrier : public WriteEffect {
+// invalid. When a barrier node is emitted it means this node is *pinned* into
+// the control flow block and cannot be moved. So these nodes are not floating
+// essentially.
+class EffectBarrier: public WriteEffect {
  public:
-  WriteBarrier( IRType type , Graph* graph , std::uint32_t id ):
-    WriteEffect( type , id , graph ) {}
-};
-
-// EffectPhi
-//
-// A phi node that is used to merge effect right after the control flow. It
-// will only be used inside of some expression's effect list
-class WriteEffectPhi : public WriteEffect {
+  HardBarrier( IRType type , Graph* graph , std::uint32_t id ):
+    WriteEffect  (type,id,graph), ref_list_() {}
  public:
-  inline static WriteEffectPhi* New( Graph* , ControlFlow* );
-  inline static WriteEffectPhi* New( Graph* , WriteEffect* , WriteEffect* , ControlFlow* );
-  ControlFlow* region() const { return region_; }
-  inline WriteEffectPhi( Graph* , std::uint32_t , ControlFlow* );
+  virtual PloyIterator GetDependencyIterator() const;
+  virtual std::size_t  dependency_size      () const;
+  virtual bool         HasDependency        () const;
+  virtual void         AddEffectRef         ( ReadEffect* );
  public:
-  virtual DependencyIterator GetDependencyIterator() const;
-  virtual std::size_t dependency_size() const;
-  // should never call this function on a WriteEffectPhi
-  virtual void        HappenAfter    ( WriteEffect* input ) { (void)input; lava_die(); }
+  HardBarrier*         prev_barrier() const;
+  const ReadEffectList& ref_list    () const;
  private:
-  ControlFlow* region_;
-  LAVA_DISALLOW_COPY_AND_ASSIGN(WriteEffectPhi);
-
-  class WriteEffectPhiDependencyIterator;
-  friend class WriteEffectPhiDependencyIterator;
+  // reference list, reference lookup goes into this list and other write/read
+  // goes into the read_effect_ list inherited from WriteEffect. this just gives
+  // better chance for us to do alias analyzing
+  ReadEffectList ref_list_;
 };
 
-// placeholder for empty read/write effect to avoid checking NULL pointer
-class NoReadEffect : public ReadEffect {
+// HardBarrier is a type of barrier that cannot be moved , basically no way to
+// do code motion. It is a hard barrier that prevents any operations happend
+// after hoisting and also operation happened before sinking.
+class HardBarrier : public EffectBarrier {
  public:
-  inline static NoReadEffect* New( Graph* );
-  NoReadEffect( Graph* graph , std::uint32_t id ): ReadEffect(HIR_NO_READ_EFFECT,id,graph) {}
+  HardBarrier( IRType type , Graph* graph , std::uint32_t id ):
+    EffectBarrier(type,graph,id) {}
+ private:
+  LAVA_DISALLOW_COPY_AND_ASSIGN(HardBarrier)
+};
+
+// SoftBarrier is a type of barrier that can be moved. It is mainly serve as a
+// way to mark the barrier chain at certain conrol flow node, ie branch or loop
+// The operation happened after the SoftBarrier can be moved *cross* the barrier
+// node.
+class SoftBarrier : public EffectBarrier {
+ public:
+  SoftBarrier( IRType type , Graph* graph , std::uint32_t id ):
+    EffectBarrier(type,graph,id) {}
+ private:
+  LAVA_DISALLOW_COPY_AND_ASSIGN(SoftBarrier)
+};
+
+// LoopEffect node is a node that mark the effect region inside of the loop.
+// Instead of having a Phi node , which have a one input points to itself,
+// we just use LoopEffect node. LoopEffect node links to its previous effect
+// node of fallthrough path and only get one predecessor.
+class LoopEffect: public SoftBarrier {
+ public:
+  LoopBarrier( Graph* graph , std::uint32_t id ): SoftBarrier(HIR_LOOP_EFFECT,id,graph) {}
+ private:
+  LAVA_DISALLOW_COPY_AND_ASSIGN(LoopEffect)
+};
+
+// EffectPhi is a phi node inserted at merge region used to fan in all the branch's
+// phi node. Each branch will use a DummyBarrier to separate each branch's effect
+// chain regardlessly
+class EffectPhi : public SoftBarrier {
+ public:
+  EffectPhi( Graph* graph , std::uint32_t id ) : SoftBarrier(HIR_EFFECT_PHI,id,graph) {}
+ private:
+  LAVA_DISALLOW_COPY_AND_ASSIGN(EffectPhi)
+};
+
+// DummyBarrier is an object to separate effect chain in lexical scope. It is mainly to
+// use mark the start of the effect chain belonged to a certain control flow region. As
+// its name represents, it is a dummy barrier. The dummy barrier also participate into
+// the GVN. the GVN is delegate to this barrier's previous barrier since it doesn't bring
+// any change into the effect chain.
+class DummyBarrier : public SoftBarrier {
+ public:
+  DummyBarrier( Graph* graph , std::uint32_t id ) : SoftBarrier(HIR_DUMMY_BARRIER,id,graph) {}
+  virtual std::uint64_t GVNHash(                  ) const { return prev()->GVNHash(); }
+  virtual bool          Equal  ( const Expr* that ) const { return prev()->Equal(that);}
+ private:
+  LAVA_DISALLOW_COPY_AND_ASSIGN(DummyBarrier)
+};
+
+// DummyWriteEffect is a fake write effect basically just do nothing , serving as a placeholder
+class DummyWriteEffect: public WriteEffect {
+ public:
+  inline static DummyWriteEffect* New( Graph* );
+  DummyWriteEffect( Graph* graph , std::uint32_t id ): WriteEffect(HIR_NO_WRITE_EFFECT,id,graph) {}
  public:
   virtual DependencyIterator GetDependencyIterator() const { return DependencyIterator(); }
   virtual std::size_t              dependency_size() const { return 0; }
  private:
-  LAVA_DISALLOW_COPY_AND_ASSIGN(NoReadEffect);
-};
-
-class NoWriteEffect: public WriteEffect {
- public:
-  inline static NoWriteEffect* New( Graph* );
-  NoWriteEffect( Graph* graph , std::uint32_t id ): WriteEffect(HIR_NO_WRITE_EFFECT,id,graph) {}
- public:
-  virtual DependencyIterator GetDependencyIterator() const { return DependencyIterator(); }
-  virtual std::size_t              dependency_size() const { return 0; }
- private:
-  LAVA_DISALLOW_COPY_AND_ASSIGN(NoWriteEffect);
+  LAVA_DISALLOW_COPY_AND_ASSIGN(DummyWriteEffect);
 };
 
 } // namespace hir

@@ -22,35 +22,6 @@ class MemoryNode : public Expr {
   MemoryNode( IRType type , std::uint32_t id , Graph* g ): Expr(type,id,g){}
 };
 
-// MemoryWrite
-// this node represents all possible memory store operation which essentially
-// can cause observable side effect inside of program. The node that is MemoryWrite
-// are :
-// 1. USet, this node will have side effect since we don't know its alias situation
-// 2. Arg , same as UGet
-// 3. GSet , in current implementation global are treated very simple it will
-//    generate a side effect so it is always ordered
-// 4. ISet/PSet/ObjectSet/ListSet
-// 5. WriteEffectPhi
-class MemoryWrite : public WriteEffect {
- public:
-  MemoryWrite( IRType type , std::uint32_t id , Graph* g ): WriteEffect(type,id,g){}
-};
-
-// MemoryRead
-//
-// this node represents all possible memory load operation which needs to depend
-// on certain memory read node and also *be* depended on by other memory write
-// node. The following IR nodes are type of MemoryRead node :
-// 1. IGet
-// 2. PGet
-// 3. ObjectGet
-// 4. ListGet
-class MemoryRead : public ReadEffect {
- public:
-  MemoryRead( IRType type , std::uint32_t id , Graph* g ): ReadEffect(type,id,g) {}
-};
-
 // --------------------------------------------------------------------------
 // Argument
 class Arg : public MemoryNode {

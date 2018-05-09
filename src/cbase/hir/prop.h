@@ -10,13 +10,13 @@ namespace hir        {
 //
 // For memory operation, we have 2 sets of memory operation :
 //
-// 1) WriteBarrier based memory operation. These operations is slow fallback
+// 1) HardBarrier based memory operation. These operations is slow fallback
 //    operation that will do dynamic dispatch for property/index set and get.
 //
 // 2) Low level memory operation. These operations requires the type of the
 //    node to be object or list. These operations will generate lookup opereation
 //    and dereference/reference node.
-class PGet : public WriteBarrier {
+class PGet : public HardBarrier {
  public:
   inline static PGet* New( Graph* , Expr* , Expr* );
 
@@ -35,7 +35,7 @@ class PGet : public WriteBarrier {
   }
 
   PGet( Graph* graph , std::uint32_t id , Expr* object , Expr* index ):
-    WriteBarrier (HIR_PGET,graph,id)
+    HardBarrier (HIR_PGET,graph,id)
   {
     AddOperand(object);
     AddOperand(index );
@@ -43,7 +43,7 @@ class PGet : public WriteBarrier {
 
  protected:
   PGet( IRType type , Graph* graph , std::uint32_t id , Expr* object , Expr* index ):
-    WriteBarrier (type,graph,id)
+    HardBarrier (type,graph,id)
   {
     AddOperand(object);
     AddOperand(index );
@@ -52,7 +52,7 @@ class PGet : public WriteBarrier {
   LAVA_DISALLOW_COPY_AND_ASSIGN(PGet)
 };
 
-class PSet : public WriteBarrier {
+class PSet : public HardBarrier {
  public:
   inline static PSet* New( Graph* , Expr* , Expr* , Expr* );
 
@@ -73,7 +73,7 @@ class PSet : public WriteBarrier {
     return false;
   }
   PSet( Graph* graph , std::uint32_t id , Expr* object , Expr* index , Expr* value ):
-    WriteBarrier (HIR_PSET,graph,id)
+    HardBarrier (HIR_PSET,graph,id)
   {
     AddOperand(object);
     AddOperand(index );
@@ -82,7 +82,7 @@ class PSet : public WriteBarrier {
 
  protected:
   PSet(IRType type,Graph* graph,std::uint32_t id,Expr* object,Expr* index,Expr* value):
-    WriteBarrier (type,graph,id)
+    HardBarrier (type,graph,id)
   {
     AddOperand(object);
     AddOperand(index );
@@ -93,7 +93,7 @@ class PSet : public WriteBarrier {
   LAVA_DISALLOW_COPY_AND_ASSIGN(PSet)
 };
 
-class IGet : public WriteBarrier {
+class IGet : public HardBarrier {
  public:
   inline static IGet* New( Graph* , Expr* , Expr* );
 
@@ -101,7 +101,7 @@ class IGet : public WriteBarrier {
   Expr* index () const { return operand_list()->Last (); }
 
   IGet( Graph* graph , std::uint32_t id , Expr* object , Expr* index ):
-    WriteBarrier (HIR_IGET,graph,id)
+    HardBarrier (HIR_IGET,graph,id)
   {
     AddOperand(object);
     AddOperand(index );
@@ -121,7 +121,7 @@ class IGet : public WriteBarrier {
 
  protected:
   IGet( IRType type , Graph* graph , std::uint32_t id , Expr* object , Expr* index ):
-    WriteBarrier (type,graph,id)
+    HardBarrier (type,graph,id)
   {
     AddOperand(object);
     AddOperand(index );
@@ -131,7 +131,7 @@ class IGet : public WriteBarrier {
   LAVA_DISALLOW_COPY_AND_ASSIGN(IGet)
 };
 
-class ISet : public WriteBarrier {
+class ISet : public HardBarrier {
  public:
   inline static ISet* New( Graph* , Expr* , Expr* , Expr* );
 
@@ -153,7 +153,7 @@ class ISet : public WriteBarrier {
   }
 
   ISet( Graph* graph , std::uint32_t id , Expr* object , Expr* index , Expr* value ):
-    WriteBarrier (HIR_ISET,graph,id)
+    HardBarrier (HIR_ISET,graph,id)
   {
     AddOperand(object);
     AddOperand(index );
@@ -162,7 +162,7 @@ class ISet : public WriteBarrier {
 
  protected:
   ISet(IRType type,Graph* graph,std::uint32_t id,Expr* object,Expr* index,Expr* value):
-    WriteBarrier (type,graph,id)
+    HardBarrier (type,graph,id)
   {
     AddOperand(object);
     AddOperand(index );
@@ -195,10 +195,10 @@ class ISet : public WriteBarrier {
 //    ListRefSet   --> set a reference returned by   ListIndex/ListInsert
 //    ListRefGet   --> get a value from reference of ListIndex/ListInsert
 
-class ObjectFind : public MemoryRead {
+class ObjectFind : public ReadEffect {
  public:
-  ObjectFind( std::uint32_t id , Graph* graph , Expr* object , Expr* key , Checkpoint* cp ):
-    MemoryRead(HIR_OBJECT_FIND,id,graph)
+  ObjectFind( Graph* graph , std::uint32_t id , Expr* object , Expr* key , Checkpoint* cp ):
+    ReadEffect(HIR_OBJECT_FIND,id,graph)
   {
     lava_debug(NORMAL,lava_verify(GetTypeInference(object) == TPKIND_OBJECT););
     AddOperand(object);
@@ -228,9 +228,9 @@ class ObjectFind : public MemoryRead {
   LAVA_DISALLOW_COPY_AND_ASSIGN(ObjectFind)
 };
 
-class ObjectUpdate : public WriteBarrier {
+class ObjectUpdate : public HardBarrier {
  public:
-  ObjectUpdate( std::uint32_t id , Graph* graph , Expr* object , Expr* key ):
+  ObjectUpdate( Graph* graph , std::uint32_t id , Expr* object , Expr* key ):
     WirteBarrier(HIR_OBJECT_UPDATE,id,graph)
   {
     lava_debug(NORMAL,lava_verify(GetTypeInference(object) == TPKIND_OBJECT););
@@ -243,10 +243,10 @@ class ObjectUpdate : public WriteBarrier {
   LAVA_DISALLOW_COPY_AND_ASSIGN(ObjectUpdate)
 };
 
-class ObjectInsert : public WriteBarrier {
+class ObjectInsert : public HardBarrier {
  public:
-  ObjectInsert( std::uint32_t id , Graph* graph , Expr* object , Expr* key ):
-    WriteBarrier(HIR_OBJECT_INSERT,id,graph)
+  ObjectInsert( Graph* graph , std::uint32_t id , Expr* object , Expr* key ):
+    HardBarrier(HIR_OBJECT_INSERT,id,graph)
   {
     lava_debug(NORMAL,lava_verify(GetTypeInference(object) == TPKIND_OBJECT););
     AddOperand(object);
@@ -260,10 +260,10 @@ class ObjectInsert : public WriteBarrier {
 
 // ListRef node represent list related reference lookup. One thing to note is that
 // these operations *doesn't*
-class ListRef : public MemoryRead {
+class ListRef : public ReadEffect {
  public:
-  ListRef( IRType type , std::uint32_t id , Graph* graph , Expr* object , Expr* index ):
-    MemoryRead(type,id,graph)
+  ListRef( IRType type , Graph* graph , std::uint32_t id , Expr* object , Expr* index ):
+    ReadEffect(type,id,graph)
   {
     lava_debug(NORMAL,lava_verify( GetTypeInference(object) == TPKIND_LIST ););
     AddOperand(object);
@@ -274,10 +274,10 @@ class ListRef : public MemoryRead {
   Expr* index () const { return operand_list()->Index(1); }
 };
 
-class ListIndex : public MemoryRead {
+class ListIndex : public ReadEffect {
  public:
-  ListIndex( std::uint32_t id , Graph* graph , Expr* object , Expr* index , TestABC* test ):
-    MemoryRead(HIR_LIST_INDEX,id,graph)
+  ListIndex( Graph* graph , std::uint32_t id , Expr* object , Expr* index , TestABC* test ):
+    ReadEffect(HIR_LIST_INDEX,id,graph)
   {
     lava_debug(NORMAL,lava_verify( GetTypeInference(object) == TPKIND_LIST ););
     AddOperand(object);
@@ -307,10 +307,10 @@ class ListIndex : public MemoryRead {
   LAVA_DISALLOW_COPY_AND_ASSIGN(ListIndex)
 };
 
-class ListInsert: public WriteBarrier {
+class ListInsert: public HardBarrier {
  public:
-  ListInset( std::uint32_t id , Graph* graph , Expr* object , Expr* index ):
-    WriteBarrier(HIR_LIST_INSERT,id,graph)
+  ListInsert( Graph* graph , std::uint32_t id , Expr* object , Expr* index ):
+    HardBarrier(HIR_LIST_INSERT,id,graph)
   {
     lava_debug(NORMAL,lava_verify( GetTypeInference(object) == TPKIND_LIST ););
     AddOperand(object);
@@ -322,48 +322,70 @@ class ListInsert: public WriteBarrier {
   LAVA_DISALLOW_COPY_AND_ASSIGN(ListInsert)
 };
 
-class ObjectGet : public PGet {
+class ObjectRefGet : public ReadEffect {
  public:
-  inline static ObjectGet* New( Graph* , Expr* , Expr* );
-  ObjectGet( Graph* graph , std::uint32_t id , Expr* object , Expr* key ):
-    PGet(HIR_OBJECT_GET,graph,id,object,key)
-  {}
+  ObjectRefGet( Graph* graph , std::uint32_t id , Expr* oref ):
+    ReadEffect(HIR_OBJECT_REF_GET,id,graph)
+  {
+    lava_debug(NORMAL,lava_verify( oref->IsObjectFind()   ||
+                                   oref->IsObjectUpdate() ||
+                                   oref->IsObjectInsert() ););
+    AddOperand(oref);
+  }
 
+  Expr* ref() const { return operand_list()->First(); }
  private:
-  LAVA_DISALLOW_COPY_AND_ASSIGN(ObjectGet)
+  LAVA_DISALLOW_COPY_AND_ASSIGN(ObjectRefGet)
 };
 
-class ObjectSet : public PSet {
+class ObjectRefSet : public ReadEffect {
  public:
-  inline static ObjectSet* New( Graph* , Expr* , Expr* , Expr* );
-  ObjectSet( Graph* graph , std::uint32_t id , Expr* object , Expr* key, Expr* value ):
-    PSet(HIR_OBJECT_SET,graph,id,object,key,value)
-  {}
+  ObjectRefSet( Graph* graph , std::uint32_t id , Expr* oref , Expr* value ):
+    ReadEffect(HIR_OBJECT_REF_SET,id,graph)
+  {
+    lava_debug(NORMAL,lava_verify( oref->IsObjectFind()   ||
+                                   oref->IsObjectUpdate() ||
+                                   oref->IsObjectInsert() ););
+    AddOperand(oref);
+    AddOperand(value);
+  }
 
+  Expr* ref  () const { return operand_list()->First(); }
+  Expr* value() const { return operand_list()->Last(); }
  private:
-  LAVA_DISALLOW_COPY_AND_ASSIGN(ObjectSet)
+  LAVA_DISALLOW_COPY_AND_ASSIGN(ObjectRefSet)
 };
 
-class ListGet : public IGet {
+class ListRefGet : public ReadEffect {
  public:
-  inline static ListGet* New( Graph* , Expr* , Expr* );
-  ListGet( Graph* graph , std::uint32_t id, Expr* object, Expr* index ):
-    IGet(HIR_LIST_GET,graph,id,object,index)
-  {}
+  ListRefSet( Graph* graph , std::uint32_t id , Expr* lref ):
+    ReadEffect(HIR_LIST_REF_GET,id,graph)
+  {
+    lava_debug(NORMAL,lava_verify( lref->IsListIndex() ||
+                                   lref->IsListInsert() ););
+    AddOperand(lref);
+  }
 
+  Expr* ref  () const { return operand_list()->First(); }
  private:
-  LAVA_DISALLOW_COPY_AND_ASSIGN(ListGet)
+  LAVA_DISALLOW_COPY_AND_ASSIGN(ListRefGet)
 };
 
-class ListSet : public ISet {
+class ListRefSet : public ReadEffect {
  public:
-  inline static ListSet* New( Graph* , Expr* , Expr* , Expr* );
-  ListSet( Graph* graph , std::uint32_t id , Expr* object , Expr* index  , Expr* value ):
-    ISet(HIR_LIST_SET,graph,id,object,index,value)
-  {}
+  ListRefSet( Graph* graph , std::uint32_t id , Expr* lref , Expr* value ):
+    ReadEffect(HIR_LIST_REF_SET,id,graph)
+  {
+    lava_debug(NORMAL,lava_verify( lref->IsListIndex()  ||
+                                   lref->isListInsert() ););
+    AddOperand(lref);
+    AddOperand(value);
+  }
 
+  Expr* ref  () const { return operand_list()->First(); }
+  Expr* value() const { return operand_list()->Last(); }
  private:
-  LAVA_DISALLOW_COPY_AND_ASSIGN(ListSet)
+  LAVA_DISALLOW_COPY_AND_ASSIGN(ListRefSet)
 };
 
 } // namespace hir

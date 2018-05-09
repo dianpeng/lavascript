@@ -79,7 +79,7 @@ class Expr : public Node {
   virtual std::size_t dependency_size() const { return 0; }
 
   // check whether this node has dependency
-  bool HasDependency() const { return dependency_size() != 0; }
+  viritual bool HasDependency() const { return dependency_size() != 0; }
  public:
   // constructor
   Expr( IRType type , std::uint32_t id , Graph* graph ):

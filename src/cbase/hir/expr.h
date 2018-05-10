@@ -13,9 +13,9 @@ namespace hir        {
 //   goal is to expose def-use and use-def chain into different types
 class Expr : public Node {
  public:
-  bool  IsPin            ()                   const { return pin_.HasRef(); }
-  void  set_pin_edge     ( const PinEdge& st )      { pin_= st; }
-  const PinEdge& pin_edge()                   const { return pin_; }
+  bool  IsStmt            ()                   const { return pin_.HasRef(); }
+  void  set_stmt_edge     ( const StmtEdge& st )      { pin_= st; }
+  const StmtEdge& stmt_edge()                   const { return pin_; }
  public:
   // Replace *this* node with the input expression node. This replace
   // will modify all reference to |this| with reference to input node.
@@ -79,7 +79,7 @@ class Expr : public Node {
   virtual std::size_t dependency_size() const { return 0; }
 
   // check whether this node has dependency
-  viritual bool HasDependency() const { return dependency_size() != 0; }
+  virtual bool HasDependency() const { return dependency_size() != 0; }
  public:
   // constructor
   Expr( IRType type , std::uint32_t id , Graph* graph ):
@@ -91,7 +91,7 @@ class Expr : public Node {
  private:
   OperandList        operand_list_;
   OperandRefList     ref_list_;
-  PinEdge            pin_;
+  StmtEdge           pin_;
 };
 
 } // namespace hir

@@ -63,22 +63,22 @@ class ControlFlow : public Node {
     ref_list_.PushBack(zone(),RegionRef(iter,who_uses_me));
   }
 
-  // Pin --------------------------------------------------------------------
+  // Stmt --------------------------------------------------------------------
   // A list that is used to record those operations that cannot be categorized
   // as input/data dependency. Things like side effect operation, function call,
   // property set and index set , even checkpoint
-  const PinList* pin_list() const {
-    return &pin_expr_;
+  const StmtList* stmt_list() const {
+    return &stmt_expr_;
   }
-  void AddPin( Expr* node ) {
-    auto itr = pin_expr_.PushBack(zone(),node);
-    node->set_pin_edge(PinEdge(this,itr));
+  void AddStmt( Expr* node ) {
+    auto itr = stmt_expr_.PushBack(zone(),node);
+    node->set_stmt_edge(StmtEdge(this,itr));
   }
-  void RemovePin( const PinEdge& ee ) {
+  void RemoveStmt( const StmtEdge& ee ) {
     lava_debug(NORMAL,lava_verify(ee.region == this););
-    pin_expr_.Remove(ee.iterator);
+    stmt_expr_.Remove(ee.iterator);
   }
-  void MovePin( ControlFlow* );
+  void MoveStmt( ControlFlow* );
 
   // OperandList -------------------------------------------------------------
   // All control flow's related data input should be stored via this list
@@ -106,7 +106,7 @@ class ControlFlow : public Node {
     backward_edge_   (),
     forward_edge_    (),
     ref_list_        (),
-    pin_expr_        (),
+    stmt_expr_       (),
     operand_list_    ()
   {
     if(parent) AddBackwardEdge(parent);
@@ -125,7 +125,7 @@ class ControlFlow : public Node {
   RegionList           backward_edge_;
   RegionList           forward_edge_;
   RegionRefList        ref_list_;
-  PinList              pin_expr_;
+  StmtList             stmt_expr_;
   OperandList          operand_list_;
 
   LAVA_DISALLOW_COPY_AND_ASSIGN(ControlFlow)

@@ -101,10 +101,10 @@ void DotPrinter::RenderControlFlow( const std::string& region_name ,
   }
 
   // for all the pined node
-  lava_foreach( auto expr , region->pin_list()->GetForwardIterator() ) {
+  lava_foreach( auto expr , region->stmt_list()->GetForwardIterator() ) {
     auto name = GetNodeName(expr);
     RenderExpr(name,expr);
-    Indent(1) << region_name << " -> " << name << "[color=purple style=dashed label=pin]\n";
+    Indent(1) << region_name << " -> " << name << "[color=purple style=dashed label=stmt]\n";
   }
 }
 
@@ -250,70 +250,6 @@ void DotPrinter::RenderExpr( const std::string& name , Expr* node ) {
         Indent(1) << name << opr_name << '\n';
       }
       break;
-    case HIR_PGET:
-    case HIR_OBJECT_GET:
-      {
-        auto pget = static_cast<PGet*>(node);
-
-        auto obj_name = GetNodeName(pget->object());
-        auto key_name = GetNodeName(pget->key());
-        RenderExpr(obj_name,pget->object());
-        RenderExpr(key_name,pget->key());
-        Indent(1) << name << "[label=\"" << pget->type_name() << "\"]\n";
-        Indent(1) << name << " -> " << obj_name << "[label=\"object\"]\n";
-        Indent(1) << name << " -> " << key_name << "[label=\"key\"]\n";
-
-      }
-      break;
-    case HIR_PSET:
-    case HIR_OBJECT_SET:
-      {
-        auto pset = static_cast<PSet*>(node);
-
-        auto obj_name = GetNodeName(pset->object());
-        auto key_name = GetNodeName(pset->key());
-        auto val_name = GetNodeName(pset->value());
-        RenderExpr(obj_name,pset->object());
-        RenderExpr(key_name,pset->key());
-        RenderExpr(val_name,pset->value());
-        Indent(1) << name << "[label=\"" << pset->type_name() << "\"]\n";
-        Indent(1) << name << " -> " << obj_name << "[label=\"object\"]\n";
-        Indent(1) << name << " -> " << key_name << "[label=\"key\"]\n";
-        Indent(1) << name << " -> " << val_name << "[label=\"value\"]\n";
-
-      }
-      break;
-    case HIR_IGET: case HIR_LIST_GET:
-      {
-        auto iget = static_cast<IGet*>(node);
-
-        auto obj_name = GetNodeName(iget->object());
-        auto idx_name = GetNodeName(iget->index());
-        RenderExpr(obj_name,iget->object());
-        RenderExpr(idx_name,iget->index());
-        Indent(1) << name << "[label=\"" << iget->type_name() << "\"]\n";
-        Indent(1) << name << " -> " << obj_name << "[label=\"object\"]\n";
-        Indent(1) << name << " -> " << idx_name << "[label=\"index\"]\n";
-
-      }
-      break;
-    case HIR_ISET: case HIR_LIST_SET:
-      {
-        auto iset = static_cast<ISet*>(node);
-
-        auto obj_name = GetNodeName(iset->object());
-        auto idx_name = GetNodeName(iset->index() );
-        auto val_name = GetNodeName(iset->value() );
-        RenderExpr(obj_name,iset->object());
-        RenderExpr(idx_name,iset->index());
-        RenderExpr(val_name,iset->value());
-        Indent(1) << name << "[label=\"" << iset->type_name() << "\"]\n";
-        Indent(1) << name << " -> " << obj_name << "[label=\"object\"]\n";
-        Indent(1) << name << " -> " << idx_name << "[label=\"index\"]\n";
-        Indent(1) << name << " -> " << val_name << "[label=\"value\"]\n";
-
-      }
-      break;
     case HIR_GGET:
       {
         auto gget = node->AsGGet();
@@ -390,22 +326,6 @@ void DotPrinter::RenderExpr( const std::string& name , Expr* node ) {
       }
       break;
     /** test **/
-    case HIR_TEST_LISTOOB:
-      {
-        Indent(1) << name << "[label=\"list-oob\"]\n";
-        auto oob = node->AsTestListOOB();
-
-        auto obj = oob->object();
-        auto obj_name = GetNodeName(obj);
-        RenderExpr(obj_name,obj);
-        Indent(1) << name << " -> " << obj_name << '\n';
-
-        auto idx = oob->index();
-        auto idx_name = GetNodeName(idx);
-        Indent(1) << name << " -> " << idx_name << '\n';
-      }
-      break;
-
     case HIR_TEST_TYPE:
       {
         auto tt = node->AsTestType();

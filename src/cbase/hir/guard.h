@@ -46,32 +46,6 @@ class TestType : public Test {
   LAVA_DISALLOW_COPY_AND_ASSIGN(TestType)
 };
 
-class TestListOOB : public Test {
- public:
-  inline static TestListOOB* New( Graph* , Expr* , Expr* );
-  virtual Expr* object() const { return operand_list()->First(); }
-  Expr* index () const { return operand_list()->Last (); }
-  TestListOOB( Graph* graph , std::uint32_t id , Expr* obj , Expr* idx ):
-    Test(HIR_TEST_LISTOOB,id,graph)
-  {
-    AddOperand(obj);
-    AddOperand(idx);
-  }
- public:
-  virtual std::uint64_t GVNHash() const {
-    return GVNHash2(type_name(),object()->GVNHash(),index()->GVNHash());
-  }
-  virtual bool Equal( const Expr* that ) const {
-    if(that->IsTestListOOB()) {
-      auto n = that->AsTestListOOB();
-      return object()->Equal(n->object()) && index()->Equal(n->index());
-    }
-    return false;
-  }
- private:
-  LAVA_DISALLOW_COPY_AND_ASSIGN(TestListOOB)
-};
-
 // -----------------------------------------------------
 // Guard
 // -----------------------------------------------------

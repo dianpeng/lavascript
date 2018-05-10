@@ -48,9 +48,6 @@ class ICall : public WriteEffect {
   interpreter::IntrinsicCall ic() const { return ic_; }
   // whether this call is a tail call
   bool tail_call() const { return tail_call_; }
-  // Global value numbering
-  virtual std::uint64_t GVNHash() const;
-  virtual bool Equal( const Expr* ) const;
 
   ICall( Graph* graph , std::uint32_t id , interpreter::IntrinsicCall ic , bool tail ):
     WriteEffect (HIR_ICALL,id,graph),

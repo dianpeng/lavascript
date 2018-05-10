@@ -102,10 +102,10 @@ void Effect::Merge( const Effect& lhs , const Effect& rhs , Effect* output , Gra
   auto lhs_eff = lhs.root()->write_effect();
   auto rhs_eff = rhs.root()->write_effect();
 
-  if((!lhs_eff->IsNoWriteEffect() || !rhs_eff->IsNoWriteEffect()) &&
+  if((!lhs_eff->IsDummyBarrier() || !rhs_eff->IsDummyBarrier()) &&
       !lhs_eff->IsIdentical(rhs_eff)) {
     // create an effect phi to join effect created by the root node
-    auto effect_phi = WriteEffectPhi::New(graph,lhs_eff,rhs_eff,region);
+    auto effect_phi = EffectPhi::New(graph,lhs_eff,rhs_eff,region);
     // propogate the effect
     output->root_.PropagateWriteEffect  (effect_phi);
     output->list_.PropagateWriteEffect  (effect_phi);

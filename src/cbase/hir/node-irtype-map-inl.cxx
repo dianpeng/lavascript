@@ -9,27 +9,7 @@ struct MapIRClassToIRType<MemoryNode> {
 };
 
 template<>
-struct MapIRClassToIRType<MemoryWrite> {
-  static bool Test( IRType type ) {
-    return type == HIR_OBJECT_SET ||
-           type == HIR_LIST_SET   ||
-           type == HIR_GSET       ||
-           type == HIR_USET;
-  }
-};
-
-template<>
-struct MapIRClassToIRType<MemoryRead> {
-  static bool Test( IRType type ) {
-    return type == HIR_OBJECT_GET ||
-           type == HIR_LIST_GET   ||
-           type == HIR_GGET       ||
-           type == HIR_UGET;
-  }
-};
-
-template<>
-struct MapIRClassToIRType<WriteBarrier> {
+struct MapIRClassToIRType<EffectBarrier> {
   static bool Test ( IRType type ) {
     return type == HIR_ARITHMETIC ||
            type == HIR_COMPARE    ||
@@ -43,18 +23,18 @@ struct MapIRClassToIRType<WriteBarrier> {
 template<>
 struct MapIRClassToIRType<WriteEffect> {
   static bool Test( IRType type ) {
-    return MapIRClassToIRType<MemoryWrite>::Test(type)  ||
-           MapIRClassToIRType<WriteBarrier>::Test(type) ||
-           type == HIR_WRITE_EFFECT_PHI                 ||
-           type == HIR_NO_WRITE_EFFECT;
+    return type == HIR_GSET                              ||
+           type == HIR_USET                              ||
+           MapIRClassToIRType<EffectBarrier>::Test(type) ||
+           type == HIR_EFFECT_PHI;
   }
 };
 
 template<>
 struct MapIRClassToIRType<ReadEffect> {
   static bool Test( IRType type ) {
-    return MapIRClassToIRType<MemoryRead>::Test(type)  ||
-           type == HIR_NO_READ_EFFECT;
+    return type == HIR_GGET       ||
+           type == HIR_UGET;
   }
 };
 

@@ -67,6 +67,11 @@ class GraphBuilder {
     Environment( zone::Zone* , GraphBuilder* );
     Environment( const Environment& );
    public:
+    // Setup a loop effect node and replace it with existed effect group entirely
+    void SetLoopEffect();
+    // Setup a link effect node and replace it with existed effect group entirely
+    void SetLinkEffect();
+   public:
     // init environment object from prototype object
     void EnterFunctionScope  ( const FuncInfo& );
     void PopulateArgument    ( const FuncInfo& );
@@ -475,7 +480,7 @@ GraphBuilder::Environment::Environment( zone::Zone* zone , GraphBuilder* gb ):
   effect_   (),
   state_    (gb->InitCheckpoint())
 {
-  effect_.Init(gb->temp_zone(),NoWriteEffect::New(gb->graph()));
+  effect_.Init(gb->temp_zone(),DummyBarrier::New(gb->graph()));
 }
 
 GraphBuilder::Environment::Environment( const Environment& env ):
@@ -525,7 +530,7 @@ Expr* GraphBuilder::Environment::GetUpValue( std::uint8_t index ) {
 void GraphBuilder::Environment::SetUpValue( std::uint8_t index , Expr* value ) {
   auto uset = USet::New(gb_->graph_,index,gb_->method_index(),value);
   effect()->root()->UpdateWriteEffect(uset);
-  gb_->region()->AddPin(uset);
+  gb_->region()->AddStmt(uset);
   upvalue()->at(index) = value;
 }
 
@@ -553,7 +558,7 @@ void GraphBuilder::Environment::SetGlobal( const void* key , std::size_t length 
                                                              Expr* value ) {
   auto gset = GSet::New(gb_->graph_,key_provider(),value);
   effect()->root()->UpdateWriteEffect(gset);
-  gb_->region()->AddPin(gset);
+  gb_->region()->AddStmt(gset);
 
   auto itr = std::find(global_.begin(),global_.end(),Str(key,length));
   if(itr == global_.end()) {
@@ -1171,7 +1176,7 @@ Expr* GraphBuilder::NewPSet( Expr* object , Expr* key , Expr* value ,
   auto cp = GenerateCheckpoint(bc);
   cp->AddOperand(ret);
   env()->effect()->root()->UpdateWriteEffect(ret);
-  region()->AddPin(ret);
+  region()->AddStmt(ret);
   return ret;
 }
 
@@ -1182,7 +1187,7 @@ Expr* GraphBuilder::NewPGet( Expr* object , Expr* key , const BytecodeLocation& 
   auto cp = GenerateCheckpoint(bc);
   cp->AddOperand(ret);
   env()->effect()->root()->UpdateWriteEffect(ret);
-  region()->AddPin(ret);
+  region()->AddStmt(ret);
   return ret;
 }
 
@@ -1194,7 +1199,7 @@ Expr* GraphBuilder::NewISet( Expr* object, Expr* index, Expr* value , const Byte
   auto cp  = GenerateCheckpoint(bc);
   cp->AddOperand(ret);
   env()->effect()->root()->UpdateWriteEffect(ret);
-  region()->AddPin(ret);
+  region()->AddStmt(ret);
   return ret;
 }
 
@@ -1205,7 +1210,7 @@ Expr* GraphBuilder::NewIGet( Expr* object, Expr* index , const BytecodeLocation&
   auto cp  = GenerateCheckpoint(bc);
   cp->AddOperand(ret);
   env()->effect()->root()->UpdateWriteEffect(ret);
-  region()->AddPin(ret);
+  region()->AddStmt(ret);
   return ret;
 }
 

@@ -55,8 +55,6 @@ inline bool Node::IsExpr       () const { return Is<Expr>      ();  }
 inline bool Node::IsControlFlow() const { return Is<ControlFlow>(); }
 inline bool Node::IsReadEffect () const { return Is<ReadEffect>();  }
 inline bool Node::IsWriteEffect() const { return Is<WriteEffect>(); }
-inline bool Node::IsMemoryRead () const { return Is<MemoryRead>();  }
-inline bool Node::IsMemoryWrite() const { return Is<MemoryWrite>(); }
 inline bool Node::IsMemoryNode () const { return Is<MemoryNode>();  }
 inline bool Node::IsTestNode   () const { return Is<Test>      ();  }
 
@@ -103,26 +101,6 @@ inline ReadEffect* Node::AsReadEffect() {
 inline const ReadEffect* Node::AsReadEffect() const {
   lava_debug(NORMAL,lava_verify(IsReadEffect()););
   return static_cast<const ReadEffect*>(this);
-}
-
-inline MemoryWrite* Node::AsMemoryWrite() {
-  lava_debug(NORMAL,lava_verify(IsMemoryWrite()););
-  return static_cast<MemoryWrite*>(this);
-}
-
-inline const MemoryWrite* Node::AsMemoryWrite() const {
-  lava_debug(NORMAL,lava_verify(IsMemoryWrite()););
-  return static_cast<const MemoryWrite*>(this);
-}
-
-inline MemoryRead* Node::AsMemoryRead() {
-  lava_debug(NORMAL,lava_verify(IsMemoryRead()););
-  return static_cast<MemoryRead*>(this);
-}
-
-inline const MemoryRead* Node::AsMemoryRead() const {
-  lava_debug(NORMAL,lava_verify(IsMemoryRead()););
-  return static_cast<const MemoryRead*>(this);
 }
 
 inline MemoryNode* Node::AsMemoryNode() {
@@ -286,21 +264,65 @@ inline bool Binary::IsLogicalOperator( Operator op ) {
 inline Binary::Operator Binary::BytecodeToOperator( interpreter::Bytecode op ) {
   using namespace interpreter;
   switch(op) {
-    case BC_ADDRV: case BC_ADDVR: case BC_ADDVV: return ADD;
-    case BC_SUBRV: case BC_SUBVR: case BC_SUBVV: return SUB;
-    case BC_MULRV: case BC_MULVR: case BC_MULVV: return MUL;
-    case BC_DIVRV: case BC_DIVVR: case BC_DIVVV: return DIV;
-    case BC_MODRV: case BC_MODVR: case BC_MODVV: return MOD;
-    case BC_POWRV: case BC_POWVR: case BC_POWVV: return POW;
-    case BC_LTRV : case BC_LTVR : case BC_LTVV : return LT ;
-    case BC_LERV : case BC_LEVR : case BC_LEVV : return LE ;
-    case BC_GTRV : case BC_GTVR : case BC_GTVV : return GT ;
-    case BC_GERV : case BC_GEVR : case BC_GEVV : return GE ;
-    case BC_EQRV : case BC_EQVR : case BC_EQSV : case BC_EQVS: case BC_EQVV: return EQ;
-    case BC_NERV : case BC_NEVR : case BC_NESV : case BC_NEVS: case BC_NEVV: return NE;
-    case BC_AND  : return AND;
-    case BC_OR   : return OR;
-    default: lava_unreachF("unknown bytecode %s",interpreter::GetBytecodeName(op)); break;
+    case BC_ADDRV:
+    case BC_ADDVR:
+    case BC_ADDVV:
+      return ADD;
+    case BC_SUBRV:
+    case BC_SUBVR:
+    case BC_SUBVV:
+      return SUB;
+    case BC_MULRV:
+    case BC_MULVR:
+    case BC_MULVV:
+      return MUL;
+    case BC_DIVRV:
+    case BC_DIVVR:
+    case BC_DIVVV:
+      return DIV;
+    case BC_MODRV:
+    case BC_MODVR:
+    case BC_MODVV:
+      return MOD;
+    case BC_POWRV:
+    case BC_POWVR:
+    case BC_POWVV:
+      return POW;
+    case BC_LTRV :
+    case BC_LTVR :
+    case BC_LTVV :
+      return LT ;
+    case BC_LERV :
+    case BC_LEVR :
+    case BC_LEVV :
+      return LE ;
+    case BC_GTRV :
+    case BC_GTVR :
+    case BC_GTVV :
+      return GT ;
+    case BC_GERV :
+    case BC_GEVR :
+    case BC_GEVV :
+      return GE ;
+    case BC_EQRV :
+    case BC_EQVR :
+    case BC_EQSV :
+    case BC_EQVS :
+    case BC_EQVV :
+      return EQ;
+    case BC_NERV :
+    case BC_NEVR :
+    case BC_NESV :
+    case BC_NEVS :
+    case BC_NEVV :
+      return NE;
+    case BC_AND  :
+      return AND;
+    case BC_OR   :
+      return OR;
+    default:
+      lava_unreachF("unknown bytecode %s",interpreter::GetBytecodeName(op));
+      break;
   }
   return ADD;
 }
@@ -396,6 +418,42 @@ inline ISet* ISet::New( Graph* graph , Expr* obj , Expr* key , Expr* val ) {
   return ret;
 }
 
+inline ObjectFind* ObjectFind::New( Graph* graph , Expr* obj , Expr* key , Checkpoint* cp ) {
+  return graph->zone()->New<ObjectFind>(graph,graph->AssignID(),obj,key,cp);
+}
+
+inline ObjectInsert* ObjectInsert::New( Graph* graph , Expr* obj , Expr* key ) {
+  return graph->zone()->New<ObjectInsert>(graph,graph->AssignID(),obj,key);
+}
+
+inline ObjectUpdate* ObjectUpdate::New( Graph* graph , Expr* object , Expr* key ) {
+  return graph->zone()->New<ObjectUpdate>(graph,graph->AssignID(),object,key);
+}
+
+inline ListIndex* ListIndex::New( Graph* graph , Expr* obj , Expr* index ) {
+  return graph->zone()->New<ListIndex>(graph,graph->AssignID(),obj,index);
+}
+
+inline ListInsert* ListInsert::New( Graph* graph , Expr* obj , Expr* index , Checkpoint* cp ) {
+  return graph->zone()->New<ListInsert>(graph,graph->AssignID(),obj,index,cp);
+}
+
+inline ObjectRefGet* ObjectRefGet::New( Graph* graph , Expr* oref ) {
+  return graph->zone()->New<ObjectRefGet>(graph,graph->AssignID(),oref);
+}
+
+inline ObjectRefSet* ObjectRefSet::New( Graph* graph , Expr* oref , Expr* value ) {
+  return graph->zone()->New<ObjectRefSet>(graph,graph->AssignID(),oref,value);
+}
+
+inline ListRefGet* ListRefGet::New( Graph* graph , Expr* lref ) {
+  return graph->zone()->New<ListRefGet>(graph,graph->AssignID(),lref);
+}
+
+inline ListRefSet* ListRefSet::New( Graph* graph , Expr* lref , Expr* value ) {
+  return graph->zone()->New<ListRefSet>(graph,graph->AssignID(),lref,value);
+}
+
 inline GGet* GGet::New( Graph* graph , Expr* key ) {
   auto ret = graph->zone()->New<GGet>(graph,graph->AssignID(),key);
   return ret;
@@ -468,37 +526,44 @@ inline Phi* Phi::New( Graph* graph , Expr* lhs , Expr* rhs ) {
   return phi;
 }
 
-inline void ReadEffect::SetWriteEffect( WriteEffect* effect ) {
-  auto itr = effect->AddReadEffect(this);
-  effect_edge_.node = effect;
+inline LoopEffect* LoopEffect::New( Graph* graph ) {
+  return graph->zone()->New<LoopEffect>(graph,graph->AssignID());
+}
+
+inline void ReadEffect::SetWriteEffect( WriteEffect* node ) {
+  auto itr = node->AddReadEffect(this);
+  effect_edge_.node = node;
   effect_edge_.id   = itr;
 }
 
-inline WriteEffectPhi::WriteEffectPhi( Graph* graph , std::uint32_t id , ControlFlow* region ):
-  WriteEffect(HIR_WRITE_EFFECT_PHI,id,graph),
-  region_    (region)
-{
-  region->AddOperand(this);
+inline EffectPhi* EffectPhi::New( Graph* graph ) {
+  return graph->zone()->New<EffectPhi>(graph,graph->AssignID());
 }
 
-inline WriteEffectPhi* WriteEffectPhi::New( Graph* graph , WriteEffect* lhs , WriteEffect* rhs ,
-                                                                              ControlFlow* region ) {
-  auto ret = graph->zone()->New<WriteEffectPhi>(graph,graph->AssignID(),region);
+inline EffectPhi* EffectPhi::New( Graph* graph , ControlFlow* region ) {
+  auto ret = New(graph);
+  region->AddOperand(ret);
+  ret->set_region(region);
+  return ret;
+}
+
+inline EffectPhi* EffectPhi::New( Graph* graph , WriteEffect* lhs , WriteEffect* rhs ) {
+  auto ret = New(graph);
   ret->AddOperand(lhs);
   ret->AddOperand(rhs);
   return ret;
 }
 
-inline WriteEffectPhi* WriteEffectPhi::New( Graph* graph , ControlFlow* region ) {
-  return graph->zone()->New<WriteEffectPhi>(graph,graph->AssignID(),region);
+inline EffectPhi* EffectPhi::New( Graph* graph , WriteEffect* lhs, WriteEffect* rhs ,
+                                                                   ControlFlow* region ) {
+  auto ret = New(graph,lhs,rhs);
+  region->AddOperand(ret);
+  ret->set_region(region);
+  return ret;
 }
 
-inline NoReadEffect* NoReadEffect::New( Graph* graph ) {
-  return graph->zone()->New<NoReadEffect>(graph,graph->AssignID());
-}
-
-inline NoWriteEffect* NoWriteEffect::New( Graph* graph ) {
-  return graph->zone()->New<NoWriteEffect>(graph,graph->AssignID());
+inline DummyBarrier* DummyBarrier::New( Graph* graph ) {
+  return graph->zone()->New<DummyBarrier>(graph,graph->AssignID());
 }
 
 inline ICall* ICall::New( Graph* graph , interpreter::IntrinsicCall ic , bool tc ) {
@@ -531,10 +596,6 @@ inline Guard* Guard::New( Graph* graph , Test* test , Checkpoint* cp ) {
 
 inline TestType* TestType::New( Graph* graph , TypeKind tc , Expr* object ) {
   return graph->zone()->New<TestType>(graph,graph->AssignID(),tc,object);
-}
-
-inline TestListOOB* TestListOOB::New( Graph* graph , Expr* object , Expr* key ) {
-  return graph->zone()->New<TestListOOB>(graph,graph->AssignID(),object,key);
 }
 
 inline Float64Negate* Float64Negate::New( Graph* graph , Expr* opr ) {
@@ -571,22 +632,6 @@ inline SStringEq* SStringEq::New( Graph* graph , Expr* lhs , Expr* rhs ) {
 
 inline SStringNe* SStringNe::New( Graph* graph , Expr* lhs , Expr* rhs ) {
   return graph->zone()->New<SStringNe>(graph,graph->AssignID(),lhs,rhs);
-}
-
-inline ListGet* ListGet::New( Graph* graph , Expr* obj , Expr* index ) {
-  return graph->zone()->New<ListGet>(graph,graph->AssignID(),obj,index);
-}
-
-inline ListSet* ListSet::New( Graph* graph , Expr* obj , Expr* index , Expr* value ) {
-  return graph->zone()->New<ListSet>(graph,graph->AssignID(),obj,index,value);
-}
-
-inline ObjectGet* ObjectGet::New( Graph* graph , Expr* obj , Expr* key ) {
-  return graph->zone()->New<ObjectGet>(graph,graph->AssignID(),obj,key);
-}
-
-inline ObjectSet* ObjectSet::New( Graph* graph , Expr* obj , Expr* key , Expr* value ) {
-  return graph->zone()->New<ObjectSet>(graph,graph->AssignID(),obj,key,value);
 }
 
 inline Box* Box::New( Graph* graph , Expr* obj , TypeKind tk ) {
@@ -658,7 +703,6 @@ inline If* If::New( Graph* graph , Expr* condition , ControlFlow* parent ) {
 inline IfTrue* IfTrue::New( Graph* graph , ControlFlow* parent ) {
   lava_debug(NORMAL,lava_verify(
         parent->IsIf() && parent->forward_edge()->size() == 1););
-
   return graph->zone()->New<IfTrue>(graph,graph->AssignID(),parent);
 }
 
@@ -669,7 +713,6 @@ inline IfTrue* IfTrue::New( Graph* graph ) {
 inline IfFalse* IfFalse::New( Graph* graph , ControlFlow* parent ) {
   lava_debug(NORMAL,lava_verify(
         parent->IsIf() && parent->forward_edge()->size() == 0););
-
   return graph->zone()->New<IfFalse>(graph,graph->AssignID(),parent);
 }
 

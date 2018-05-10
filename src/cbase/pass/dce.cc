@@ -104,7 +104,7 @@ void DCEImpl::Visit( Graph* graph ) {
       }
     }
     // get all the statement from if_parent node
-    node->MovePin(if_parent);
+    node->MoveStmt(if_parent);
     // remove all its backwards edge since it will be replaced
     // by its parental node
     node->ClearBackwardEdge();

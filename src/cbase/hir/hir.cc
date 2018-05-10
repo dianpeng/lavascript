@@ -22,10 +22,10 @@ void Expr::Replace( Expr* another ) {
   }
   another->ref_list_.Merge(&ref_list_);
   // 2. modify *this* if the node is a pin
-  if(IsPin()) {
+  if(IsStmt()) {
     auto region = pin_.region;
-    region->RemovePin(pin_);
-    region->AddPin(another);
+    region->RemoveStmt(pin_);
+    region->AddStmt(another);
     pin_.region = NULL;
   }
   // 3. clear all the operands since this node is dead
@@ -64,33 +64,6 @@ bool SpecializeBinary::Equal( const Expr* that ) const {
   return false;
 }
 
-std::uint64_t ICall::GVNHash() const {
-  GVNHashN hasher(type_name());
-  hasher.Add(static_cast<std::uint32_t>(ic()));
-  lava_foreach( auto &v , operand_list()->GetForwardIterator() ) {
-    hasher.Add(v->GVNHash());
-  }
-  return hasher.value();
-}
-
-bool ICall::Equal( const Expr* that ) const {
-  if(that->IsICall()) {
-    auto tic = that->AsICall();
-    if(ic() == tic->ic()) {
-      lava_debug(NORMAL, lava_verify(operand_list()->size() == tic->operand_list()->size()););
-
-      auto this_itr(operand_list()->GetForwardIterator());
-      auto that_itr(that->operand_list()->GetForwardIterator());
-      lava_foreach( auto &v , this_itr ) {
-        that_itr.Move();
-        if(!v->Equal(that_itr.value())) return false;
-      }
-      return true;
-    }
-  }
-  return false;
-}
-
 Checkpoint* ReadEffect::GetCheckpoint() const {
   lava_foreach( auto k , GetDependencyIterator() ) {
     if(k->IsCheckpoint()) return k->AsCheckpoint();
@@ -122,8 +95,8 @@ Expr::DependencyIterator ReadEffect::GetDependencyIterator() const {
 class WriteEffect::WriteEffectDependencyIterator {
  public:
   WriteEffectDependencyIterator( const WriteEffect* node ):
-    next_( node->next_->read_effect_.empty () ? node->next_ : NULL ),
-    itr_ ( node->next_->read_effect_.GetForwardIterator() )
+    next_( node->NextLink()->read_effect_.empty () ? node->NextLink() : NULL ),
+    itr_ ( node->NextLink()->read_effect_.GetForwardIterator() )
   {}
 
   bool HasNext() const { return next_ || itr_.HasNext(); }
@@ -150,78 +123,20 @@ class WriteEffect::WriteEffectDependencyIterator {
 };
 
 Expr::DependencyIterator WriteEffect::GetDependencyIterator() const {
-  if(next_)
+  if(NextLink())
     return DependencyIterator(WriteEffectDependencyIterator(this));
   else
     return DependencyIterator();
 }
 
 void WriteEffect::HappenAfter( WriteEffect* input ) {
-  next_ = input;
+  AddLink(input);
 }
 
 ReadEffectListIterator WriteEffect::AddReadEffect( ReadEffect* effect ) {
   auto itr = read_effect_.Find(effect);
   if(itr.HasNext()) return itr;
   return read_effect_.PushBack(zone(),effect);
-}
-
-class WriteEffectPhi::WriteEffectPhiDependencyIterator {
- public:
-  WriteEffectPhiDependencyIterator( const WriteEffectPhi* node ):
-    itr1_( node->operand_list()->GetForwardIterator() ),
-    itr2_()
-  {
-    if(itr1_.HasNext()) {
-      auto node = itr1_.value()->AsWriteEffect();
-      itr2_ = node->read_effect()->GetForwardIterator();
-    }
-  }
-
-  bool HasNext() const { return itr1_.HasNext(); }
-  bool Move   () const {
-    lava_debug(NORMAL,lava_verify(HasNext()););
-    if(itr2_.HasNext() || !itr2_.Move()) {
-      if(!itr1_.Move()) return false;
-      auto node = itr1_.value()->AsWriteEffect();
-      itr2_ = node->read_effect()->GetForwardIterator();
-    }
-    return true;
-  }
-
-  Expr* value() {
-    auto node = itr1_.value()->AsWriteEffect();
-    if(node->read_effect()->empty()) {
-      return node;
-    } else {
-      return itr2_.value();
-    }
-  }
-
-  Expr* value() const {
-    auto node = itr1_.value()->AsWriteEffect();
-    if(node->read_effect()->empty()) {
-      return node;
-    } else {
-      return itr2_.value();
-    }
-  }
- private:
-  const OperandIterator    itr1_;
-  mutable ReadEffectListIterator itr2_;
-};
-
-Expr::DependencyIterator WriteEffectPhi::GetDependencyIterator() const {
-  return DependencyIterator(WriteEffectPhiDependencyIterator(this));
-}
-
-std::size_t WriteEffectPhi::dependency_size() const {
-  std::size_t ret = 0;
-  lava_foreach( auto k , operand_list()->GetForwardIterator() ) {
-    auto we = k->AsWriteEffect();
-    ret += we->read_effect()->size();
-  }
-  return ret;
 }
 
 void ControlFlow::Replace( ControlFlow* node ) {
@@ -268,9 +183,9 @@ void ControlFlow::RemoveForwardEdge( std::size_t index ) {
   return RemoveForwardEdge(forward_edge()->Index(index));
 }
 
-void ControlFlow::MovePin( ControlFlow* cf ) {
-  lava_foreach( auto &v , cf->pin_list()->GetForwardIterator() ) {
-    AddPin(v);
+void ControlFlow::MoveStmt( ControlFlow* cf ) {
+  lava_foreach( auto &v , cf->stmt_list()->GetForwardIterator() ) {
+    AddStmt(v);
   }
 }
 
@@ -414,7 +329,8 @@ Expr* NewUnboxNode( Graph* graph , Expr* node , TypeKind tk ) {
         return bvalue;
       }
 
-    default: break;
+    default:
+      break;
   }
   // 2. do a real unbox here
   return Unbox::New(graph,node,tk);

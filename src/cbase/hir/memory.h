@@ -22,6 +22,16 @@ class MemoryNode : public Expr {
   MemoryNode( IRType type , std::uint32_t id , Graph* g ): Expr(type,id,g){}
 };
 
+// MemoryRef node represents an operation that does a immutable memory lookup. The node derive
+// from it should not mutate any memory but just do a simple address of operations. ie node like
+// Index into a list or get an existed hash slot/entry of a hash map(Object).
+class MemoryRef  : public ReadEffect {
+ public:
+  MemoryRef( IRType type , std::uint32_t id , Graph* graph ):
+    ReadEffect(type,id,graph)
+  {}
+};
+
 // --------------------------------------------------------------------------
 // Argument
 class Arg : public MemoryNode {

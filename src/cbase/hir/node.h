@@ -72,8 +72,7 @@ namespace hir        {
   /* effect */                                                         \
   __(LoopEffect   ,LOOP_EFFECT     ,"loop_effect",NoLeaf,Effect)       \
   __(EffectPhi    ,EFFECT_PHI      ,"effect_phi" ,NoLeaf,Effect)       \
-  __(DummyBarrier ,DUMMY_BARRIER   ,"dummy_barrier",NoLeaf,Effect)     \
-  __(DummyWriteEffect,DUMMY_WRITE_EFFECT,"dummy_write_effect",NoLeaf,Effect)
+  __(DummyBarrier ,DUMMY_BARRIER   ,"dummy_barrier",NoLeaf,Effect)
 
 /**
  * These arithmetic and compare node are used to do typed arithmetic
@@ -126,9 +125,7 @@ namespace hir        {
 // will be *normalized* into a TestType then we could just use predicate
 // to do inference and have null redundancy removal automatically
 #define CBASE_HIR_TEST(__)                                            \
-  __(TestType    ,TEST_TYPE      ,"test_type"      ,NoLeaf,NoEffect)  \
-  __(TestListOOB ,TEST_LISTOOB   ,"test_listobb"   ,NoLeaf,NoEffect)  \
-  __(TestABC     ,TEST_ABC       ,"test_abc"       ,NoLeaf,NoEffect)
+  __(TestType    ,TEST_TYPE      ,"test_type"      ,NoLeaf,NoEffect)
 
 /**
  * Box operation will wrap a value into the internal box representation
@@ -236,8 +233,6 @@ class Binary;
 class DynamicBinary;
 class SpecializeBinary;
 class MemoryOp;
-class MemoryWrite;
-class MemoryRead ;
 class MemoryNode;
 
 // IRType value static mapping
@@ -282,23 +277,23 @@ class IRInfo {
 };
 
 // ----------------------------------------------------------------------------
-// Pin list
+// Stmt list
 //
 // Bunch of statements that are not used by any expression but have observable
 // effects. Example like : foo() , a free function call
-typedef zone::List<Expr*> PinList;
-typedef PinList::ForwardIterator PinIterator;
+typedef zone::List<Expr*> StmtList;
+typedef StmtList::ForwardIterator StmtIterator;
 
 // This structure is held by *all* the expression. If the region field is not
 // NULL then it means this expression has side effect and it is bounded at
 // certain control flow region
-struct PinEdge {
+struct StmtEdge {
   ControlFlow* region;
-  PinIterator iterator;
+  StmtIterator iterator;
   bool HasRef() const { return region != NULL; }
 
-  PinEdge( ControlFlow* r , const PinIterator& itr ): region(r), iterator(itr) {}
-  PinEdge(): region(NULL), iterator() {}
+  StmtEdge( ControlFlow* r , const StmtIterator& itr ): region(r), iterator(itr) {}
+  StmtEdge(): region(NULL), iterator() {}
 };
 
 // Reference
@@ -360,8 +355,6 @@ class Node : public zone::ZoneObject {
   inline bool                IsExpr       () const;
   inline bool                IsReadEffect () const;
   inline bool                IsWriteEffect() const;
-  inline bool                IsMemoryWrite() const;
-  inline bool                IsMemoryRead () const;
   inline bool                IsMemoryNode () const;
   inline bool                IsTestNode   () const;
   inline bool                IsLeaf       () const;
@@ -376,10 +369,6 @@ class Node : public zone::ZoneObject {
   inline const WriteEffect*  AsWriteEffect() const;
   inline ReadEffect*         AsReadEffect ();
   inline const ReadEffect*   AsReadEffect () const;
-  inline MemoryWrite*        AsMemoryWrite();
-  inline const MemoryWrite*  AsMemoryWrite() const;
-  inline MemoryRead *        AsMemoryRead ();
-  inline const MemoryRead*   AsMemoryRead () const;
   inline MemoryNode*         AsMemoryNode ();
   inline const MemoryNode*   AsMemoryNode () const;
   inline Test*               AsTest       ();

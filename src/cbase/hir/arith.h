@@ -78,13 +78,13 @@ class BinaryNode {
 
 // DynamicBinary represents a dynamic dispatched binary operation node. This node generates
 // a effect barrier and also generates a checkpoint because of the side effect
-class DynamicBinary : public WriteBarrier , public BinaryNode {
+class DynamicBinary : public HardBarrier , public BinaryNode {
  public:
   typedef Binary::Operator Operator;
 
-  DynamicBinary( IRType type , Graph* graph , std::uint32_t id , Expr* lhs , Expr* rhs ,
+  DynamicBinary( IRType type , std::uint32_t id , Graph* graph , Expr* lhs , Expr* rhs ,
                                                                              Binary::Operator op ):
-    WriteBarrier(type ,graph ,id),
+    HardBarrier(type ,id, graph),
     op_         (op)
   {
     AddOperand(lhs);
@@ -103,7 +103,7 @@ class Arithmetic : public DynamicBinary {
   static inline Arithmetic* New( Graph* , Expr* , Expr* , Binary::Operator );
 
   Arithmetic( Graph* graph , std::uint32_t id , Expr* lhs, Expr* rhs, Binary::Operator op ) :
-    DynamicBinary( HIR_ARITHMETIC , graph, id, lhs, rhs, op )
+    DynamicBinary( HIR_ARITHMETIC , id, graph, lhs, rhs, op )
   {
     lava_debug(NORMAL,lava_verify(Binary::IsArithmeticOperator(op)););
   }
@@ -114,7 +114,7 @@ class Compare: public DynamicBinary {
   static inline Compare* New( Graph* , Expr* , Expr* , Binary::Operator );
 
   Compare( Graph* graph , std::uint32_t id , Expr* lhs , Expr* rhs , Binary::Operator op ):
-    DynamicBinary( HIR_COMPARE, graph, id, lhs, rhs, op )
+    DynamicBinary( HIR_COMPARE, id, graph, lhs, rhs, op )
   {
     lava_debug(NORMAL,lava_verify(Binary::IsComparisonOperator(op)););
   }
@@ -178,7 +178,6 @@ class Float64Negate  : public Expr {
   virtual std::uint64_t GVNHash() const {
     return GVNHash1(type_name(),operand()->GVNHash());
   }
-
   virtual bool Equal( const Expr* that ) const {
     if(that->IsFloat64Negate()) {
       auto that_negate = that->AsFloat64Negate();
@@ -206,7 +205,6 @@ class BooleanNot: public Expr {
   virtual std::uint64_t GVNHash() const {
     return GVNHash1(type_name(),operand()->GVNHash());
   }
-
   virtual bool Equal( const Expr* that ) const {
     if(that->IsBooleanNot()) {
       auto that_negate = that->AsBooleanNot();
@@ -214,7 +212,6 @@ class BooleanNot: public Expr {
     }
     return false;
   }
-
  private:
   LAVA_DISALLOW_COPY_AND_ASSIGN(BooleanNot)
 };
@@ -225,8 +222,7 @@ class BooleanNot: public Expr {
 class SpecializeBinary : public Expr , public BinaryNode {
  public:
   typedef Binary::Operator Operator;
-
-  SpecializeBinary( IRType type , Graph* graph , std::uint32_t id , Expr* lhs ,
+  SpecializeBinary( IRType type , std::uint32_t id , Graph* graph , Expr* lhs ,
                                                                     Expr* rhs ,
                                                                     Binary::Operator op ):
     Expr(type,id,graph),
@@ -239,11 +235,9 @@ class SpecializeBinary : public Expr , public BinaryNode {
   virtual Expr*            lhs() const { return operand_list()->First(); }
   virtual Expr*            rhs() const { return operand_list()->Last (); }
   virtual Binary::Operator op () const { return op_; }
-
   // GVN implementation
   virtual std::uint64_t GVNHash ()              const;
   virtual bool          Equal   ( const Expr* ) const;
-
  private:
   Binary::Operator op_;
 };
@@ -255,7 +249,7 @@ class Float64Arithmetic : public SpecializeBinary {
   inline static Float64Arithmetic* New( Graph* , Expr*, Expr*, Operator );
 
   Float64Arithmetic( Graph* graph , std::uint32_t id , Expr* lhs, Expr* rhs, Operator op ):
-    SpecializeBinary(HIR_FLOAT64_ARITHMETIC,graph,id,lhs,rhs,op)
+    SpecializeBinary(HIR_FLOAT64_ARITHMETIC,id,graph,lhs,rhs,op)
   {
     lava_debug(NORMAL,lava_verify(Binary::IsArithmeticOperator(op)););
   }
@@ -271,7 +265,7 @@ class Float64Bitwise: public SpecializeBinary {
   inline static Float64Bitwise* New( Graph* , Expr*, Expr*, Operator );
 
   Float64Bitwise( Graph* graph , std::uint32_t id , Expr* lhs, Expr* rhs, Operator op ):
-    SpecializeBinary(HIR_FLOAT64_BITWISE,graph,id,lhs,rhs,op)
+    SpecializeBinary(HIR_FLOAT64_BITWISE,id,graph,lhs,rhs,op)
   {
     lava_debug(NORMAL,lava_verify(Binary::IsBitwiseOperator(op)););
   }
@@ -287,7 +281,7 @@ class Float64Compare : public SpecializeBinary {
   inline static Float64Compare* New( Graph* , Expr* , Expr* , Operator );
 
   Float64Compare( Graph* graph , std::uint32_t id , Expr* lhs , Expr* rhs , Operator op ):
-    SpecializeBinary(HIR_FLOAT64_COMPARE,graph,id,lhs,rhs,op)
+    SpecializeBinary(HIR_FLOAT64_COMPARE,id,graph,lhs,rhs,op)
   {
     lava_debug(NORMAL,lava_verify(Binary::IsComparisonOperator(op)););
   }
@@ -301,7 +295,7 @@ class StringCompare : public SpecializeBinary {
   typedef Binary::Operator Operator;
   inline static StringCompare* New( Graph* , Expr* , Expr* , Operator );
   StringCompare( Graph* graph , std::uint32_t id , Expr* lhs , Expr* rhs , Operator op ):
-    SpecializeBinary(HIR_STRING_COMPARE,graph,id,lhs,rhs,op)
+    SpecializeBinary(HIR_STRING_COMPARE,id,graph,lhs,rhs,op)
   {
     lava_debug(NORMAL,lava_verify(Binary::IsComparisonOperator(op)););
   }
@@ -313,7 +307,7 @@ class SStringEq : public SpecializeBinary {
  public:
   inline static SStringEq* New( Graph* , Expr* , Expr* );
   SStringEq( Graph* graph , std::uint32_t id , Expr* lhs , Expr* rhs ):
-    SpecializeBinary(HIR_SSTRING_EQ,graph,id,lhs,rhs,Binary::EQ)
+    SpecializeBinary(HIR_SSTRING_EQ,id,graph,lhs,rhs,Binary::EQ)
   {}
 
  private:
@@ -324,7 +318,7 @@ class SStringNe : public SpecializeBinary {
  public:
   inline static SStringNe* New( Graph* , Expr* , Expr* );
   SStringNe( Graph* graph , std::uint32_t id , Expr* lhs , Expr* rhs ):
-    SpecializeBinary(HIR_SSTRING_EQ,graph,id,lhs,rhs,Binary::NE)
+    SpecializeBinary(HIR_SSTRING_EQ,id,graph,lhs,rhs,Binary::NE)
   {}
 
  private:
@@ -335,7 +329,7 @@ class BooleanLogic : public SpecializeBinary {
  public:
    inline static BooleanLogic* New( Graph* , Expr* , Expr* , Operator op );
    BooleanLogic( Graph* graph , std::uint32_t id , Expr* lhs , Expr* rhs , Operator op ):
-     SpecializeBinary(HIR_BOOLEAN_LOGIC,graph,id,lhs,rhs,op)
+     SpecializeBinary(HIR_BOOLEAN_LOGIC,id,graph,lhs,rhs,op)
   {
     lava_debug(NORMAL,lava_verify( GetTypeInference(lhs) == TPKIND_BOOLEAN &&
                                    GetTypeInference(rhs) == TPKIND_BOOLEAN ););

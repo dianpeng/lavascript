@@ -315,11 +315,38 @@ class Optional {
   std::optional<T> val_;
 };
 
+// intrusive double linked list base
+template< typename T >
+class NodeLink {
+ protected:
+  NodeLink() : prev_(NULL), next_(NULL) {}
+
+  T* NextLink() const { return next_; }
+  T* PrevLink() const { return prev_; }
+  // add a link *before* the input that node
+  void AddLink( T* that ) {
+    auto self = static_cast<T*>(this);
+    if(that->prev_) that->prev_->next_ = self;
+    prev_ = that->prev_;
+    next_ = that;
+    that->prev_ = self;
+  }
+  // remove self from the link
+  void RemoveLink() {
+    if(prev_) prev_->next_ = next_;
+    if(next_) next_->prev_ = prev_;
+  }
+ private:
+  T* prev_ , *next_;
+};
+
 // ----------------------------------------------------------------------
 // Raw C-Style string
 // ----------------------------------------------------------------------
-// Wrapper of Slice style string, basically a const char* and a length field
+// Wrapper of Slice style string, basically a const void* and a length field
 // No memory ownership is managed with this wrapper
+//
+// TODO:: Replace it with std::string_view ??
 struct Str {
   const void* data;
   std::size_t length;

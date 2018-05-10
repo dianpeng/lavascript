@@ -23,19 +23,8 @@ class PGet : public HardBarrier {
   Expr* object() const { return operand_list()->First(); }
   Expr* key   () const { return operand_list()->Last (); }
 
-  virtual std::uint64_t GVNHash() const {
-    return GVNHash2(type_name(),object()->GVNHash(),key()->GVNHash());
-  }
-  virtual bool Equal( const Expr* that ) const {
-    if(that->IsPGet()) {
-      auto that_pget = that->AsPGet();
-      return object()->Equal(that_pget->object()) && key()->Equal(that_pget->key());
-    }
-    return false;
-  }
-
   PGet( Graph* graph , std::uint32_t id , Expr* object , Expr* index ):
-    HardBarrier (HIR_PGET,graph,id)
+    HardBarrier (HIR_PGET,id,graph)
   {
     AddOperand(object);
     AddOperand(index );
@@ -43,7 +32,7 @@ class PGet : public HardBarrier {
 
  protected:
   PGet( IRType type , Graph* graph , std::uint32_t id , Expr* object , Expr* index ):
-    HardBarrier (type,graph,id)
+    HardBarrier (type,id,graph)
   {
     AddOperand(object);
     AddOperand(index );
@@ -60,20 +49,8 @@ class PSet : public HardBarrier {
   Expr* key   () const { return operand_list()->Index(1);}
   Expr* value () const { return operand_list()->Last (); }
  public:
-  virtual std::uint64_t GVNHash() const {
-    return GVNHash3(type_name(),object()->GVNHash(),key()->GVNHash(),value()->GVNHash());
-  }
-  virtual bool Equal( const Expr* that ) const {
-    if(that->IsPSet()) {
-      auto that_pset = that->AsPSet();
-      return object()->Equal(that_pset->object()) &&
-             key   ()->Equal(that_pset->key())    &&
-             value ()->Equal(that_pset->value());
-    }
-    return false;
-  }
   PSet( Graph* graph , std::uint32_t id , Expr* object , Expr* index , Expr* value ):
-    HardBarrier (HIR_PSET,graph,id)
+    HardBarrier (HIR_PSET,id,graph)
   {
     AddOperand(object);
     AddOperand(index );
@@ -82,7 +59,7 @@ class PSet : public HardBarrier {
 
  protected:
   PSet(IRType type,Graph* graph,std::uint32_t id,Expr* object,Expr* index,Expr* value):
-    HardBarrier (type,graph,id)
+    HardBarrier (type,id,graph)
   {
     AddOperand(object);
     AddOperand(index );
@@ -101,27 +78,15 @@ class IGet : public HardBarrier {
   Expr* index () const { return operand_list()->Last (); }
 
   IGet( Graph* graph , std::uint32_t id , Expr* object , Expr* index ):
-    HardBarrier (HIR_IGET,graph,id)
+    HardBarrier (HIR_IGET,id,graph)
   {
     AddOperand(object);
     AddOperand(index );
   }
 
-  virtual std::uint64_t GVNHash() const {
-    return GVNHash2(type_name(),object()->GVNHash(),index()->GVNHash());
-  }
-
-  virtual bool Equal( const Expr* that ) const {
-    if(that->IsIGet()) {
-      auto that_iget = that->AsIGet();
-      return object()->Equal(that_iget->object()) && index ()->Equal(that_iget->index());
-    }
-    return false;
-  }
-
  protected:
   IGet( IRType type , Graph* graph , std::uint32_t id , Expr* object , Expr* index ):
-    HardBarrier (type,graph,id)
+    HardBarrier (type,id,graph)
   {
     AddOperand(object);
     AddOperand(index );
@@ -139,21 +104,8 @@ class ISet : public HardBarrier {
   Expr* index () const { return operand_list()->Index(1);}
   Expr* value () const { return operand_list()->Last (); }
 
-  virtual std::uint64_t GVNHash() const {
-    return GVNHash3(type_name(),object()->GVNHash(),index ()->GVNHash(),value ()->GVNHash());
-  }
-  virtual bool Eqaul( const Expr* that ) const {
-    if(that->IsISet()) {
-      auto that_iset = that->AsISet();
-      return object()->Equal(that_iset->object()) &&
-             index ()->Equal(that_iset->index())  &&
-             value ()->Equal(that_iset->value());
-    }
-    return false;
-  }
-
   ISet( Graph* graph , std::uint32_t id , Expr* object , Expr* index , Expr* value ):
-    HardBarrier (HIR_ISET,graph,id)
+    HardBarrier (HIR_ISET,id,graph)
   {
     AddOperand(object);
     AddOperand(index );
@@ -162,7 +114,7 @@ class ISet : public HardBarrier {
 
  protected:
   ISet(IRType type,Graph* graph,std::uint32_t id,Expr* object,Expr* index,Expr* value):
-    HardBarrier (type,graph,id)
+    HardBarrier (type,id,graph)
   {
     AddOperand(object);
     AddOperand(index );
@@ -195,10 +147,12 @@ class ISet : public HardBarrier {
 //    ListRefSet   --> set a reference returned by   ListIndex/ListInsert
 //    ListRefGet   --> get a value from reference of ListIndex/ListInsert
 
-class ObjectFind : public ReadEffect {
+class ObjectFind : public MemoryRef {
  public:
+  static inline ObjectFind* New( Graph* , Expr* , Expr* , Checkpoint* );
+
   ObjectFind( Graph* graph , std::uint32_t id , Expr* object , Expr* key , Checkpoint* cp ):
-    ReadEffect(HIR_OBJECT_FIND,id,graph)
+    MemoryRef(HIR_OBJECT_FIND,id,graph)
   {
     lava_debug(NORMAL,lava_verify(GetTypeInference(object) == TPKIND_OBJECT););
     AddOperand(object);
@@ -208,28 +162,15 @@ class ObjectFind : public ReadEffect {
   Expr* object() const { return operand_list()->First(); }
   Expr* key   () const { return operand_list()->Index(1);}
   Checkpoint* checkpoint() const { return operand_list()->Last()->AsCheckpoint(); }
- public: // gvn hash
-  virtual std::uint64_t GVNHash() const {
-    return GVNHash4(type_name(),object()->GVNHash(),key()->GVNHash(),
-                                                    write_effect()->GVNHash(),
-                                                    checkpoint()->GVNHash());
-  }
-  virtual bool Equal( const Expr* that ) const {
-    if(that->IsObjectFind()) {
-      auto oref = that->AsObjectFind();
-      return write_effect()->Equal(oref->write_effect()) &&
-             object()->Equal(oref->object())             &&
-             key   ()->Equal(oref->key   ())             &&
-             checkpoint()->Equal(oref->checkpoint());
-    }
-    return false;
-  }
+
  private:
   LAVA_DISALLOW_COPY_AND_ASSIGN(ObjectFind)
 };
 
 class ObjectUpdate : public SoftBarrier {
  public:
+  static inline ObjectUpdate* New( Graph* , Expr* , Expr* );
+
   ObjectUpdate( Graph* graph , std::uint32_t id , Expr* object , Expr* key ):
     SoftBarrier(HIR_OBJECT_UPDATE,id,graph)
   {
@@ -245,6 +186,8 @@ class ObjectUpdate : public SoftBarrier {
 
 class ObjectInsert : public SoftBarrier {
  public:
+  static inline ObjectInsert* New( Graph* , Expr* , Expr*  );
+
   ObjectInsert( Graph* graph , std::uint32_t id , Expr* object , Expr* key ):
     SoftBarrier(HIR_OBJECT_INSERT,id,graph)
   {
@@ -258,72 +201,48 @@ class ObjectInsert : public SoftBarrier {
   LAVA_DISALLOW_COPY_AND_ASSIGN(ObjectInsert)
 };
 
-// ListRef node represent list related reference lookup. One thing to note is that
-// these operations *doesn't*
-class ListRef : public ReadEffect {
+class ListIndex : public MemoryRef {
  public:
-  ListRef( IRType type , Graph* graph , std::uint32_t id , Expr* object , Expr* index ):
-    ReadEffect(type,id,graph)
+  static inline ListIndex* New( Graph* , Expr* , Expr* );
+
+  ListIndex( Graph* graph , std::uint32_t id , Expr* object , Expr* index ):
+    MemoryRef(HIR_LIST_INDEX,id,graph)
   {
     lava_debug(NORMAL,lava_verify( GetTypeInference(object) == TPKIND_LIST ););
     AddOperand(object);
     AddOperand(index);
-  }
-
-  Expr* object() const { return operand_list()->First();  }
-  Expr* index () const { return operand_list()->Index(1); }
-};
-
-class ListIndex : public ReadEffect {
- public:
-  ListIndex( Graph* graph , std::uint32_t id , Expr* object , Expr* index , TestABC* test ):
-    ReadEffect(HIR_LIST_INDEX,id,graph)
-  {
-    lava_debug(NORMAL,lava_verify( GetTypeInference(object) == TPKIND_LIST ););
-    AddOperand(object);
-    AddOperand(index);
-    AddOperand(test );
   }
 
   Expr* object() const { return operand_list()->First(); }
   Expr* index () const { return operand_list()->Index(1); }
-  TestABC* abc() const { return operand_list()->Last()->AsTestABC(); }
- public: // gvn hash
-  virtual std::uint64_t GVNHash() const {
-    return GVNHash4(type_name(),object()->GVNHash(),key()->GVNHash(),abc()->GVNHash());
-  }
-  virtual bool Equal( const Expr* that ) const {
-    if(that->IsObjectFind()) {
-      auto oref = that->AsObjectFind();
-      return write_effect()->Equal(oref->write_effect()) &&
-             object()->Equal(oref->object())             &&
-             index ()->Equal(oref->index ())             &&
-             abc   ()->Equal(oref->abc   ());
-    }
-    return false;
-  }
-
  private:
   LAVA_DISALLOW_COPY_AND_ASSIGN(ListIndex)
 };
 
 class ListInsert: public SoftBarrier {
  public:
-  ListInsert( Graph* graph , std::uint32_t id , Expr* object , Expr* index ):
+  static inline ListInsert* New( Graph* , Expr* , Expr* , Checkpoint* );
+
+  ListInsert( Graph* graph , std::uint32_t id , Expr* object , Expr* index , Checkpoint* cp ):
     SoftBarrier(HIR_LIST_INSERT,id,graph)
   {
     lava_debug(NORMAL,lava_verify( GetTypeInference(object) == TPKIND_LIST ););
     AddOperand(object);
     AddOperand(index);
+    AddOperand(cp);
   }
-  Expr* object() const { return operand_list()->First();  }
-  Expr* index () const { return operand_list()->Index(1); }
+
+  Expr*           object() const { return operand_list()->First();  }
+  Expr*           index () const { return operand_list()->Index(1); }
+  Checkpoint* checkpoint() const { return operand_list()->Last()->AsCheckpoint(); }
  private:
   LAVA_DISALLOW_COPY_AND_ASSIGN(ListInsert)
 };
 
 class ObjectRefGet : public ReadEffect {
  public:
+  static ObjectRefGet* New( Graph* , Expr* );
+
   ObjectRefGet( Graph* graph , std::uint32_t id , Expr* oref ):
     ReadEffect(HIR_OBJECT_REF_GET,id,graph)
   {
@@ -340,6 +259,8 @@ class ObjectRefGet : public ReadEffect {
 
 class ObjectRefSet : public ReadEffect {
  public:
+  static ObjectRefSet* New( Graph* , Expr* , Expr* );
+
   ObjectRefSet( Graph* graph , std::uint32_t id , Expr* oref , Expr* value ):
     ReadEffect(HIR_OBJECT_REF_SET,id,graph)
   {
@@ -358,7 +279,9 @@ class ObjectRefSet : public ReadEffect {
 
 class ListRefGet : public ReadEffect {
  public:
-  ListRefSet( Graph* graph , std::uint32_t id , Expr* lref ):
+  static ListRefGet* New( Graph* , Expr* );
+
+  ListRefGet( Graph* graph , std::uint32_t id , Expr* lref ):
     ReadEffect(HIR_LIST_REF_GET,id,graph)
   {
     lava_debug(NORMAL,lava_verify( lref->IsListIndex() ||
@@ -373,11 +296,13 @@ class ListRefGet : public ReadEffect {
 
 class ListRefSet : public ReadEffect {
  public:
+  static ListRefSet* New( Graph* , Expr* , Expr* );
+
   ListRefSet( Graph* graph , std::uint32_t id , Expr* lref , Expr* value ):
     ReadEffect(HIR_LIST_REF_SET,id,graph)
   {
     lava_debug(NORMAL,lava_verify( lref->IsListIndex()  ||
-                                   lref->isListInsert() ););
+                                   lref->IsListInsert() ););
     AddOperand(lref);
     AddOperand(value);
   }

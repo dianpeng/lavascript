@@ -30,8 +30,8 @@ namespace hir        {
   __(IRObjectKV   ,OBJECT_KV,"object_kv",NoLeaf,NoEffect)              \
   __(IRObject     ,OBJECT   ,"object"   ,NoLeaf,NoEffect)              \
   /* closure */                                                        \
-  __(Closure      ,CLOSURE  ,"closure"  ,Leaf,Effect)                  \
-  __(InitCls      ,INIT_CLS        ,"init_cls"  ,NoLeaf,Effect)        \
+  __(Closure      ,CLOSURE  ,"closure"  ,Leaf  ,Effect)                \
+  __(InitCls      ,INIT_CLS ,"init_cls" ,NoLeaf,Effect)                \
   /* argument node */                                                  \
   __(Arg          ,ARG      ,"arg"      ,Leaf,NoEffect)                \
   /* arithmetic/comparison node */                                     \
@@ -61,17 +61,19 @@ namespace hir        {
   /* intrinsic call */                                                 \
   __(ICall        ,ICALL    ,"icall"    ,NoLeaf,NoEffect)              \
   /* phi */                                                            \
-  __(Phi           ,PHI             ,"phi"             ,NoLeaf,NoEffect) \
-  __(WriteEffectPhi,WRITE_EFFECT_PHI,"write_effect_phi",NoLeaf,NoEffect) \
-  __(NoReadEffect  ,NO_READ_EFFECT  ,"no_read_effect"  ,Leaf  ,NoEffect) \
-  __(NoWriteEffect ,NO_WRITE_EFFECT ,"no_write_effect" ,Leaf  ,NoEffect) \
-  /* misc */                                                      \
+  __(Phi           ,PHI     ,"phi"      ,NoLeaf,NoEffect)              \
+  /* misc */                                                           \
   __(Projection   ,PROJECTION      ,"projection",NoLeaf,NoEffect)      \
   /* osr */                                                            \
   __(OSRLoad      ,OSR_LOAD        ,"osr_load"  ,Leaf,Effect)          \
   /* checkpoints */                                                    \
-  __(Checkpoint   ,CHECKPOINT      ,"checkpoint",NoLeaf,Effect)        \
-  __(StackSlot    ,STACK_SLOT      ,"stackslot" ,NoLeaf,NoEffect)
+  __(Checkpoint   ,CHECKPOINT      ,"checkpoint" ,NoLeaf,Effect)       \
+  __(StackSlot    ,STACK_SLOT      ,"stack_slot" ,NoLeaf,NoEffect)     \
+  /* effect */                                                         \
+  __(LoopEffect   ,LOOP_EFFECT     ,"loop_effect",NoLeaf,Effect)       \
+  __(EffectPhi    ,EFFECT_PHI      ,"effect_phi" ,NoLeaf,Effect)       \
+  __(DummyBarrier ,DUMMY_BARRIER   ,"dummy_barrier",NoLeaf,Effect)     \
+  __(DummyWriteEffect,DUMMY_WRITE_EFFECT,"dummy_write_effect",NoLeaf,Effect)
 
 /**
  * These arithmetic and compare node are used to do typed arithmetic
@@ -95,10 +97,16 @@ namespace hir        {
   __(SStringNe        ,SSTRING_NE        ,"sstring_ne"        ,NoLeaf,NoEffect) \
 
 #define CBASE_HIR_EXPRESSION_LOW_PROPERTY(__)                         \
-  __(ObjectGet    ,OBJECT_GET    ,"object_get"   ,NoLeaf,NoEffect)    \
-  __(ObjectSet    ,OBJECT_SET    ,"object_set"   ,NoLeaf,Effect)      \
-  __(ListGet      ,LIST_GET      ,"list_get"     ,NoLeaf,NoEffect)    \
-  __(ListSet      ,LIST_SET      ,"list_set"     ,NoLeaf,Effect)
+  __(ObjectFind   ,OBJECT_FIND   ,"object_find"   ,NoLeaf,NoEffect)   \
+  __(ObjectUpdate ,OBJECT_UPDATE ,"object_update" ,NoLeaf,Effect)     \
+  __(ObjectInsert ,OBJECT_INSERT ,"object_insert" ,NoLeaf,Effect)     \
+  __(ListIndex    ,LIST_INDEX    ,"list_index"    ,NoLeaf,NoEffect)   \
+  __(ListInsert   ,LIST_INSERT   ,"list_insert"   ,NoLeaf,Effect)     \
+  __(ObjectRefSet ,OBJECT_REF_SET,"object_ref_set",NoLeaf,NoEffect)   \
+  __(ObjectRefGet ,OBJECT_REF_GET,"object_ref_get",NoLeaf,NoEffect)   \
+  __(ListRefSet   ,LIST_REF_SET  ,"list_ref_set"  ,NoLeaf,NoEffect)   \
+  __(ListRefGet   ,LIST_REF_GET  ,"list_ref_get"  ,NoLeaf,NoEffect)
+
 
 // All the low HIR nodes
 #define CBASE_HIR_EXPRESSION_LOW(__)                                  \
@@ -119,7 +127,8 @@ namespace hir        {
 // to do inference and have null redundancy removal automatically
 #define CBASE_HIR_TEST(__)                                            \
   __(TestType    ,TEST_TYPE      ,"test_type"      ,NoLeaf,NoEffect)  \
-  __(TestListOOB ,TEST_LISTOOB   ,"test_listobb"   ,NoLeaf,NoEffect)
+  __(TestListOOB ,TEST_LISTOOB   ,"test_listobb"   ,NoLeaf,NoEffect)  \
+  __(TestABC     ,TEST_ABC       ,"test_abc"       ,NoLeaf,NoEffect)
 
 /**
  * Box operation will wrap a value into the internal box representation
@@ -146,20 +155,6 @@ namespace hir        {
   __(ConvBoolean ,CONV_BOOLEAN ,"conv_boolean" ,NoLeaf,NoEffect)      \
   __(ConvNBoolean,CONV_NBOOLEAN,"conv_nboolean",NoLeaf,NoEffect)
 
-/**
- * Special variable
- *
- * Special variable needs to be marked to help certain pass , ie the
- * loop induction variable. It generates self reference Phi node which
- * makes most of the pass not working , even simply things like type
- * inference will not work as well. But it is easy for us to figure out
- * its type by looking at its initial value , step value to figure out
- * the type of it. For these nodes, we use special variable node to
- * mark it out and with corresponding proper type.
- */
-
-#define CBASE_HIR_SPECIAL_VARIABLE(__)                                \
-  __(LoopVar,LOOP_VAR,"loop_var",NoLeaf,NoEffect)
 
 // All the expression IR nodes
 #define CBASE_HIR_EXPRESSION(__)                                      \
@@ -226,12 +221,17 @@ const char* IRTypeGetName( IRType );
 CBASE_HIR_LIST(__)
 #undef __ // __
 
+// Other none-leaf node forward declaration
 class Graph;
 class Node;
+class Expr;
+class ControlFlow;
 class Test;
 class ReadEffect;
 class WriteEffect;
-class WriteBarrier;
+class EffectBarrier;
+class HardBarrier;
+class SoftBarrier;
 class Binary;
 class DynamicBinary;
 class SpecializeBinary;
@@ -239,8 +239,6 @@ class MemoryOp;
 class MemoryWrite;
 class MemoryRead ;
 class MemoryNode;
-class Expr;
-class ControlFlow;
 
 // IRType value static mapping
 template< typename T > struct MapIRClassToIRType {};
@@ -397,24 +395,7 @@ class Node : public zone::ZoneObject {
   LAVA_DISALLOW_COPY_AND_ASSIGN(Node)
 };
 
-/**
- * GVN hash function helper implementation
- *
- * Helper function to implement the GVN hash table function
- *
- * GVN general rules:
- *
- * 1) for any primitive type or type that doesn't have observable side effect, the GVNHash
- *    it generates should *not* take into consideration of the node identity. Example like:
- *    any float64 node with same value should have exactly same GVNHash value and also the
- *    Equal function should behave correctly
- *
- * 2) for any type that has side effect , then the GVNHash value should take into consider-
- *    ation of its node identity. A generaly rules is put the node's id() value into the
- *    GVNHash generation. Prefer using id() function instead of use this pointer address as
- *    seed.
- */
-
+// Helper functions for implementing GVN hash table
 template< typename T >
 std::uint64_t GVNHash0( T* ptr ) {
   std::uint64_t type = reinterpret_cast<std::uint64_t>(ptr);

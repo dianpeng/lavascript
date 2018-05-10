@@ -228,10 +228,10 @@ class ObjectFind : public ReadEffect {
   LAVA_DISALLOW_COPY_AND_ASSIGN(ObjectFind)
 };
 
-class ObjectUpdate : public HardBarrier {
+class ObjectUpdate : public SoftBarrier {
  public:
   ObjectUpdate( Graph* graph , std::uint32_t id , Expr* object , Expr* key ):
-    WirteBarrier(HIR_OBJECT_UPDATE,id,graph)
+    SoftBarrier(HIR_OBJECT_UPDATE,id,graph)
   {
     lava_debug(NORMAL,lava_verify(GetTypeInference(object) == TPKIND_OBJECT););
     AddOperand(object);
@@ -243,10 +243,10 @@ class ObjectUpdate : public HardBarrier {
   LAVA_DISALLOW_COPY_AND_ASSIGN(ObjectUpdate)
 };
 
-class ObjectInsert : public HardBarrier {
+class ObjectInsert : public SoftBarrier {
  public:
   ObjectInsert( Graph* graph , std::uint32_t id , Expr* object , Expr* key ):
-    HardBarrier(HIR_OBJECT_INSERT,id,graph)
+    SoftBarrier(HIR_OBJECT_INSERT,id,graph)
   {
     lava_debug(NORMAL,lava_verify(GetTypeInference(object) == TPKIND_OBJECT););
     AddOperand(object);
@@ -307,10 +307,10 @@ class ListIndex : public ReadEffect {
   LAVA_DISALLOW_COPY_AND_ASSIGN(ListIndex)
 };
 
-class ListInsert: public HardBarrier {
+class ListInsert: public SoftBarrier {
  public:
   ListInsert( Graph* graph , std::uint32_t id , Expr* object , Expr* index ):
-    HardBarrier(HIR_LIST_INSERT,id,graph)
+    SoftBarrier(HIR_LIST_INSERT,id,graph)
   {
     lava_debug(NORMAL,lava_verify( GetTypeInference(object) == TPKIND_LIST ););
     AddOperand(object);

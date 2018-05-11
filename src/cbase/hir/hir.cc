@@ -139,6 +139,61 @@ ReadEffectListIterator WriteEffect::AddReadEffect( ReadEffect* effect ) {
   return read_effect_.PushBack(zone(),effect);
 }
 
+class EffectPhi::EffectPhiDependencyIterator {
+ public:
+  EffectPhiDependencyIterator( const EffectPhi* node ):
+    itr1_(node->operand_list()->GetForwardIterator()),
+    itr2_()
+  {
+    if(itr1_.HasNext()) {
+      auto node = itr1_.value()->AsWriteEffect();
+      itr2_     = node->read_effect()->GetForwardIterator();
+    }
+  }
+  bool HasNext() const { return itr1_.HasNext(); }
+  bool Move   () const {
+    lava_debug(NORMAL,lava_verify(HasNext()););
+    if(itr2_.HasNext() || !itr2_.Move()) {
+      if(!itr1_.Move()) return false;
+      auto node = itr1_.value()->AsWriteEffect();
+      itr2_ = node->read_effect()->GetForwardIterator();
+    }
+    return true;
+  }
+  Expr* value() {
+    auto node = itr1_.value()->AsWriteEffect();
+    if(node->read_effect()->empty()) {
+      return node;
+    } else {
+      return itr2_.value();
+    }
+  }
+  Expr* value() const {
+    auto node = itr1_.value()->AsWriteEffect();
+    if(node->read_effect()->empty()) {
+      return node;
+    } else {
+      return itr2_.value();
+    }
+  }
+ private:
+  const OperandIterator    itr1_;
+  mutable ReadEffectListIterator itr2_;
+};
+
+Expr::DependencyIterator EffectPhi::GetDependencyIterator() const {
+	return DependencyIterator(EffectPhiDependencyIterator(this));
+}
+
+std::size_t EffectPhi::dependency_size() const {
+	std::size_t ret = 0;
+	lava_foreach( auto k , operand_list()->GetForwardIterator() ) {
+		auto we = k->AsWriteEffect();
+		ret += we->read_effect()->size();
+	}
+	return ret;
+}
+
 void ControlFlow::Replace( ControlFlow* node ) {
   if(IsIdentical(node)) return;
   // 1. transfer all *use* node

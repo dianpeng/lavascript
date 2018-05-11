@@ -97,6 +97,12 @@ Effect::Effect( const Effect& that ):
   object_.set_parent(&root_);
 }
 
+void Effect::ResetEffect( WriteEffect* effect ) {
+  root_.PropagateWriteEffect(effect);
+  list_.PropagateWriteEffect(effect);
+  object_.PropagateWriteEffect(effect);
+}
+
 void Effect::Merge( const Effect& lhs , const Effect& rhs , Effect* output , Graph* graph ,
                                                                              ControlFlow* region ) {
   auto lhs_eff = lhs.root()->write_effect();

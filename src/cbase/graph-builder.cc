@@ -53,6 +53,10 @@ class GraphBuilder {
   // we enter into a new scope and merge it back when we exit the lexical scope.
   class Environment {
    public:
+    // Help to mark which scope this envrionment is in. Used to help setup different
+    // kinds of the effect node to track side effect.
+    enum { LEXICAL_SCOPE , LOOP_SCOPE };
+
     struct GlobalVar {
       Str name; Expr* value;
       GlobalVar( const void* k , std::size_t l , Expr* v ): name(k,l), value(v) {}
@@ -65,7 +69,12 @@ class GraphBuilder {
     typedef std::function<Expr* ()>              KeyProvider;
    public:
     Environment( zone::Zone* , GraphBuilder* );
+    Environment( const Environment& , int    );
     Environment( const Environment& );
+
+    // insert an empty barrier into the effect chain, mainly used for building if
+    // branch node.
+    void InsertEmptyBarrier();
    public:
     // init environment object from prototype object
     void EnterFunctionScope  ( const FuncInfo& );
@@ -83,15 +92,22 @@ class GraphBuilder {
     ValueStack*      stack()    { return &stack_;          }
     UpValueVector*   upvalue()  { return &upval_stk_.back(); }
     GlobalMap*       global()   { return &global_;         }
+    void set_global  ( GlobalMap&& gm ) { global_ = std::move(gm); }
 
     const ValueStack*      stack() const { return &stack_; }
     const UpValueVector* upvalue() const { return &upval_stk_.back(); }
     const GlobalMap*     global () const { return &global_; }
+
     // effect group list
     Effect*          effect()          { return effect_.ptr(); }
+    const Effect*    effect() const    { return effect_.ptr(); }
     Checkpoint*      state () const    { return state_;  }
     zone::Zone*      zone  () const    { return zone_ ;  }
     void UpdateState( Checkpoint* cp ) { state_ = cp; }
+
+    LoopEffectPhi*   AsLoopEffectPhi() { return effect()->joined_write_effect()->AsLoopEffectPhi(); }
+    EmptyBarrier*    AsEmptyBarrier () { return effect()->joined_write_effect()->AsEmptyBarrier(); }
+
    private:
     zone::Zone*        zone_;                 // zone allocator
     ValueStack         stack_;                // register stack
@@ -101,7 +117,6 @@ class GraphBuilder {
     CheckedLazyInstance<Effect> effect_;      // a list of tracked effect group
     Checkpoint*        state_;                // current frame state for this environment
 
-    friend class GraphBuilder;
     LAVA_DISALLOW_ASSIGN(Environment);
   };
 
@@ -136,6 +151,9 @@ class GraphBuilder {
       PhiVar( PhiVarType t , std::uint32_t i , Phi* p ): type(t), idx(i), phi(p) {}
     };
     std::vector<PhiVar> phi_list;
+    // loop effect phi node , used to prevent memory operation forwarding cross loop
+    // carry dependency boundary
+    LoopEffectPhi* loop_effect_phi;
    public:
     bool HasParentLoop() const { return loop_header_info->prev != NULL; }
     bool HasJump() const { return !pending_break.empty() || !pending_continue.empty(); }
@@ -152,7 +170,8 @@ class GraphBuilder {
       pending_break(),
       pending_continue(),
       loop_header_info(info),
-      phi_list()
+      phi_list(),
+      loop_effect_phi(NULL)
     {}
   };
 
@@ -478,6 +497,28 @@ GraphBuilder::Environment::Environment( zone::Zone* zone , GraphBuilder* gb ):
   effect_.Init(gb->temp_zone(),InitBarrier::New(gb->graph()));
 }
 
+GraphBuilder::Environment::Environment( const Environment& env , int type ):
+  zone_   (env.zone_ ),
+  stack_  (env.stack_),
+  upval_stk_(env.upval_stk_),
+  global_ (env.global_),
+  gb_     (env.gb_),
+  effect_ (),
+  state_  (env.state_ )
+{
+  WriteEffect* effect = NULL;
+  if(type == LOOP_SCOPE) {
+    // create a loop effect phi node for loop scope
+    effect = LoopEffectPhi::New( gb_->graph() , env.effect()->joined_write_effect() );
+  } else {
+    // create a empty effect node for normal lexical scope, it is really a marker for easier
+    // DCE and other optimization
+    effect = EmptyBarrier::New( gb_->graph() , env.effect()->joined_write_effect() );
+  }
+  // initialize effect object inside of this environment
+  effect_.Init(gb_->temp_zone(),effect);
+}
+
 GraphBuilder::Environment::Environment( const Environment& env ):
   zone_   (env.zone_ ),
   stack_  (env.stack_),
@@ -488,6 +529,11 @@ GraphBuilder::Environment::Environment( const Environment& env ):
   state_  (env.state_ )
 {
   effect_.Init(*env.effect_);
+}
+
+void GraphBuilder::Environment::InsertEmptyBarrier() {
+  auto empty_barrier = EmptyBarrier::New(gb_->graph());
+  effect_->root()->UpdateWriteEffect(empty_barrier);
 }
 
 void GraphBuilder::Environment::EnterFunctionScope( const FuncInfo& func ) {
@@ -1076,6 +1122,7 @@ Expr* GraphBuilder::NewBinaryFallback( Expr* lhs , Expr* rhs , Binary::Operator 
   }
 
   env()->effect()->root()->UpdateWriteEffect(write_effect);
+  region()->AddStmt(write_effect);
   return write_effect;
 }
 
@@ -1361,7 +1408,7 @@ void GraphBuilder::InsertPhi( Environment* lhs , Environment* rhs , ControlFlow*
     // GGet node generated whenever a query/lookup for those global variable comes.
 
     // use the new global list
-    env()->global_ = std::move(temp);
+    env()->set_global(std::move(temp));
   }
 }
 
@@ -1472,7 +1519,7 @@ GraphBuilder::BuildIf( BytecodeIterator* itr ) {
 
   if_region->set_merge(merge);
 
-  Environment true_env(*env());
+  Environment true_env(*env(),Environment::LEXICAL_SCOPE);
   std::uint16_t final_cursor;
   bool have_false_branch;
 
@@ -1484,6 +1531,7 @@ GraphBuilder::BuildIf( BytecodeIterator* itr ) {
   backup_environment(&true_env,this) {
     // swith to a true region
     set_region(true_region);
+    true_region->AddStmt(env()->AsEmptyBarrier());
     {
       StopReason reason = BuildIfBlock(itr,itr->OffsetAt(offset));
       if(reason == STOP_BAILOUT) {
@@ -1502,17 +1550,23 @@ GraphBuilder::BuildIf( BytecodeIterator* itr ) {
   }
 
   // 2. Build code inside of the *false* branch
-  if(have_false_branch) {
-    set_region(false_region);
-    // goto false branch
-    itr->BranchTo(offset);
-    if(BuildIfBlock(itr,itr->OffsetAt(final_cursor)) == STOP_BAILOUT)
-      return STOP_BAILOUT;
-    lhs = region();
-  } else {
-    // reach here means we don't have a elif/else branch
-    final_cursor = offset;
-    lhs = false_region;
+  {
+    // setup an empty barrier to seperate the effect chain
+    env()->InsertEmptyBarrier();
+    false_region->AddStmt(env()->AsEmptyBarrier());
+    // build the false branch regardless whether it has one or not
+    if(have_false_branch) {
+      set_region(false_region);
+      // goto false branch
+      itr->BranchTo(offset);
+      if(BuildIfBlock(itr,itr->OffsetAt(final_cursor)) == STOP_BAILOUT)
+        return STOP_BAILOUT;
+      lhs = region();
+    } else {
+      // reach here means we don't have a elif/else branch
+      final_cursor = offset;
+      lhs = false_region;
+    }
   }
   // 3. set the merge backward edge
   merge->AddBackwardEdge(lhs);
@@ -1667,7 +1721,7 @@ GraphBuilder::BuildLoopBody( BytecodeIterator* itr , ControlFlow* loop_header ) 
   Loop*       body        = NULL;
   LoopExit*   exit        = NULL;
   Region*     after       = Region::New(graph_);
-  Environment loop_env   (*env());
+  Environment loop_env   (*env(),Environment::LOOP_SCOPE);
 
   if(loop_header->IsLoopHeader()) {
     loop_header->AsLoopHeader()->set_merge(after);
@@ -1688,28 +1742,37 @@ GraphBuilder::BuildLoopBody( BytecodeIterator* itr , ControlFlow* loop_header ) 
     body = Loop::New(graph_);
     // set it as the current region node
     set_region(body);
+    auto loop_effect_phi = env()->AsLoopEffectPhi();
+    // patch the loop effect phi with correct region node
+    {
+      loop_effect_phi->set_region(body);
+      body->AddOperand(loop_effect_phi);
+      func_info().current_loop().loop_effect_phi = loop_effect_phi;
+    }
     // generate PHI node at the head of the *block*
     GenerateLoopPhi();
     // iterate all BC inside of the loop body
     StopReason reason = BuildLoopBlock(itr);
-    if(reason == STOP_BAILOUT) return STOP_BAILOUT;
+    if(reason == STOP_BAILOUT)
+      return STOP_BAILOUT;
     lava_debug(NORMAL, lava_verify(reason == STOP_SUCCESS || reason == STOP_JUMP););
-    cont_pc = itr->bytecode_location(); // continue should jump at current BC which is loop exit node
+    cont_pc = itr->bytecode_location();
     // now we should stop at the FEND1/FEND2/FEEND instruction
     auto exit_cond = BuildLoopEndCondition(itr,body);
     lava_debug(NORMAL,lava_verify(!exit););
+    // set up LoopExit node
     exit = LoopExit::New(graph_,exit_cond);
     // connect each control flow node together
-    exit->AddBackwardEdge(region());  // NOTES: do not link back to body directly since current
-                                      //        region may changed due to new basic block creation
-
-    body->AddBackwardEdge(loop_header);
-    body->AddBackwardEdge(exit);
+    exit->AddBackwardEdge (region());
+    body->AddBackwardEdge (loop_header);
+    body->AddBackwardEdge (exit);
     after->AddBackwardEdge(exit);
     // skip the last end instruction
     itr->Move();
     // patch all the Phi node
     PatchLoopPhi();
+    // set the loop effect phi node's backward effect operand , must be after PatchLoopPhi call
+    func_info().current_loop().loop_effect_phi->SetBackwardEffect(env()->effect()->joined_write_effect());
     // break should jump here which is *after* the merge region
     brk_pc = itr->bytecode_location();
     // patch all the pending continue and break node
@@ -1721,9 +1784,8 @@ GraphBuilder::BuildLoopBody( BytecodeIterator* itr , ControlFlow* loop_header ) 
       lava_verify(func_info().current_loop().phi_list.empty        ());
     );
   }
-
+  // set the current region as merged region
   set_region(after);
-
   // merge the loop header
   InsertPhi(env(),&loop_env,after);
 

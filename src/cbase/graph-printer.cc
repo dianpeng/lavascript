@@ -17,7 +17,10 @@ class DotPrinter {
  private:
   void RenderControlFlow( const std::string& , ControlFlow* );
   void RenderExpr       ( const std::string& , Expr* );
-  void RenderEdge       ( ControlFlow* , ControlFlow* );
+  void RenderExprOperand( const std::string& , Expr* );
+  void RenderExprBrief  ( const std::string& , Expr* );
+  void RenderExprEffect ( const std::string& , Expr* );
+  void RenderControlFlow( ControlFlow* );
   void RenderCheckpoint ( const std::string& , Checkpoint* );
 
   std::stringstream& Indent( int level );
@@ -41,8 +44,8 @@ std::string DotPrinter::Visualize( const Graph& graph , const GraphPrinter::Opti
 
   // 2. edge iterator
   output_ << "digraph IR {\n";
-  lava_foreach( auto edge , ControlFlowEdgeIterator(zone(),graph) ) {
-    RenderEdge(edge.from,edge.to);
+  lava_foreach( auto k , ControlFlowRPOIterator(zone(),graph) ) {
+    RenderControlFlow(k);
   }
   output_ << "}\n";
 
@@ -86,8 +89,7 @@ void DotPrinter::RenderCheckpoint ( const std::string& cp_name ,
   }
 }
 
-void DotPrinter::RenderControlFlow( const std::string& region_name ,
-                                            ControlFlow* region ) {
+void DotPrinter::RenderControlFlow( const std::string& region_name , ControlFlow* region ) {
   Indent(1) << region_name << "[shape=box style=bold color=red label="
                            << "\""
                            << region->type_name()
@@ -116,27 +118,17 @@ void DotPrinter::RenderControlFlow( const std::string& region_name ,
   }
 }
 
-void DotPrinter::RenderEdge( ControlFlow* from , ControlFlow* to ) {
-  std::string from_name = GetNodeName(from);
-  std::string to_name   = GetNodeName(to);
-
-  if(!existed_[from->id()]) {
-    existed_[from->id()] = true;
-    RenderControlFlow(from_name,from);
+void DotPrinter::RenderControlFlow( ControlFlow* cf ) {
+  auto from_name = GetNodeName(cf);
+  auto count = 0;
+  lava_foreach( auto k , cf->backward_edge()->GetForwardIterator() ) {
+    Indent(1) << from_name << " -> " << GetNodeName(k) << "[color=blue style=bold label=" << count << "]\n";
+    ++count;
   }
-
-  if(!existed_[to->id()]) {
-    existed_[to->id()] = true;
-    RenderControlFlow(to_name,to);
-  }
-
-  Indent(1) << from_name << " -> " << to_name << "[color=blue style=bold]\n";
+  RenderControlFlow(from_name,cf);
 }
 
-void DotPrinter::RenderExpr( const std::string& name , Expr* node ) {
-  if(existed_[node->id()]) return;
-  existed_[node->id()] = true;
-
+void DotPrinter::RenderExprOperand( const std::string& name , Expr* node ) {
   switch(node->type()) {
     case HIR_FLOAT64:
       Indent(1) << name << "[label=\"f64(" << node->AsFloat64()->value() << ")\"]\n";
@@ -293,12 +285,47 @@ void DotPrinter::RenderExpr( const std::string& name , Expr* node ) {
       }
       break;
   }
+}
 
+void DotPrinter::RenderExprEffect( const std::string& name , Expr* node ) {
   // effect list node
   lava_foreach( auto n , node->GetDependencyIterator() ) {
     Indent(1) << name << " -> " << GetNodeName(n) << "[ style=bold color=green ]\n";
   }
 }
+
+void DotPrinter::RenderExprBrief( const std::string& name , Expr* node ) {
+  switch(node->type()) {
+    case HIR_FLOAT64:
+      Indent(1) << name << "[label=\"f64(" << node->AsFloat64()->value() << ")\"]\n";
+      break;
+    case HIR_LONG_STRING:
+      Indent(1) << name << "[label=\"str(" << node->AsLString()->value()->data() << ")\"]\n";
+      break;
+    case HIR_SMALL_STRING:
+      Indent(1) << name << "[label=\"sso(" << node->AsSString()->value()->data() << ")\"]\n";
+      break;
+    case HIR_BOOLEAN:
+      Indent(1) << name << "[label=\"bool(" << (node->AsBoolean()->value() ? "true" : "false" )
+                                            << ")\"]\n";
+      break;
+    case HIR_NIL:
+      Indent(1) << name << "[label=\"nil\"]\n";
+      break;
+    default:
+      Indent(1) << name << "[label=\"" << node->type_name() << "\"]\n";
+      break;
+  }
+}
+
+void DotPrinter::RenderExpr( const std::string& name , Expr* node ) {
+  if(existed_[node->id()]) return;
+  existed_[node->id()] = true;
+  if(opt_.ShouldRenderOperand()) RenderExprOperand(name,node);
+  else                           RenderExprBrief  (name,node);
+  if(opt_.ShouldRenderEffect ()) RenderExprEffect (name,node);
+}
+
 } // namespace
 
 std::string GraphPrinter::Print( const Graph& g , const Option& opt ) {

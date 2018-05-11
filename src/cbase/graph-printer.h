@@ -12,8 +12,18 @@ class Graph;
 class GraphPrinter : public AllStatic {
  public:
   struct Option {
+    enum { EFFECT_CHAIN , OPERAND_CHAIN , ALL_CHAIN };
+    int  option;
     bool checkpoint;
-    Option() : checkpoint(true) {}
+    Option()                    : option(ALL_CHAIN), checkpoint(false) {}
+    Option( int opt , bool cp ) : option(opt)      , checkpoint(cp)    {}
+   public:
+    bool ShouldRenderOperand() const {
+      return option == ALL_CHAIN || option == OPERAND_CHAIN;
+    }
+    bool ShouldRenderEffect () const {
+      return option == ALL_CHAIN || option == EFFECT_CHAIN;
+    }
   };
 
   // Function to print the graph into dot format for visualization purpose

@@ -558,10 +558,6 @@ inline Phi* Phi::New( Graph* graph , Expr* lhs , Expr* rhs ) {
   return phi;
 }
 
-inline LoopEffect* LoopEffect::New( Graph* graph ) {
-  return graph->zone()->New<LoopEffect>(graph,graph->AssignID());
-}
-
 inline void ReadEffect::SetWriteEffect( WriteEffect* node ) {
   auto itr = node->AddReadEffect(this);
   effect_edge_.node = node;
@@ -594,12 +590,24 @@ inline EffectPhi* EffectPhi::New( Graph* graph , WriteEffect* lhs, WriteEffect* 
   return ret;
 }
 
+inline LoopEffectPhi* LoopEffectPhi::New( Graph* graph , WriteEffect* lhs ) {
+  auto ret = graph->zone()->New<LoopEffectPhi>(graph,graph->AssignID());
+  ret->AddOperand(lhs);
+  return ret;
+}
+
 inline InitBarrier* InitBarrier::New( Graph* graph ) {
   return graph->zone()->New<InitBarrier>(graph,graph->AssignID());
 }
 
 inline EmptyBarrier* EmptyBarrier::New( Graph* graph ) {
   return graph->zone()->New<EmptyBarrier>(graph,graph->AssignID());
+}
+
+inline EmptyBarrier* EmptyBarrier::New( Graph* graph , WriteEffect* effect ) {
+  auto ret = New(graph);
+  ret->HappenAfter(effect);
+  return ret;
 }
 
 inline ICall* ICall::New( Graph* graph , interpreter::IntrinsicCall ic , bool tc ) {

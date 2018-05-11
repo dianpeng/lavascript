@@ -76,7 +76,8 @@ bool CheckGraph( const char* source ) {
     return false;
   }
 
-  std::cerr << GraphPrinter::Print(graph) << std::endl;
+  auto opt = GraphPrinter::Option( GraphPrinter::Option::ALL_CHAIN , false );
+  std::cerr << GraphPrinter::Print(graph,opt) << std::endl;
   PrintHeap(graph);
 
   // generate dominator graph information
@@ -109,7 +110,7 @@ bool CheckGraphOSR( const char* source , std::size_t offset ) {
     return false;
   }
 
-  std::cerr << GraphPrinter::Print(graph) << std::endl;
+  std::cerr << GraphPrinter::Print(graph,GraphPrinter::Option(GraphPrinter::Option::EFFECT_CHAIN,false)) << std::endl;
   PrintHeap(graph);
   return true;
 }
@@ -121,11 +122,9 @@ bool CheckGraphOSR( const char* source , std::size_t offset ) {
 
 TEST(GraphBuilder,Basic) {
   CASE(
-      var x = [];
-      var ret =0;
-      x[10] = 20;
       for( var i = 0 ; 100 ; 1 ) {
-        x[i] = x[10] + 100;
+          x.cc = 30;
+          break;
       }
       return x[1];
   );

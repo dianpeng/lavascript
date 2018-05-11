@@ -45,15 +45,15 @@ class EffectGroup {
   // add a new read effect
   virtual void AddReadEffect    ( ReadEffect*  ) = 0;
  public:
-  WriteEffect*                                write_effect() const { return write_effect_; }
-  ::lavascript::zone::Zone*                           zone() const { return zone_; }
+  WriteEffect*               write_effect() const { return write_effect_; }
+  ::lavascript::zone::Zone*  zone() const { return zone_; }
  protected:
   // concrete implementation of Update/Add without propogation of the
   // effect into related group
   void PropagateWriteEffect( WriteEffect* );
  private:
-  WriteEffect*                             write_effect_;   // Write effect currently tracked
-  ::lavascript::zone::Zone*                zone_;           // Zone object for allocation of memory
+  WriteEffect*               write_effect_;   // Write effect currently tracked
+  ::lavascript::zone::Zone*  zone_;           // Zone object for allocation of memory
 
   friend class RootEffectGroup;
   friend class LeafEffectGroup;
@@ -98,6 +98,11 @@ class Effect {
   const EffectGroup* root  () const { return &root_;   }
   const EffectGroup* list  () const { return &list_;   }
   const EffectGroup* object() const { return &object_; }
+  // This write effect is safe to be used to checkpoint the whole Effect object's
+  // side effect and maintain correct partial order.
+  WriteEffect*       joined_write_effect() const { return root_.write_effect(); }
+  // force to reset the effect chain maintained intenrall to input
+  void ResetEffect( WriteEffect* );
  public:
   // merge the input 2 effect object into another effect object, the input and output can be the same
   static void Merge( const Effect& , const Effect& , Effect* , Graph*  , ControlFlow* );

@@ -315,29 +315,16 @@ class Optional {
   std::optional<T> val_;
 };
 
-// intrusive double linked list base
 template< typename T >
-class NodeLink {
+class SingleNodeLink {
  protected:
-  NodeLink() : prev_(NULL), next_(NULL) {}
-
+  SingleNodeLink() : next_(NULL) {}
+  // get the pointer points to next object in chain
   T* NextLink() const { return next_; }
-  T* PrevLink() const { return prev_; }
   // add a link *before* the input that node
-  void AddLink( T* that ) {
-    auto self = static_cast<T*>(this);
-    if(that->prev_) that->prev_->next_ = self;
-    prev_ = that->prev_;
-    next_ = that;
-    that->prev_ = self;
-  }
-  // remove self from the link
-  void RemoveLink() {
-    if(prev_) prev_->next_ = next_;
-    if(next_) next_->prev_ = prev_;
-  }
+  void AddLink( T* that ) { next_ = that; }
  private:
-  T* prev_ , *next_;
+  T* next_;
 };
 
 // ----------------------------------------------------------------------

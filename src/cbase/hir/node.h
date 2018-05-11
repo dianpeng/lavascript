@@ -70,7 +70,7 @@ namespace hir        {
   __(Checkpoint   ,CHECKPOINT      ,"checkpoint" ,NoLeaf,Effect)       \
   __(StackSlot    ,STACK_SLOT      ,"stack_slot" ,NoLeaf,NoEffect)     \
   /* effect */                                                         \
-  __(LoopEffect   ,LOOP_EFFECT     ,"loop_effect",NoLeaf,Effect)       \
+  __(LoopEffectPhi,LOOP_EFFECT_PHI ,"loop_effect_phi",NoLeaf,Effect)   \
   __(EffectPhi    ,EFFECT_PHI      ,"effect_phi" ,NoLeaf,Effect)       \
   __(EmptyBarrier ,EMPTY_BARRIER   ,"empty_barrier",NoLeaf,Effect)     \
   __(InitBarrier  ,INIT_BARRIER    ,"init_barrier",NoLeaf,Effect)

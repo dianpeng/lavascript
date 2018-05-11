@@ -80,7 +80,7 @@ class BinaryNode {
 // a effect barrier and also generates a checkpoint because of the side effect
 class DynamicBinary : public HardBarrier , public BinaryNode {
  public:
-  typedef Binary::Operator Operator;
+  using Operator = Binary::Operator;
 
   DynamicBinary( IRType type , std::uint32_t id , Graph* graph , Expr* lhs , Expr* rhs ,
                                                                              Binary::Operator op ):
@@ -124,7 +124,7 @@ class Compare: public DynamicBinary {
 // the dynamic binary node. logical node is a normal node which will not do dynamic dispatch
 class Logical : public Expr , public BinaryNode {
  public:
-  typedef Binary::Operator Operator;
+  using Operator = Binary::Operator;
 
   static inline Logical* New( Graph* , Expr* , Expr* , Binary::Operator );
 
@@ -221,7 +221,7 @@ class BooleanNot: public Expr {
 // generate unboxed value
 class SpecializeBinary : public Expr , public BinaryNode {
  public:
-  typedef Binary::Operator Operator;
+  using Operator = Binary::Operator;
   SpecializeBinary( IRType type , std::uint32_t id , Graph* graph , Expr* lhs ,
                                                                     Expr* rhs ,
                                                                     Binary::Operator op ):
@@ -244,7 +244,7 @@ class SpecializeBinary : public Expr , public BinaryNode {
 
 class Float64Arithmetic : public SpecializeBinary {
  public:
-  typedef Binary::Operator Operator;
+  using Operator = Binary::Operator;
 
   inline static Float64Arithmetic* New( Graph* , Expr*, Expr*, Operator );
 
@@ -260,7 +260,7 @@ class Float64Arithmetic : public SpecializeBinary {
 
 class Float64Bitwise: public SpecializeBinary {
  public:
-  typedef Binary::Operator Operator;
+  using Operator = Binary::Operator;
 
   inline static Float64Bitwise* New( Graph* , Expr*, Expr*, Operator );
 
@@ -276,7 +276,7 @@ class Float64Bitwise: public SpecializeBinary {
 
 class Float64Compare : public SpecializeBinary {
  public:
-  typedef Binary::Operator Operator;
+  using Operator = Binary::Operator;
 
   inline static Float64Compare* New( Graph* , Expr* , Expr* , Operator );
 
@@ -292,7 +292,7 @@ class Float64Compare : public SpecializeBinary {
 
 class StringCompare : public SpecializeBinary {
  public:
-  typedef Binary::Operator Operator;
+  using Operator = Binary::Operator;
   inline static StringCompare* New( Graph* , Expr* , Expr* , Operator );
   StringCompare( Graph* graph , std::uint32_t id , Expr* lhs , Expr* rhs , Operator op ):
     SpecializeBinary(HIR_STRING_COMPARE,id,graph,lhs,rhs,op)

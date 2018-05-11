@@ -5,6 +5,38 @@ namespace lavascript {
 namespace cbase      {
 namespace hir        {
 
+template< typename T >
+std::uint64_t GVNHash0( T* ptr ) {
+  std::uint64_t type = reinterpret_cast<std::uint64_t>(ptr);
+  return type;
+}
+
+template< typename T , typename V >
+std::uint64_t GVNHash1( T* ptr , const V& value ) {
+  std::uint64_t uval = static_cast<std::uint64_t>(value);
+  std::uint64_t type = reinterpret_cast<std::uint64_t>(ptr);
+  return (uval << 7) ^ (type);
+}
+
+template< typename T , typename V1 , typename V2 >
+std::uint64_t GVNHash2( T* ptr , const V1& v1 , const V2& v2 ) {
+  std::uint64_t uv2 = static_cast<std::uint64_t>(v2);
+  return GVNHash1(ptr,v1) ^ (uv2);
+}
+
+template< typename T , typename V1, typename V2 , typename V3 >
+std::uint64_t GVNHash3( T* ptr , const V1& v1 , const V2& v2 , const V3& v3 ) {
+  std::uint64_t uv3 = static_cast<std::uint64_t>(v3);
+  return GVNHash2(ptr,v1,v2) ^ (uv3);
+}
+
+template< typename T , typename V1, typename V2, typename V3 , typename V4 >
+std::uint64_t GVNHash4( T* ptr , const V1& v1 , const V2& v2 , const V3& v3 , const V4& v4 ) {
+  std::uint64_t uv4 = static_cast<std::uint64_t>(v4);
+  return GVNHash3(ptr,v1,v2,v3) ^ (uv4);
+}
+
+
 #define __(A,B,...)                           \
   inline A* Node::As##A() {                   \
     lava_debug(NORMAL,lava_verify(Is##A());); \
@@ -562,8 +594,12 @@ inline EffectPhi* EffectPhi::New( Graph* graph , WriteEffect* lhs, WriteEffect* 
   return ret;
 }
 
-inline DummyBarrier* DummyBarrier::New( Graph* graph ) {
-  return graph->zone()->New<DummyBarrier>(graph,graph->AssignID());
+inline InitBarrier* InitBarrier::New( Graph* graph ) {
+  return graph->zone()->New<InitBarrier>(graph,graph->AssignID());
+}
+
+inline EmptyBarrier* EmptyBarrier::New( Graph* graph ) {
+  return graph->zone()->New<EmptyBarrier>(graph,graph->AssignID());
 }
 
 inline ICall* ICall::New( Graph* graph , interpreter::IntrinsicCall ic , bool tc ) {
@@ -862,6 +898,7 @@ inline OperandIterator ExprIteratorGetter::Get( Node* node ) const {
 }
 
 } // namespace detail
+
 
 } // namespace hir
 } // namespace cbase

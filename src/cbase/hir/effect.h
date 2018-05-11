@@ -126,7 +126,7 @@ class LoopEffect: public SoftBarrier {
 };
 
 // EffectPhi is a phi node inserted at merge region used to fan in all the branch's
-// phi node. Each branch will use a DummyBarrier to separate each branch's effect
+// phi node. Each branch will use a InitBarrier to separate each branch's effect
 // chain regardlessly
 class EffectPhi : public SoftBarrier {
  public:
@@ -144,15 +144,26 @@ class EffectPhi : public SoftBarrier {
   LAVA_DISALLOW_COPY_AND_ASSIGN(EffectPhi)
 };
 
-// DummyBarrier is an object to separate effect chain in lexical scope. It is mainly to
+// InitBarrier is an object to separate effect chain in lexical scope. It is mainly to
 // use mark the start of the effect chain
-class DummyBarrier : public SoftBarrier {
+class InitBarrier : public SoftBarrier {
  public:
-  static inline DummyBarrier* New( Graph* );
+  static inline InitBarrier* New( Graph* );
 
-  DummyBarrier( Graph* graph , std::uint32_t id ) : SoftBarrier(HIR_DUMMY_BARRIER,id,graph) {}
+  InitBarrier( Graph* graph , std::uint32_t id ) : SoftBarrier(HIR_INIT_BARRIER,id,graph) {}
  private:
-  LAVA_DISALLOW_COPY_AND_ASSIGN(DummyBarrier)
+  LAVA_DISALLOW_COPY_AND_ASSIGN(InitBarrier)
+};
+
+// EmptyBarrier is an object to be used to *mark* the control flow. It doesn't have any
+// actual barrier impact but just to mark the separation of control flow region, ie *If* node.
+class EmptyBarrier : public SoftBarrier {
+ public:
+  static inline EmptyBarrier* New( Graph* );
+
+  EmptyBarrier( Graph* graph , std::uint32_t id ) : SoftBarrier(HIR_EMPTY_BARRIER,id,graph) {}
+ private:
+  LAVA_DISALLOW_COPY_AND_ASSIGN(EmptyBarrier)
 };
 
 } // namespace hir

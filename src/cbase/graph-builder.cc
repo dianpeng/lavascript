@@ -67,11 +67,6 @@ class GraphBuilder {
     Environment( zone::Zone* , GraphBuilder* );
     Environment( const Environment& );
    public:
-    // Setup a loop effect node and replace it with existed effect group entirely
-    void SetLoopEffect();
-    // Setup a link effect node and replace it with existed effect group entirely
-    void SetLinkEffect();
-   public:
     // init environment object from prototype object
     void EnterFunctionScope  ( const FuncInfo& );
     void PopulateArgument    ( const FuncInfo& );
@@ -480,7 +475,7 @@ GraphBuilder::Environment::Environment( zone::Zone* zone , GraphBuilder* gb ):
   effect_   (),
   state_    (gb->InitCheckpoint())
 {
-  effect_.Init(gb->temp_zone(),DummyBarrier::New(gb->graph()));
+  effect_.Init(gb->temp_zone(),InitBarrier::New(gb->graph()));
 }
 
 GraphBuilder::Environment::Environment( const Environment& env ):

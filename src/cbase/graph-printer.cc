@@ -94,17 +94,25 @@ void DotPrinter::RenderControlFlow( const std::string& region_name ,
                            << "\"]\n";
 
   // for all the operand of each control flow node
-  lava_foreach( auto node , region->operand_list()->GetForwardIterator() ) {
-    auto name = GetNodeName(node);
-    RenderExpr(name,node);
-    Indent(1) << region_name << " -> " << name << "[color=black style=bold]\n";
+  {
+    auto count = 0;
+    lava_foreach( auto node , region->operand_list()->GetForwardIterator() ) {
+      auto name = GetNodeName(node);
+      RenderExpr(name,node);
+      Indent(1) << region_name << " -> " << name << "[color=black style=bold label=" << count << "]\n";
+      ++count;
+    }
   }
 
-  // for all the pined node
-  lava_foreach( auto expr , region->stmt_list()->GetForwardIterator() ) {
-    auto name = GetNodeName(expr);
-    RenderExpr(name,expr);
-    Indent(1) << region_name << " -> " << name << "[color=purple style=dashed label=stmt]\n";
+  // for all statement node
+  {
+    auto count = 0;
+    lava_foreach( auto expr , region->stmt_list()->GetForwardIterator() ) {
+      auto name = GetNodeName(expr);
+      RenderExpr(name,expr);
+      Indent(1) << region_name << " -> " << name << "[color=purple style=dashed label=" << count << "]\n";
+      ++count;
+    }
   }
 }
 
@@ -128,7 +136,6 @@ void DotPrinter::RenderEdge( ControlFlow* from , ControlFlow* to ) {
 void DotPrinter::RenderExpr( const std::string& name , Expr* node ) {
   if(existed_[node->id()]) return;
   existed_[node->id()] = true;
-  if(node->HasDependency()) Indent(1) << name << "[style=bold color=red]\n";
 
   switch(node->type()) {
     case HIR_FLOAT64:
@@ -146,47 +153,6 @@ void DotPrinter::RenderExpr( const std::string& name , Expr* node ) {
       break;
     case HIR_NIL:
       Indent(1) << name << "[label=\"nil\"]\n";
-      break;
-    case HIR_LIST:
-      {
-        Indent(1) << name << "[label=\"list\"]\n";
-        auto list = node->AsIRList();
-        std::size_t i = 0 ;
-        lava_foreach( auto element , list->operand_list()->GetForwardIterator() ) {
-          auto element_name = GetNodeName(element);
-          RenderExpr(element_name,element);
-          Indent(1) << name << " -> " << element_name << "[label=\"" << i << "\"]\n";
-          ++i;
-        }
-      }
-      break;
-    case HIR_OBJECT_KV:
-      {
-        Indent(1) << name << "[label=\"object_kv\"]\n";
-        auto kv = node->AsIRObjectKV();
-        auto key= kv->key();
-        auto key_name = GetNodeName(key);
-        RenderExpr(key_name,key);
-        Indent(1) << name << " -> " << key_name << "[label=\"key\"]\n";
-
-        auto val = kv->value();
-        auto val_name = GetNodeName(val);
-        RenderExpr(val_name,val);
-        Indent(1) << name << " -> " << val_name << "[label=\"val\"]\n";
-      }
-      break;
-    case HIR_OBJECT:
-      {
-        Indent(1) << name << "[label=\"object\"]\n";
-        auto obj = node->AsIRObject();
-        std::size_t i = 0;
-        lava_foreach( auto kv , obj->operand_list()->GetForwardIterator() ) {
-          auto kv_name = GetNodeName(kv);
-          RenderExpr(kv_name,kv);
-          Indent(1) << name << " -> " << kv_name << "[label=\"" << i << "\"]\n";
-          ++i;
-        }
-      }
       break;
     // node that implements BinaryNode interface
     case HIR_FLOAT64_BITWISE:
@@ -250,80 +216,8 @@ void DotPrinter::RenderExpr( const std::string& name , Expr* node ) {
         Indent(1) << name << opr_name << '\n';
       }
       break;
-    case HIR_GGET:
-      {
-        auto gget = node->AsGGet();
-        auto key_name = GetNodeName(gget->key());
-        RenderExpr(key_name,gget->key());
-        Indent(1) << name << "[label=\"" << gget->type_name() << "\"]\n";
-        Indent(1) << name << " -> " << key_name << "[label=\"key\"]\n";
-
-      }
-      break;
-    case HIR_GSET:
-      {
-        auto gset = node->AsGSet();
-        auto key_name = GetNodeName(gset->key());
-        auto val_name = GetNodeName(gset->value());
-        RenderExpr(key_name,gset->key());
-        RenderExpr(val_name,gset->value());
-        Indent(1) << name << "[label=\"" << gset->type_name() << "\"]\n";
-        Indent(1) << name << " -> " << key_name << "[label=\"key\"]\n";
-        Indent(1) << name << " -> " << val_name << "[label=\"val\"]\n";
-
-      }
-      break;
-    case HIR_ITR_NEW:
-      {
-        auto itr_new = node->AsItrNew();
-        auto opr_name= GetNodeName(itr_new->operand());
-        RenderExpr(opr_name,itr_new->operand());
-        Indent(1) << name << "[label=\"" << itr_new->type_name() << "\"]\n";
-        Indent(1) << name << " -> " << opr_name << '\n';
-
-      }
-      break;
-    case HIR_ITR_NEXT:
-      {
-        auto itr_next = node->AsItrNext();
-        auto opr_name = GetNodeName(itr_next->operand());
-        RenderExpr(opr_name,itr_next->operand());
-        Indent(1) << name << "[label=\"" << itr_next->type_name() << "\"]\n";
-        Indent(1) << name << " -> " << opr_name << '\n';
-
-      }
-      break;
-    case HIR_ITR_TEST:
-      {
-        auto itr_test = node->AsItrTest();
-        auto opr_name = GetNodeName(itr_test->operand());
-        RenderExpr(opr_name,itr_test->operand());
-        Indent(1) << name << "[label=\"" << itr_test->type_name() << "\"]\n";
-        Indent(1) << name << " -> " << opr_name << '\n';
-
-      }
-      break;
-    case HIR_ITR_DEREF:
-      {
-        auto itr_deref = node->AsItrDeref();
-        auto itr_name  = GetNodeName(itr_deref->operand());
-        RenderExpr(itr_name,itr_deref->operand());
-        Indent(1) << name << "[label=\"" << itr_deref->type_name() << "\"]\n";
-        Indent(1) << name << " -> " << itr_name << '\n';
-      }
-      break;
     case HIR_PROJECTION:
       Indent(1) << name << "[label=\"projection(" << node->AsProjection()->index() <<")]\n";
-      break;
-    case HIR_INIT_CLS:
-      {
-        Indent(1) << name << "[label=\"init_cls\"]\n";
-        auto icls = node->AsInitCls();
-        auto key  = icls->key();
-        auto key_name = GetNodeName(key);
-        RenderExpr(key_name,key);
-        Indent(1) << name << " -> " << key_name << '\n';
-      }
       break;
     /** test **/
     case HIR_TEST_TYPE:
@@ -389,10 +283,12 @@ void DotPrinter::RenderExpr( const std::string& name , Expr* node ) {
     default:
       {
         Indent(1) << name << "[label=\"" << node->type_name() << "\"]\n";
+        auto count = 0;
         lava_foreach( auto opr , node->operand_list()->GetForwardIterator() ) {
           auto opr_name = GetNodeName(opr);
           RenderExpr(opr_name,opr);
-          Indent(1) << name << " -> " << opr_name << '\n';
+          Indent(1) << name << " -> " << opr_name << "[label=" << count << "]\n";
+          ++count;
         }
       }
       break;

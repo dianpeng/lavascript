@@ -146,7 +146,7 @@ class EffectPhiBase::EffectPhiBaseDependencyIterator {
     itr2_()
   {
     if(itr1_.HasNext()) {
-      auto node = itr1_.value()->AsWriteEffect();
+      auto node = itr1_.value()->As<WriteEffect>();
       itr2_     = node->read_effect()->GetForwardIterator();
     }
   }
@@ -155,13 +155,13 @@ class EffectPhiBase::EffectPhiBaseDependencyIterator {
     lava_debug(NORMAL,lava_verify(HasNext()););
     if(itr2_.HasNext() || !itr2_.Move()) {
       if(!itr1_.Move()) return false;
-      auto node = itr1_.value()->AsWriteEffect();
+      auto node = itr1_.value()->As<WriteEffect>();
       itr2_ = node->read_effect()->GetForwardIterator();
     }
     return true;
   }
   Expr* value() {
-    auto node = itr1_.value()->AsWriteEffect();
+    auto node = itr1_.value()->As<WriteEffect>();
     if(node->read_effect()->empty()) {
       return node;
     } else {
@@ -169,7 +169,7 @@ class EffectPhiBase::EffectPhiBaseDependencyIterator {
     }
   }
   Expr* value() const {
-    auto node = itr1_.value()->AsWriteEffect();
+    auto node = itr1_.value()->As<WriteEffect>();
     if(node->read_effect()->empty()) {
       return node;
     } else {
@@ -188,7 +188,7 @@ Expr::DependencyIterator EffectPhiBase::GetDependencyIterator() const {
 std::size_t EffectPhiBase::dependency_size() const {
 	std::size_t ret = 0;
 	lava_foreach( auto k , operand_list()->GetForwardIterator() ) {
-		auto we = k->AsWriteEffect();
+		auto we = k->As<WriteEffect>();
 		ret += we->read_effect()->size();
 	}
 	return ret;
@@ -326,7 +326,7 @@ void OnceList::Pop() {
 
 bool ControlFlowBFSIterator::Move() {
   while(!stack_.empty()) {
-    auto top = stack_.Top()->AsControlFlow();
+    auto top = stack_.Top()->As<ControlFlow>();
     stack_.Pop();
     lava_foreach( auto cf , top->forward_edge()->GetForwardIterator() ) {
       stack_.Push(cf);
@@ -340,7 +340,7 @@ bool ControlFlowBFSIterator::Move() {
 
 bool ControlFlowEdgeIterator::Move() {
   if(!stack_.empty()) {
-    ControlFlow* top = stack_.Top()->AsControlFlow();
+    ControlFlow* top = stack_.Top()->As<ControlFlow>();
     stack_.Pop();
     lava_foreach( auto cf , top->backward_edge()->GetBackwardIterator() ) {
       stack_.Push(cf);

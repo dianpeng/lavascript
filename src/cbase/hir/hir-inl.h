@@ -83,76 +83,9 @@ inline bool Node::IsLeaf() const {
 #undef __     // __
 }
 
-inline bool Node::IsExpr       () const { return Is<Expr>      ();  }
-inline bool Node::IsControlFlow() const { return Is<ControlFlow>(); }
-inline bool Node::IsReadEffect () const { return Is<ReadEffect>();  }
-inline bool Node::IsWriteEffect() const { return Is<WriteEffect>(); }
-inline bool Node::IsMemoryNode () const { return Is<MemoryNode>();  }
-inline bool Node::IsTestNode   () const { return Is<Test>      ();  }
-
 inline const zone::String& Node::AsZoneString() const {
   lava_debug(NORMAL,lava_verify(IsString()););
   return IsLString() ? *AsLString()->value() : *AsSString()->value() ;
-}
-
-inline ControlFlow* Node::AsControlFlow() {
-  lava_debug(NORMAL,lava_verify(IsControlFlow()););
-  return static_cast<ControlFlow*>(this);
-}
-
-inline const ControlFlow* Node::AsControlFlow() const {
-  lava_debug(NORMAL,lava_verify(IsControlFlow()););
-  return static_cast<const ControlFlow*>(this);
-}
-
-inline Expr* Node::AsExpr() {
-  lava_debug(NORMAL,lava_verify(IsExpr()););
-  return static_cast<Expr*>(this);
-}
-
-inline const Expr* Node::AsExpr() const {
-  lava_debug(NORMAL,lava_verify(IsExpr()););
-  return static_cast<const Expr*>(this);
-}
-
-inline WriteEffect* Node::AsWriteEffect() {
-  lava_debug(NORMAL,lava_verify(IsWriteEffect()););
-  return static_cast<WriteEffect*>(this);
-}
-
-inline const WriteEffect* Node::AsWriteEffect() const {
-  lava_debug(NORMAL,lava_verify(IsWriteEffect()););
-  return static_cast<const WriteEffect*>(this);
-}
-
-inline ReadEffect* Node::AsReadEffect() {
-  lava_debug(NORMAL,lava_verify(IsReadEffect()););
-  return static_cast<ReadEffect*>(this);
-}
-
-inline const ReadEffect* Node::AsReadEffect() const {
-  lava_debug(NORMAL,lava_verify(IsReadEffect()););
-  return static_cast<const ReadEffect*>(this);
-}
-
-inline MemoryNode* Node::AsMemoryNode() {
-  lava_debug(NORMAL,lava_verify(IsMemoryNode()););
-  return static_cast<MemoryNode*>(this);
-}
-
-inline const MemoryNode* Node::AsMemoryNode() const {
-  lava_debug(NORMAL,lava_verify(IsMemoryNode()););
-  return static_cast<const MemoryNode*>(this);
-}
-
-inline Test* Node::AsTest() {
-  lava_debug(NORMAL,lava_verify(IsTestNode()););
-  return static_cast<Test*>(this);
-}
-
-inline const Test* Node::AsTest() const {
-  lava_debug(NORMAL,lava_verify(IsTestNode()););
-  return static_cast<const Test*>(this);
 }
 
 inline bool Expr::IsReplaceable( const Expr* that ) const {
@@ -891,17 +824,17 @@ recursion:
 }
 
 inline RegionListIterator ControlFlowForwardIteratorGetter::Get( Node* region ) const {
-  auto cf = region->AsControlFlow();
+  auto cf = region->As<ControlFlow>();
   return cf->forward_edge()->GetForwardIterator();
 }
 
 inline RegionListIterator ControlFlowBackwardIteratorGetter::Get( Node* region ) const {
-  auto cf = region->AsControlFlow();
+  auto cf = region->As<ControlFlow>();
   return cf->backward_edge()->GetForwardIterator();
 }
 
 inline OperandIterator ExprIteratorGetter::Get( Node* node ) const {
-  auto expr = node->AsExpr();
+  auto expr = node->As<Expr>();
   return expr->operand_list()->GetForwardIterator();
 }
 

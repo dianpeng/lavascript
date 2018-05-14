@@ -52,7 +52,7 @@ LAVA_CBASE_HIR_DEFINE(TestType,public Test) {
 LAVA_CBASE_HIR_DEFINE(Guard,public Expr) {
  public:
   inline static Guard* New( Graph* , Test* , Checkpoint* );
-  Test*             test() const { return operand_list()->First()->AsTest(); }
+  Test*             test() const { return operand_list()->First()->As<Test>(); }
   Expr*           object() const { return test()->object(); }
   Checkpoint* checkpoint() const { return operand_list()->Last()->AsCheckpoint(); }
 

@@ -6,35 +6,36 @@ namespace lavascript {
 namespace cbase      {
 namespace hir        {
 
-LAVA_CBASE_HIR_DEFINE(Region,public ControlFlow) {
+LAVA_CBASE_HIR_DEFINE(Merge,public ControlFlow) {
+ public:
+  Merge( IRType type , std::uint32_t id , Graph* graph ):
+    ControlFlow(type,id,graph) {}
+};
+
+LAVA_CBASE_HIR_DEFINE(Region,public Merge) {
  public:
   inline static Region* New( Graph* );
   inline static Region* New( Graph* , ControlFlow* );
-  Region( Graph* graph , std::uint32_t id ): ControlFlow(HIR_REGION,id,graph) {}
+  Region( Graph* graph , std::uint32_t id ): Merge(HIR_REGION,id,graph) {}
  private:
   LAVA_DISALLOW_COPY_AND_ASSIGN(Region)
 };
 
 // Fail node represents abnormal way to abort the execution. The most common reason
 // is because we failed at type guard or obviouse code bug.
-LAVA_CBASE_HIR_DEFINE(Fail,public ControlFlow) {
+LAVA_CBASE_HIR_DEFINE(Fail,public Merge) {
  public:
   inline static Fail* New( Graph* );
-  Fail( Graph* graph , std::uint32_t id ): ControlFlow(HIR_FAIL,id,graph) {}
+  Fail( Graph* graph , std::uint32_t id ): Merge(HIR_FAIL,id,graph) {}
  private:
   LAVA_DISALLOW_COPY_AND_ASSIGN(Fail)
 };
 
-LAVA_CBASE_HIR_DEFINE(Success,public ControlFlow) {
+LAVA_CBASE_HIR_DEFINE(Success,public Merge) {
  public:
   inline static Success* New( Graph* );
-
   Expr* return_value() const { return operand_list()->First(); }
-
-  Success( Graph* graph , std::uint32_t id ):
-    ControlFlow  (HIR_SUCCESS,id,graph)
-  {}
-
+  Success( Graph* graph , std::uint32_t id ): Merge(HIR_SUCCESS,id,graph) {}
  private:
   LAVA_DISALLOW_COPY_AND_ASSIGN(Success)
 };

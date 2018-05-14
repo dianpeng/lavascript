@@ -28,7 +28,7 @@ LAVA_CBASE_HIR_DEFINE(CondTrap,public ControlFlow) {
  public:
   inline static CondTrap* New( Graph* , Test* , Checkpoint* , ControlFlow* );
 
-  Test*             test() const { return operand_list()->First()->AsTest();      }
+  Test*             test() const { return operand_list()->First()->As<Test>();      }
   Checkpoint* checkpoint() const { return operand_list()->Last()->AsCheckpoint(); }
 
   CondTrap( Graph* graph , std::uint32_t id , Test* test , Checkpoint* cp , ControlFlow* region ):

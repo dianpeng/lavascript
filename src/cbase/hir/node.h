@@ -172,29 +172,9 @@ class Node : public zone::ZoneObject {
 #undef __ // __
 
   bool                       IsString     () const { return IsSString() || IsLString(); }
-  inline bool                IsControlFlow() const;
-  inline bool                IsExpr       () const;
-  inline bool                IsReadEffect () const;
-  inline bool                IsWriteEffect() const;
-  inline bool                IsMemoryNode () const;
-  inline bool                IsTestNode   () const;
+  inline const zone::String& AsZoneString () const;
   inline bool                IsLeaf       () const;
   bool                       IsNoneLeaf   () const { return !IsLeaf(); }
-
-  inline Expr*               AsExpr       ();
-  inline const Expr*         AsExpr       () const;
-  inline ControlFlow*        AsControlFlow();
-  inline const ControlFlow*  AsControlFlow() const;
-  inline const zone::String& AsZoneString () const;
-  inline WriteEffect*        AsWriteEffect();
-  inline const WriteEffect*  AsWriteEffect() const;
-  inline ReadEffect*         AsReadEffect ();
-  inline const ReadEffect*   AsReadEffect () const;
-  inline MemoryNode*         AsMemoryNode ();
-  inline const MemoryNode*   AsMemoryNode () const;
-  inline Test*               AsTest       ();
-  inline const Test*         AsTest       () const;
-
  protected:
   Node( IRType type , std::uint32_t id , Graph* graph ):type_(type),id_(id),graph_(graph) {}
  private:

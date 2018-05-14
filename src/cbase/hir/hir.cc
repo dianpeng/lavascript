@@ -23,10 +23,10 @@ void Expr::Replace( Expr* another ) {
   another->ref_list_.Merge(&ref_list_);
   // 2. modify *this* if the node is a pin
   if(IsStmt()) {
-    auto region = pin_.region;
-    region->RemoveStmt(pin_);
+    auto region = stmt_.region;
+    region->RemoveStmt(stmt_);
     region->AddStmt(another);
-    pin_.region = NULL;
+    stmt_.region = NULL;
   }
   // 3. clear all the operands since this node is dead
   ClearOperand();
@@ -208,6 +208,12 @@ void ControlFlow::Replace( ControlFlow* node ) {
   ClearOperand();
 }
 
+void ControlFlow::RemoveBackwardEdgeOnly( ControlFlow* node ) {
+  auto itr = backward_edge_.Find(node);
+  lava_verify(itr.HasNext());
+  backward_edge_.Remove(itr);
+}
+
 void ControlFlow::RemoveBackwardEdge( ControlFlow* node ) {
   auto itr = backward_edge_.Find(node);
   lava_verify(itr.HasNext());
@@ -223,6 +229,20 @@ void ControlFlow::RemoveBackwardEdge( std::size_t index ) {
   return RemoveBackwardEdge(backward_edge()->Index(index));
 }
 
+void ControlFlow::ClearBackwardEdge() {
+  for( auto itr = backward_edge_.GetForwardIterator(); itr.HasNext(); itr.Move() ) {
+    // remove it from its linked node's forward edge
+    itr.value()->RemoveForwardEdgeOnly(this);
+  }
+  backward_edge_.Clear();
+}
+
+void ControlFlow::RemoveForwardEdgeOnly( ControlFlow* node ) {
+  auto itr = forward_edge_.Find(node);
+  lava_verify(itr.HasNext());
+  forward_edge_.Remove(itr);
+}
+
 void ControlFlow::RemoveForwardEdge( ControlFlow* node ) {
   auto itr = forward_edge_.Find(node);
   lava_verify(itr.HasNext());
@@ -236,6 +256,13 @@ void ControlFlow::RemoveForwardEdge( ControlFlow* node ) {
 
 void ControlFlow::RemoveForwardEdge( std::size_t index ) {
   return RemoveForwardEdge(forward_edge()->Index(index));
+}
+
+void ControlFlow::ClearForwardEdge() {
+  for( auto itr = forward_edge_.GetForwardIterator(); itr.HasNext(); itr.Move() ) {
+    itr.value()->RemoveBackwardEdgeOnly(this);
+  }
+  forward_edge_.Clear();
 }
 
 void ControlFlow::MoveStmt( ControlFlow* cf ) {

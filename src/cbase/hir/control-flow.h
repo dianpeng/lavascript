@@ -27,9 +27,10 @@ LAVA_CBASE_HIR_DEFINE(ControlFlow,public Node) {
     AddBackwardEdgeImpl(edge);
     edge->AddForwardEdgeImpl(this);
   }
+  void RemoveBackwardEdgeOnly( ControlFlow* );
   void RemoveBackwardEdge( ControlFlow* );
   void RemoveBackwardEdge( std::size_t index );
-  void ClearBackwardEdge () { backward_edge_.Clear(); }
+  void ClearBackwardEdge ();
 
   // shortcuts for backward_edge
   ControlFlow* In( std::size_t index ) const { return backward_edge()->Index(index); }
@@ -47,9 +48,10 @@ LAVA_CBASE_HIR_DEFINE(ControlFlow,public Node) {
     AddForwardEdgeImpl(edge);
     edge->AddBackwardEdgeImpl(this);
   }
+  void RemoveForwardEdgeOnly( ControlFlow* );
   void RemoveForwardEdge( ControlFlow* edge );
   void RemoveForwardEdge( std::size_t index );
-  void ClearForwardEdge () { forward_edge_.Clear(); }
+  void ClearForwardEdge ();
 
   // shortcuts for forward_edge
   ControlFlow* Out( std::size_t index ) const { return forward_edge()->Index(index); }

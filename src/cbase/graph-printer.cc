@@ -20,7 +20,7 @@ class DotPrinter {
   void RenderExprOperand( const std::string& , Expr* );
   void RenderExprBrief  ( const std::string& , Expr* );
   void RenderExprEffect ( const std::string& , Expr* );
-  void RenderControlFlow( ControlFlow* );
+  void RenderEdge       ( ControlFlow* , ControlFlow*);
   void RenderCheckpoint ( const std::string& , Checkpoint* );
 
   std::stringstream& Indent( int level );
@@ -44,8 +44,8 @@ std::string DotPrinter::Visualize( const Graph& graph , const GraphPrinter::Opti
 
   // 2. edge iterator
   output_ << "digraph IR {\n";
-  lava_foreach( auto k , ControlFlowRPOIterator(zone(),graph) ) {
-    RenderControlFlow(k);
+  lava_foreach( auto &k , ControlFlowEdgeIterator(zone(),graph) ) {
+    RenderEdge(k.from,k.to);
   }
   output_ << "}\n";
 
@@ -118,14 +118,18 @@ void DotPrinter::RenderControlFlow( const std::string& region_name , ControlFlow
   }
 }
 
-void DotPrinter::RenderControlFlow( ControlFlow* cf ) {
-  auto from_name = GetNodeName(cf);
-  auto count = 0;
-  lava_foreach( auto k , cf->backward_edge()->GetForwardIterator() ) {
-    Indent(1) << from_name << " -> " << GetNodeName(k) << "[color=blue style=bold label=" << count << "]\n";
-    ++count;
+void DotPrinter::RenderEdge( ControlFlow* from , ControlFlow* to ) {
+  auto from_name = GetNodeName(from);
+  auto to_name   = GetNodeName(to);
+  if(!existed_[from->id()]) {
+    existed_[from->id()] = true;
+    RenderControlFlow(from_name,from);
   }
-  RenderControlFlow(from_name,cf);
+  if(!existed_[to->id()]) {
+    existed_[to->id()] = true;
+    RenderControlFlow(to_name  ,to  );
+  }
+  Indent(1) << from_name << " -> " << to_name << "[color=blue style=bold]\n";
 }
 
 void DotPrinter::RenderExprOperand( const std::string& name , Expr* node ) {

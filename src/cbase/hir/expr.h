@@ -13,9 +13,9 @@ namespace hir        {
 //   goal is to expose def-use and use-def chain into different types
 LAVA_CBASE_HIR_DEFINE(Expr,public Node) {
  public:
-  bool  IsStmt            ()                   const { return pin_.HasRef(); }
-  void  set_stmt_edge     ( const StmtEdge& st )      { pin_= st; }
-  const StmtEdge& stmt_edge()                   const { return pin_; }
+  bool  IsStmt            ()                   const  { return stmt_.HasRef(); }
+  void  set_stmt_edge     ( const StmtEdge& st )      { stmt_= st; }
+  const StmtEdge& stmt_edge()                   const { return stmt_; }
  public:
   // Replace *this* node with the input expression node. This replace
   // will modify all reference to |this| with reference to input node.
@@ -86,12 +86,12 @@ LAVA_CBASE_HIR_DEFINE(Expr,public Node) {
     Node            (type,id,graph),
     operand_list_   (),
     ref_list_       (),
-    pin_            ()
+    stmt_            ()
   {}
  private:
   OperandList        operand_list_;
   OperandRefList     ref_list_;
-  StmtEdge           pin_;
+  StmtEdge           stmt_;
 };
 
 } // namespace hir

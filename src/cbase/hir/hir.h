@@ -3,7 +3,7 @@
 // helper
 #include "src/zone/stl.h"
 
-// base
+// always at the top, base of everybody
 #include "node.h"
 
 // expression node

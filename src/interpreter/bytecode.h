@@ -219,10 +219,10 @@ class BytecodeUsage {
   __(D,IDXGETI,idxgeti,OUTPUT, INPUT  , IMM8   , UNUSED, true) \
   __(E,UVGET  ,uvget , OUTPUT, IMM8   , UNUSED , UNUSED,false) \
   __(E,UVSET  ,uvset , IMM8  , INPUT  , UNUSED , UNUSED,false) \
-  __(E,GGET   ,gget  , OUTPUT, SREF   , UNUSED , UNUSED,false) \
-  __(E,GGETSSO,ggetsso,OUTPUT, SSOREF , UNUSED , UNUSED,false) \
-  __(E,GSET   ,gset  , SREF  , INPUT  , UNUSED , UNUSED,false) \
-  __(E,GSETSSO,gsetsso,SSOREF, INPUT  , UNUSED , UNUSED,false) \
+  __(B,GGET   ,gget  , OUTPUT, SREF   , UNUSED , UNUSED,false) \
+  __(B,GGETSSO,ggetsso,OUTPUT, SSOREF , UNUSED , UNUSED,false) \
+  __(C,GSET   ,gset  , SREF  , INPUT  , UNUSED , UNUSED,false) \
+  __(C,GSETSSO,gsetsso,SSOREF, INPUT  , UNUSED , UNUSED,false) \
   /* subroutine */ \
   __(D,CALL,   call  , INPUT , BASE   , IMM8   , UNUSED,true ) \
   __(D,TCALL, tcall  , INPUT , BASE   , IMM8   , UNUSED,true ) \

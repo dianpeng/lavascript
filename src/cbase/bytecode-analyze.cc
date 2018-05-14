@@ -97,8 +97,7 @@ void BytecodeAnalyze::Kill( std::uint8_t reg ) {
 // build the liveness against basic block
 void BytecodeAnalyze::BuildBasicBlock( BytecodeIterator* itr ) {
   BasicBlockScope scope(this,itr->pc());
-  while( itr->HasNext() && BuildBytecode(itr) )
-    ;
+  while( itr->HasNext() ) BuildBytecode(itr);
   current_bb()->end = itr->pc();
 }
 
@@ -229,8 +228,9 @@ void BytecodeAnalyze::BuildLoop( BytecodeIterator* itr ) {
       if(itr->opcode() == BC_FEND1 || itr->opcode() == BC_FEND2 ||
                                       itr->opcode() == BC_FEEND)
         break;
-      else
-        if(!BuildBytecode(itr)) break;
+      else {
+        BuildBytecode(itr);
+      }
     }
 
     current_bb()->end   = itr->pc();
@@ -267,7 +267,7 @@ void BytecodeAnalyze::BuildForeverLoop( BytecodeIterator* itr ) {
       if(itr->opcode() == BC_FEVREND)
         break;
       else {
-        if(!BuildBytecode(itr)) break;
+        BuildBytecode(itr);
       }
     }
     lava_debug(NORMAL,lava_verify(itr->opcode() == BC_FEVREND););
@@ -278,8 +278,7 @@ void BytecodeAnalyze::BuildForeverLoop( BytecodeIterator* itr ) {
   itr->Move(); // skip the *last* FEVREND
 }
 
-bool BytecodeAnalyze::BuildBytecode( BytecodeIterator* itr ) {
-  bool ret = true;
+void BytecodeAnalyze::BuildBytecode( BytecodeIterator* itr ) {
   const BytecodeUsage& bu = itr->usage();
   for( int i = 0 ; i < BytecodeUsage::kMaxBytecodeArgumentSize ; ++i ) {
     if(bu.GetArgument(i) == BytecodeUsage::OUTPUT) {
@@ -309,16 +308,16 @@ bool BytecodeAnalyze::BuildBytecode( BytecodeIterator* itr ) {
     // global variables
     case BC_GSET: case BC_GSETSSO:
       if(current_loop()) {
-        std::uint8_t a1;
-        std::uint16_t a2;
+        std::uint16_t a1;
+        std::uint8_t a2;
         itr->GetOperand(&a1,&a2);
         Str key;
         if(itr->opcode() == BC_GSET) {
-          auto s = proto_->GetString(a2);
+          auto s = proto_->GetString(a1);
           key.data   = s->data();
           key.length = s->size();
         } else {
-          auto s = proto_->GetSSO   (a2);
+          auto s = proto_->GetSSO   (a1);
           key.data   = s->sso->data();
           key.length = s->sso->size();
         }
@@ -335,14 +334,11 @@ bool BytecodeAnalyze::BuildBytecode( BytecodeIterator* itr ) {
     // bytecode that gonna terminate current basic block
     case BC_CONT: case BC_BRK: case BC_RET: case BC_RETNULL:
       itr->Move();
-      ret = false;
       break;
     default:
       itr->Move();
       break;
   }
-
-  return ret;
 }
 
 void BytecodeAnalyze::Dump( DumpWriter* writer ) const {

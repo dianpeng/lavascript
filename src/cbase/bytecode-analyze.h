@@ -122,14 +122,8 @@ class BytecodeAnalyze {
   void Dump( DumpWriter* ) const;
 
  private:
-  // build the liveness for a single bytecode. If the bytecode is used to
-  // terminate the basic block then this function returns false otherwise
-  // it returns true. The bytecode that gonna terminate the basic block is
-  // JMP/CONT/BRK/RET/RETNULL , but we shold never see a JMP inside of this
-  // function due to the fact BuildIf will take care of it
-  // Notes: other jump will *start* a new basic block , for BuildBytecode it
-  // will return true for these types of bytecode.
-  bool BuildBytecode    ( interpreter::BytecodeIterator* );
+  // build the liveness for a single bytecode.
+  void BuildBytecode    ( interpreter::BytecodeIterator* );
   void BuildBasicBlock  ( interpreter::BytecodeIterator* );
   bool BuildIfBlock     ( interpreter::BytecodeIterator* , const std::uint32_t* ,
                                                            const std::uint32_t** );

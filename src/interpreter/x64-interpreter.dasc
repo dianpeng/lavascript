@@ -3726,7 +3726,7 @@ void GenBytecode( BuildContext* bctx, Bytecode bc ) {
       |.endmacro
 
       |=>bc:
-      |  instr_B
+      |  instr_C
 
       |  mov ARG3F, qword [RUNTIME+RuntimeLayout::kGlobalOffset]
       |  mov ARG3F, qword [ARG3F]

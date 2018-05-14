@@ -305,8 +305,8 @@ class GraphBuilder {
   Expr* NewIGet( Expr* , Expr* , const BytecodeLocation& );
 
  private: // Global variables
-  void NewGGet( std::uint8_t , std::uint8_t , bool sso );
-  void NewGSet( std::uint8_t , std::uint8_t , bool sso );
+  void NewGGet( std::uint8_t , std::uint16_t , bool sso );
+  void NewGSet( std::uint16_t , std::uint8_t , bool sso );
 
  private: // Upvalue
   void NewUGet( std::uint8_t , std::uint8_t );
@@ -349,6 +349,9 @@ class GraphBuilder {
   void GeneratePhi( ValueStack* , const ValueStack& , const ValueStack& , std::size_t , std::size_t , ControlFlow* );
 
   StopReason BuildIf     ( BytecodeIterator* itr );
+  // This function is invoked when the condition's boolean value is cleared, the we directly
+  // do DCE on the fly without generating those branch construct at all
+  StopReason FoldIf      ( BytecodeIterator* itr );
   StopReason BuildIfBlock( BytecodeIterator* , const std::uint32_t* );
   // Build logical IR graph
   StopReason BuildLogic  ( BytecodeIterator* itr );
@@ -1259,13 +1262,13 @@ Expr* GraphBuilder::NewIGet( Expr* object, Expr* index , const BytecodeLocation&
 // ========================================================================
 // Global Variable
 // ========================================================================
-void GraphBuilder::NewGGet( std::uint8_t a1 , std::uint8_t a2 , bool sso ) {
+void GraphBuilder::NewGGet( std::uint8_t a1 , std::uint16_t a2 , bool sso ) {
   auto str  = NewStr(a2,sso);
   auto node = env()->GetGlobal( str.data , str.length , [=]() { return sso ? NewSSO(a2) : NewString(a2); } );
   StackSet(a1,node);
 }
 
-void GraphBuilder::NewGSet( std::uint8_t a1 , std::uint8_t a2 , bool sso ) {
+void GraphBuilder::NewGSet( std::uint16_t a1 , std::uint8_t a2 , bool sso ) {
   auto str  = NewStr(a1,sso);
   env()->SetGlobal( str.data , str.length , [=]() { return sso ? NewSSO(a1) : NewString(a1); } , StackGet(a2) );
 }

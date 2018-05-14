@@ -8,7 +8,7 @@ namespace hir        {
 
 // Phi node
 // A Phi node is a control flow related merged node. It can accept *at most* 2 input nodes.
-class Phi : public Expr {
+LAVA_CBASE_HIR_DEFINE(Phi,public Expr) {
  public:
   inline static Phi* New( Graph* );
   inline static Phi* New( Graph* , Expr* , Expr* );
@@ -46,7 +46,7 @@ class Phi : public Expr {
   LAVA_DISALLOW_COPY_AND_ASSIGN(Phi)
 };
 
-class Projection : public Expr {
+LAVA_CBASE_HIR_DEFINE(Projection,public Expr) {
  public:
   inline static Projection* New( Graph* , Expr* , std::uint32_t index );
   Expr* operand() const { return operand_list()->First(); }

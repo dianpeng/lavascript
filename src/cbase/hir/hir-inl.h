@@ -68,7 +68,7 @@ inline const T* Node::As() const {
 }
 
 template< typename T >
-inline bool Node::Is() const { return MapIRClassToIRType<T>::Test(type()); }
+inline bool Node::Is() const { return HIRTypePredicate<T>::Test(type()); }
 
 inline bool Node::IsLeaf() const {
 #define __(A,B,C,D,...) case HIR_##B: return D;

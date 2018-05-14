@@ -9,7 +9,7 @@ namespace hir        {
 // -------------------------------------------------------------------------
 // Iterator node (side effect)
 // -------------------------------------------------------------------------
-class ItrNew : public Expr {
+LAVA_CBASE_HIR_DEFINE(ItrNew,public Expr) {
  public:
   inline static ItrNew* New( Graph* , Expr* );
   Expr* operand() const { return operand_list()->First(); }
@@ -22,7 +22,7 @@ class ItrNew : public Expr {
   LAVA_DISALLOW_COPY_AND_ASSIGN(ItrNew)
 };
 
-class ItrNext : public Expr {
+LAVA_CBASE_HIR_DEFINE(ItrNext,public Expr) {
  public:
   inline static ItrNext* New( Graph* , Expr* );
   Expr* operand() const { return operand_list()->First(); }
@@ -35,7 +35,7 @@ class ItrNext : public Expr {
   LAVA_DISALLOW_COPY_AND_ASSIGN(ItrNext)
 };
 
-class ItrTest : public Expr {
+LAVA_CBASE_HIR_DEFINE(ItrTest,public Expr) {
  public:
   inline static ItrTest* New( Graph* , Expr* );
   Expr* operand() const { return operand_list()->First(); }
@@ -56,7 +56,7 @@ class ItrTest : public Expr {
   LAVA_DISALLOW_COPY_AND_ASSIGN(ItrTest)
 };
 
-class ItrDeref : public Expr {
+LAVA_CBASE_HIR_DEFINE(ItrDeref,public Expr) {
  public:
   enum {
     PROJECTION_KEY = 0,

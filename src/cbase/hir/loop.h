@@ -12,7 +12,7 @@ namespace hir        {
 // Loop related blocks
 //
 // --------------------------------------------------------------------------
-class LoopHeader : public ControlFlow {
+LAVA_CBASE_HIR_DEFINE(LoopHeader,public ControlFlow) {
  public:
   inline static LoopHeader* New( Graph* , ControlFlow* );
 
@@ -33,7 +33,7 @@ class LoopHeader : public ControlFlow {
   LAVA_DISALLOW_COPY_AND_ASSIGN(LoopHeader);
 };
 
-class Loop : public ControlFlow {
+LAVA_CBASE_HIR_DEFINE(Loop,public ControlFlow) {
  public:
   inline static Loop* New( Graph* );
 
@@ -45,7 +45,7 @@ class Loop : public ControlFlow {
   LAVA_DISALLOW_COPY_AND_ASSIGN(Loop)
 };
 
-class LoopExit : public ControlFlow {
+LAVA_CBASE_HIR_DEFINE(LoopExit,public ControlFlow) {
  public:
   inline static LoopExit* New( Graph* , Expr* );
   Expr* condition() const { return operand_list()->First(); }

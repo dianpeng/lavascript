@@ -13,6 +13,9 @@ CXX               = g++
 #SANITIZER         =-fsanitize=address,undefined
 RUNTIME_DEBUG     :=-D_FORTIFY_SOURCE=2 -D_GLIBCXX_ASSERTIONS
 LUA               =luajit
+TOOL              =$(PWD)/tool/
+CBASE_HIR_DIR     = src/cbase/hir
+CBASE_HIR_MAP_GEN = $(CBASE_HIR_DIR)/node-type-map.generate.h
 
 # All interesting CXX flags needed to compile lavascript
 ## c++17 support
@@ -44,14 +47,22 @@ build_dep:
 # Artifacts
 #
 # ------------------------------------------------------------------------------
-INTERP_OBJECT:=src/interpreter/x64-interpreter.dasc.pp.o
-INTERP_SOURCE:=src/interpreter/x64-interpreter.dasc.pp.cc
+INTERP_OBJECT :=src/interpreter/x64-interpreter.dasc.pp.o
+INTERP_SOURCE :=src/interpreter/x64-interpreter.dasc.pp.cc
+
+HIR_MAP_SOURCE:=src/cbase/hir/node-type-map.generate.h
 
 $(INTERP_SOURCE): src/interpreter/x64-interpreter.dasc
 	./dynasm_pp.sh src/interpreter/x64-interpreter.dasc 1> src/interpreter/x64-interpreter.dasc.pp.cc
 
 $(INTERP_OBJECT): $(INTERP_SOURCE)
 	$(CXX) $(CXXFLAGS) -c src/interpreter/x64-interpreter.dasc.pp.cc -o $(INTERP_OBJECT) $(LDFLAGS)
+
+$(HIR_MAP_SOURCE):
+	$(TOOL)/hir-preprocessor.py --dir $(CBASE_HIR_DIR) --output $(CBASE_HIR_MAP_GEN)
+
+artifact : $(INTERP_OBJECT) $(HIR_MAP_SOURCE)
+.PHONY: artifact
 
 # -------------------------------------------------------------------------------
 #
@@ -79,7 +90,7 @@ src/%.o : src/%.cc src/%.h
 #  Testing Library
 #
 # -------------------------------------------------------------------------------
-unittest/%.t : unittest/%.cc  $(INTERP_OBJECT) $(OBJECT) $(INCLUDE) $(SOURCE)
+unittest/%.t : unittest/%.cc  artifact $(OBJECT) $(INCLUDE) $(SOURCE)
 	$(CXX) $(OBJECT) $(CXXFLAGS) -o $@ $< $(LDFLAGS)
 
 test: CXXFLAGS += $(TEST_FLAGS)
@@ -95,12 +106,13 @@ test: build_dep $(TESTOBJECT)
 release: CXXFLAGS += $(RELEASE_FLAGS)
 release: LDFLAGS  += $(RELEASE_LIBS)
 
-release: build_dep $(OBJECT) $(INTERP_OBJECT)
+release: build_dep artifact $(OBJECT)
 	ar rcs liblavascript.a $(OBJECT) $(INTERP_OBJECT)
 
 .PHONY:clean
 clean:
 	find src/ -type f -name *.o -exec rm {} \;
 	rm -rf $(INTERP_SOURCE)
+	rm -rf $(CBASE_HIR_MAP_GEN)
 	rm -rf $(TESTOBJECT)
 	rm -rf liblavascript.a

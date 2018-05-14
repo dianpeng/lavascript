@@ -16,7 +16,7 @@ namespace hir        {
 // 2) Low level memory operation. These operations requires the type of the
 //    node to be object or list. These operations will generate lookup opereation
 //    and dereference/reference node.
-class PGet : public HardBarrier {
+LAVA_CBASE_HIR_DEFINE(PGet,public HardBarrier) {
  public:
   inline static PGet* New( Graph* , Expr* , Expr* );
 
@@ -41,7 +41,7 @@ class PGet : public HardBarrier {
   LAVA_DISALLOW_COPY_AND_ASSIGN(PGet)
 };
 
-class PSet : public HardBarrier {
+LAVA_CBASE_HIR_DEFINE(PSet,public HardBarrier) {
  public:
   inline static PSet* New( Graph* , Expr* , Expr* , Expr* );
 
@@ -70,7 +70,7 @@ class PSet : public HardBarrier {
   LAVA_DISALLOW_COPY_AND_ASSIGN(PSet)
 };
 
-class IGet : public HardBarrier {
+LAVA_CBASE_HIR_DEFINE(IGet,public HardBarrier) {
  public:
   inline static IGet* New( Graph* , Expr* , Expr* );
 
@@ -96,7 +96,7 @@ class IGet : public HardBarrier {
   LAVA_DISALLOW_COPY_AND_ASSIGN(IGet)
 };
 
-class ISet : public HardBarrier {
+LAVA_CBASE_HIR_DEFINE(ISet,public HardBarrier) {
  public:
   inline static ISet* New( Graph* , Expr* , Expr* , Expr* );
 
@@ -147,7 +147,7 @@ class ISet : public HardBarrier {
 //    ListRefSet   --> set a reference returned by   ListIndex/ListInsert
 //    ListRefGet   --> get a value from reference of ListIndex/ListInsert
 
-class ObjectFind : public MemoryRef {
+LAVA_CBASE_HIR_DEFINE(ObjectFind,public MemoryRef) {
  public:
   static inline ObjectFind* New( Graph* , Expr* , Expr* , Checkpoint* );
 
@@ -167,7 +167,7 @@ class ObjectFind : public MemoryRef {
   LAVA_DISALLOW_COPY_AND_ASSIGN(ObjectFind)
 };
 
-class ObjectUpdate : public SoftBarrier {
+LAVA_CBASE_HIR_DEFINE(ObjectUpdate,public SoftBarrier) {
  public:
   static inline ObjectUpdate* New( Graph* , Expr* , Expr* );
 
@@ -184,7 +184,7 @@ class ObjectUpdate : public SoftBarrier {
   LAVA_DISALLOW_COPY_AND_ASSIGN(ObjectUpdate)
 };
 
-class ObjectInsert : public SoftBarrier {
+LAVA_CBASE_HIR_DEFINE(ObjectInsert,public SoftBarrier) {
  public:
   static inline ObjectInsert* New( Graph* , Expr* , Expr*  );
 
@@ -201,7 +201,7 @@ class ObjectInsert : public SoftBarrier {
   LAVA_DISALLOW_COPY_AND_ASSIGN(ObjectInsert)
 };
 
-class ListIndex : public MemoryRef {
+LAVA_CBASE_HIR_DEFINE(ListIndex,public MemoryRef) {
  public:
   static inline ListIndex* New( Graph* , Expr* , Expr* );
 
@@ -219,7 +219,7 @@ class ListIndex : public MemoryRef {
   LAVA_DISALLOW_COPY_AND_ASSIGN(ListIndex)
 };
 
-class ListInsert: public SoftBarrier {
+LAVA_CBASE_HIR_DEFINE(ListInsert,public SoftBarrier) {
  public:
   static inline ListInsert* New( Graph* , Expr* , Expr* , Checkpoint* );
 
@@ -239,7 +239,7 @@ class ListInsert: public SoftBarrier {
   LAVA_DISALLOW_COPY_AND_ASSIGN(ListInsert)
 };
 
-class ObjectRefGet : public ReadEffect {
+LAVA_CBASE_HIR_DEFINE(ObjectRefGet,public ReadEffect) {
  public:
   static ObjectRefGet* New( Graph* , Expr* );
 
@@ -257,7 +257,7 @@ class ObjectRefGet : public ReadEffect {
   LAVA_DISALLOW_COPY_AND_ASSIGN(ObjectRefGet)
 };
 
-class ObjectRefSet : public ReadEffect {
+LAVA_CBASE_HIR_DEFINE(ObjectRefSet,public ReadEffect) {
  public:
   static ObjectRefSet* New( Graph* , Expr* , Expr* );
 
@@ -277,7 +277,7 @@ class ObjectRefSet : public ReadEffect {
   LAVA_DISALLOW_COPY_AND_ASSIGN(ObjectRefSet)
 };
 
-class ListRefGet : public ReadEffect {
+LAVA_CBASE_HIR_DEFINE(ListRefGet,public ReadEffect) {
  public:
   static ListRefGet* New( Graph* , Expr* );
 
@@ -294,7 +294,7 @@ class ListRefGet : public ReadEffect {
   LAVA_DISALLOW_COPY_AND_ASSIGN(ListRefGet)
 };
 
-class ListRefSet : public ReadEffect {
+LAVA_CBASE_HIR_DEFINE(ListRefSet,public ReadEffect) {
  public:
   static ListRefSet* New( Graph* , Expr* , Expr* );
 

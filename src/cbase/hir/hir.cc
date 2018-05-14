@@ -139,9 +139,9 @@ ReadEffectListIterator WriteEffect::AddReadEffect( ReadEffect* effect ) {
   return read_effect_.PushBack(zone(),effect);
 }
 
-class EffectPhi::EffectPhiDependencyIterator {
+class EffectPhiBase::EffectPhiBaseDependencyIterator {
  public:
-  EffectPhiDependencyIterator( const EffectPhi* node ):
+  EffectPhiBaseDependencyIterator( const EffectPhiBase* node ):
     itr1_(node->operand_list()->GetForwardIterator()),
     itr2_()
   {
@@ -181,11 +181,11 @@ class EffectPhi::EffectPhiDependencyIterator {
   mutable ReadEffectListIterator itr2_;
 };
 
-Expr::DependencyIterator EffectPhi::GetDependencyIterator() const {
-	return DependencyIterator(EffectPhiDependencyIterator(this));
+Expr::DependencyIterator EffectPhiBase::GetDependencyIterator() const {
+	return DependencyIterator(EffectPhiBaseDependencyIterator(this));
 }
 
-std::size_t EffectPhi::dependency_size() const {
+std::size_t EffectPhiBase::dependency_size() const {
 	std::size_t ret = 0;
 	lava_foreach( auto k , operand_list()->GetForwardIterator() ) {
 		auto we = k->AsWriteEffect();

@@ -16,7 +16,7 @@ namespace hir        {
 // the binary node is even a side effect node and it will generate
 // a checkpoint/framestate.
 // ----------------------------------------------------------------
-class Unary : public Expr {
+LAVA_CBASE_HIR_DEFINE(Unary,public Expr) {
  public:
   enum Operator { MINUS, NOT };
   inline static Unary* New( Graph* , Expr* , Operator );
@@ -78,7 +78,7 @@ class BinaryNode {
 
 // DynamicBinary represents a dynamic dispatched binary operation node. This node generates
 // a effect barrier and also generates a checkpoint because of the side effect
-class DynamicBinary : public HardBarrier , public BinaryNode {
+LAVA_CBASE_HIR_DEFINE(DynamicBinary,public HardBarrier,public BinaryNode) {
  public:
   using Operator = Binary::Operator;
 
@@ -98,7 +98,7 @@ class DynamicBinary : public HardBarrier , public BinaryNode {
   Binary::Operator op_;
 };
 
-class Arithmetic : public DynamicBinary {
+LAVA_CBASE_HIR_DEFINE(Arithmetic,public DynamicBinary) {
  public:
   static inline Arithmetic* New( Graph* , Expr* , Expr* , Binary::Operator );
 
@@ -109,7 +109,7 @@ class Arithmetic : public DynamicBinary {
   }
 };
 
-class Compare: public DynamicBinary {
+LAVA_CBASE_HIR_DEFINE(Compare,public DynamicBinary) {
  public:
   static inline Compare* New( Graph* , Expr* , Expr* , Binary::Operator );
 
@@ -122,7 +122,7 @@ class Compare: public DynamicBinary {
 
 // This is a binary node but it is not a dynamic dispatched node so not inherit from the
 // the dynamic binary node. logical node is a normal node which will not do dynamic dispatch
-class Logical : public Expr , public BinaryNode {
+LAVA_CBASE_HIR_DEFINE(Logical,public Expr,public BinaryNode) {
  public:
   using Operator = Binary::Operator;
 
@@ -144,7 +144,7 @@ class Logical : public Expr , public BinaryNode {
   Binary::Operator op_;
 };
 
-class Ternary: public Expr {
+LAVA_CBASE_HIR_DEFINE(Ternary,public Expr) {
  public:
   inline static Ternary* New( Graph* , Expr* , Expr* , Expr* );
   Ternary( Graph* graph , std::uint32_t id , Expr* cond , Expr* lhs , Expr* rhs ):
@@ -165,7 +165,7 @@ class Ternary: public Expr {
 /* -------------------------------------------------------
  * Low level operations
  * ------------------------------------------------------*/
-class Float64Negate  : public Expr {
+LAVA_CBASE_HIR_DEFINE(Float64Negate,public Expr) {
  public:
   inline static Float64Negate* New( Graph* , Expr* );
   Expr* operand() const { return operand_list()->First(); }
@@ -191,7 +191,7 @@ class Float64Negate  : public Expr {
 
 // Specialized logic operator, its lhs is type fixed by boolean. ie, we are
 // sure its lhs operand outputs boolean in an unboxed format.
-class BooleanNot: public Expr {
+LAVA_CBASE_HIR_DEFINE(BooleanNot,public Expr) {
  public:
   inline static BooleanNot* New( Graph* , Expr* );
   Expr* operand() const { return operand_list()->First(); }
@@ -219,7 +219,7 @@ class BooleanNot: public Expr {
 // SpecializeBinary represents all binary operation that is specialized
 // with type information builtin. These nodes take into unboxed value and
 // generate unboxed value
-class SpecializeBinary : public Expr , public BinaryNode {
+LAVA_CBASE_HIR_DEFINE(SpecializeBinary,public Expr,public BinaryNode) {
  public:
   using Operator = Binary::Operator;
   SpecializeBinary( IRType type , std::uint32_t id , Graph* graph , Expr* lhs ,
@@ -242,7 +242,7 @@ class SpecializeBinary : public Expr , public BinaryNode {
   Binary::Operator op_;
 };
 
-class Float64Arithmetic : public SpecializeBinary {
+LAVA_CBASE_HIR_DEFINE(Float64Arithmetic,public SpecializeBinary) {
  public:
   using Operator = Binary::Operator;
 
@@ -258,7 +258,7 @@ class Float64Arithmetic : public SpecializeBinary {
   LAVA_DISALLOW_COPY_AND_ASSIGN(Float64Arithmetic)
 };
 
-class Float64Bitwise: public SpecializeBinary {
+LAVA_CBASE_HIR_DEFINE(Float64Bitwise,public SpecializeBinary) {
  public:
   using Operator = Binary::Operator;
 
@@ -274,7 +274,7 @@ class Float64Bitwise: public SpecializeBinary {
   LAVA_DISALLOW_COPY_AND_ASSIGN(Float64Bitwise)
 };
 
-class Float64Compare : public SpecializeBinary {
+LAVA_CBASE_HIR_DEFINE(Float64Compare,public SpecializeBinary) {
  public:
   using Operator = Binary::Operator;
 
@@ -290,7 +290,7 @@ class Float64Compare : public SpecializeBinary {
   LAVA_DISALLOW_COPY_AND_ASSIGN(Float64Compare)
 };
 
-class StringCompare : public SpecializeBinary {
+LAVA_CBASE_HIR_DEFINE(StringCompare,public SpecializeBinary) {
  public:
   using Operator = Binary::Operator;
   inline static StringCompare* New( Graph* , Expr* , Expr* , Operator );
@@ -303,7 +303,7 @@ class StringCompare : public SpecializeBinary {
   LAVA_DISALLOW_COPY_AND_ASSIGN(StringCompare);
 };
 
-class SStringEq : public SpecializeBinary {
+LAVA_CBASE_HIR_DEFINE(SStringEq,public SpecializeBinary) {
  public:
   inline static SStringEq* New( Graph* , Expr* , Expr* );
   SStringEq( Graph* graph , std::uint32_t id , Expr* lhs , Expr* rhs ):
@@ -314,7 +314,7 @@ class SStringEq : public SpecializeBinary {
   LAVA_DISALLOW_COPY_AND_ASSIGN(SStringEq)
 };
 
-class SStringNe : public SpecializeBinary {
+LAVA_CBASE_HIR_DEFINE(SStringNe,public SpecializeBinary) {
  public:
   inline static SStringNe* New( Graph* , Expr* , Expr* );
   SStringNe( Graph* graph , std::uint32_t id , Expr* lhs , Expr* rhs ):
@@ -325,7 +325,7 @@ class SStringNe : public SpecializeBinary {
   LAVA_DISALLOW_COPY_AND_ASSIGN(SStringNe)
 };
 
-class BooleanLogic : public SpecializeBinary {
+LAVA_CBASE_HIR_DEFINE(BooleanLogic,public SpecializeBinary) {
  public:
    inline static BooleanLogic* New( Graph* , Expr* , Expr* , Operator op );
    BooleanLogic( Graph* graph , std::uint32_t id , Expr* lhs , Expr* rhs , Operator op ):

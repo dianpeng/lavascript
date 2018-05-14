@@ -6,7 +6,7 @@ namespace lavascript {
 namespace cbase      {
 namespace hir        {
 
-class UGet : public ReadEffect {
+LAVA_CBASE_HIR_DEFINE(UGet,public ReadEffect) {
  public:
   inline static UGet* New( Graph* , std::uint8_t , std::uint32_t );
   std::uint8_t  index () const { return index_;  }
@@ -23,7 +23,7 @@ class UGet : public ReadEffect {
   LAVA_DISALLOW_COPY_AND_ASSIGN(UGet)
 };
 
-class USet : public WriteEffect {
+LAVA_CBASE_HIR_DEFINE(USet,public WriteEffect) {
  public:
   inline static USet* New( Graph* , std::uint8_t , std::uint32_t , Expr* opr );
   std::uint8_t  method() const { return method_; }

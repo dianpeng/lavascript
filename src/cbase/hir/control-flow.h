@@ -11,7 +11,7 @@ namespace hir        {
 //  The control flow node needs to support one additional important
 //  feature , mutation/modification/deletion of existed control flow
 //  graph.
-class ControlFlow : public Node {
+LAVA_CBASE_HIR_DEFINE(ControlFlow,public Node) {
  public:
   // Parental node
   ControlFlow* parent() const {

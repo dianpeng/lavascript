@@ -9,7 +9,7 @@ namespace hir        {
 // -------------------------------------------------------------------------
 //  Box/Unbox
 // -------------------------------------------------------------------------
-class Box : public Expr {
+LAVA_CBASE_HIR_DEFINE(Box,public Expr) {
  public:
   inline static Box* New( Graph* , Expr* , TypeKind );
   Expr* value() const { return operand_list()->First(); }
@@ -39,7 +39,7 @@ class Box : public Expr {
   LAVA_DISALLOW_COPY_AND_ASSIGN(Box)
 };
 
-class Unbox : public Expr {
+LAVA_CBASE_HIR_DEFINE(Unbox,public Expr) {
  public:
   inline static Unbox* New( Graph* , Expr* , TypeKind );
   Expr* value() const { return operand_list()->First(); }

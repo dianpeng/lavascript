@@ -6,7 +6,7 @@ namespace lavascript {
 namespace cbase      {
 namespace hir        {
 
-class Jump : public ControlFlow {
+LAVA_CBASE_HIR_DEFINE(Jump,public ControlFlow) {
  public:
   inline static Jump* New( Graph* , const std::uint32_t* , ControlFlow* );
   // which target this jump jumps to
@@ -25,23 +25,25 @@ class Jump : public ControlFlow {
   LAVA_DISALLOW_COPY_AND_ASSIGN(Jump)
 };
 
-class Return : public ControlFlow {
+LAVA_CBASE_HIR_DEFINE(JumpWithValue,public ControlFlow) {
  public:
-  inline static Return* New( Graph* , Expr* , ControlFlow* );
   Expr* value() const { return operand_list()->First(); }
-  Return( Graph* graph , std::uint32_t id , Expr* value , ControlFlow* region ):
-    ControlFlow(HIR_RETURN,id,graph,region)
-  {
-    AddOperand(value);
-  }
- protected:
-
-  Return ( IRType type , Graph* graph , std::uint32_t id , Expr* value , ControlFlow* region ):
+  JumpWithValue( IRType type , Graph* graph , std::uint32_t id , Expr* value ,
+                                                                 ControlFlow* region ):
     ControlFlow(type,id,graph,region)
   {
     AddOperand(value);
   }
 
+ private:
+  LAVA_DISALLOW_COPY_AND_ASSIGN(JumpWithValue)
+};
+
+LAVA_CBASE_HIR_DEFINE(Return,public JumpWithValue) {
+ public:
+  inline static Return* New( Graph* , Expr* , ControlFlow* );
+  Return( Graph* graph , std::uint32_t id , Expr* value , ControlFlow* region ):
+    JumpWithValue(HIR_RETURN,graph,id,value,region) {}
  private:
   LAVA_DISALLOW_COPY_AND_ASSIGN(Return)
 };
@@ -50,13 +52,12 @@ class Return : public ControlFlow {
 // this node is used during inline frame since we cannot generate return in inline
 // frame though mostly it is just a Return but don't return from the current function
 // frame.
-class JumpValue : public Return {
+LAVA_CBASE_HIR_DEFINE(JumpValue,public JumpWithValue) {
  public:
-  JumpValue( Graph* graph , std::uint32_t id , Expr* value , ControlFlow* region ):
-    Return(HIR_JUMP_VALUE,graph,id,value,region)
-  {}
-
   inline static JumpValue* New( Graph* , Expr* , ControlFlow* );
+
+  JumpValue( Graph* graph , std::uint32_t id , Expr* value , ControlFlow* region ):
+    JumpWithValue(HIR_JUMP_VALUE,graph,id,value,region) {}
  private:
   LAVA_DISALLOW_COPY_AND_ASSIGN(JumpValue)
 };

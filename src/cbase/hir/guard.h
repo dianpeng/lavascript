@@ -9,7 +9,7 @@ namespace hir        {
 /* -------------------------------------------------------
  * Testing node , used with Guard node or If node
  * ------------------------------------------------------*/
-class Test : public Expr {
+LAVA_CBASE_HIR_DEFINE(Test,public Expr) {
  public:
   // return the object this test node test against with
   virtual Expr* object() const = 0;
@@ -17,7 +17,7 @@ class Test : public Expr {
   Test( IRType type , std::uint32_t id , Graph* g ): Expr(type,id,g) {}
 };
 
-class TestType : public Test {
+LAVA_CBASE_HIR_DEFINE(TestType,public Test) {
  public:
   inline static TestType* New( Graph* , TypeKind , Expr* );
   TypeKind type_kind() const { return type_kind_; }
@@ -49,7 +49,7 @@ class TestType : public Test {
 // -----------------------------------------------------
 // Guard
 // -----------------------------------------------------
-class Guard : public Expr {
+LAVA_CBASE_HIR_DEFINE(Guard,public Expr) {
  public:
   inline static Guard* New( Graph* , Test* , Checkpoint* );
   Test*             test() const { return operand_list()->First()->AsTest(); }

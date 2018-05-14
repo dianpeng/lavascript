@@ -18,7 +18,7 @@ namespace hir        {
 // 2) Unconditional jump
 // -----------------------------------------------------------------------
 
-class If : public ControlFlow {
+LAVA_CBASE_HIR_DEFINE(If,public ControlFlow) {
  public:
   inline static If* New( Graph* , Expr* , ControlFlow* );
   Expr* condition() const { return operand_list()->First(); }
@@ -38,7 +38,7 @@ class If : public ControlFlow {
   LAVA_DISALLOW_COPY_AND_ASSIGN(If)
 };
 
-class IfTrue : public ControlFlow {
+LAVA_CBASE_HIR_DEFINE(IfTrue,public ControlFlow) {
  public:
   static const std::size_t kIndex = 1;
 
@@ -53,7 +53,7 @@ class IfTrue : public ControlFlow {
   LAVA_DISALLOW_COPY_AND_ASSIGN(IfTrue)
 };
 
-class IfFalse: public ControlFlow {
+LAVA_CBASE_HIR_DEFINE(IfFalse,public ControlFlow) {
  public:
   static const std::size_t kIndex = 0;
 

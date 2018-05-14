@@ -31,7 +31,7 @@ namespace hir        {
 //    information. A better approach is to do a bytecode liveness analysis which V8 does,
 //    and generate checkpoint node wrt variables that gonna be used in the future , ie
 //    live.
-class Checkpoint : public Expr {
+LAVA_CBASE_HIR_DEFINE(Checkpoint,public Expr) {
  public:
   inline static Checkpoint* New( Graph* , IRInfo* );
   // add a stack traced value into checkpoint object
@@ -48,7 +48,7 @@ class Checkpoint : public Expr {
   LAVA_DISALLOW_COPY_AND_ASSIGN(Checkpoint)
 };
 
-class StackSlot : public Expr {
+LAVA_CBASE_HIR_DEFINE(StackSlot,public Expr) {
  public:
   inline static StackSlot* New( Graph* , Expr* , std::uint32_t );
   std::uint32_t index() const { return index_; }
@@ -58,17 +58,6 @@ class StackSlot : public Expr {
     index_(index)
   {
     AddOperand(expr);
-  }
- public:
-  virtual std::uint64_t GVNHash() const {
-    return GVNHash2(type_name(),index(),expr()->GVNHash());
-  }
-  virtual bool Equal( const Expr* that ) const {
-    if(that->IsStackSlot()) {
-      auto ss = that->AsStackSlot();
-      return index() == ss->index() && expr()->Equal(ss->expr());
-    }
-    return false;
   }
  private:
   std::uint32_t index_;

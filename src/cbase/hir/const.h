@@ -6,7 +6,7 @@ namespace lavascript {
 namespace cbase      {
 namespace hir        {
 
-class Float64 : public Expr {
+LAVA_CBASE_HIR_DEFINE(Float64,public Expr) {
  public:
   inline static Float64* New( Graph* , double );
   double               value() const { return value_; }
@@ -23,7 +23,7 @@ class Float64 : public Expr {
   LAVA_DISALLOW_COPY_AND_ASSIGN(Float64)
 };
 
-class Boolean : public Expr {
+LAVA_CBASE_HIR_DEFINE(Boolean,public Expr) {
  public:
   inline static Boolean* New( Graph* , bool );
   bool value() const { return value_; }
@@ -42,7 +42,7 @@ class Boolean : public Expr {
   LAVA_DISALLOW_COPY_AND_ASSIGN(Boolean)
 };
 
-class LString : public Expr {
+LAVA_CBASE_HIR_DEFINE(LString,public Expr) {
  public:
   inline static LString* New( Graph* , const LongString& );
   inline static LString* New( Graph* , const char* );
@@ -63,7 +63,7 @@ class LString : public Expr {
   LAVA_DISALLOW_COPY_AND_ASSIGN(LString)
 };
 
-class SString : public Expr {
+LAVA_CBASE_HIR_DEFINE(SString,public Expr) {
  public:
   inline static SString* New( Graph* , const SSO& );
   inline static SString* New( Graph* , const char* );
@@ -84,7 +84,7 @@ class SString : public Expr {
   LAVA_DISALLOW_COPY_AND_ASSIGN(SString)
 };
 
-class Nil : public Expr {
+LAVA_CBASE_HIR_DEFINE(Nil,public Expr) {
  public:
   inline static Nil* New( Graph* );
   Nil( Graph* graph , std::uint32_t id ): Expr(HIR_NIL,id,graph) {}

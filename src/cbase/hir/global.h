@@ -9,7 +9,7 @@ namespace hir        {
 // -------------------------------------------------------------------------
 // global set/get (side effect)
 // -------------------------------------------------------------------------
-class GGet : public ReadEffect {
+LAVA_CBASE_HIR_DEFINE(GGet,public ReadEffect) {
  public:
   inline static GGet* New( Graph* , Expr* );
   Expr* key() const { return operand_list()->First(); }
@@ -23,7 +23,7 @@ class GGet : public ReadEffect {
   LAVA_DISALLOW_COPY_AND_ASSIGN(GGet)
 };
 
-class GSet : public WriteEffect {
+LAVA_CBASE_HIR_DEFINE(GSet,public WriteEffect) {
  public:
   inline static GSet* New( Graph* , Expr* key , Expr* value );
   Expr* key () const { return operand_list()->First(); }

@@ -34,6 +34,7 @@
 
 # Generated file
 *.pp.cc
+*.generate.h
 
 *.pyc
 *.t

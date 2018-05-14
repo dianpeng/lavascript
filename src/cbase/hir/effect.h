@@ -29,7 +29,7 @@ struct ReadEffectEdge {
 };
 
 // Represents a general read which should depend on certain node's side effect.
-class ReadEffect : public Expr {
+LAVA_CBASE_HIR_DEFINE(ReadEffect,public Expr) {
  public:
   // read effect constructor
   ReadEffect( IRType type , std::uint32_t id , Graph* graph ):
@@ -54,7 +54,7 @@ class ReadEffect : public Expr {
 };
 
 // Represent a general write which should bring some side effect
-class WriteEffect: public Expr , public SingleNodeLink<WriteEffect> {
+LAVA_CBASE_HIR_DEFINE(WriteEffect,public Expr,public SingleNodeLink<WriteEffect>) {
  public:
   // write effect constructor
   WriteEffect( IRType type , std::uint32_t id , Graph* graph ):
@@ -87,7 +87,7 @@ class WriteEffect: public Expr , public SingleNodeLink<WriteEffect> {
 // invalid. When a barrier node is emitted it means this node is *pinned* into
 // the control flow block and cannot be moved. So these nodes are not floating
 // essentially
-class EffectBarrier: public WriteEffect {
+LAVA_CBASE_HIR_DEFINE(EffectBarrier,public WriteEffect) {
  public:
   EffectBarrier( IRType type , std::uint32_t id , Graph* graph ):
     WriteEffect  (type,id,graph) {}
@@ -96,7 +96,7 @@ class EffectBarrier: public WriteEffect {
 // HardBarrier is a type of barrier that cannot be moved , basically no way to
 // do code motion. It is a hard barrier that prevents any operations happend
 // after hoisting and also operation happened before sinking.
-class HardBarrier : public EffectBarrier {
+LAVA_CBASE_HIR_DEFINE(HardBarrier,public EffectBarrier) {
  public:
   HardBarrier( IRType type , std::uint32_t id , Graph* graph ):
     EffectBarrier(type,id,graph) {}
@@ -106,39 +106,42 @@ class HardBarrier : public EffectBarrier {
 // way to mark the barrier chain at certain conrol flow node, ie branch or loop
 // The operation happened after the SoftBarrier can be moved *cross* the barrier
 // node.
-class SoftBarrier : public EffectBarrier {
+LAVA_CBASE_HIR_DEFINE(SoftBarrier,public EffectBarrier) {
  public:
   SoftBarrier( IRType type , std::uint32_t id , Graph* graph ):
     EffectBarrier(type,id,graph) {}
 };
 
+LAVA_CBASE_HIR_DEFINE(EffectPhiBase,public SoftBarrier) {
+ public:
+  EffectPhiBase( IRType type , std::uint32_t id , Graph* graph ) :
+    SoftBarrier(type,id,graph) {}
+ public:
+  ControlFlow* region    ()                      const { return region_;   }
+  void         set_region( ControlFlow* region )       { region_ = region; }
+ public:
+  virtual DependencyIterator GetDependencyIterator() const;
+  virtual std::size_t              dependency_size() const;
+ private:
+  class EffectPhiBaseDependencyIterator;
+  friend class EffectPhiBaseDependencyIterator;
+
+  ControlFlow* region_;
+  LAVA_DISALLOW_COPY_AND_ASSIGN(EffectPhiBase)
+};
+
 // EffectPhi is a phi node inserted at merge region used to fan in all the branch's
 // phi node. Each branch will use a InitBarrier to separate each branch's effect
 // chain regardlessly
-class EffectPhi : public SoftBarrier {
+LAVA_CBASE_HIR_DEFINE(EffectPhi,public EffectPhiBase) {
  public:
   static inline EffectPhi* New( Graph* );
   static inline EffectPhi* New( Graph* , ControlFlow* );
   static inline EffectPhi* New( Graph* , WriteEffect* , WriteEffect* );
   static inline EffectPhi* New( Graph* , WriteEffect* , WriteEffect* , ControlFlow* );
 
-  EffectPhi( Graph* graph , std::uint32_t id ) : SoftBarrier(HIR_EFFECT_PHI,id,graph) {}
- public:
-  ControlFlow* region    ()                      const { return region_;   }
-  void         set_region( ControlFlow* region )       { region_ = region; }
-  WriteEffect* lhs       ()                      const { return operand_list()->First()->AsWriteEffect(); }
-  WriteEffect* rhs       ()                      const { return operand_list()->Last()->AsWriteEffect(); }
- public:
-  virtual DependencyIterator GetDependencyIterator() const;
-  virtual std::size_t              dependency_size() const;
- protected:
-  EffectPhi( IRType type , Graph* graph , std::uint32_t id ) : SoftBarrier(type,id,graph) {}
-
+  EffectPhi( Graph* graph , std::uint32_t id ) : EffectPhiBase(HIR_EFFECT_PHI,id,graph) {}
  private:
-  class EffectPhiDependencyIterator;
-  friend class EffectPhiDependencyIterator;
-
-  ControlFlow* region_;
   LAVA_DISALLOW_COPY_AND_ASSIGN(EffectPhi)
 };
 
@@ -149,7 +152,7 @@ class EffectPhi : public SoftBarrier {
 // cross loop carried dependency boundary. Due to the cycle , when do analyze of aliasing
 // or previous store, one will have to visit the store happened *after the loop*. And it
 // also means the only the fly memory optimization cannot be applied to stuff in the loop
-class LoopEffectPhi : public EffectPhi {
+LAVA_CBASE_HIR_DEFINE(LoopEffectPhi,public EffectPhiBase) {
  public:
   // The loop effect phi node will be created right before entering into the loop, so at
   // that moment only one fallthrough branch's WriteEffect node is known. The new function
@@ -161,14 +164,14 @@ class LoopEffectPhi : public EffectPhi {
   // phi node.
   void SetBackwardEffect( WriteEffect* effect ) { AddOperand(effect); }
   // Constructor of the LoopEffectPhi
-  LoopEffectPhi( Graph* graph , std::uint32_t id ) : EffectPhi(HIR_LOOP_EFFECT_PHI,graph,id) {}
+  LoopEffectPhi( Graph* graph , std::uint32_t id ) : EffectPhiBase(HIR_LOOP_EFFECT_PHI,id,graph) {}
  private:
   LAVA_DISALLOW_COPY_AND_ASSIGN(LoopEffectPhi)
 };
 
 // InitBarrier is an object to separate effect chain in lexical scope. It is mainly to
 // use mark the start of the effect chain
-class InitBarrier : public SoftBarrier {
+LAVA_CBASE_HIR_DEFINE(InitBarrier,public SoftBarrier) {
  public:
   static inline InitBarrier* New( Graph* );
 
@@ -179,7 +182,7 @@ class InitBarrier : public SoftBarrier {
 
 // EmptyBarrier is an object to be used to *mark* the control flow. It doesn't have any
 // actual barrier impact but just to mark the separation of control flow region, ie *If* node.
-class EmptyBarrier : public SoftBarrier {
+LAVA_CBASE_HIR_DEFINE(EmptyBarrier,public SoftBarrier) {
  public:
   static inline EmptyBarrier* New( Graph* );
   static inline EmptyBarrier* New( Graph*  , WriteEffect* );

@@ -6,7 +6,7 @@ namespace lavascript {
 namespace cbase      {
 namespace hir        {
 
-class Region : public ControlFlow {
+LAVA_CBASE_HIR_DEFINE(Region,public ControlFlow) {
  public:
   inline static Region* New( Graph* );
   inline static Region* New( Graph* , ControlFlow* );
@@ -17,7 +17,7 @@ class Region : public ControlFlow {
 
 // Fail node represents abnormal way to abort the execution. The most common reason
 // is because we failed at type guard or obviouse code bug.
-class Fail : public ControlFlow {
+LAVA_CBASE_HIR_DEFINE(Fail,public ControlFlow) {
  public:
   inline static Fail* New( Graph* );
   Fail( Graph* graph , std::uint32_t id ): ControlFlow(HIR_FAIL,id,graph) {}
@@ -25,7 +25,7 @@ class Fail : public ControlFlow {
   LAVA_DISALLOW_COPY_AND_ASSIGN(Fail)
 };
 
-class Success : public ControlFlow {
+LAVA_CBASE_HIR_DEFINE(Success,public ControlFlow) {
  public:
   inline static Success* New( Graph* );
 
@@ -40,7 +40,7 @@ class Success : public ControlFlow {
 };
 
 // Special node of the graph
-class Start : public ControlFlow {
+LAVA_CBASE_HIR_DEFINE(Start,public ControlFlow) {
  public:
   inline static Start* New( Graph* );
   Start( Graph* graph , std::uint32_t id ): ControlFlow(HIR_START,id,graph) {}
@@ -48,7 +48,7 @@ class Start : public ControlFlow {
   LAVA_DISALLOW_COPY_AND_ASSIGN(Start)
 };
 
-class End : public ControlFlow {
+LAVA_CBASE_HIR_DEFINE(End,public ControlFlow) {
  public:
   inline static End* New( Graph* , Success* , Fail* );
   Success* success() const { return backward_edge()->First()->AsSuccess(); }
@@ -63,7 +63,7 @@ class End : public ControlFlow {
   LAVA_DISALLOW_COPY_AND_ASSIGN(End)
 };
 
-class OSRStart : public ControlFlow {
+LAVA_CBASE_HIR_DEFINE(OSRStart,public ControlFlow) {
  public:
   inline static OSRStart* New( Graph* );
 
@@ -75,7 +75,7 @@ class OSRStart : public ControlFlow {
   LAVA_DISALLOW_COPY_AND_ASSIGN(OSRStart)
 };
 
-class OSREnd : public ControlFlow {
+LAVA_CBASE_HIR_DEFINE(OSREnd,public ControlFlow) {
  public:
   inline static OSREnd* New( Graph* , Success* succ , Fail* f );
 
@@ -93,7 +93,7 @@ class OSREnd : public ControlFlow {
   LAVA_DISALLOW_COPY_AND_ASSIGN(OSREnd)
 };
 
-class InlineStart : public ControlFlow {
+LAVA_CBASE_HIR_DEFINE(InlineStart,public ControlFlow) {
  public:
   inline static InlineStart* New( Graph* , ControlFlow* );
 
@@ -105,7 +105,7 @@ class InlineStart : public ControlFlow {
   LAVA_DISALLOW_COPY_AND_ASSIGN(InlineStart)
 };
 
-class InlineEnd : public ControlFlow {
+LAVA_CBASE_HIR_DEFINE(InlineEnd,public ControlFlow) {
  public:
   inline static InlineEnd* New( Graph* , ControlFlow* );
   inline static InlineEnd* New( Graph* );

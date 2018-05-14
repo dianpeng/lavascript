@@ -180,16 +180,16 @@ class GraphBuilder {
   // stack/vector
   struct FuncInfo {
     /** member field **/
-    Handle<Prototype>         prototype; // cached for faster access
-    ControlFlow*              region;
-    std::uint32_t             base;
-    std::vector<LoopInfo>     loop_info;
-    std::vector<Return*>      return_list;
-    std::vector<Guard*>       guard_list ;
-    BytecodeAnalyze           bc_analyze;
-    const std::uint32_t*      osr_start;
-    std::uint8_t              max_local_var_size;
-    bool                      tcall;     // whether it is a tail call
+    Handle<Prototype>           prototype; // cached for faster access
+    ControlFlow*                region;
+    std::uint32_t               base;
+    std::vector<LoopInfo>       loop_info;
+    std::vector<JumpWithValue*> return_list;
+    std::vector<Guard*>         guard_list ;
+    BytecodeAnalyze             bc_analyze;
+    const std::uint32_t*        osr_start;
+    std::uint8_t                max_local_var_size;
+    bool                        tcall;     // whether it is a tail call
 
    public:
     inline FuncInfo( const Handle<Prototype>& , ControlFlow* , std::uint32_t , bool tcall = false );
@@ -2087,7 +2087,7 @@ GraphBuilder::StopReason GraphBuilder::BuildBytecode( BytecodeIterator* itr ) {
     case BC_RET:
     case BC_RETNULL:
       {
-        Return* ret;
+        JumpWithValue* ret;
         Expr* retval = itr->opcode() == BC_RET ? StackGet(kAccRegisterIndex) : Nil::New(graph_);
 
         // generate a jump value node instead of return node when we are in

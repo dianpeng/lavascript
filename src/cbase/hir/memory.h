@@ -17,7 +17,7 @@ namespace hir        {
 // side effect which must be serialized. For each operation , we will find its memory node
 // if applicable and then all the operations will be serialized during graph building phase to
 // ensure correct program behavior
-class MemoryNode : public Expr {
+LAVA_CBASE_HIR_DEFINE(MemoryNode,public Expr) {
  public:
   MemoryNode( IRType type , std::uint32_t id , Graph* g ): Expr(type,id,g){}
 };
@@ -25,7 +25,7 @@ class MemoryNode : public Expr {
 // MemoryRef node represents an operation that does a immutable memory lookup. The node derive
 // from it should not mutate any memory but just do a simple address of operations. ie node like
 // Index into a list or get an existed hash slot/entry of a hash map(Object).
-class MemoryRef  : public ReadEffect {
+LAVA_CBASE_HIR_DEFINE(MemoryRef,public ReadEffect) {
  public:
   MemoryRef( IRType type , std::uint32_t id , Graph* graph ):
     ReadEffect(type,id,graph)
@@ -34,7 +34,7 @@ class MemoryRef  : public ReadEffect {
 
 // --------------------------------------------------------------------------
 // Argument
-class Arg : public MemoryNode {
+LAVA_CBASE_HIR_DEFINE(Arg,public MemoryNode) {
  public:
   inline static Arg* New( Graph* , std::uint32_t );
   std::uint32_t index() const { return index_; }
@@ -56,7 +56,7 @@ class Arg : public MemoryNode {
 
 // --------------------------------------------------------------------------
 // OSRLoad
-class OSRLoad : public Expr {
+LAVA_CBASE_HIR_DEFINE(OSRLoad,public Expr) {
  public:
   inline static OSRLoad* New( Graph* , std::uint32_t );
   // Offset in sizeof(Value)/8 bytes to load this value from osr input buffer
@@ -78,7 +78,7 @@ class OSRLoad : public Expr {
 
 // --------------------------------------------------------------------------
 // IRList
-class IRList : public MemoryNode {
+LAVA_CBASE_HIR_DEFINE(IRList,public MemoryNode) {
  public:
   inline static IRList* New( Graph* , std::size_t size );
   void Add( Expr* node ) { AddOperand(node); }
@@ -94,7 +94,7 @@ class IRList : public MemoryNode {
 
 // --------------------------------------------------------------------------
 // IRObjectKV
-class IRObjectKV : public Expr {
+LAVA_CBASE_HIR_DEFINE(IRObjectKV,public Expr) {
  public:
   inline static IRObjectKV* New( Graph* , Expr* , Expr* );
   Expr* key  () const { return operand_list()->First(); }
@@ -114,7 +114,7 @@ class IRObjectKV : public Expr {
 
 // --------------------------------------------------------------------------
 // IRObject
-class IRObject : public MemoryNode {
+LAVA_CBASE_HIR_DEFINE(IRObject,public MemoryNode) {
  public:
   inline static IRObject* New( Graph* , std::size_t size );
   void Add( Expr* key , Expr* val ) {

@@ -1678,9 +1678,13 @@ bool Generator::Visit( const ast::If& node ) {
     // Generate code body
     if(!VisitChunk(*br.body,true)) return false;
 
-    // Generate the jump
+    // Generate the jump , except for the last branch. We *MUST* make
+    // sure that we don't generate a redundant jump for the last branch
+    // since the cbase compiler need this as hint to tell whether the
+    // if branch has a dangling else/elif
     if(br.cond && (i < (len-1)))
-      label_vec.push_back(func_scope()->bb()->jmp(func_scope()->ra()->base(),br.cond->sci()));
+      label_vec.push_back(func_scope()->bb()->jmp(func_scope()->ra()->base(),
+                                                  br.cond->sci()));
   }
 
   // Patch prev_jmp if we need to

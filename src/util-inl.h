@@ -85,18 +85,23 @@ inline bool LexicalCast( bool bval , std::string* output ) {
   return true;
 }
 
-inline int Str::Cmp( const Str& lhs , const Str& rhs ) {
-  auto sz = std::min(lhs.length,rhs.length);
-  auto ret= sz ? std::memcmp(lhs.data,rhs.data,sz) : 0;
+inline int SliceCmp( const void* lhs , std::size_t lhs_size ,
+                     const void* rhs , std::size_t rhs_size ) {
+  auto sz = std::min(lhs_size,rhs_size);
+  auto ret= sz ? std::memcmp(lhs,rhs,sz) : 0;
   if(!ret) {
-    if(lhs.length < rhs.length)
+    if(lhs_size < rhs_size)
       return -1;
-    else if(lhs.length == rhs.length)
+    else if(lhs_size == rhs_size)
       return 0;
     else
       return 1;
   }
   return ret;
+}
+
+inline int Str::Cmp( const Str& lhs , const Str& rhs ) {
+  return SliceCmp((const char*)lhs.data,lhs.length,(const char*)rhs.data,rhs.length);
 }
 
 } // namespace lavascript

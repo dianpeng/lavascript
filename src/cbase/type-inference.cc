@@ -118,6 +118,20 @@ TypeKind GetTypeInference( Expr* node ) {
   }
 }
 
+bool GetBooleanValue( Expr* node , bool* output ) {
+  if(auto tp = GetTypeInference(node); tp != TPKIND_UNKNOWN) {
+    if(tp == TPKIND_BOOLEAN) {
+      if(node->Is<Boolean>()) {
+        *output = node->As<Boolean>()->value();
+        return true;
+      }
+      return false;
+    }
+    return TPKind::ToBoolean(tp,output);
+  }
+  return false;
+}
+
 } // namespace hir
 } // namespace cbase
 } // namespace lavascript

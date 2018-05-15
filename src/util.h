@@ -328,6 +328,12 @@ class SingleNodeLink {
 };
 
 // ----------------------------------------------------------------------
+// Slice style string comparison
+// ----------------------------------------------------------------------
+inline
+int SliceCmp( const void* , std::size_t , const void* , std::size_t );
+
+// ----------------------------------------------------------------------
 // Raw C-Style string
 // ----------------------------------------------------------------------
 // Wrapper of Slice style string, basically a const void* and a length field

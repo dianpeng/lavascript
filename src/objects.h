@@ -1653,22 +1653,15 @@ inline const void* SSO::data() const {
 }
 
 inline bool SSO::operator == ( const char* str ) const {
-  const std::size_t l = strlen(str);
-  const std::size_t len = std::min(l,size_);
-  int r = std::memcmp(data(),str,len);
-  return r == 0 ? (len == l) : false;
+  return SliceCmp(data(),size_,str,strlen(str)) == 0;
 }
 
 inline bool SSO::operator == ( const std::string& str ) const {
-  const std::size_t len = std::min(size_,str.size());
-  int r = std::memcmp(data(),str.c_str(),len);
-  return r == 0 ? (size_ == len) : false;
+  return SliceCmp(data(),size_,str.c_str(),str.size()) == 0;
 }
 
 inline bool SSO::operator == ( const String& str ) const {
-  const std::size_t len = std::min(size_,str.size());
-  int r = std::memcmp(data(),str.data(),len);
-  return r == 0 ? (size_ == len) : false;
+  return SliceCmp(data(),size_,str.data(),str.size()) == 0;
 }
 
 inline bool SSO::operator == ( const SSO& str ) const {
@@ -1676,22 +1669,15 @@ inline bool SSO::operator == ( const SSO& str ) const {
 }
 
 inline bool SSO::operator != ( const char* str ) const {
-  const std::size_t l = strlen(str);
-  const std::size_t len = std::min(size_,l);
-  int r = std::memcmp(data(),str,len);
-  return r == 0 ? (size_ != len) : true;
+  return !(*this == str);
 }
 
 inline bool SSO::operator != ( const std::string& str ) const {
-  const std::size_t len = std::min(size_,str.size());
-  int r = std::memcmp(data(),str.c_str(),len);
-  return r == 0 ? (size_ != len) : true;
+  return !(*this == str);
 }
 
 inline bool SSO::operator != ( const String& str ) const {
-  const std::size_t len = std::min(size_,str.size());
-  int r = std::memcmp(data(),str.data(),len);
-  return r == 0 ? (size_ != len ) : true;
+  return !(*this == str);
 }
 
 inline bool SSO::operator != ( const SSO& str ) const {
@@ -1699,141 +1685,67 @@ inline bool SSO::operator != ( const SSO& str ) const {
 }
 
 inline bool SSO::operator >  ( const char* str ) const {
-  const std::size_t l = strlen(str);
-  const std::size_t len = std::min(size_,l);
-  int r = std::memcmp(data(),str,len);
-  if(r > 0 || (r == 0 && size_ > len))
-    return true;
-  else
-    return false;
+  return SliceCmp(data(),size_,str,strlen(str)) > 0;
 }
 
 inline bool SSO::operator > ( const std::string& str ) const {
-  const std::size_t len = std::min(size_,str.size());
-  int r = std::memcmp(data(),str.c_str(),len);
-  if(r > 0 || (r == 0 && size_ > len))
-    return true;
-  else
-    return false;
+  return SliceCmp(data(),size_,str.c_str(),str.size()) > 0;
 }
 
 inline bool SSO::operator > ( const String& str ) const {
-  const std::size_t len = std::min(size_,str.size());
-  int r = std::memcmp(data(),str.data(),len);
-  if(r > 0 || (r == 0 && size_ > len))
-    return true;
-  else
-    return false;
+  return SliceCmp(data(),size_,str.data(),str.size()) > 0;
 }
 
 inline bool SSO::operator > ( const SSO& str ) const {
-  const std::size_t len = std::min(size_,str.size());
-  int r = std::memcmp(data(),str.data(),len);
-  if(r > 0 || (r == 0 && size_ > len))
-    return true;
-  else
-    return false;
+  return SliceCmp(data(),size_,str.data(),str.size()) > 0;
 }
 
 inline bool SSO::operator >= ( const char* str ) const {
-  const std::size_t l = strlen(str);
-  const std::size_t len = std::min(size_,l);
-  int r = std::memcmp(data(),str,len);
-  if(r > 0 || (r == 0 && size_ >= len))
-    return true;
-  else
-    return false;
+  return SliceCmp(data(),size_,str,strlen(str)) >= 0;
 }
 
 inline bool SSO::operator >= ( const std::string& str ) const {
-  const std::size_t len = std::min(size_,str.size());
-  int r = std::memcmp(data(),str.c_str(),len);
-  if(r > 0 || (r == 0 && size_ >= len))
-    return true;
-  else
-    return false;
+  return SliceCmp(data(),size_,str.c_str(),str.size()) >= 0;
 }
 
 inline bool SSO::operator >= ( const String& str ) const {
-  const std::size_t len = std::min(size_,str.size());
-  int r = std::memcmp(data(),str.data(),len);
-  if(r > 0 || (r == 0 && size_ >= len))
-    return true;
-  else
-    return false;
+  return SliceCmp(data(),size_,str.data(),str.size()) >= 0;
 }
 
 inline bool SSO::operator >= ( const SSO& str ) const {
-  return (*this == str) || (*this > str);
+  return SliceCmp(data(),size_,str.data(),str.size()) >= 0;
 }
 
 inline bool SSO::operator < ( const char* str ) const {
-  const std::size_t l = strlen(str);
-  const std::size_t len = std::min(size_,l);
-  int r = std::memcmp(data(),str,len);
-  if(r < 0 || (r == 0 && size_ < l))
-    return true;
-  else
-    return false;
+  return SliceCmp(data(),size_,str,strlen(str)) < 0;
 }
 
 inline bool SSO::operator < ( const std::string& str ) const {
-  const std::size_t len = std::min(size_,str.size());
-  int r = std::memcmp(data(),str.c_str(),len);
-  if(r < 0 || (r == 0 && size_ < str.size()))
-    return true;
-  else
-    return false;
+  return SliceCmp(data(),size_,str.c_str(),str.size()) < 0;
 }
 
 inline bool SSO::operator < ( const String& str ) const {
-  const std::size_t len = std::min(size_,str.size());
-  int r = std::memcmp(data(),str.data(),len);
-  if(r < 0 || (r == 0 && size_ < str.size()))
-    return true;
-  else
-    return false;
+  return SliceCmp(data(),size_,str.data(),str.size()) < 0;
 }
 
 inline bool SSO::operator < ( const SSO& str ) const {
-  const std::size_t len = std::min(size_,str.size());
-  int r = std::memcmp(data(),str.data(),len);
-  if(r < 0 || (r == 0 && size_ < str.size()))
-    return true;
-  else
-    return false;
+  return SliceCmp(data(),size_,str.data(),str.size()) < 0;
 }
 
 inline bool SSO::operator <= ( const char* str ) const {
-  const std::size_t l = strlen(str);
-  const std::size_t len = std::min(size_,l);
-  int r = std::memcmp(data(),str,len);
-  if(r < 0 || (r == 0 && size_ <= l))
-    return true;
-  else
-    return false;
+  return SliceCmp(data(),size_,str,strlen(str)) <= 0;
 }
 
 inline bool SSO::operator <= ( const std::string& str ) const {
-  const std::size_t len = std::min(size_,str.size());
-  int r = std::memcmp(data(),str.c_str(),len);
-  if(r < 0 || (r == 0 && size_ <= str.size()))
-    return true;
-  else
-    return false;
+  return SliceCmp(data(),size_,str.c_str(),str.size()) <= 0;
 }
 
 inline bool SSO::operator <= ( const String& str ) const {
-  const std::size_t len = std::min(size_,str.size());
-  int r = std::memcmp(data(),str.data(),len);
-  if(r < 0 || (r == 0 && size_ <= str.size()))
-    return true;
-  else
-    return false;
+  return SliceCmp(data(),size_,str.data(),str.size()) <= 0;
 }
 
 inline bool SSO::operator <= ( const SSO& str ) const {
-  return (*this == str) || (*this < str);
+  return SliceCmp(data(),size_,str.data(),str.size()) <= 0;
 }
 
 /* --------------------------------------------------------------------
@@ -1866,7 +1778,6 @@ inline std::size_t String::size() const {
 
 inline const SSO& String::sso() const {
   lava_debug(NORMAL,lava_verify(IsSSO()););
-
   // The SSO are actually stored inside of SSOPool.
   // For a String object, it only stores a pointer
   // to the actual SSO object
@@ -1879,166 +1790,103 @@ inline const LongString& String::long_string() const {
 }
 
 inline bool String::operator == ( const char* str ) const {
-  const std::size_t l = strlen(str);
-  const std::size_t len = std::min(size(),l);
-  int r = std::memcmp(data(),str,len);
-  return r == 0 ? size() == l : false;
+  return SliceCmp(data(),size(),str,strlen(str)) == 0;
 }
 
 inline bool String::operator == ( const std::string& str ) const {
-  const std::size_t len = std::min(size(),str.size());
-  int r = std::memcmp(data(),str.c_str(),len);
-  return r == 0 ? size() == str.size() : false;
+  return SliceCmp(data(),size(),str.c_str(),str.size()) == 0;
 }
 
 inline bool String::operator == ( const String& str ) const {
-  const std::size_t len = std::min(size(),str.size());
-  int r = std::memcmp(data(),str.data(),len);
-  return r == 0 ? size() == str.size() : false;
+  return SliceCmp(data(),size(),str.data(),str.size()) == 0;
 }
 
 inline bool String::operator == ( const SSO& str ) const {
   if(IsSSO()) {
     return str == sso();
   } else {
-    const LongString& lstr = long_string();
-    const std::size_t len = std::min(lstr.size,str.size());
-    int r = std::memcmp(lstr.data(),str.data(),len);
-    return r == 0 ? lstr.size == str.size() : false;
+    return SliceCmp(data(),size(),str.data(),str.size()) == 0;
   }
 }
 
 inline bool String::operator != ( const char* str ) const {
-  const std::size_t l = strlen(str);
-  const std::size_t len = std::min(size(),l);
-  int r = std::memcmp(data(),str,len);
-  return r == 0 ? size() != l : true;
+  return !(*this == str);
 }
 
 inline bool String::operator != ( const std::string& str ) const {
-  const std::size_t len = std::min(size(),str.size());
-  int r = std::memcmp(data(),str.c_str(),len);
-  return r == 0 ? size() != str.size() : true;
+  return !(*this == str);
 }
 
 inline bool String::operator != ( const String& str ) const {
-  const std::size_t len = std::min(size(),str.size());
-  int r = std::memcmp(data(),str.data(),len);
-  return r == 0 ? size() != str.size() : true;
+  return !(*this == str);
 }
 
 inline bool String::operator != ( const SSO& str ) const {
-  if(IsSSO()) {
-    return str != sso();
-  } else {
-    const LongString& lstr = long_string();
-    const std::size_t len = std::min(lstr.size,str.size());
-    int r = std::memcmp(lstr.data(),str.data(),len);
-    return r == 0 ? lstr.size != str.size() : true;
-  }
+  return !(*this == str);
 }
 
 inline bool String::operator > ( const char* str ) const {
-  const std::size_t l = strlen(str);
-  const std::size_t len = std::min(size(),l);
-  int r = std::memcmp(data(),str,len);
-  if(r > 0 || (r == 0 && size() > l))
-    return true;
-  else
-    return false;
+  return SliceCmp(data(),size(),str,strlen(str)) > 0;
 }
 
 inline bool String::operator > ( const std::string& str ) const {
-  const std::size_t len = std::min(size(),str.size());
-  int r = std::memcmp(data(),str.c_str(),len);
-  return (r > 0 ||(r == 0 && size() > str.size()));
+  return SliceCmp(data(),size(),str.c_str(),str.size()) > 0;
 }
 
 inline bool String::operator > ( const String& str ) const {
-  const std::size_t len = std::min(size(),str.size());
-  int r = std::memcmp(data(),str.data(),len);
-  return (r > 0 ||(r == 0 && size() > str.size()));
+  return SliceCmp(data(),size(),str.data(),str.size()) > 0;
 }
 
 inline bool String::operator > ( const SSO& str ) const {
-  const std::size_t len = std::min(size(),str.size());
-  int r = std::memcmp(data(),str.data(),len);
-  return (r > 0 ||(r == 0 && size() > str.size()));
+  return SliceCmp(data(),size(),str.data(),str.size()) > 0;
 }
 
 inline bool String::operator >= ( const char* str ) const {
-  const std::size_t l = strlen(str);
-  const std::size_t len = std::min(size(),l);
-  int r = std::memcmp(data(),str,len);
-  return (r > 0 ||(r == 0 && size() >= l));
+  return SliceCmp(data(),size(),str,strlen(str)) >= 0;
 }
 
 inline bool String::operator >= ( const std::string& str ) const {
-  const std::size_t len = std::min(size(),str.size());
-  int r = std::memcmp(data(),str.c_str(),len);
-  return (r > 0 ||(r == 0 && size() >= str.size()));
+  return SliceCmp(data(),size(),str.c_str(),str.size()) >= 0;
 }
 
 inline bool String::operator >= ( const String& str ) const {
-  const std::size_t len = std::min(size(),str.size());
-  int r = std::memcmp(data(),str.data(),len);
-  return (r > 0 ||(r == 0 && size() >= str.size()));
+  return SliceCmp(data(),size(),str.data(),str.size()) >= 0;
 }
 
 inline bool String::operator >= ( const SSO& str ) const {
-  const std::size_t len = std::min(size(),str.size());
-  int r = std::memcmp(data(),str.data(),len);
-  return (r > 0 ||(r == 0 && size() >= str.size()));
+  return SliceCmp(data(),size(),str.data(),str.size()) >= 0;
 }
 
 inline bool String::operator <  ( const char* str ) const {
-  const std::size_t l = strlen(str);
-  const std::size_t len = std::min(size(),l);
-  int r = std::memcmp(data(),str,len);
-  return (r < 0||(r == 0 && size() < l));
+  return SliceCmp(data(),size(),str,strlen(str)) < 0;
 }
 
 inline bool String::operator <  ( const std::string& str ) const {
-  const std::size_t len = std::min(size(),str.size());
-  int r = std::memcmp(data(),str.c_str(),len);
-  return (r < 0 ||(r == 0 && size() < str.size()));
+  return SliceCmp(data(),size(),str.c_str(),str.size()) < 0;
 }
 
 inline bool String::operator < ( const String& str ) const {
-  const std::size_t len = std::min(size(),str.size());
-  int r = std::memcmp(data(),str.data(),len);
-  return (r < 0 ||(r == 0 && size() < str.size()));
+  return SliceCmp(data(),size(),str.data(),str.size()) < 0;
 }
 
 inline bool String::operator <  ( const SSO& str ) const {
-  const std::size_t len = std::min(size(),str.size());
-  int r = std::memcmp(data(),str.data(),len);
-  return (r < 0 ||(r == 0 && size() < str.size()));
+  return SliceCmp(data(),size(),str.data(),str.size()) < 0;
 }
 
 inline bool String::operator <= ( const char* str ) const {
-  const std::size_t l = strlen(str);
-  const std::size_t len = std::min(size(),l);
-  int r = std::memcmp(data(),str,len);
-  return (r < 0 || (r == 0 && size() <= l));
+  return SliceCmp(data(),size(),str,strlen(str)) <= 0;
 }
 
 inline bool String::operator <= ( const std::string& str ) const {
-  const std::size_t len = std::min(size(),str.size());
-  int r = std::memcmp(data(),str.c_str(),len);
-  return (r < 0 || (r == 0 && size() <= str.size()));
+  return SliceCmp(data(),size(),str.c_str(),str.size()) <= 0;
 }
 
 inline bool String::operator <= ( const String& str ) const {
-  const std::size_t len = std::min(size(),str.size());
-  int r = std::memcmp(data(),str.data(),len);
-  return (r < 0 || (r == 0 && size() <= str.size()));
+  return SliceCmp(data(),size(),str.data(),str.size()) <= 0;
 }
 
 inline bool String::operator <= ( const SSO& str ) const {
-  const std::size_t len = std::min(size(),str.size());
-  int r = std::memcmp(data(),str.data(),len);
-  return (r < 0 || (r == 0 && size() <= str.size()));
+  return SliceCmp(data(),size(),str.data(),str.size()) <= 0;
 }
 
 /* --------------------------------------------------------------------

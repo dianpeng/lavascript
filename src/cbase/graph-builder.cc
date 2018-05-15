@@ -220,7 +220,8 @@ class GraphBuilder {
     STOP_JUMP,
     STOP_EOF ,
     STOP_END ,
-    STOP_SUCCESS
+    STOP_SUCCESS,
+    STOP_NA
   };
 
  public:
@@ -351,7 +352,7 @@ class GraphBuilder {
   StopReason BuildIf     ( BytecodeIterator* itr );
   // This function is invoked when the condition's boolean value is cleared, the we directly
   // do DCE on the fly without generating those branch construct at all
-  StopReason FoldIf      ( BytecodeIterator* itr );
+  StopReason TryFoldIf   ( BytecodeIterator* itr );
   StopReason BuildIfBlock( BytecodeIterator* , const std::uint32_t* );
   // Build logical IR graph
   StopReason BuildLogic  ( BytecodeIterator* itr );
@@ -1505,13 +1506,44 @@ GraphBuilder::StopReason GraphBuilder::BuildIfBlock( BytecodeIterator* itr , con
 }
 
 GraphBuilder::StopReason
+GraphBuilder::TryFoldIf( BytecodeIterator* itr ) {
+  std::uint8_t cond;
+  std::uint16_t offset;
+  itr->GetOperand(&cond,&offset);
+  if(auto bval = false; GetBooleanValue(StackGet(cond),&bval)) {
+    auto final_cursor = offset;
+    if(bval) {
+      // skip BC_JMPF
+      itr->Move();
+      // flag to indicate whether we have else branch , can be
+      // detected by going through the whole if_true branch
+      switch(BuildIfBlock(itr,itr->OffsetAt(offset))) {
+        case STOP_BAILOUT: return STOP_BAILOUT;
+        case STOP_JUMP   : itr->GetOperand(&final_cursor); break;
+        default:           break;
+      }
+    }
+
+    // if bval is false, we don't need to do anything here since if there's
+    // no else branch or if there's a else/elif branch, to us it is the same.
+    // The bytecode generator will not generate a jump for the last branch,so
+    // just treat it as a natural fallthrough
+    itr->BranchTo(final_cursor);
+    return STOP_SUCCESS;
+  }
+  return STOP_NA; // not available
+}
+
+GraphBuilder::StopReason
 GraphBuilder::BuildIf( BytecodeIterator* itr ) {
   lava_debug(NORMAL,lava_verify(itr->opcode() == BC_JMPF););
-
+  // try to fold the branch
+  if(auto stat = TryFoldIf(itr); stat != STOP_NA)
+    return stat;
+  // do the normal branch
   std::uint8_t cond;    // condition's register
   std::uint16_t offset; // jump target when condition evaluated to be false
   itr->GetOperand(&cond,&offset);
-
   // create the leading If node
   If*      if_region    = If::New(graph_,StackGet(cond),region());
   IfFalse* false_region = IfFalse::New(graph_,if_region);
@@ -1525,11 +1557,9 @@ GraphBuilder::BuildIf( BytecodeIterator* itr ) {
   Environment true_env(*env(),Environment::LEXICAL_SCOPE);
   std::uint16_t final_cursor;
   bool have_false_branch;
-
   // 1. Build code inside of the *true* branch and it will also help us to
   //    identify whether we have dangling elif/else branch
   itr->Move();
-
   // backup the old stack and use the new stack to do simulation
   backup_environment(&true_env,this) {
     // swith to a true region
@@ -1551,7 +1581,6 @@ GraphBuilder::BuildIf( BytecodeIterator* itr ) {
     }
     rhs = region();
   }
-
   // 2. Build code inside of the *false* branch
   {
     // setup an empty barrier to seperate the effect chain

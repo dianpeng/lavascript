@@ -1,4 +1,5 @@
 #include "dce.h"
+#include "src/cbase/type.h"
 #include "src/cbase/dominators.h"
 #include "src/cbase/hir-visitor.h"
 
@@ -13,28 +14,7 @@ namespace {
 // If we can infer the value this function returns true ; otherwise
 // returns false.
 bool InferPredicate( Expr* predicate , bool* output ) {
-  switch(predicate->type()) {
-    case HIR_BOOLEAN:
-      *output = predicate->AsBoolean()->value();
-      return true;
-    case HIR_NIL:
-      *output = false;
-      return true;
-    case HIR_FLOAT64:
-    case HIR_LONG_STRING :
-    case HIR_SMALL_STRING:
-    case HIR_LIST:
-    case HIR_OBJECT:
-    case HIR_CLOSURE:
-    case HIR_ITR_NEW:
-    case HIR_FLOAT64_NEGATE:
-    case HIR_FLOAT64_ARITHMETIC:
-    case HIR_FLOAT64_BITWISE:
-      *output = true;
-      return true;
-    default:
-      return false;
-  }
+  return GetBooleanValue(predicate,output);
 }
 
 class DCEImpl {

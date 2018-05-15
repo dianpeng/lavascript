@@ -19,6 +19,9 @@ class Expr;
 // Do simple type inference based on the input type
 TypeKind GetTypeInference( Expr* );
 
+// evaluate expr node under boolean context
+bool GetBooleanValue     ( Expr* , bool* );
+
 } // namespace hir
 } // namespace cbase
 } // namespace lavascript

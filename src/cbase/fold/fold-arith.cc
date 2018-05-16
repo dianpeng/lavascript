@@ -336,12 +336,12 @@ Expr* Fold( Graph* graph , Expr* cond , Expr* lhs , Expr* rhs ) {
 class ArithFolder : public Folder {
  public:
   ArithFolder( zone::Zone* zone ) { (void)zone; }
-  virtual bool Predicate( const FolderData& data ) const;
+  virtual bool CanFold( const FolderData& data ) const;
   virtual Expr* Fold( Graph* graph , const FolderData& data );
 };
 
 
-bool ArithFolder::Predicate( const FolderData& data ) const {
+bool ArithFolder::CanFold( const FolderData& data ) const {
   return data.fold_type() == FOLD_UNARY   ||
     data.fold_type() == FOLD_BINARY  ||
     data.fold_type() == FOLD_TERNARY;

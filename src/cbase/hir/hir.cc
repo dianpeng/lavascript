@@ -139,18 +139,18 @@ ReadEffectListIterator WriteEffect::AddReadEffect( ReadEffect* effect ) {
   return read_effect_.PushBack(zone(),effect);
 }
 
-EffectBarrier* EffectBarrier::ClosestBarrier() const {
+EffectBarrier* WriteEffect::FirstBarrier() const {
   if(Is<EffectBarrier>())
     return const_cast<EffectBarrier*>(As<EffectBarrier>());
   else
     return NextBarrier();
 }
 
-EffectBarrier* EffectBarrier::NextBarrier() const {
+EffectBarrier* WriteEffect::NextBarrier() const {
   auto e = NextLink();
   while(!e->Is<EffectBarrier>() && !e->Is<InitBarrier>());
     e = e->NextLink();
-  return e;
+  return e->As<EffectBarrier>();
 }
 
 class EffectPhiBase::EffectPhiBaseDependencyIterator {

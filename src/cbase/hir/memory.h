@@ -22,19 +22,6 @@ LAVA_CBASE_HIR_DEFINE(MemoryNode,public Expr) {
   MemoryNode( IRType type , std::uint32_t id , Graph* g ): Expr(type,id,g){}
 };
 
-// MemoryRef node represents an operation that does a immutable memory lookup. The node derive
-// from it should not mutate any memory but just do a simple address of operations. ie node like
-// Index into a list or get an existed hash slot/entry of a hash map(Object).
-LAVA_CBASE_HIR_DEFINE(MemoryRef,public ReadEffect) {
- public:
-  MemoryRef( IRType type , std::uint32_t id , Graph* graph ):
-    ReadEffect(type,id,graph)
-  {}
-
-  virtual Expr*           object() const = 0;
-  virtual Expr*           comp  () const = 0;
-  virtual Checkpoint* checkpoint() const =0;
-};
 
 // --------------------------------------------------------------------------
 // Argument

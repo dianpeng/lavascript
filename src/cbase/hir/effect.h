@@ -70,9 +70,16 @@ LAVA_CBASE_HIR_DEFINE(WriteEffect,public Expr,public SingleNodeLink<WriteEffect>
     return NextLink() ? NextLink()->read_effect_.size() : 0;
   }
  public:
+  // return the next write effect node ,if a effect phi node is met then it returns NULL
+  // since user should not use NextWrite to examine the next barrier node
+  WriteEffect*   NextWrite() const {
+    auto ret = NextLink();
+    lava_debug(NORMAL,lava_verify(ret););
+    return ret;
+  }
   // return barrier that is closest to |this| node. If |this| node is a barrier,
   // then just return |this|
-  EffectBarrier* ClosestBarrier() const;
+  EffectBarrier* FirstBarrier() const;
 
   // find another barrier that is closes to |this| node. If |this| node is a barrier,
   // function will not return |this| but the nearest barrier happened before this.
@@ -124,10 +131,10 @@ LAVA_CBASE_HIR_DEFINE(SoftBarrier,public EffectBarrier) {
     EffectBarrier(type,id,graph) {}
 };
 
-LAVA_CBASE_HIR_DEFINE(EffectPhiBase,public SoftBarrier) {
+LAVA_CBASE_HIR_DEFINE(EffectPhiBase,public HardBarrier) {
  public:
   EffectPhiBase( IRType type , std::uint32_t id , Graph* graph ) :
-    SoftBarrier(type,id,graph) {}
+    HardBarrier(type,id,graph) {}
  public:
   ControlFlow* region    ()                      const { return region_;   }
   void         set_region( ControlFlow* region )       { region_ = region; }
@@ -191,16 +198,16 @@ LAVA_CBASE_HIR_DEFINE(InitBarrier,public HardBarrier) {
   LAVA_DISALLOW_COPY_AND_ASSIGN(InitBarrier)
 };
 
-// EmptyBarrier is an object to be used to *mark* the control flow. It doesn't have any
+// EmptyWriteEffect is an object to be used to *mark* the control flow. It doesn't have any
 // actual barrier impact but just to mark the separation of control flow region, ie *If* node.
-LAVA_CBASE_HIR_DEFINE(EmptyBarrier,public SoftBarrier) {
+LAVA_CBASE_HIR_DEFINE(EmptyWriteEffect,public WriteEffect) {
  public:
-  static inline EmptyBarrier* New( Graph* );
-  static inline EmptyBarrier* New( Graph*  , WriteEffect* );
+  static inline EmptyWriteEffect* New( Graph* );
+  static inline EmptyWriteEffect* New( Graph*  , WriteEffect* );
 
-  EmptyBarrier( Graph* graph , std::uint32_t id ) : SoftBarrier(HIR_EMPTY_BARRIER,id,graph) {}
+  EmptyWriteEffect( Graph* graph , std::uint32_t id ) : WriteEffect(HIR_EMPTY_WRITE_EFFECT,id,graph) {}
  private:
-  LAVA_DISALLOW_COPY_AND_ASSIGN(EmptyBarrier)
+  LAVA_DISALLOW_COPY_AND_ASSIGN(EmptyWriteEffect)
 };
 
 } // namespace hir

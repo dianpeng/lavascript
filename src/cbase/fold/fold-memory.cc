@@ -1,5 +1,7 @@
 #include "fold-memory.h"
 #include "folder.h"
+#include "src/cbase/type.h"
+#include "src/cbase/aa.h"
 #include "src/util.h"
 
 #include <unordered_set>
@@ -9,112 +11,41 @@ namespace cbase      {
 namespace hir        {
 namespace            {
 
-/**
- * Alias Analysis
- *
- * We have a relative simple AA process . In weak type language, do deep
- * AA is extreamly complicated since everything is dynamic. To make AA
- * possible, I have already refactoried many times for the HIR to try to
- * simplify this process and carry out as much information as possible.
- *
- */
-
-class AA {
- public:
-  virtual int Query( Expr* , Expr* , EffectBarrier* ) = 0;
-};
-
-class ObjectAA : public AA {
- public:
-  virtual int Query( Expr* , Expr* , EffectBarrier* );
-};
-
-class ListAA   : public AA {
- public:
-  virtual int Query( Expr* , Expr* , EffectBarrier* );
-};
-
-int ObjectAA::Query( Expr* object , Expr* key , EffectBarrier* effect ) {
-  if(effect->Is<ListResize>()) {
-    return AA_NOT;
-  } else if(effect->Is<EmptyBarrier>()) {
-    return AA_NOT;
-  } else if(effect->Is<ObjectResize>()) {
-    auto resizer = effect->As<ObjectResize>();
-    auto obj     = resizer->object();
-    auto k       = resizer->key   ();
-
-    if(obj->Equal(object)) {
-      if(k->Equal(key)) {
-        return AA_MUST;
-      } else if(k->IsString() && key->IsString()) {
-        lava_debug(NORMAL,lava_verify(k->AsZoneString() != key->AsZoneString()););
-        return AA_NOT;
-      }
-    } else {
-      if(obj->IsIRObject() && object->IsIRObject()) return AA_NOT;
-    }
-    return AA_MAY;
-  } else {
-    return AA_MUST;
-  }
-}
-
-int ListAA::Query( Expr* object , Expr* index , EffectBarrier* effect ) {
-  if(effect->Is<ObjectResize>()) {
-    return AA_NOT;
-  } else if(effet->IsEmptyBarrier>()) {
-    return AA_NOT;
-  } else if(effect->Is<ListResize>()) {
-    auto resizer = effect->As<ListResize>();
-    auto obj     = resizer->object();
-    auto idx     = resizer->index ();
-    if(obj->Equal(object)) {
-      if(idx->Equal(index)) {
-        return AA_MUST;
-      } else if(idx->IsFloat64() && index->IsFloat64()) {
-        lava_debug(NORMAL,lava_verify(idx->As<Float64>()->value()!=index->As<Float64>()->value()););
-        return AA_NOT;
-      }
-    } else {
-      if(obj->IsIRList() && object->IsIRList())
-        return AA_NOT;
-    }
-    return AA_MAY;
-  } else {
-    return AA_MUST;
-  }
-}
-
 
 class MemoryFolder : public Folder {
  public:
   MemoryFolder( zone::Zone* zone ):ref_table_() { (void)zone; }
 
-  virtual bool Predicate( const FolderData& ) const;
+  virtual bool CanFold( const FolderData& ) const;
   virtual Expr* Fold    ( Graph* , const FolderData& );
 
  private:
   Expr* Fold( Graph* , const ObjectFindFolderData&   );
   Expr* Fold( Graph* , const ObjectRefGetFolderData& );
   Expr* Fold( Graph* , const ObjectRefSetFolderData& );
+  Expr* Fold( Graph* , const ExprFolderData& );
 
  private:
   static const char* kObjectRef;
   static const char* kListRef;
 
-  // reference key
+  // For iterative value numbering of all the memory reference node. Memory
+  // reference nodes will not participate GVN operations due to the side
+  // effect it generates , ie any nodes inside of the effect chain will not
+  // be part of GVN. But they can be numbering. Here the folder function will
+  // do a special numbering of memory reference node and combine it with AA
+  // to optimize out those redundant memory reference node.
   struct RefKey {
-    Expr*          object;
-    Expr*          key   ;
-    EffectBarrier* effect;
-    MemoryRef*     ref;
-    const char*    ref_type;
-    RefKey( MemoryRef* , EffectBarrier* );
+    Expr*           object;
+    Expr*           key   ;
+    EffectBarrier*  effect;
+    StaticRef*      ref;
+    const char*     ref_type;
+    RefKey( StaticRef* , EffectBarrier* );
     RefKey( Expr* , Expr* , EffectBarrier* , const char* );
   };
 
-  struct RefKeyHasher {
+  struct RefKeyHash {
     std::size_t operator() ( const RefKey& rk ) const;
   };
 
@@ -122,40 +53,35 @@ class MemoryFolder : public Folder {
     bool operator () ( const RefKey& l , const RefKey& r ) const;
   };
 
-  typedef std::unordered_set<RefKey,RefKeyHasher,RefKeyEqual> NumberTable;
+  typedef std::unordered_set<RefKey,RefKeyHash,RefKeyEqual> NumberTable;
 
-  struct RefPos {
-    MemoryRef*      ref;
-    WriteEffect* effect;
-    RefPos(MemoryRef* r, WriteEffect* e):ref(r),effect(e) {}
-    RefPos():ref(),effect() {}
-    operator bool () const { return ref != NULL; }
-  };
-
-  RefPos FindRef( Expr* , Expr* , WriteEffect* , AA* );
+  StaticRef* FindRef( Expr* , Expr* , WriteEffect* , TypeKind );
  private:
   NumberTable ref_table_;
 };
 
 LAVA_REGISTER_FOLDER("memory-folder",MemoryFolderFactory,MemoryFolder);
 
-static const char*          MemoryFolder::kObjectRef = "object-ref";
-static const char*          MemoryFolder::kListRef   = "list-ref";
-static MemoryFolder::Result MemoryFolder::Result::kDead{DEAD,NULL};
-static MemoryFolder::Result MemoryFolder::Result::kFailed{FAILED,NULL};
+const char* MemoryFolder::kObjectRef = "object-ref";
+const char* MemoryFolder::kListRef   = "list-ref";
 
-MemoryFolder::RefKey::RefKey( MemoryRef* r , EffectBarrier* eb ):
-  object    (r->object()),
-  key       (r->comp()  ),
+MemoryFolder::RefKey::RefKey( StaticRef* r , EffectBarrier* eb ):
+  object    (NULL),
+  key       (NULL),
   effect    (eb),
   ref       (r),
   ref_type  (NULL)
 {
   if(ref->Is<ObjectFind>()) {
+    auto of  = ref->As<ObjectFind>();
     ref_type = kObjectRef;
+    object   = of->object();
+    key      = of->key   ();
   } else {
-    lava_debug(NORMAL,lava_verify(ref->Is<ListInsert>()););
+    auto li  = ref->As<ListIndex>();
     ref_type = kListRef;
+    object   = li->object();
+    key      = li->index ();
   }
 }
 
@@ -177,39 +103,112 @@ std::size_t MemoryFolder::RefKeyHash::operator() ( const RefKey& rk ) const {
   return GVNHash3(rk.ref_type,rk.object->GVNHash(),rk.key->GVNHash(),rk.effect->GVNHash());
 }
 
-MemoryFolder::RefPos MemoryFolder::FindRef( Expr* object , Expr* key , WriteEffect* effect ,
-                                                                       AA*          aa ) {
-  for( auto e = effect->ClosestBarrier(); e && !e->Is<HardBarrier>() ;e = e->NextBarrier() ) {
-    if(auto itr = ref_table_.find(RefKey{object,key,effect,kObjectRef});
+StaticRef* MemoryFolder::FindRef( Expr* object , Expr* key , WriteEffect* effect , TypeKind hint ) {
+  // This function essentially is a value numbering process for dedup of memory ref node
+  // It starts to compute number of the memory ref node indicated by {object,key} with
+  // a specific needed effect node until we hit one
+  for( auto e = effect->FirstBarrier(); !e->Is<HardBarrier>() ;e = e->NextBarrier() ) {
+    if(auto itr = ref_table_.find(RefKey{object,key,e->As<EffectBarrier>(),kObjectRef});
         itr != ref_table_.end()) {
       lava_debug(NORMAL,lava_verify(itr->ref););
-      return RefPos{itr->ref,effect};
+      return itr->ref;
     }
 
-    switch(aa->Query(object,key,effect)) {
+    int ret = (hint == TPKIND_OBJECT ? AA::QueryObject(object,e->As<EffectBarrier>()) :
+                                       AA::QueryList  (object,e->As<EffectBarrier>()));
+
+    switch(ret) {
       case AA::AA_MAY :
       case AA::AA_MUST:
-        return RefPos{};
+        return NULL;
       default:
         break;
     }
   }
-  return RefPos{};
+  return NULL;
+}
+
+Expr* MemoryFolder::Fold( Graph* graph , const ExprFolderData& data ) {
+  if(data.node->Is<StaticRef>()) {
+    auto sr = data.node->As<StaticRef>();
+    // should be always successful
+    ref_table_.insert(RefKey{data.node->As<StaticRef>(),sr->write_effect()->FirstBarrier()});
+    // just return the old node
+    return sr;
+  }
+  return NULL;
 }
 
 Expr* MemoryFolder::Fold( Graph* graph , const ObjectFindFolderData& data ) {
-  AAObject aa;
-  if(auto ref = FindRef(data.object,data.key,data.effect,&aa); ref) {
-    return ref.node;
-  }
-  auto obj = ObjectFind::New(graph,data.object,data.key,data.cp);
-  lava_verify(ref_table_.insert(RefKey{obj,data.effect}).second);
-  return obj;
+  return FindRef(data.object,data.key,data.effect,TPKIND_OBJECT);
 }
 
 Expr* MemoryFolder::Fold( Graph* graph , const ObjectRefGetFolderData& data ) {
-  auto e = data.effect;
-  // perform a store forwarding operation
+  auto ref = data.ref;
+  if(!ref->Is<StaticRef>()) return NULL; // none static ref cannot do forwarding
+                                         // but I don't know whether we have it or not
+
+  for( auto e = data.effect; !e->Is<HardBarrier>() ; e = e->NextWrite() ) {
+    // walk through all the write happened before this Load operation and
+    // try to find one write that writes to exactly same position this load
+    // operates on and then try to do a forwarding.
+    if(e->Is<ObjectRefSet>()) {
+      switch(AA::Query(ref,e->As<ObjectRefSet>()->ref())) {
+        case AA::AA_MAY : return NULL;
+        case AA::AA_MUST: return e->As<ObjectRefSet>()->value(); // forwarding
+        default:          break;
+      }
+    }
+  }
+
+  return NULL;
+}
+
+Expr* MemoryFolder::Fold( Graph* graph , const ObjectRefSetFolderData& data ) {
+  auto ref = data.ref;
+
+  // store collapsing. eg :
+  // a[1] = 20;
+  // a[1] = 30;
+  // dedup the second write operation
+  for( auto e = data.effect; !e->Is<HardBarrier>() ; e = e->NextWrite() ) {
+    // 1. go through all the read happened before this write opereations
+    lava_foreach( auto rd , e->read_effect()->GetForwardIterator() ) {
+      if(e->Is<ObjectRefGet>()) {
+        switch(AA::Query(ref,e->As<ObjectRefGet>()->ref())) {
+          case AA::AA_MUST:
+          case AA::AA_MAY : return NULL; // there's a read
+          default: break;
+        }
+      }
+    }
+
+    // 2. check this write operation
+    if(e->Is<ObjectRefSet>()) {
+      if(AA::Query(ref,e->As<ObjectRefSet>()->ref()) == AA::AA_MUST) {
+        // collapsing
+        e->ReplaceOperand(1,data.value);
+        return e;
+      }
+    }
+  }
+  return NULL;
+}
+
+bool MemoryFolder::CanFold( const FolderData& data ) const {
+  switch(data.fold_type()) {
+    case FOLD_OBJECT_FIND:
+    case FOLD_OBJECT_REF_GET:
+    case FOLD_OBJECT_REF_SET:
+      return true;
+    case FOLD_EXPR:
+      if(auto d = static_cast<const ExprFolderData&>(data); d.node->Is<StaticRef>())
+        return true;
+      break;
+    default:
+      break;
+  }
+  return false;
 }
 
 Expr* MemoryFolder::Fold( Graph* graph , const FolderData& data ) {
@@ -219,6 +218,8 @@ Expr* MemoryFolder::Fold( Graph* graph , const FolderData& data ) {
     return Fold(graph,static_cast<const ObjectRefGetFolderData&>(data));
   } else if(data.fold_type() == FOLD_OBJECT_REF_SET) {
     return Fold(graph,static_cast<const ObjectRefSetFolderData&>(data));
+  } else if(data.fold_type() == FOLD_EXPR) {
+    return Fold(graph,static_cast<const ExprFolderData&>(data));
   }
 }
 

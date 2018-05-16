@@ -12,7 +12,7 @@ class PhiFolder : public Folder {
  public:
   PhiFolder( zone::Zone* zone ) { (void)zone; }
 
-  virtual bool Predicate( const FolderData& data ) const;
+  virtual bool CanFold( const FolderData& data ) const;
   virtual Expr* Fold    ( Graph* , const FolderData& );
  private:
   Expr* Fold( Graph* , Expr* , Expr* , ControlFlow* );
@@ -31,7 +31,7 @@ Expr* PhiFolder::Fold( Graph* graph , const FolderData& data ) {
   }
 }
 
-bool PhiFolder::Predicate( const FolderData& data ) const {
+bool PhiFolder::CanFold( const FolderData& data ) const {
   if(data.fold_type() == FOLD_PHI) {
     return true;
   } else if(data.fold_type() == FOLD_EXPR) {
@@ -60,7 +60,7 @@ Expr* PhiFolder::Fold( Phi* phi ) {
   if(phi->operand_list()->size() == 2) {
     auto lhs = phi->operand_list()->First();
     auto rhs = phi->operand_list()->Last();
-    if(lhs->IsReplaceable(rhs)) return lhs;
+    if(lhs->Equal(rhs)) return lhs;
   }
   return NULL;
 }

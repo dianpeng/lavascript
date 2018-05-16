@@ -14,7 +14,7 @@ class IntrinsicFolder : public Folder {
  public:
   IntrinsicFolder( zone::Zone* zone ) { (void)zone; }
 
-  virtual bool Predicate( const FolderData& ) const;
+  virtual bool CanFold( const FolderData& ) const;
   virtual Expr* Fold    ( Graph* , const FolderData& );
  private:
    inline bool AsUInt8 ( Expr* , std::uint8_t* );
@@ -25,7 +25,7 @@ class IntrinsicFolder : public Folder {
 
 LAVA_REGISTER_FOLDER("intrinsic-folder",IntrinsicFolderFactory,IntrinsicFolder);
 
-bool IntrinsicFolder::Predicate( const FolderData& data ) const {
+bool IntrinsicFolder::CanFold( const FolderData& data ) const {
   if(data.fold_type() == FOLD_EXPR) {
     auto d = static_cast<const ExprFolderData&>(data);
     return d.node->Is<ICall>();

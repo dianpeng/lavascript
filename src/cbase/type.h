@@ -12,6 +12,7 @@ namespace cbase {
  * Type flag definitions
  *
  * The indent here indicate the parental relationship between each type
+ * NOTES: String are conisdered to be primitive due to its immutable
  */
 #define LAVASCRIPT_CBASE_TYPE_KIND_LIST(__)             \
   __(unknown,UNKNOWN)                                   \
@@ -68,6 +69,16 @@ class TPKind {
   inline static bool ToBoolean( TypeKind , bool* );
   // check whether this TypeKind is a string type or not
   inline static bool IsString( TypeKind tp );
+  // type is primitive , primitive type doesn't have side effect they
+  // are immutable essentially. String is Primitive type since it doesn't
+  // have side effect
+  inline static bool IsLiteral( TypeKind tp );
+  // heap type has mutability and can cause side effect
+  inline static bool IsMutable     ( TypeKind tp );
+  // unknown means the type is a mixed , cannot tell what it actually is
+  inline static bool IsUnknown  ( TypeKind tp ) {
+    return !IsLiteral(tp) && !IsMutable(tp);
+  }
  public:
   TypeKind type_kind() const { return type_kind_; }
   const char* type_kind_name() const {
@@ -114,7 +125,14 @@ class TPKind {
 };
 
 inline bool TPKind::IsString( TypeKind tp ) {
-  return tp == TPKIND_STRING || tp == TPKIND_LONG_STRING || tp == TPKIND_SMALL_STRING;
+  switch(tp) {
+    case TPKIND_STRING:
+    case TPKIND_LONG_STRING:
+    case TPKIND_SMALL_STRING:
+      return true;
+    default:
+      return false;
+  }
 }
 
 inline bool TPKind::ToBoolean( TypeKind tp , bool* output ) {
@@ -126,6 +144,37 @@ inline bool TPKind::ToBoolean( TypeKind tp , bool* output ) {
     else
       *output = true;
     return true;
+  }
+}
+
+inline bool TPKind::IsLiteral( TypeKind tp ) {
+  switch(tp) {
+    case TPKIND_PRIMITIVE:
+    case TPKIND_NUMBER:
+    case TPKIND_FLOAT64:
+    case TPKIND_INDEX:
+    case TPKIND_BOOLEAN:
+    case TPKIND_NIL:
+    case TPKIND_STRING:
+    case TPKIND_LONG_STRING:
+    case TPKIND_SMALL_STRING:
+      return true;
+    default:
+      return false;
+  }
+}
+
+inline bool TPKind::IsMutable( TypeKind tp ) {
+  switch(tp) {
+    case TPKIND_REFERENCE:
+    case TPKIND_OBJECT:
+    case TPKIND_LIST:
+    case TPKIND_ITERATOR:
+    case TPKIND_CLOSURE:
+    case TPKIND_EXTENSION:
+      return true;
+    default:
+      return false;
   }
 }
 

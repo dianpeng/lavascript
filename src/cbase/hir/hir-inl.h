@@ -355,28 +355,23 @@ inline UGet* UGet::New( Graph* graph , std::uint8_t index , std::uint32_t method
 }
 
 inline USet* USet::New( Graph* graph , std::uint8_t index , std::uint32_t method , Expr* opr ) {
-  auto ret = graph->zone()->New<USet>(graph,graph->AssignID(),index,method,opr);
-  return ret;
+  return graph->zone()->New<USet>(graph,graph->AssignID(),index,method,opr);
 }
 
 inline PGet* PGet::New( Graph* graph , Expr* obj , Expr* key ) {
-  auto ret = graph->zone()->New<PGet>(graph,graph->AssignID(),obj,key);
-  return ret;
+  return graph->zone()->New<PGet>(graph,graph->AssignID(),obj,key);
 }
 
 inline PSet* PSet::New( Graph* graph , Expr* obj , Expr* key , Expr* value ) {
-  auto ret = graph->zone()->New<PSet>(graph,graph->AssignID(),obj,key,value);
-  return ret;
+  return graph->zone()->New<PSet>(graph,graph->AssignID(),obj,key,value);
 }
 
 inline IGet* IGet::New( Graph* graph , Expr* obj, Expr* key ) {
-  auto ret = graph->zone()->New<IGet>(graph,graph->AssignID(),obj,key);
-  return ret;
+  return graph->zone()->New<IGet>(graph,graph->AssignID(),obj,key);
 }
 
 inline ISet* ISet::New( Graph* graph , Expr* obj , Expr* key , Expr* val ) {
-  auto ret = graph->zone()->New<ISet>(graph,graph->AssignID(),obj,key,val);
-  return ret;
+  return graph->zone()->New<ISet>(graph,graph->AssignID(),obj,key,val);
 }
 
 inline ObjectFind* ObjectFind::New( Graph* graph , Expr* obj , Expr* key , Checkpoint* cp ) {
@@ -391,12 +386,55 @@ inline ObjectUpdate* ObjectUpdate::New( Graph* graph , Expr* object , Expr* key 
   return graph->zone()->New<ObjectUpdate>(graph,graph->AssignID(),object,key);
 }
 
-inline ListIndex* ListIndex::New( Graph* graph , Expr* obj , Expr* index ) {
-  return graph->zone()->New<ListIndex>(graph,graph->AssignID(),obj,index);
+inline ListIndex* ListIndex::New( Graph* graph , Expr* obj , Expr* index , Checkpoint* cp ) {
+  return graph->zone()->New<ListIndex>(graph,graph->AssignID(),obj,index,cp);
 }
 
 inline ListInsert* ListInsert::New( Graph* graph , Expr* obj , Expr* index , Checkpoint* cp ) {
   return graph->zone()->New<ListInsert>(graph,graph->AssignID(),obj,index,cp);
+}
+
+// FieldRefNode --------------------------------------------------------
+inline FieldRefNode::FieldRefNode( Expr* node ) : node_(node) {
+  lava_debug(NORMAL,lava_verify( node->Is<ListInsert>()   ||
+                                 node->Is<ListIndex> ()   ||
+                                 node->Is<ObjectFind>()   ||
+                                 node->Is<ObjectInsert>() ||
+                                 node->Is<ObjectUpdate>()););
+}
+
+inline Expr* FieldRefNode::object() const {
+  if(node_->Is<ListInsert>  ()) return node_->As<ListInsert>  ()->object();
+  if(node_->Is<ListIndex>   ()) return node_->As<ListIndex>   ()->object();
+  if(node_->Is<ObjectFind>  ()) return node_->As<ObjectFind>  ()->object();
+  if(node_->Is<ObjectInsert>()) return node_->As<ObjectInsert>()->object();
+  if(node_->Is<ObjectUpdate>()) return node_->As<ObjectUpdate>()->object();
+  lava_die() ; return NULL;
+}
+
+inline Expr* FieldRefNode::comp() const {
+  if(node_->Is<ListInsert>  ()) return node_->As<ListInsert>  ()->index();
+  if(node_->Is<ListIndex>   ()) return node_->As<ListIndex>   ()->index();
+  if(node_->Is<ObjectFind>  ()) return node_->As<ObjectFind>  ()->key  ();
+  if(node_->Is<ObjectInsert>()) return node_->As<ObjectInsert>()->key  ();
+  if(node_->Is<ObjectUpdate>()) return node_->As<ObjectUpdate>()->key  ();
+  lava_die() ; return NULL;
+}
+
+inline bool FieldRefNode::IsListRef() const {
+  return node_->Is<ListInsert>() || node_->Is<ListIndex>();
+}
+
+inline bool FieldRefNode::IsObjectRef() const {
+  return node_->Is<ObjectFind>() || node_->Is<ObjectInsert>() || node_->Is<ObjectUpdate>();
+}
+
+inline bool FieldRefNode::IsRead() const {
+  return node_->Is<ListIndex>() || node_->Is<ObjectFind>();
+}
+
+inline bool FieldRefNode::IsWrite() const {
+  return !IsRead();
 }
 
 inline ObjectRefGet* ObjectRefGet::New( Graph* graph , Expr* oref ) {
@@ -529,11 +567,11 @@ inline InitBarrier* InitBarrier::New( Graph* graph ) {
   return graph->zone()->New<InitBarrier>(graph,graph->AssignID());
 }
 
-inline EmptyBarrier* EmptyBarrier::New( Graph* graph ) {
-  return graph->zone()->New<EmptyBarrier>(graph,graph->AssignID());
+inline EmptyWriteEffect* EmptyWriteEffect::New( Graph* graph ) {
+  return graph->zone()->New<EmptyWriteEffect>(graph,graph->AssignID());
 }
 
-inline EmptyBarrier* EmptyBarrier::New( Graph* graph , WriteEffect* effect ) {
+inline EmptyWriteEffect* EmptyWriteEffect::New( Graph* graph , WriteEffect* effect ) {
   auto ret = New(graph);
   ret->HappenAfter(effect);
   return ret;

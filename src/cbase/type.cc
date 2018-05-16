@@ -98,17 +98,6 @@ TPKind::TPKindBuilder::TPKindBuilder() :
       }
       AddChildren(primitive,Node(TPKIND_BOOLEAN));
       AddChildren(primitive,Node(TPKIND_NIL));
-    }
-
-    // reference <- string
-    //           <- object
-    //           <- list
-    //           <- iterator
-    //           <- closure
-    //           <- extension
-    {
-      auto reference = Node(TPKIND_REFERENCE);
-      AddChildren(reference,Node(TPKIND_STRING));
       // string  <- small_string
       //         <- long_string
       {
@@ -116,6 +105,16 @@ TPKind::TPKindBuilder::TPKindBuilder() :
         AddChildren(string,Node(TPKIND_LONG_STRING));
         AddChildren(string,Node(TPKIND_SMALL_STRING));
       }
+    }
+
+    // reference <- object
+    //           <- list
+    //           <- iterator
+    //           <- closure
+    //           <- extension
+    {
+      auto reference = Node(TPKIND_REFERENCE);
+      AddChildren(reference,Node(TPKIND_STRING));
       AddChildren(reference,Node(TPKIND_OBJECT));
       AddChildren(reference,Node(TPKIND_LIST));
       AddChildren(reference,Node(TPKIND_ITERATOR));

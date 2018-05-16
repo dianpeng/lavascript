@@ -71,7 +71,7 @@ class GraphBuilder {
 
     // insert an empty barrier into the effect chain, mainly used for building if
     // branch node.
-    void InsertEmptyBarrier();
+    void InsertEmptyWriteEffect();
    public:
     // init environment object from prototype object
     void EnterFunctionScope  ( const FuncInfo& );
@@ -103,7 +103,7 @@ class GraphBuilder {
     void UpdateState( Checkpoint* cp ) { state_ = cp; }
 
     LoopEffectPhi*   AsLoopEffectPhi() { return effect()->joined_write_effect()->AsLoopEffectPhi(); }
-    EmptyBarrier*    AsEmptyBarrier () { return effect()->joined_write_effect()->AsEmptyBarrier(); }
+    EmptyWriteEffect*    AsEmptyWriteEffect () { return effect()->joined_write_effect()->AsEmptyWriteEffect(); }
 
    private:
     zone::Zone*        zone_;                 // zone allocator
@@ -525,7 +525,7 @@ GraphBuilder::Environment::Environment( const Environment& env , int type ):
   } else {
     // create a empty effect node for normal lexical scope, it is really a marker for easier
     // DCE and other optimization
-    effect = EmptyBarrier::New( gb_->graph() , env.effect()->joined_write_effect() );
+    effect = EmptyWriteEffect::New( gb_->graph() , env.effect()->joined_write_effect() );
   }
   // initialize effect object inside of this environment
   effect_.Init(gb_->temp_zone(),effect);
@@ -543,8 +543,8 @@ GraphBuilder::Environment::Environment( const Environment& env ):
   effect_.Init(*env.effect_);
 }
 
-void GraphBuilder::Environment::InsertEmptyBarrier() {
-  auto empty_barrier = EmptyBarrier::New(gb_->graph());
+void GraphBuilder::Environment::InsertEmptyWriteEffect() {
+  auto empty_barrier = EmptyWriteEffect::New(gb_->graph());
   effect_->root()->UpdateWriteEffect(empty_barrier);
 }
 
@@ -1226,10 +1226,6 @@ Expr* GraphBuilder::LowerICall( ICall* node , const BytecodeLocation& pc ) {
 // ====================================================================
 // Property Get/Set
 // ====================================================================
-Expr* GraphBuilder::TrySpecualativePSet( Expr* object, Expr* key, Expr* value,
-                                                                  const BytecodeLocation& bc ) {
-}
-
 Expr* GraphBuilder::NewPSet( Expr* object , Expr* key , Expr* value ,
                                                         const BytecodeLocation& bc ) {
   auto ret = PSet::New(graph_,object,key,value);
@@ -1574,7 +1570,7 @@ GraphBuilder::BuildIf( BytecodeIterator* itr ) {
   backup_environment(&true_env,this) {
     // swith to a true region
     set_region(true_region);
-    true_region->AddStmt(env()->AsEmptyBarrier());
+    true_region->AddStmt(env()->AsEmptyWriteEffect());
     {
       StopReason reason = BuildIfBlock(itr,itr->OffsetAt(offset));
       if(reason == STOP_BAILOUT) {
@@ -1594,8 +1590,8 @@ GraphBuilder::BuildIf( BytecodeIterator* itr ) {
   // 2. Build code inside of the *false* branch
   {
     // setup an empty barrier to seperate the effect chain
-    env()->InsertEmptyBarrier();
-    false_region->AddStmt(env()->AsEmptyBarrier());
+    env()->InsertEmptyWriteEffect();
+    false_region->AddStmt(env()->AsEmptyWriteEffect());
     // build the false branch regardless whether it has one or not
     if(have_false_branch) {
       set_region(false_region);

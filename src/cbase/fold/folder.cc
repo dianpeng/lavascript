@@ -26,7 +26,7 @@ Expr* FolderChain::Fold( Graph* graph , const FolderData& data ) {
   // Walk the folder chain until one of them can fold it or we cannot
   // fold the input data, then just return a NULL
   for( auto &e : chain_ ) {
-    if(e->Predicate(data)) {
+    if(e->CanFold(data)) {
       if(auto expr = e->Fold(graph,data); expr) {
         return expr;
       }

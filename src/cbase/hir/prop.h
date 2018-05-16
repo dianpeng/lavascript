@@ -147,27 +147,6 @@ LAVA_CBASE_HIR_DEFINE(ISet,public HardBarrier) {
 //    ListRefSet   --> set a reference returned by   ListIndex/ListInsert
 //    ListRefGet   --> get a value from reference of ListIndex/ListInsert
 
-LAVA_CBASE_HIR_DEFINE(ObjectFind,public MemoryRef) {
- public:
-  static inline ObjectFind* New( Graph* , Expr* , Expr* , Checkpoint* );
-
-  ObjectFind( Graph* graph , std::uint32_t id , Expr* object , Expr* key , Checkpoint* cp ):
-    MemoryRef(HIR_OBJECT_FIND,id,graph)
-  {
-    lava_debug(NORMAL,lava_verify(GetTypeInference(object) == TPKIND_OBJECT););
-    AddOperand(object);
-    AddOperand(key);
-    AddOperand(cp);
-  }
-
-  virtual Expr*           object() const { return operand_list()->First(); }
-  virtual Expr*           comp  () const { return operand_list()->Index(1);}
-  virtual Checkpoint* checkpoint() const { return operand_list()->Last()->AsCheckpoint(); }
-
- private:
-  LAVA_DISALLOW_COPY_AND_ASSIGN(ObjectFind)
-};
-
 LAVA_CBASE_HIR_DEFINE(ObjectResize,public SoftBarrier) {
  public:
   ObjectResize( IRType type , std::uint32_t id , Graph* graph , Expr* object , Expr* key ):
@@ -180,44 +159,6 @@ LAVA_CBASE_HIR_DEFINE(ObjectResize,public SoftBarrier) {
 
   Expr* object() const { return operand_list()->First(); }
   Expr* key   () const { return operand_list()->Last (); }
-};
-
-LAVA_CBASE_HIR_DEFINE(ObjectUpdate,public ObjectResize) {
- public:
-  static inline ObjectUpdate* New( Graph* , Expr* , Expr* );
-  ObjectUpdate( Graph* graph , std::uint32_t id , Expr* object , Expr* key ):
-    ObjectResize(HIR_OBJECT_UPDATE,id,graph,object,key) {}
- private:
-  LAVA_DISALLOW_COPY_AND_ASSIGN(ObjectUpdate)
-};
-
-LAVA_CBASE_HIR_DEFINE(ObjectInsert,public ObjectResize) {
- public:
-  static inline ObjectInsert* New( Graph* , Expr* , Expr*  );
-  ObjectInsert( Graph* graph , std::uint32_t id , Expr* object , Expr* key ):
-    ObjectResize(HIR_OBJECT_INSERT,id,graph,object,key) {}
- private:
-  LAVA_DISALLOW_COPY_AND_ASSIGN(ObjectInsert)
-};
-
-LAVA_CBASE_HIR_DEFINE(ListIndex,public MemoryRef) {
- public:
-  static inline ListIndex* New( Graph* , Expr* , Expr* , Checkpoint* checkpoint );
-
-  ListIndex( Graph* graph , std::uint32_t id , Expr* object , Expr* index , Checkpoint* checkpoint ):
-    MemoryRef(HIR_LIST_INDEX,id,graph)
-  {
-    lava_debug(NORMAL,lava_verify( GetTypeInference(object) == TPKIND_LIST ););
-    AddOperand(object);
-    AddOperand(index);
-    AddOperand(checkpoint);
-  }
-
-  virtual Expr*           object() const { return operand_list()->First(); }
-  virtual Expr*           comp  () const { return operand_list()->Index(1); }
-  virtual Checkpoint* checkpoint() const { return operand_list()->Last(); }
- private:
-  LAVA_DISALLOW_COPY_AND_ASSIGN(ListIndex)
 };
 
 LAVA_CBASE_HIR_DEFINE(ListResize,public SoftBarrier) {
@@ -238,6 +179,72 @@ LAVA_CBASE_HIR_DEFINE(ListResize,public SoftBarrier) {
   Checkpoint* checkpoint() const { return operand_list()->Last()->AsCheckpoint(); }
 };
 
+LAVA_CBASE_HIR_DEFINE(StaticRef,public ReadEffect) {
+ public:
+  StaticRef( IRType type , std::uint32_t id , Graph* graph ):
+    ReadEffect(type,id,graph) {}
+};
+
+
+LAVA_CBASE_HIR_DEFINE(ObjectFind,public StaticRef) {
+ public:
+  static inline ObjectFind* New( Graph* , Expr* , Expr* , Checkpoint* );
+
+  ObjectFind( Graph* graph , std::uint32_t id , Expr* object , Expr* key , Checkpoint* cp ):
+    StaticRef(HIR_OBJECT_FIND,id,graph)
+  {
+    lava_debug(NORMAL,lava_verify(GetTypeInference(object) == TPKIND_OBJECT););
+    AddOperand(object);
+    AddOperand(key);
+    AddOperand(cp);
+  }
+
+  Expr*           object() const { return operand_list()->First(); }
+  Expr*           key   () const { return operand_list()->Index(1);}
+  Checkpoint* checkpoint() const { return operand_list()->Last()->AsCheckpoint(); }
+
+ private:
+  LAVA_DISALLOW_COPY_AND_ASSIGN(ObjectFind)
+};
+
+LAVA_CBASE_HIR_DEFINE(ObjectUpdate,public ObjectResize) {
+ public:
+  static inline ObjectUpdate* New( Graph* , Expr* , Expr* );
+  ObjectUpdate( Graph* graph , std::uint32_t id , Expr* object , Expr* key ):
+    ObjectResize(HIR_OBJECT_UPDATE,id,graph,object,key) {}
+ private:
+  LAVA_DISALLOW_COPY_AND_ASSIGN(ObjectUpdate)
+};
+
+LAVA_CBASE_HIR_DEFINE(ObjectInsert,public ObjectResize) {
+ public:
+  static inline ObjectInsert* New( Graph* , Expr* , Expr*  );
+  ObjectInsert( Graph* graph , std::uint32_t id , Expr* object , Expr* key ):
+    ObjectResize(HIR_OBJECT_INSERT,id,graph,object,key) {}
+ private:
+  LAVA_DISALLOW_COPY_AND_ASSIGN(ObjectInsert)
+};
+
+LAVA_CBASE_HIR_DEFINE(ListIndex,public StaticRef) {
+ public:
+  static inline ListIndex* New( Graph* , Expr* , Expr* , Checkpoint* checkpoint );
+
+  ListIndex( Graph* graph , std::uint32_t id , Expr* object , Expr* index , Checkpoint* checkpoint ):
+    StaticRef(HIR_LIST_INDEX,id,graph)
+  {
+    lava_debug(NORMAL,lava_verify( GetTypeInference(object) == TPKIND_LIST ););
+    AddOperand(object);
+    AddOperand(index);
+    AddOperand(checkpoint);
+  }
+
+  Expr*           object() const { return operand_list()->First(); }
+  Expr*           index () const { return operand_list()->Index(1); }
+  Checkpoint* checkpoint() const { return operand_list()->Last()->AsCheckpoint(); }
+ private:
+  LAVA_DISALLOW_COPY_AND_ASSIGN(ListIndex)
+};
+
 LAVA_CBASE_HIR_DEFINE(ListInsert,public ListResize) {
  public:
   static inline ListInsert* New( Graph* , Expr* , Expr* , Checkpoint* );
@@ -246,6 +253,54 @@ LAVA_CBASE_HIR_DEFINE(ListInsert,public ListResize) {
  private:
   LAVA_DISALLOW_COPY_AND_ASSIGN(ListInsert)
 };
+
+// Helper wrapper class to put all reference into one types of node.
+//
+// Since HIR doesn't allow multiple inheritance in generaly except for
+// simple helper class, we cannot represent concept of field reference
+// of all the node. All the field reference node are listed as follow:
+//
+// 1) ListInsert
+// 2) ListIndex
+// 3) ObjectFind
+// 4) ObjectInsert
+// 5) ObjectUpdate
+//
+//
+// The above 5 nodes actually represents a pointer/reference points to
+// a specific filed/element inside of an object/list. We cannot use normal
+// way to categorize them due to ListInsert/ObjectInsert/ObjectUpdate are
+// destructive operation with *Resize* operation needed, our HIR doesn't
+// lower these operation into *Resize* operation plus Index operation, so
+// they cannot be simplified even more.
+//
+// The following helper class provides a easy way to construct an object
+// which can be used to generalize operation of the above 3 different types
+// nodes.
+class FieldRefNode {
+ public:
+  // initialize FieldRefNode with reference node, failed with assertion crash
+  inline explicit FieldRefNode( Expr* );
+ public:
+  Expr* node() const { return node_; }
+ public:
+  // Get the object of this FieldRefNode
+  inline Expr* object() const;
+  // Get the index/key component of this FieldRefNode
+  inline Expr* comp  () const;
+ public:
+  // Whether this reference node reference into a list
+  inline bool IsListRef  () const;
+  // Whether this reference node reference into a object
+  inline bool IsObjectRef() const;
+  // Whether this reference node is just a read ref node, ie node doesn't do resize
+  inline bool IsRead     () const;
+  // Whether this reference node is a write ref node , ie node does resize if needed
+  inline bool IsWrite    () const;
+ private:
+  Expr* node_;
+};
+
 
 LAVA_CBASE_HIR_DEFINE(RefGet,public ReadEffect) {
  public:
@@ -260,7 +315,7 @@ LAVA_CBASE_HIR_DEFINE(RefSet,public WriteEffect) {
  public:
   RefSet( IRType type , std::uint32_t id , Graph* graph , Expr* oref,
                                                           Expr* value ):
-    ReadEffect(type,id,graph)
+    WriteEffect(type,id,graph)
   {
     AddOperand(oref);
     AddOperand(value);
@@ -321,7 +376,7 @@ LAVA_CBASE_HIR_DEFINE(ListRefSet,public RefSet) {
   static ListRefSet* New( Graph* , Expr* , Expr* );
 
   ListRefSet( Graph* graph , std::uint32_t id , Expr* lref , Expr* value ):
-    RefSet(HIR_LIST_REF_SET,id,graph)
+    RefSet(HIR_LIST_REF_SET,id,graph,lref,value)
   {
     lava_debug(NORMAL,lava_verify( lref->IsListIndex()  ||
                                    lref->IsListInsert() ););

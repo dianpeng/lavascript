@@ -118,7 +118,7 @@ struct ObjectRefGetFolderData : public FolderData {
   Expr* ref;
   WriteEffect* effect;
 
-  ObjectRefSetFolderData( Expr* r , WriteEffect* e ):
+  ObjectRefGetFolderData( Expr* r , WriteEffect* e ):
     FolderData(FOLD_OBJECT_REF_SET),
     ref       (r),
     effect    (e)
@@ -135,7 +135,7 @@ class Folder {
  public:
   // Use to predicate whether this folder can work with this folder request
   // or not. If so, then the Fold callback function will be invoked
-  virtual bool Predicate( const FolderData& ) const = 0;
+  virtual bool CanFold( const FolderData& ) const = 0;
 
   // Fold the input folder data request. If it can fold anything, it will
   // return the folded value as a node

@@ -19,6 +19,15 @@ enum FoldType {
   FOLD_BINARY,
   FOLD_TERNARY,
   FOLD_PHI ,
+
+  FOLD_OBJECT_FIND,
+  FOLD_OBJECT_REF_SET,
+  FOLD_OBJECT_REF_GET,
+
+  FOLD_LIST_INSERT,
+  FOLD_LIST_REF_SET,
+  FOLD_LIST_REF_GET,
+
   FOLD_EXPR
 };
 
@@ -28,6 +37,14 @@ struct PhiFolderData;
 struct TernaryFolderData;
 struct StoreFolderData;
 struct LoadFolderData;
+
+struct ObjectFindFolderData;
+struct ObjectRefGetFolderData;
+
+struct ListInsertFolderData;
+struct ListRefSetFolderData;
+struct ListRefGetFolderData;
+
 struct ExprFolderData;
 
 class FolderData {
@@ -67,6 +84,45 @@ struct TernaryFolderData : public FolderData {
   Expr* rhs ;
 
   TernaryFolderData( Expr* c, Expr* l, Expr* r ): FolderData(FOLD_TERNARY), cond(c), lhs (l), rhs (r) {}
+};
+
+struct ObjectFindFolderData : public FolderData {
+  Expr*        object;
+  Expr*           key;
+  WriteEffect* effect;
+  Checkpoint*      cp;
+
+  ObjectFindFolderData( Expr* obj , Expr* k , WriteEffect* e , Checkpoint* c ):
+    FolderData(FOLD_OBJECT_FIND),
+    object    (obj),
+    key       (k),
+    effect    (e),
+    cp        (c)
+  {}
+};
+
+struct ObjectRefSetFolderData : public FolderData {
+  Expr* ref;
+  Expr* value;
+  WriteEffect* effect;
+
+  ObjectRefSetFolderData( Expr* r , Expr* v , WriteEffect* e ):
+    FolderData(FOLD_OBJECT_REF_SET),
+    ref       (r),
+    value     (v),
+    effect    (e)
+  {}
+};
+
+struct ObjectRefGetFolderData : public FolderData {
+  Expr* ref;
+  WriteEffect* effect;
+
+  ObjectRefSetFolderData( Expr* r , WriteEffect* e ):
+    FolderData(FOLD_OBJECT_REF_SET),
+    ref       (r),
+    effect    (e)
+  {}
 };
 
 struct ExprFolderData : public FolderData {

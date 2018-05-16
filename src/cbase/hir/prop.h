@@ -247,76 +247,86 @@ LAVA_CBASE_HIR_DEFINE(ListInsert,public ListResize) {
   LAVA_DISALLOW_COPY_AND_ASSIGN(ListInsert)
 };
 
-LAVA_CBASE_HIR_DEFINE(ObjectRefGet,public ReadEffect) {
+LAVA_CBASE_HIR_DEFINE(RefGet,public ReadEffect) {
+ public:
+  RefGet( IRType type , std::uint32_t id , Graph* graph , Expr* oref ):
+    ReadEffect(type,id,graph)
+  { AddOperand(oref); }
+
+  Expr* ref() const { return operand_list()->First(); }
+};
+
+LAVA_CBASE_HIR_DEFINE(RefSet,public WriteEffect) {
+ public:
+  RefSet( IRType type , std::uint32_t id , Graph* graph , Expr* oref,
+                                                          Expr* value ):
+    ReadEffect(type,id,graph)
+  {
+    AddOperand(oref);
+    AddOperand(value);
+  }
+
+  Expr* ref  () const { return operand_list()->First(); }
+  Expr* value() const { return operand_list()->Last(); }
+};
+
+LAVA_CBASE_HIR_DEFINE(ObjectRefGet,public RefGet) {
  public:
   static ObjectRefGet* New( Graph* , Expr* );
 
   ObjectRefGet( Graph* graph , std::uint32_t id , Expr* oref ):
-    ReadEffect(HIR_OBJECT_REF_GET,id,graph)
+    RefGet(HIR_OBJECT_REF_GET,id,graph,oref)
   {
     lava_debug(NORMAL,lava_verify( oref->IsObjectFind()   ||
                                    oref->IsObjectUpdate() ||
                                    oref->IsObjectInsert() ););
-    AddOperand(oref);
   }
 
-  Expr* ref() const { return operand_list()->First(); }
  private:
   LAVA_DISALLOW_COPY_AND_ASSIGN(ObjectRefGet)
 };
 
-LAVA_CBASE_HIR_DEFINE(ObjectRefSet,public ReadEffect) {
+LAVA_CBASE_HIR_DEFINE(ObjectRefSet,public RefSet) {
  public:
   static ObjectRefSet* New( Graph* , Expr* , Expr* );
 
   ObjectRefSet( Graph* graph , std::uint32_t id , Expr* oref , Expr* value ):
-    ReadEffect(HIR_OBJECT_REF_SET,id,graph)
+    RefSet(HIR_OBJECT_REF_SET,id,graph,oref,value)
   {
     lava_debug(NORMAL,lava_verify( oref->IsObjectFind()   ||
                                    oref->IsObjectUpdate() ||
                                    oref->IsObjectInsert() ););
-    AddOperand(oref);
-    AddOperand(value);
   }
-
-  Expr* ref  () const { return operand_list()->First(); }
-  Expr* value() const { return operand_list()->Last(); }
  private:
   LAVA_DISALLOW_COPY_AND_ASSIGN(ObjectRefSet)
 };
 
-LAVA_CBASE_HIR_DEFINE(ListRefGet,public ReadEffect) {
+LAVA_CBASE_HIR_DEFINE(ListRefGet,public RefGet) {
  public:
   static ListRefGet* New( Graph* , Expr* );
 
   ListRefGet( Graph* graph , std::uint32_t id , Expr* lref ):
-    ReadEffect(HIR_LIST_REF_GET,id,graph)
+    RefGet(HIR_LIST_REF_GET,id,graph,lref)
   {
     lava_debug(NORMAL,lava_verify( lref->IsListIndex() ||
                                    lref->IsListInsert() ););
-    AddOperand(lref);
   }
 
-  Expr* ref  () const { return operand_list()->First(); }
  private:
   LAVA_DISALLOW_COPY_AND_ASSIGN(ListRefGet)
 };
 
-LAVA_CBASE_HIR_DEFINE(ListRefSet,public ReadEffect) {
+LAVA_CBASE_HIR_DEFINE(ListRefSet,public RefSet) {
  public:
   static ListRefSet* New( Graph* , Expr* , Expr* );
 
   ListRefSet( Graph* graph , std::uint32_t id , Expr* lref , Expr* value ):
-    ReadEffect(HIR_LIST_REF_SET,id,graph)
+    RefSet(HIR_LIST_REF_SET,id,graph)
   {
     lava_debug(NORMAL,lava_verify( lref->IsListIndex()  ||
                                    lref->IsListInsert() ););
-    AddOperand(lref);
-    AddOperand(value);
   }
 
-  Expr* ref  () const { return operand_list()->First(); }
-  Expr* value() const { return operand_list()->Last(); }
  private:
   LAVA_DISALLOW_COPY_AND_ASSIGN(ListRefSet)
 };

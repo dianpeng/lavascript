@@ -31,8 +31,8 @@ LAVA_CBASE_HIR_DEFINE(MemoryRef,public ReadEffect) {
     ReadEffect(type,id,graph)
   {}
 
-  virtual Expr* object() const = 0;
-  virtual Expr* comp  () const = 0;
+  virtual Expr*           object() const = 0;
+  virtual Expr*           comp  () const = 0;
   virtual Checkpoint* checkpoint() const =0;
 };
 

@@ -7,6 +7,8 @@ namespace lavascript {
 namespace cbase      {
 namespace hir        {
 
+class EffectBarrier;
+
 /**
  * Effect -----------------------------------------------------------
  *
@@ -68,11 +70,21 @@ LAVA_CBASE_HIR_DEFINE(WriteEffect,public Expr,public SingleNodeLink<WriteEffect>
     return NextLink() ? NextLink()->read_effect_.size() : 0;
   }
  public:
+  // return barrier that is closest to |this| node. If |this| node is a barrier,
+  // then just return |this|
+  EffectBarrier* ClosestBarrier() const;
+
+  // find another barrier that is closes to |this| node. If |this| node is a barrier,
+  // function will not return |this| but the nearest barrier happened before this.
+  EffectBarrier* NextBarrier() const;
+
   // insert |this| *before* input WriteEffect node; this operation basically means the
   // |this| WriteEffect node must happen *After* the input WriteEffect node
   void  HappenAfter( WriteEffect* input );
+
   // add a new read effect
   ReadEffectListIterator AddReadEffect( ReadEffect* effect );
+
   // get the read effect list , ie all the read happened after this write effect
   const ReadEffectList* read_effect() const { return &read_effect_; }
  private:
@@ -171,11 +183,10 @@ LAVA_CBASE_HIR_DEFINE(LoopEffectPhi,public EffectPhiBase) {
 
 // InitBarrier is an object to separate effect chain in lexical scope. It is mainly to
 // use mark the start of the effect chain
-LAVA_CBASE_HIR_DEFINE(InitBarrier,public SoftBarrier) {
+LAVA_CBASE_HIR_DEFINE(InitBarrier,public HardBarrier) {
  public:
   static inline InitBarrier* New( Graph* );
-
-  InitBarrier( Graph* graph , std::uint32_t id ) : SoftBarrier(HIR_INIT_BARRIER,id,graph) {}
+  InitBarrier( Graph* graph , std::uint32_t id ) : HardBarrier(HIR_INIT_BARRIER,id,graph) {}
  private:
   LAVA_DISALLOW_COPY_AND_ASSIGN(InitBarrier)
 };

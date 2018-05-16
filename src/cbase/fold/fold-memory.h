@@ -7,6 +7,7 @@ namespace lavascript {
 namespace cbase      {
 namespace hir        {
 
+
 } // namespace hir
 } // namespace cbase
 } // namespace lavascript

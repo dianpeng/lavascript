@@ -23,7 +23,6 @@ class MemoryOpt{
 
   enum {
     DEAD ,    // this operation is dead and has been optimized out, do nothing
-    FOLD ,    // this operation turns into another node already existed
     FOLD_REF, // this operation's reference turns into antoher folded reference
     FAILED    // this operation cannot be performed
   };
@@ -46,14 +45,13 @@ class MemoryOpt{
   static const char* kListRef;
   // reference key
   struct RefKey {
-    Expr*        object;
-    Expr*        key   ;
-    WriteEffect* effect;
-    Checkpoint*  checkpoint;
-    MemoryRef*   ref;
-    const char*  ref_type;
+    Expr*          object;
+    Expr*          key   ;
+    EffectBarrier* effect;
+    MemoryRef*     ref;
+    const char*    ref_type;
     RefKey(MemoryRef* );
-    RefKey(Expr* , Expr* , WriteEffect* , Checkpoint* , const char* );
+    RefKey(Expr* , Expr* , EffectBarrier* , const char* );
   };
 
   struct RefKeyHasher {
@@ -69,6 +67,7 @@ class MemoryOpt{
     MemoryRef* ref; WriteEffect* effect;
     RefPos(MemoryRef* r, WriteEffect* e):ref(r),effect(e) {}
     RefPos():ref(),effect() {}
+    operator bool () const { return ref != NULL; }
   };
 
   RefPos FindRef( Expr* , Expr* , WriteEffect* , Checkpoint* , AA* );

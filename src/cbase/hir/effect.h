@@ -198,16 +198,17 @@ LAVA_CBASE_HIR_DEFINE(InitBarrier,public HardBarrier) {
   LAVA_DISALLOW_COPY_AND_ASSIGN(InitBarrier)
 };
 
-// EmptyWriteEffect is an object to be used to *mark* the control flow. It doesn't have any
+// BranchStartEffect is an object to be used to *mark* the control flow. It doesn't have any
 // actual barrier impact but just to mark the separation of control flow region, ie *If* node.
-LAVA_CBASE_HIR_DEFINE(EmptyWriteEffect,public WriteEffect) {
+LAVA_CBASE_HIR_DEFINE(BranchStartEffect,public WriteEffect) {
  public:
-  static inline EmptyWriteEffect* New( Graph* );
-  static inline EmptyWriteEffect* New( Graph*  , WriteEffect* );
+  static inline BranchStartEffect* New( Graph* );
+  static inline BranchStartEffect* New( Graph*  , WriteEffect* );
 
-  EmptyWriteEffect( Graph* graph , std::uint32_t id ) : WriteEffect(HIR_EMPTY_WRITE_EFFECT,id,graph) {}
+  BranchStartEffect( Graph* graph , std::uint32_t id ) :
+    WriteEffect(HIR_BRANCH_START_EFFECT,id,graph) {}
  private:
-  LAVA_DISALLOW_COPY_AND_ASSIGN(EmptyWriteEffect)
+  LAVA_DISALLOW_COPY_AND_ASSIGN(BranchStartEffect)
 };
 
 } // namespace hir

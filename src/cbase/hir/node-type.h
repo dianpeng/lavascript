@@ -59,7 +59,7 @@
   __(LoopEffectPhi,LOOP_EFFECT_PHI ,"loop_effect_phi",NoLeaf,Effect)   \
   __(EffectPhi    ,EFFECT_PHI      ,"effect_phi" ,NoLeaf,Effect)       \
   __(InitBarrier  ,INIT_BARRIER    ,"init_barrier",NoLeaf,Effect)      \
-  __(EmptyWriteEffect,EMPTY_WRITE_EFFECT,"empty_write_effect",NoLeaf,Effect)
+  __(BranchStartEffect,BRANCH_START_EFFECT,"branch_start_effect",NoLeaf,Effect)
 
 /**
  * These arithmetic and compare node are used to do typed arithmetic

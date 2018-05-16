@@ -69,9 +69,7 @@ class GraphBuilder {
     Environment( const Environment& , int    );
     Environment( const Environment& );
 
-    // insert an empty barrier into the effect chain, mainly used for building if
-    // branch node.
-    void InsertEmptyWriteEffect();
+    void InsertBranchStartEffect( If* );
    public:
     // init environment object from prototype object
     void EnterFunctionScope  ( const FuncInfo& );
@@ -103,8 +101,6 @@ class GraphBuilder {
     void UpdateState( Checkpoint* cp ) { state_ = cp; }
 
     LoopEffectPhi*   AsLoopEffectPhi() { return effect()->joined_write_effect()->AsLoopEffectPhi(); }
-    EmptyWriteEffect*    AsEmptyWriteEffect () { return effect()->joined_write_effect()->AsEmptyWriteEffect(); }
-
    private:
     zone::Zone*        zone_;                 // zone allocator
     ValueStack         stack_;                // register stack
@@ -523,9 +519,8 @@ GraphBuilder::Environment::Environment( const Environment& env , int type ):
     // create a loop effect phi node for loop scope
     effect = LoopEffectPhi::New( gb_->graph() , env.effect()->joined_write_effect() );
   } else {
-    // create a empty effect node for normal lexical scope, it is really a marker for easier
-    // DCE and other optimization
-    effect = EmptyWriteEffect::New( gb_->graph() , env.effect()->joined_write_effect() );
+    effect = env.effect()->joined_write_effect();
+    lava_debug(NORMAL,lava_verify(effect->Is<BranchStartEffect>()););
   }
   // initialize effect object inside of this environment
   effect_.Init(gb_->temp_zone(),effect);
@@ -543,9 +538,10 @@ GraphBuilder::Environment::Environment( const Environment& env ):
   effect_.Init(*env.effect_);
 }
 
-void GraphBuilder::Environment::InsertEmptyWriteEffect() {
-  auto empty_barrier = EmptyWriteEffect::New(gb_->graph());
-  effect_->root()->UpdateWriteEffect(empty_barrier);
+void GraphBuilder::Environment::InsertBranchStartEffect( If* region ) {
+  auto se = BranchStartEffect::New(gb_->graph());
+  effect()->root()->UpdateWriteEffect(se);
+  region->AddStmt(se);
 }
 
 void GraphBuilder::Environment::EnterFunctionScope( const FuncInfo& func ) {
@@ -1557,12 +1553,14 @@ GraphBuilder::BuildIf( BytecodeIterator* itr ) {
   ControlFlow* lhs      = NULL;
   ControlFlow* rhs      = NULL;
   Region*  merge        = Region::New(graph_);
-
   if_region->set_merge(merge);
-
+  // setup a BranchStartEffect to mark the effect chain in HIR
+  env()->InsertBranchStartEffect(if_region);
+  // duplicate an environment for branching into the if_true branch
   Environment true_env(*env(),Environment::LEXICAL_SCOPE);
   std::uint16_t final_cursor;
-  bool have_false_branch;
+  bool          have_false_branch;
+
   // 1. Build code inside of the *true* branch and it will also help us to
   //    identify whether we have dangling elif/else branch
   itr->Move();
@@ -1570,7 +1568,6 @@ GraphBuilder::BuildIf( BytecodeIterator* itr ) {
   backup_environment(&true_env,this) {
     // swith to a true region
     set_region(true_region);
-    true_region->AddStmt(env()->AsEmptyWriteEffect());
     {
       StopReason reason = BuildIfBlock(itr,itr->OffsetAt(offset));
       if(reason == STOP_BAILOUT) {
@@ -1589,9 +1586,6 @@ GraphBuilder::BuildIf( BytecodeIterator* itr ) {
   }
   // 2. Build code inside of the *false* branch
   {
-    // setup an empty barrier to seperate the effect chain
-    env()->InsertEmptyWriteEffect();
-    false_region->AddStmt(env()->AsEmptyWriteEffect());
     // build the false branch regardless whether it has one or not
     if(have_false_branch) {
       set_region(false_region);

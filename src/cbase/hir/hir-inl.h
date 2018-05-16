@@ -567,11 +567,11 @@ inline InitBarrier* InitBarrier::New( Graph* graph ) {
   return graph->zone()->New<InitBarrier>(graph,graph->AssignID());
 }
 
-inline EmptyWriteEffect* EmptyWriteEffect::New( Graph* graph ) {
-  return graph->zone()->New<EmptyWriteEffect>(graph,graph->AssignID());
+inline BranchStartEffect* BranchStartEffect::New( Graph* graph ) {
+  return graph->zone()->New<BranchStartEffect>(graph,graph->AssignID());
 }
 
-inline EmptyWriteEffect* EmptyWriteEffect::New( Graph* graph , WriteEffect* effect ) {
+inline BranchStartEffect* BranchStartEffect::New( Graph* graph , WriteEffect* effect ) {
   auto ret = New(graph);
   ret->HappenAfter(effect);
   return ret;

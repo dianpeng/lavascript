@@ -88,10 +88,6 @@ inline const zone::String& Node::AsZoneString() const {
   return IsLString() ? *AsLString()->value() : *AsSString()->value() ;
 }
 
-inline bool Expr::IsReplaceable( const Expr* that ) const {
-  return IsIdentical(that) || (!HasDependency() && Equal(that));
-}
-
 inline void Expr::AddOperand( Expr* node ) {
   auto itr = operand_list_.PushBack(zone(),node);
   node->AddRef(this,itr);

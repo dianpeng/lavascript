@@ -44,14 +44,6 @@ LAVA_CBASE_HIR_DEFINE(ItrTest,public Expr) {
   {
     AddOperand(operand);
   }
-  virtual std::uint64_t GVNHash() const {
-    auto opr = operand()->GVNHash();
-    if(!opr) return 0;
-    return GVNHash1(type_name(),opr);
-  }
-  virtual bool Equal( const Expr* that ) const {
-    return that->IsItrNew() && (operand()->Equal(that->AsItrNew()->operand()));
-  }
  private:
   LAVA_DISALLOW_COPY_AND_ASSIGN(ItrTest)
 };

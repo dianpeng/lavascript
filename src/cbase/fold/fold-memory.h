@@ -1,13 +1,11 @@
 #ifndef CBASE_FOLD_MEMORY_H_
 #define CBASE_FOLD_MEMORY_H_
 #include "src/cbase/hir.h"
+#include <memory>
 
 namespace lavascript {
 namespace cbase      {
 namespace hir        {
-
-Expr* FoldIndexGet( Graph* , Expr* , Expr* );
-Expr* FoldPropGet ( Graph* , Expr* , Expr* );
 
 } // namespace hir
 } // namespace cbase

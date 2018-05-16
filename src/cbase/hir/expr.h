@@ -28,11 +28,6 @@ LAVA_CBASE_HIR_DEFINE(Expr,public Node) {
 
   // default GVN Equal comparison function implementation
   virtual bool Equal( const Expr* that ) const { return IsIdentical(that); }
-
-  // default operation to test whether 2 nodes are identical or not. it should be prefered
-  // when 2 nodes are compared against identity. it means if they are equal , then one node
-  // can be used to replace other
-  inline bool IsReplaceable( const Expr* that ) const;
  public:
   // This list returns a list of operands used by this Expr/IR node. Most
   // of time operand_list will return at most 3 operands except for call

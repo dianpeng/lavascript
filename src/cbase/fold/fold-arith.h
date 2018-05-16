@@ -3,10 +3,13 @@
 #include "src/cbase/hir.h"
 
 #include <functional>
+#include <memory>
 
 namespace lavascript {
 namespace cbase {
 namespace hir {
+
+class Folder;
 
 /**
  * Helper function to simplify some expression node. These functions

@@ -1,11 +1,15 @@
 #include "fold-arith.h"
+#include "folder.h"
+
 #include "src/cbase/type-inference.h"
 #include "src/bits.h"
+
 #include <cmath>
+
 namespace lavascript {
-namespace cbase {
-namespace hir {
-namespace {
+namespace cbase      {
+namespace hir        {
+namespace            {
 
 using namespace ::lavascript::interpreter;
 
@@ -158,7 +162,7 @@ Expr* SimplifyLogicAnd( Graph* graph , TypeKind lhs_type , TypeKind rhs_type , E
 
   if(IsFalse(lhs,lhs_type)) { return Boolean::New(graph,false); }  // false && any ==> false
   if(IsTrue (lhs,lhs_type)) { return rhs; }                                 // true  && any ==> any
-  if(lhs->IsReplaceable(rhs)) return lhs; // a && a ==> a
+  if(lhs->Equal(rhs)) return lhs; // a && a ==> a
   if(IsUnaryNot(lhs) && lhs->AsUnary()->operand() == rhs) {
     // !a && a ==> false
     return Boolean::New(graph,false);
@@ -174,7 +178,7 @@ Expr* SimplifyLogicOr ( Graph* graph , TypeKind lhs_type , TypeKind rhs_type , E
 
   if(IsTrue (lhs,lhs_type)) { return Boolean::New(graph,true); }  // true || any ==> true
   if(IsFalse(lhs,lhs_type)) { return rhs; }                                // false|| any ==> any
-  if(lhs->IsReplaceable(rhs)) return lhs; // a || a ==> a
+  if(lhs->Equal(rhs)) return lhs; // a || a ==> a
   if(IsUnaryNot(lhs) && lhs->AsUnary()->operand() == rhs) {
     // !a || a ==> true
     return Boolean::New(graph,true);
@@ -309,7 +313,7 @@ Expr* Fold( Graph* graph , Expr* cond , Expr* lhs , Expr* rhs ) {
   }
   // 1. check if lhs and rhs are the same if so check if cond is side effect free
   //    if it is side effect free then just return lhs/rhs
-  if(lhs->IsReplaceable(rhs)) return lhs;
+  if(lhs->Equal(rhs)) return lhs;
   // 2. check following cases
   // 1) value = cond ? true : false ==> value = conv_boolean (cond)
   // 2) value = cond ? false: true  ==> value = conv_nboolean(cond)
@@ -328,14 +332,54 @@ Expr* Fold( Graph* graph , Expr* cond , Expr* lhs , Expr* rhs ) {
   return NULL;
 }
 
+// Folder implementation
+class ArithFolder : public Folder {
+ public:
+  ArithFolder( zone::Zone* zone ) { (void)zone; }
+  virtual bool Predicate( const FolderData& data ) const;
+  virtual Expr* Fold( Graph* graph , const FolderData& data );
+};
+
+
+bool ArithFolder::Predicate( const FolderData& data ) const {
+  return data.fold_type() == FOLD_UNARY   ||
+    data.fold_type() == FOLD_BINARY  ||
+    data.fold_type() == FOLD_TERNARY;
+}
+
+Expr* ArithFolder::Fold( Graph* graph , const FolderData& data ) {
+  switch(data.fold_type()) {
+    case FOLD_UNARY:
+      {
+        auto d = static_cast<const UnaryFolderData&>(data);
+        return FoldUnary(graph,d.op,d.node);
+      }
+    case FOLD_BINARY:
+      {
+        auto d = static_cast<const BinaryFolderData&>(data);
+        return FoldBinary(graph,d.op,d.lhs,d.rhs);
+      }
+    case FOLD_TERNARY:
+      {
+        auto d = static_cast<const TernaryFolderData&>(data);
+        return FoldTernary(graph,d.cond,d.lhs,d.rhs);
+      }
+    default: lava_die(); return NULL;
+  }
+}
+
+LAVA_REGISTER_FOLDER("arith-folder",ArithFolderFactory,ArithFolder);
+
 } // namespace
 
 Expr* FoldUnary  ( Graph* graph , Unary::Operator op , Expr* expr ) {
   return Fold(graph,op,expr);
 }
+
 Expr* FoldBinary ( Graph* graph , Binary::Operator op , Expr* lhs , Expr* rhs ) {
   return Fold(graph,op,lhs,rhs);
 }
+
 Expr* FoldTernary( Graph* graph , Expr* cond , Expr* lhs , Expr* rhs ) {
   return Fold(graph,cond,lhs,rhs);
 }

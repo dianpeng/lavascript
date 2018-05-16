@@ -30,6 +30,10 @@ LAVA_CBASE_HIR_DEFINE(MemoryRef,public ReadEffect) {
   MemoryRef( IRType type , std::uint32_t id , Graph* graph ):
     ReadEffect(type,id,graph)
   {}
+
+  virtual Expr* object() const = 0;
+  virtual Expr* comp  () const = 0;
+  virtual Checkpoint* checkpoint() const =0;
 };
 
 // --------------------------------------------------------------------------

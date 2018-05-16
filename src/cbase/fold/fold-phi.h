@@ -2,12 +2,16 @@
 #define CBASE_FOLD_PHI_H_
 #include "src/cbase/hir.h"
 
+#include <memory>
+
 namespace lavascript {
 namespace cbase      {
 namespace hir        {
 
+class Folder;
+
 Expr* FoldPhi( Graph* , Expr* , Expr* , ControlFlow* );
-Expr* FoldPhi( Phi* );
+Expr* FoldPhi( Graph* , Phi* );
 
 } // namespace hir
 } // namespace cbase

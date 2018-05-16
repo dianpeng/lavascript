@@ -1,4 +1,5 @@
 #include "fold-intrinsic.h"
+#include "folder.h"
 #include "src/cbase/hir.h"
 
 namespace lavascript {
@@ -8,7 +9,37 @@ namespace {
 
 using namespace ::lavascript::interpreter;
 
-inline bool AsUInt8( Expr* node , std::uint8_t* value ) {
+// Folder implementation
+class IntrinsicFolder : public Folder {
+ public:
+  IntrinsicFolder( zone::Zone* zone ) { (void)zone; }
+
+  virtual bool Predicate( const FolderData& ) const;
+  virtual Expr* Fold    ( Graph* , const FolderData& );
+ private:
+   inline bool AsUInt8 ( Expr* , std::uint8_t* );
+   inline bool AsUInt32( Expr* , std::uint32_t* );
+   inline bool AsReal  ( Expr* , double* );
+   Expr* FoldICall     ( Graph*, ICall* );
+};
+
+LAVA_REGISTER_FOLDER("intrinsic-folder",IntrinsicFolderFactory,IntrinsicFolder);
+
+bool IntrinsicFolder::Predicate( const FolderData& data ) const {
+  if(data.fold_type() == FOLD_EXPR) {
+    auto d = static_cast<const ExprFolderData&>(data);
+    return d.node->Is<ICall>();
+  }
+  return false;
+}
+
+Expr* IntrinsicFolder::Fold( Graph* graph , const FolderData& data ) {
+  lava_debug(NORMAL,lava_verify(data.fold_type() == FOLD_EXPR););
+  auto d = static_cast<const ExprFolderData&>(data);
+  return FoldICall(graph,d.node->As<ICall>());
+}
+
+inline bool IntrinsicFolder::AsUInt8( Expr* node , std::uint8_t* value ) {
   if(node->IsFloat64()) {
     // we don't care about the shifting overflow, the underly ISA
     // only allows a 8bit register serve as how many bits shifted.
@@ -18,7 +49,7 @@ inline bool AsUInt8( Expr* node , std::uint8_t* value ) {
   return false;
 }
 
-inline bool AsUInt32( Expr* node , std::uint32_t* value ) {
+inline bool IntrinsicFolder::AsUInt32( Expr* node , std::uint32_t* value ) {
   if(node->IsFloat64()) {
     *value = static_cast<std::uint32_t>(node->AsFloat64()->value());
     return true;
@@ -26,7 +57,7 @@ inline bool AsUInt32( Expr* node , std::uint32_t* value ) {
   return false;
 }
 
-inline bool AsReal  ( Expr* node , double* real ) {
+inline bool IntrinsicFolder::AsReal  ( Expr* node , double* real ) {
   if(node->IsFloat64()) {
     *real = node->AsFloat64()->value();
     return true;
@@ -34,13 +65,13 @@ inline bool AsReal  ( Expr* node , double* real ) {
   return false;
 }
 
-Expr* FoldICall( Graph* graph , ICall* node ) {
+Expr* IntrinsicFolder::FoldICall( Graph* graph , ICall* node ) {
   switch(node->ic()) {
     case INTRINSIC_CALL_MAX:
       {
         double a1 ,a2;
         if(AsReal(node->operand_list()->Index(0),&a1) &&
-           AsReal(node->operand_list()->Index(1),&a2)) {
+            AsReal(node->operand_list()->Index(1),&a2)) {
           return (Float64::New(graph,std::max(a1,a2)));
         }
       }
@@ -49,7 +80,7 @@ Expr* FoldICall( Graph* graph , ICall* node ) {
       {
         double a1,a2;
         if(AsReal(node->operand_list()->Index(0),&a1) &&
-           AsReal(node->operand_list()->Index(1),&a2)) {
+            AsReal(node->operand_list()->Index(1),&a2)) {
           return (Float64::New(graph,std::min(a1,a2)));
         }
       }
@@ -115,7 +146,7 @@ Expr* FoldICall( Graph* graph , ICall* node ) {
         std::uint32_t a1;
         std::uint8_t  a2;
         if(AsUInt32(node->operand_list()->Index(0),&a1) &&
-           AsUInt8(node->operand_list()->Index(1),&a2)) {
+            AsUInt8(node->operand_list()->Index(1),&a2)) {
           return (Float64::New(graph,static_cast<double>(a1 << a2)));
         }
       }
@@ -125,7 +156,7 @@ Expr* FoldICall( Graph* graph , ICall* node ) {
         std::uint32_t a1;
         std::uint8_t  a2;
         if(AsUInt32(node->operand_list()->Index(0),&a1) &&
-           AsUInt8 (node->operand_list()->Index(1),&a2)) {
+            AsUInt8 (node->operand_list()->Index(1),&a2)) {
           return (Float64::New(graph,static_cast<double>(a1 >> a2)));
         }
       }
@@ -135,7 +166,7 @@ Expr* FoldICall( Graph* graph , ICall* node ) {
         std::uint32_t a1;
         std::uint8_t  a2;
         if(AsUInt32(node->operand_list()->Index(0),&a1) &&
-           AsUInt8 (node->operand_list()->Index(1),&a2)) {
+            AsUInt8 (node->operand_list()->Index(1),&a2)) {
           return (Float64::New(graph,static_cast<double>(bits::BRol(a1,a2))));
         }
       }
@@ -145,7 +176,7 @@ Expr* FoldICall( Graph* graph , ICall* node ) {
         std::uint32_t a1;
         std::uint8_t  a2;
         if(AsUInt32(node->operand_list()->Index(0),&a1) &&
-           AsUInt8 (node->operand_list()->Index(1),&a2)) {
+            AsUInt8 (node->operand_list()->Index(1),&a2)) {
           return (Float64::New(graph,static_cast<double>(bits::BRor(a1,a2))));
         }
       }
@@ -155,7 +186,7 @@ Expr* FoldICall( Graph* graph , ICall* node ) {
         std::uint32_t a1;
         std::uint32_t a2;
         if(AsUInt32(node->operand_list()->Index(0),&a1) &&
-           AsUInt32(node->operand_list()->Index(1),&a2)) {
+            AsUInt32(node->operand_list()->Index(1),&a2)) {
           return (Float64::New(graph,static_cast<double>((a1 & a2))));
         }
       }
@@ -165,7 +196,7 @@ Expr* FoldICall( Graph* graph , ICall* node ) {
         std::uint32_t a1;
         std::uint32_t a2;
         if(AsUInt32(node->operand_list()->Index(0),&a1) &&
-           AsUInt32(node->operand_list()->Index(1),&a2)) {
+            AsUInt32(node->operand_list()->Index(1),&a2)) {
           return (Float64::New(graph,static_cast<double>(a1 | a2)));
         }
       }
@@ -175,7 +206,7 @@ Expr* FoldICall( Graph* graph , ICall* node ) {
         std::uint32_t a1;
         std::uint32_t a2;
         if(AsUInt32(node->operand_list()->Index(0),&a1) &&
-           AsUInt32(node->operand_list()->Index(1),&a2)) {
+            AsUInt32(node->operand_list()->Index(1),&a2)) {
           return (Float64::New(graph,static_cast<double>(a1 ^ a2)));
         }
       }
@@ -248,7 +279,8 @@ Expr* FoldICall( Graph* graph , ICall* node ) {
 } // namespace
 
 Expr* FoldIntrinsicCall( Graph* graph , ICall* icall ) {
-  return FoldICall(graph,icall);
+  IntrinsicFolder folder(NULL);
+  return folder.Fold(graph,ExprFolderData{icall});
 }
 
 } // namespace hir

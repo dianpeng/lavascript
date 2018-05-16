@@ -159,72 +159,73 @@ LAVA_CBASE_HIR_DEFINE(ObjectFind,public MemoryRef) {
     AddOperand(key);
     AddOperand(cp);
   }
-  Expr* object() const { return operand_list()->First(); }
-  Expr* key   () const { return operand_list()->Index(1);}
-  Checkpoint* checkpoint() const { return operand_list()->Last()->AsCheckpoint(); }
+
+  virtual Expr*           object() const { return operand_list()->First(); }
+  virtual Expr*           comp  () const { return operand_list()->Index(1);}
+  virtual Checkpoint* checkpoint() const { return operand_list()->Last()->AsCheckpoint(); }
 
  private:
   LAVA_DISALLOW_COPY_AND_ASSIGN(ObjectFind)
 };
 
-LAVA_CBASE_HIR_DEFINE(ObjectUpdate,public SoftBarrier) {
+LAVA_CBASE_HIR_DEFINE(ObjectResize,public SoftBarrier) {
  public:
-  static inline ObjectUpdate* New( Graph* , Expr* , Expr* );
-
-  ObjectUpdate( Graph* graph , std::uint32_t id , Expr* object , Expr* key ):
-    SoftBarrier(HIR_OBJECT_UPDATE,id,graph)
+  ObjectResize( IRType type , std::uint32_t id , Graph* graph , Expr* object , Expr* key ):
+    SoftBarrier(type,id,graph)
   {
     lava_debug(NORMAL,lava_verify(GetTypeInference(object) == TPKIND_OBJECT););
     AddOperand(object);
     AddOperand(key);
   }
+
   Expr* object() const { return operand_list()->First(); }
   Expr* key   () const { return operand_list()->Last (); }
+};
+
+LAVA_CBASE_HIR_DEFINE(ObjectUpdate,public ObjectResize) {
+ public:
+  static inline ObjectUpdate* New( Graph* , Expr* , Expr* );
+  ObjectUpdate( Graph* graph , std::uint32_t id , Expr* object , Expr* key ):
+    ObjectResize(HIR_OBJECT_UPDATE,id,graph,object,key) {}
  private:
   LAVA_DISALLOW_COPY_AND_ASSIGN(ObjectUpdate)
 };
 
-LAVA_CBASE_HIR_DEFINE(ObjectInsert,public SoftBarrier) {
+LAVA_CBASE_HIR_DEFINE(ObjectInsert,public ObjectResize) {
  public:
   static inline ObjectInsert* New( Graph* , Expr* , Expr*  );
-
   ObjectInsert( Graph* graph , std::uint32_t id , Expr* object , Expr* key ):
-    SoftBarrier(HIR_OBJECT_INSERT,id,graph)
-  {
-    lava_debug(NORMAL,lava_verify(GetTypeInference(object) == TPKIND_OBJECT););
-    AddOperand(object);
-    AddOperand(key);
-  }
-  Expr* object() const { return operand_list()->First(); }
-  Expr* key   () const { return operand_list()->Last (); }
+    ObjectResize(HIR_OBJECT_INSERT,id,graph,object,key) {}
  private:
   LAVA_DISALLOW_COPY_AND_ASSIGN(ObjectInsert)
 };
 
 LAVA_CBASE_HIR_DEFINE(ListIndex,public MemoryRef) {
  public:
-  static inline ListIndex* New( Graph* , Expr* , Expr* );
+  static inline ListIndex* New( Graph* , Expr* , Expr* , Checkpoint* checkpoint );
 
-  ListIndex( Graph* graph , std::uint32_t id , Expr* object , Expr* index ):
+  ListIndex( Graph* graph , std::uint32_t id , Expr* object , Expr* index , Checkpoint* checkpoint ):
     MemoryRef(HIR_LIST_INDEX,id,graph)
   {
     lava_debug(NORMAL,lava_verify( GetTypeInference(object) == TPKIND_LIST ););
     AddOperand(object);
     AddOperand(index);
+    AddOperand(checkpoint);
   }
 
-  Expr* object() const { return operand_list()->First(); }
-  Expr* index () const { return operand_list()->Index(1); }
+  virtual Expr*           object() const { return operand_list()->First(); }
+  virtual Expr*           comp  () const { return operand_list()->Index(1); }
+  virtual Checkpoint* checkpoint() const { return operand_list()->Last(); }
  private:
   LAVA_DISALLOW_COPY_AND_ASSIGN(ListIndex)
 };
 
-LAVA_CBASE_HIR_DEFINE(ListInsert,public SoftBarrier) {
+LAVA_CBASE_HIR_DEFINE(ListResize,public SoftBarrier) {
  public:
-  static inline ListInsert* New( Graph* , Expr* , Expr* , Checkpoint* );
-
-  ListInsert( Graph* graph , std::uint32_t id , Expr* object , Expr* index , Checkpoint* cp ):
-    SoftBarrier(HIR_LIST_INSERT,id,graph)
+  ListResize( IRType type , std::uint32_t id , Graph* graph , Expr* object ,
+                                                              Expr* index ,
+                                                              Checkpoint* cp ):
+    SoftBarrier(type,id,graph)
   {
     lava_debug(NORMAL,lava_verify( GetTypeInference(object) == TPKIND_LIST ););
     AddOperand(object);
@@ -235,6 +236,13 @@ LAVA_CBASE_HIR_DEFINE(ListInsert,public SoftBarrier) {
   Expr*           object() const { return operand_list()->First();  }
   Expr*           index () const { return operand_list()->Index(1); }
   Checkpoint* checkpoint() const { return operand_list()->Last()->AsCheckpoint(); }
+};
+
+LAVA_CBASE_HIR_DEFINE(ListInsert,public ListResize) {
+ public:
+  static inline ListInsert* New( Graph* , Expr* , Expr* , Checkpoint* );
+  ListInsert( Graph* graph , std::uint32_t id , Expr* object , Expr* index , Checkpoint* cp ):
+    ListResize(HIR_LIST_INSERT,id,graph,object,index,cp) {}
  private:
   LAVA_DISALLOW_COPY_AND_ASSIGN(ListInsert)
 };

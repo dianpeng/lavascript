@@ -4,10 +4,7 @@
 #include "inliner.h"
 #include "type-inference.h"
 
-#include "fold/fold-arith.h"
-#include "fold/fold-intrinsic.h"
-#include "fold/fold-phi.h"
-#include "fold/fold-memory.h"
+#include "fold/folder.h"
 
 #include "src/util.h"
 #include "src/objects.h"
@@ -300,8 +297,14 @@ class GraphBuilder {
   Expr* NewICall  ( std::uint8_t ,std::uint8_t ,std::uint8_t ,bool , const BytecodeLocation& );
   Expr* LowerICall( ICall* , const BytecodeLocation& );
  private: // Property/Index Get/Set
-  Expr* NewPSet( Expr* , Expr* , Expr* , const BytecodeLocation& );
-  Expr* NewPGet( Expr* , Expr* , const BytecodeLocation& );
+  Expr* TrySpeculativePSet( Expr* , Expr* , Expr* , const BytecodeLocation& );
+  Expr* NewPSetFallback   ( Expr* , Expr* , Expr* , const BytecodeLocation& );
+  Expr* NewPSet           ( Expr* , Expr* , Expr* , const BytecodeLocation& );
+
+  Expr* TrySpeculativePGet( Expr* , Expr* , Expr* , const BytecodeLocation& );
+  Expr* NewPGetFallback   ( Expr* , Expr* , Expr* , const BytecodeLocation& );
+  Expr* NewPGet           ( Expr* , Expr* , const BytecodeLocation& );
+
   Expr* NewISet( Expr* , Expr* , Expr* , const BytecodeLocation& );
   Expr* NewIGet( Expr* , Expr* , const BytecodeLocation& );
 
@@ -395,6 +398,8 @@ class GraphBuilder {
   zone::Zone*                zone_;
   zone::Zone                 temp_zone_;
   ControlFlow*               region_;
+  // Folder to perform on the fly expression optimization
+  std::unique_ptr<FolderChain> folder_chain_;
 
   Handle<Script>             script_;
   Graph*                     graph_;
@@ -474,6 +479,7 @@ inline GraphBuilder::GraphBuilder( const Handle<Script>& script , const RuntimeT
   zone_             (NULL),
   temp_zone_        (),
   region_           (),
+  folder_chain_     (),
   script_           (script),
   graph_            (NULL),
   runtime_trace_    (tt),
@@ -481,7 +487,9 @@ inline GraphBuilder::GraphBuilder( const Handle<Script>& script , const RuntimeT
   inliner_          (new StaticInliner()),
   func_info_        (&temp_zone_),
   trap_list_        (&temp_zone_)
-{}
+{
+  folder_chain_ = std::make_unique<FolderChain>(&temp_zone_);
+}
 
 inline void GraphBuilder::FuncInfo::EnterLoop( const std::uint32_t* pc ) {
   const BytecodeAnalyze::LoopHeaderInfo* info = bc_analyze.LookUpLoopHeader(pc);
@@ -933,8 +941,8 @@ Expr* GraphBuilder::AddTypeFeedbackIfNeed( Expr* n , TypeKind tp , const Bytecod
 // ========================================================================
 Expr* GraphBuilder::NewUnary( Expr* node , Unary::Operator op , const BytecodeLocation& pc ) {
   // 1. try to do a constant folding
-  auto new_node = FoldUnary(graph_,op,node);
-  if(new_node) return new_node;
+  if(auto new_node = folder_chain_->Fold(graph_,UnaryFolderData{op,node}); new_node)
+    return new_node;
   // 2. now we know there's no way we can resolve the expression and
   //    we don't have any type information from static type inference.
   //    fallback to do speculative unary or dynamic dispatch if needed
@@ -982,7 +990,8 @@ Expr* GraphBuilder::NewUnaryFallback( Expr* node , Unary::Operator op ) {
 // Binary Node
 // ========================================================================
 Expr* GraphBuilder::NewBinary  ( Expr* lhs , Expr* rhs , Binary::Operator op , const BytecodeLocation& pc ) {
-  if(auto new_node = FoldBinary(graph_,op,lhs,rhs); new_node) return new_node;
+  if(auto new_node = folder_chain_->Fold(graph_,BinaryFolderData{op,lhs,rhs}); new_node)
+    return new_node;
   // try to specialize it into certain specific common cases which doesn't
   // require guard instruction and deoptimization
   if(auto new_node = TrySpecialTestBinary(lhs,rhs,op,pc); new_node) return new_node;
@@ -1093,8 +1102,8 @@ Expr* GraphBuilder::TrySpeculativeBinary( Expr* lhs , Expr* rhs , Binary::Operat
         {
           lhs = AddTypeFeedbackIfNeed(lhs,lhs_val,pc);
           // simplify the logic expression if we can do so
-          if(auto ret = SimplifyLogic(graph_,lhs,rhs,op); ret) return ret;
-
+          if(auto ret = folder_chain_->Fold(graph_,BinaryFolderData{op,lhs,rhs}); ret)
+            return ret;
           rhs = AddTypeFeedbackIfNeed(rhs,rhs_val,pc);
           if(GetTypeInference(lhs) == TPKIND_BOOLEAN &&
              GetTypeInference(rhs) == TPKIND_BOOLEAN) {
@@ -1134,7 +1143,7 @@ Expr* GraphBuilder::NewBinaryFallback( Expr* lhs , Expr* rhs , Binary::Operator 
 // Ternary Node
 // ========================================================================
 Expr* GraphBuilder::NewTernary ( Expr* cond , Expr* lhs, Expr* rhs, const BytecodeLocation& pc ) {
-  if(auto new_node = FoldTernary(graph_,cond,lhs,rhs); new_node)
+  if(auto new_node = folder_chain_->Fold(graph_,TernaryFolderData{cond,lhs,rhs}); new_node)
     return new_node;
 
   { // do a guess based on type trace
@@ -1154,7 +1163,7 @@ Expr* GraphBuilder::NewTernary ( Expr* cond , Expr* lhs, Expr* rhs, const Byteco
 // Phi
 // ========================================================================
 Expr* GraphBuilder::NewPhi( Expr* lhs , Expr* rhs , ControlFlow* region ) {
-  if( auto n = FoldPhi(graph_,lhs,rhs,region); n)
+  if( auto n = folder_chain_->Fold(graph_,PhiFolderData{lhs,rhs,region}); n)
     return n;
   else
     return Phi::New(graph_,lhs,rhs,region);
@@ -1173,13 +1182,14 @@ Expr* GraphBuilder::NewICall( std::uint8_t a1 , std::uint8_t a2 , std::uint8_t a
     node->AddArgument(StackGet(i,base));
   }
   lava_debug(NORMAL,lava_verify(GetIntrinsicCallArgumentSize(ic) == a3););
-  // try to optimize the intrinsic call
-  auto ret = FoldIntrinsicCall(graph_,node);
 
-  if(ret) {
+  if(auto ret = folder_chain_->Fold(graph_,ExprFolderData{node}); ret)
     return ret;
-  } else {
-    return (ret = LowerICall(node,pc)) ? ret : node;
+  else {
+    if(auto ret = LowerICall(node,pc); ret)
+      return ret;
+    else
+      return node;
   }
 }
 
@@ -1216,6 +1226,10 @@ Expr* GraphBuilder::LowerICall( ICall* node , const BytecodeLocation& pc ) {
 // ====================================================================
 // Property Get/Set
 // ====================================================================
+Expr* GraphBuilder::TrySpecualativePSet( Expr* object, Expr* key, Expr* value,
+                                                                  const BytecodeLocation& bc ) {
+}
+
 Expr* GraphBuilder::NewPSet( Expr* object , Expr* key , Expr* value ,
                                                         const BytecodeLocation& bc ) {
   auto ret = PSet::New(graph_,object,key,value);
@@ -1227,8 +1241,6 @@ Expr* GraphBuilder::NewPSet( Expr* object , Expr* key , Expr* value ,
 }
 
 Expr* GraphBuilder::NewPGet( Expr* object , Expr* key , const BytecodeLocation& bc ) {
-  if(auto n = FoldPropGet(graph_,object,key); n) return n;
-
   auto ret = PGet::New(graph_,object,key);
   auto cp = GenerateCheckpoint(bc);
   cp->AddOperand(ret);
@@ -1250,8 +1262,6 @@ Expr* GraphBuilder::NewISet( Expr* object, Expr* index, Expr* value , const Byte
 }
 
 Expr* GraphBuilder::NewIGet( Expr* object, Expr* index , const BytecodeLocation& bc ) {
-  if(auto n = FoldIndexGet(graph_,object,index); n) return n;
-
   auto ret = IGet::New(graph_,object,index);
   auto cp  = GenerateCheckpoint(bc);
   cp->AddOperand(ret);
@@ -1691,7 +1701,7 @@ void GraphBuilder::PatchLoopPhi() {
           Expr* node = StackGet(e.idx);
           lava_debug(NORMAL,lava_verify(phi != node););
           phi->AddOperand(node);
-          if(auto p = FoldPhi(phi); p) phi->Replace(p);
+          if(auto p = folder_chain_->Fold(graph_,ExprFolderData{phi}); p) phi->Replace(p);
         } else {
           Phi::RemovePhiFromRegion(phi);
         }
@@ -1701,7 +1711,7 @@ void GraphBuilder::PatchLoopPhi() {
           auto v = env()->global()->at(e.idx).value;
           lava_debug(NORMAL,lava_verify(phi != v););
           phi->AddOperand(v);
-          if(auto p = FoldPhi(phi); p) phi->Replace(p);
+          if(auto p = folder_chain_->Fold(graph_,ExprFolderData{phi}); p) phi->Replace(p);
         }
         break;
       default:
@@ -1709,7 +1719,7 @@ void GraphBuilder::PatchLoopPhi() {
           auto v = env()->upvalue()->at(e.idx);
           lava_debug(NORMAL,lava_verify(phi != v););
           phi->AddOperand(v);
-          if(auto p = FoldPhi(phi); p) phi->Replace(p);
+          if(auto p = folder_chain_->Fold(graph_,ExprFolderData{phi}); p) phi->Replace(p);
         }
         break;
     }
@@ -1804,7 +1814,8 @@ GraphBuilder::BuildLoopBody( BytecodeIterator* itr , ControlFlow* loop_header ) 
     // patch all the Phi node
     PatchLoopPhi();
     // set the loop effect phi node's backward effect operand , must be after PatchLoopPhi call
-    func_info().current_loop().loop_effect_phi->SetBackwardEffect(env()->effect()->joined_write_effect());
+    func_info().current_loop().loop_effect_phi->SetBackwardEffect(
+        env()->effect()->joined_write_effect());
     // break should jump here which is *after* the merge region
     brk_pc = itr->bytecode_location();
     // patch all the pending continue and break node

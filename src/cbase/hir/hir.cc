@@ -148,8 +148,9 @@ EffectBarrier* WriteEffect::FirstBarrier() const {
 
 EffectBarrier* WriteEffect::NextBarrier() const {
   auto e = NextLink();
-  while(!e->Is<EffectBarrier>() && !e->Is<InitBarrier>());
+  while(!e->Is<EffectBarrier>() && !e->Is<InitBarrier>()) {
     e = e->NextLink();
+  }
   return e->As<EffectBarrier>();
 }
 

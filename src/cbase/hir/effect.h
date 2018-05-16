@@ -30,12 +30,17 @@ struct ReadEffectEdge {
   bool IsEmpty() const { return node == NULL; }
 };
 
+LAVA_CBASE_HIR_DEFINE(EffectNode,public Expr) {
+ public:
+  EffectNode( IRType type , std::uint32_t id , Graph* graph ): Expr(type,id,graph) {}
+};
+
 // Represents a general read which should depend on certain node's side effect.
-LAVA_CBASE_HIR_DEFINE(ReadEffect,public Expr) {
+LAVA_CBASE_HIR_DEFINE(ReadEffect,public EffectNode) {
  public:
   // read effect constructor
   ReadEffect( IRType type , std::uint32_t id , Graph* graph ):
-    Expr(type,id,graph) , effect_edge_() {}
+    EffectNode(type,id,graph) , effect_edge_() {}
 
   // get attached write effect generated Checkpoint node
   Checkpoint* GetCheckpoint() const;
@@ -56,13 +61,13 @@ LAVA_CBASE_HIR_DEFINE(ReadEffect,public Expr) {
 };
 
 // Represent a general write which should bring some side effect
-LAVA_CBASE_HIR_DEFINE(WriteEffect,public Expr,public SingleNodeLink<WriteEffect>) {
+LAVA_CBASE_HIR_DEFINE(WriteEffect,public EffectNode ,public SingleNodeLink<WriteEffect>) {
  public:
   // write effect constructor
   WriteEffect( IRType type , std::uint32_t id , Graph* graph ):
-    Expr                 (type,id,graph),
+    EffectNode                 (type,id,graph),
     SingleNodeLink<WriteEffect>(),
-    read_effect_         ()
+    read_effect_               ()
   {}
 
   virtual DependencyIterator GetDependencyIterator() const;

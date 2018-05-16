@@ -16,20 +16,14 @@ class HIRPass {
     NORMAL,
     DEBUG
   };
-
-  /**
-   * API to perform the optimization pass for this high level IR graph
-   */
+  //  API to perform the optimization pass for this high level IR graph
   virtual bool Perform( hir::Graph* , Flag ) = 0;
-
   // name of the pass, it is also used to dynamically configure the pass
   // needed for a specific compilation
   const std::string& name() const { return name_; }
 
   HIRPass( const std::string& name ) : name_(name) {}
-
   virtual ~HIRPass() {}
-
  private:
   std::string name_; // name of this pass
 };

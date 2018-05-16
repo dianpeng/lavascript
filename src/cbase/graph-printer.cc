@@ -325,6 +325,10 @@ void DotPrinter::RenderExprBrief( const std::string& name , Expr* node ) {
 void DotPrinter::RenderExpr( const std::string& name , Expr* node ) {
   if(existed_[node->id()]) return;
   existed_[node->id()] = true;
+  if(node->Is<EffectNode>()) {
+    Indent(1) << name << "[style=bold color=purple]\n";
+  }
+
   if(opt_.ShouldRenderOperand()) RenderExprOperand(name,node);
   else                           RenderExprBrief  (name,node);
   if(opt_.ShouldRenderEffect ()) RenderExprEffect (name,node);

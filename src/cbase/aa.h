@@ -20,8 +20,9 @@ namespace hir        {
 class AA : public AllStatic {
  public:
   enum { AA_NOT , AA_MAY , AA_MUST };
-  // Query alias information against 2 memory reference.
-  static int Query( Expr* , Expr* );
+
+  // Query alias information against 2 field reference node. Assuming
+  static int Query( const FieldRefNode& , const FieldRefNode& );
 
   // Query a memory with type Object represented by Expr* node against
   // an Operation to see whether the operation node EffectBarrier uses

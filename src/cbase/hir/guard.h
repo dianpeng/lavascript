@@ -63,13 +63,18 @@ LAVA_CBASE_HIR_DEFINE(Guard,public Expr) {
     AddOperand(cp);
   }
  public:
+  // Checkpoint doesn't participate in GVN hash function. Checkpoint doesn't mean
+  // anything since it is not neither a operand used by node , ie data dependent ,
+  // nor a side effect can be observed , ie effect dependent. It just means when
+  // this node bailout, it uses this Checkpoint as a way to reconstruct interpreter's
+  // state.
   virtual std::uint64_t GVNHash() const {
-    return GVNHash2(type_name(),test()->GVNHash(),checkpoint()->GVNHash());
+    return GVNHash2(type_name(),test()->GVNHash());
   }
   virtual bool Equal( const Expr* that ) const {
     if(that->IsGuard()) {
       auto n = that->AsGuard();
-      return test()->Equal(n->test()) && checkpoint()->Equal(n->checkpoint());
+      return test()->Equal(n->test());
     }
     return false;
   }

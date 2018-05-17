@@ -31,6 +31,15 @@ namespace hir        {
 //    information. A better approach is to do a bytecode liveness analysis which V8 does,
 //    and generate checkpoint node wrt variables that gonna be used in the future , ie
 //    live.
+//
+//
+// For GVN:
+//    Checkpoint *should not* be counted as part of GVN , so if a node paritipate into
+//    GVN, then its Checkpoint node should not contribute to its GVN hash or GVN equal
+//    function. The node that has Checkpoint in it doesn't have any dependency with this
+//    Checkpoint , it just means when node bailout, it uses this Checkpoint to reconstruct
+//    interpreter states/frame. But this is not dependent.
+//
 LAVA_CBASE_HIR_DEFINE(Checkpoint,public Expr) {
  public:
   inline static Checkpoint* New( Graph* , IRInfo* );

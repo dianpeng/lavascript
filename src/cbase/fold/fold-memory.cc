@@ -20,11 +20,18 @@ class MemoryFolder : public Folder {
   virtual Expr* Fold    ( Graph* , const FolderData& );
 
  private:
+  // object
   Expr* Fold( Graph* , const ObjectFindFolderData&   );
   Expr* Fold( Graph* , const ObjectRefGetFolderData& );
   Expr* Fold( Graph* , const ObjectRefSetFolderData& );
+  // list
+  Expr* Fold( Graph* , const ListIndexFolderData&    );
+  Expr* Fold( Graph* , const ListRefGetFolderData&   );
+  Expr* Fold( Graph* , const ListRefSetFolderData&   );
   Expr* Fold( Graph* , const ExprFolderData& );
 
+  template< typename Set , typename Get > Expr* LoadCollapse( Expr* , Expr* , WriteEffect* );
+  template< typename Set >                Expr* StoreForward( Expr* , WriteEffect* );
  private:
   static const char* kObjectRef;
   static const char* kListRef;
@@ -63,7 +70,7 @@ class MemoryFolder : public Folder {
 LAVA_REGISTER_FOLDER("memory-folder",MemoryFolderFactory,MemoryFolder);
 
 const char* MemoryFolder::kObjectRef = "object-ref";
-const char* MemoryFolder::kListRef   = "list-ref";
+const char* MemoryFolder::kListRef   = "list-ref"  ;
 
 MemoryFolder::RefKey::RefKey( StaticRef* r , EffectBarrier* eb ):
   object    (NULL),
@@ -113,10 +120,8 @@ StaticRef* MemoryFolder::FindRef( Expr* object , Expr* key , WriteEffect* effect
       lava_debug(NORMAL,lava_verify(itr->ref););
       return itr->ref;
     }
-
     int ret = (hint == TPKIND_OBJECT ? AA::QueryObject(object,e->As<EffectBarrier>()) :
                                        AA::QueryList  (object,e->As<EffectBarrier>()));
-
     switch(ret) {
       case AA::AA_MAY :
       case AA::AA_MUST:
@@ -128,54 +133,17 @@ StaticRef* MemoryFolder::FindRef( Expr* object , Expr* key , WriteEffect* effect
   return NULL;
 }
 
-Expr* MemoryFolder::Fold( Graph* graph , const ExprFolderData& data ) {
-  if(data.node->Is<StaticRef>()) {
-    auto sr = data.node->As<StaticRef>();
-    // should be always successful
-    ref_table_.insert(RefKey{data.node->As<StaticRef>(),sr->write_effect()->FirstBarrier()});
-    // just return the old node
-    return sr;
-  }
-  return NULL;
-}
-
-Expr* MemoryFolder::Fold( Graph* graph , const ObjectFindFolderData& data ) {
-  return FindRef(data.object,data.key,data.effect,TPKIND_OBJECT);
-}
-
-Expr* MemoryFolder::Fold( Graph* graph , const ObjectRefGetFolderData& data ) {
-  auto ref = data.ref;
-  if(!ref->Is<StaticRef>()) return NULL; // none static ref cannot do forwarding
-                                         // but I don't know whether we have it or not
-
-  for( auto e = data.effect; !e->Is<HardBarrier>() ; e = e->NextWrite() ) {
-    // walk through all the write happened before this Load operation and
-    // try to find one write that writes to exactly same position this load
-    // operates on and then try to do a forwarding.
-    if(e->Is<ObjectRefSet>()) {
-      switch(AA::Query(ref,e->As<ObjectRefSet>()->ref())) {
-        case AA::AA_MAY : return NULL;
-        case AA::AA_MUST: return e->As<ObjectRefSet>()->value(); // forwarding
-        default:          break;
-      }
-    }
-  }
-
-  return NULL;
-}
-
-Expr* MemoryFolder::Fold( Graph* graph , const ObjectRefSetFolderData& data ) {
-  auto ref = data.ref;
-
+template< typename Set, typename Get >
+Expr* MemoryFolder::LoadCollapse( Expr* ref , Expr* value , WriteEffect* effect ) {
   // store collapsing. eg :
   // a[1] = 20;
   // a[1] = 30;
   // dedup the second write operation
-  for( auto e = data.effect; !e->Is<HardBarrier>() ; e = e->NextWrite() ) {
+  for( auto e = effect; !e->Is<HardBarrier>() ; e = e->NextWrite() ) {
     // 1. go through all the read happened before this write opereations
     lava_foreach( auto rd , e->read_effect()->GetForwardIterator() ) {
-      if(e->Is<ObjectRefGet>()) {
-        switch(AA::Query(ref,e->As<ObjectRefGet>()->ref())) {
+      if(rd->Is<Get>()) {
+        switch(AA::Query(FieldRefNode{ref},FieldRefNode{rd->As<Get>()->ref()})) {
           case AA::AA_MUST:
           case AA::AA_MAY : return NULL; // there's a read
           default: break;
@@ -184,15 +152,73 @@ Expr* MemoryFolder::Fold( Graph* graph , const ObjectRefSetFolderData& data ) {
     }
 
     // 2. check this write operation
-    if(e->Is<ObjectRefSet>()) {
-      if(AA::Query(ref,e->As<ObjectRefSet>()->ref()) == AA::AA_MUST) {
+    if(e->Is<Set>()) {
+      if(AA::Query(FieldRefNode{ref},FieldRefNode{e->As<Set>()->ref()}) == AA::AA_MUST) {
         // collapsing
-        e->ReplaceOperand(1,data.value);
+        e->ReplaceOperand(1,value);
         return e;
       }
     }
   }
+}
+
+template< typename Set >
+Expr* MemoryFolder::StoreForward( Expr* ref , WriteEffect* effect ) {
+  if(!ref->Is<StaticRef>()) return NULL; // none static ref cannot do forwarding
+                                         // but I don't know whether we have it or not
+  for( auto e = effect; !e->Is<HardBarrier>() ; e = e->NextWrite() ) {
+    // walk through all the write happened before this Load operation and
+    // try to find one write that writes to exactly same position this load
+    // operates on and then try to do a forwarding.
+    if(e->Is<Set>()) {
+      switch(AA::Query(FieldRefNode{ref},FieldRefNode{e->As<Set>()->ref()})) {
+        case AA::AA_MAY : return NULL;
+        case AA::AA_MUST: return e->As<Set>()->value(); // forwarding
+        default:          break;
+      }
+    }
+  }
   return NULL;
+}
+
+Expr* MemoryFolder::Fold( Graph* graph , const ExprFolderData& data ) {
+  (void)graph;
+  if(data.node->Is<StaticRef>()) {
+    auto sr = data.node->As<StaticRef>();
+    ref_table_.insert(RefKey{data.node->As<StaticRef>(),sr->write_effect()->FirstBarrier()});
+    return sr;
+  }
+  return NULL;
+}
+
+Expr* MemoryFolder::Fold( Graph* graph , const ObjectFindFolderData& data ) {
+  (void)graph;
+  return FindRef(data.object,data.key,data.effect,TPKIND_OBJECT);
+}
+
+Expr* MemoryFolder::Fold( Graph* graph , const ObjectRefGetFolderData& data ) {
+  (void)graph;
+  return StoreForward<ObjectRefSet>(data.ref,data.effect);
+}
+
+Expr* MemoryFolder::Fold( Graph* graph , const ObjectRefSetFolderData& data ) {
+  (void)graph;
+  return LoadCollapse<ObjectRefSet,ObjectRefGet>(data.ref,data.value,data.effect);
+}
+
+Expr* MemoryFolder::Fold( Graph* graph , const ListIndexFolderData& data ) {
+  (void)graph;
+  return FindRef(data.object,data.index,data.effect,TPKIND_LIST);
+}
+
+Expr* MemoryFolder::Fold( Graph* graph , const ListRefGetFolderData& data ) {
+  (void)graph;
+  return StoreForward<ListRefSet>(data.ref,data.effect);
+}
+
+Expr* MemoryFolder::Fold( Graph* graph , const ListRefSetFolderData& data ) {
+  (void)graph;
+  return LoadCollapse<ListRefSet,ListRefGet>(data.ref,data.value,data.effect);
 }
 
 bool MemoryFolder::CanFold( const FolderData& data ) const {
@@ -212,14 +238,22 @@ bool MemoryFolder::CanFold( const FolderData& data ) const {
 }
 
 Expr* MemoryFolder::Fold( Graph* graph , const FolderData& data ) {
-  if(data.fold_type() == FOLD_OBJECT_FIND) {
-    return Fold(graph,static_cast<const ObjectFindFolderData&>(data));
-  } else if(data.fold_type() == FOLD_OBJECT_REF_GET) {
-    return Fold(graph,static_cast<const ObjectRefGetFolderData&>(data));
-  } else if(data.fold_type() == FOLD_OBJECT_REF_SET) {
-    return Fold(graph,static_cast<const ObjectRefSetFolderData&>(data));
-  } else if(data.fold_type() == FOLD_EXPR) {
-    return Fold(graph,static_cast<const ExprFolderData&>(data));
+  switch(data.fold_type()) {
+    case FOLD_OBJECT_FIND:
+      return Fold(graph,static_cast<const ObjectFindFolderData&>(data));
+    case FOLD_OBJECT_REF_GET:
+      return Fold(graph,static_cast<const ObjectRefGetFolderData&>(data));
+    case FOLD_OBJECT_REF_SET:
+      return Fold(graph,static_cast<const ObjectRefSetFolderData&>(data));
+    case FOLD_LIST_INDEX:
+      return Fold(graph,static_cast<const ListIndexFolderData&>(data));
+    case FOLD_LIST_REF_GET:
+      return Fold(graph,static_cast<const ListRefGetFolderData&>(data));
+    case FOLD_LIST_REF_SET:
+      return Fold(graph,static_cast<const ListRefSetFolderData&>(data));
+    case FOLD_EXPR:
+      return Fold(graph,static_cast<const ExprFolderData&>(data));
+    default: lava_die(); return NULL;
   }
 }
 

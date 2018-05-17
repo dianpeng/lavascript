@@ -4,10 +4,9 @@ namespace lavascript {
 namespace cbase      {
 namespace hir        {
 
-int AA::Query( Expr* lhs , Expr* rhs ) {
-  if(lhs->IsIdentical(rhs)) return AA_MUST;
+int AA::Query( const FieldRefNode& lnode , const FieldRefNode& rnode ) {
+  if(lnode.node()->IsIdentical(rnode.node())) return AA_MUST;
   {
-    FieldRefNode lnode(lhs) , rnode(rhs);
     if((lnode.IsListRef  () &&  rnode.IsListRef()) ||
         (lnode.IsObjectRef() && !rnode.IsObjectRef()))
       return AA_NOT; // not same reference

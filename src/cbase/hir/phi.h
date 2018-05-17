@@ -26,7 +26,7 @@ LAVA_CBASE_HIR_DEFINE(Phi,public Expr) {
   // Check if this Phi node is not used. We cannot use HasRef function since
   // a Phi node may added to a region during setup time and there will be one
   // ref inside of the RefList. We just need to check that
-  bool         IsUsed() const { return !(region() ? ref_list()->size() == 1 : (ref_list()->empty())); }
+  bool IsUsed() const { return !(region() ? ref_list()->size() == 1 : (ref_list()->empty())); }
 
   // Check if this Phi node is in intermediate state. A phi node will generated
   // at the front the loop and it will only have on operand then. If phi is in

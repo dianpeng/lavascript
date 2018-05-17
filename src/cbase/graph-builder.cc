@@ -346,7 +346,9 @@ class GraphBuilder {
 
   // Build branch IR graph
   void InsertPhi( Environment* , Environment* , ControlFlow* );
-  void GeneratePhi( ValueStack* , const ValueStack& , const ValueStack& , std::size_t , std::size_t , ControlFlow* );
+  void GeneratePhi( ValueStack* , const ValueStack& , const ValueStack& ,std::size_t ,
+                                                                         std::size_t ,
+                                                                         ControlFlow* );
 
   StopReason BuildIf     ( BytecodeIterator* itr );
   // This function is invoked when the condition's boolean value is cleared, the we directly
@@ -672,7 +674,7 @@ class GraphBuilder::BackupEnvironment {
 };
 
 // A nicer way to use backup environment object to do backup
-#define backup_environment(env,gb)                                    \
+#define BACKUP_ENVIRONMENT(env,gb)                                    \
   if( auto __backup = BackupEnvironment((env),(gb)); true )
 
 GraphBuilder::OSRScope::OSRScope( GraphBuilder* gb , const Handle<Prototype>& proto ,
@@ -1565,7 +1567,7 @@ GraphBuilder::BuildIf( BytecodeIterator* itr ) {
   //    identify whether we have dangling elif/else branch
   itr->Move();
   // backup the old stack and use the new stack to do simulation
-  backup_environment(&true_env,this) {
+  BACKUP_ENVIRONMENT(&true_env,this) {
     // swith to a true region
     set_region(true_region);
     {
@@ -1767,7 +1769,7 @@ GraphBuilder::BuildLoopBody( BytecodeIterator* itr , ControlFlow* loop_header ) 
   BytecodeLocation brk_pc ;
 
   // backup the old environment and use a temporary environment
-  backup_environment(&loop_env,this) {
+  BACKUP_ENVIRONMENT(&loop_env,this) {
     // entier the loop scope
     LoopScope lscope(this,itr->pc());
     // create new loop body node
@@ -2177,7 +2179,7 @@ bool GraphBuilder::Build( const Handle<Prototype>& entry , Graph* graph ) {
   // 2. start the basic block building setup the main environment object
   Environment root_env(temp_zone(),this);
 
-  backup_environment(&root_env,this) {
+  BACKUP_ENVIRONMENT(&root_env,this) {
     // enter into the top level function
     FuncScope scope(this,entry,region);
     // setup the bytecode iterator
@@ -2325,7 +2327,7 @@ GraphBuilder::BuildOSRStart( const Handle<Prototype>& entry ,  const std::uint32
   // set up the value stack/expression stack
   Environment root_env(temp_zone(),this);
 
-  backup_environment(&root_env,this) {
+  BACKUP_ENVIRONMENT(&root_env,this) {
     // set up the OSR scope
     OSRScope scope(this,entry,header,pc);
     // set up OSR local variable

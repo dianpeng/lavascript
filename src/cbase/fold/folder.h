@@ -14,38 +14,31 @@ namespace hir        {
 // We should not use Expr node since they are designed to be part of the graph instead
 // of using as a standalone node structure. To workaround it, we have a special wrapper
 // data structure to be used to submit a folding request.
+
+#define LAVA_HIR_FOLD_TYPE(__)                                           \
+  __(UnaryFolderData         ,FOLD_UNARY         ,"fold_unary"         ) \
+  __(BinaryFolderData        ,FOLD_BINARY        ,"fold_binary"        ) \
+  __(PhiFolderDatau          ,FOLD_PHI           ,"fold_phi"           ) \
+  __(TernaryFolderData       ,FOLD_TERNARY       ,"fold_ternary"       ) \
+  __(ObjectFindFolderData    ,FOLD_OBJECT_FIND   ,"fold_object_find"   ) \
+  __(ObjectRefSetFolderData  ,FOLD_OBJECT_REF_SET,"fold_object_ref_set") \
+  __(ObjectRefGetFolderData  ,FOLD_OBJECT_REF_GET,"fold_object_ref_get") \
+  __(ListIndexFolderData     ,FOLD_LIST_INDEX    ,"fold_list_index"    ) \
+  __(ListRefGetFolderData    ,FOLD_LIST_REF_GET  ,"fold_list_ref_get"  ) \
+  __(ListRefSetFolderData    ,FOLD_LIST_REF_SET  ,"fold_list_ref_set"  ) \
+  __(ExprFolderData          ,FOLD_EXPR          ,"fold_expr"          )
+
 enum FoldType {
-  FOLD_UNARY,
-  FOLD_BINARY,
-  FOLD_TERNARY,
-  FOLD_PHI ,
+#define __(A,B,...) B,
+  LAVA_HIR_FOLD_TYPE(__)
+#undef __ // __
 
-  FOLD_OBJECT_FIND,
-  FOLD_OBJECT_REF_SET,
-  FOLD_OBJECT_REF_GET,
-
-  FOLD_LIST_INSERT,
-  FOLD_LIST_REF_SET,
-  FOLD_LIST_REF_GET,
-
-  FOLD_EXPR
+  SIZE_OF_FOLD_TYPE
 };
 
-struct UnaryFolderData;
-struct BinaryFolderData;
-struct PhiFolderData;
-struct TernaryFolderData;
-struct StoreFolderData;
-struct LoadFolderData;
-
-struct ObjectFindFolderData;
-struct ObjectRefGetFolderData;
-
-struct ListInsertFolderData;
-struct ListRefSetFolderData;
-struct ListRefGetFolderData;
-
-struct ExprFolderData;
+#define __(A,...) struct A;
+LAVA_HIR_FOLD_TYPE(__)
+#undef __ // __
 
 class FolderData {
  public:
@@ -90,14 +83,12 @@ struct ObjectFindFolderData : public FolderData {
   Expr*        object;
   Expr*           key;
   WriteEffect* effect;
-  Checkpoint*      cp;
 
-  ObjectFindFolderData( Expr* obj , Expr* k , WriteEffect* e , Checkpoint* c ):
+  ObjectFindFolderData( Expr* obj , Expr* k , WriteEffect* e ):
     FolderData(FOLD_OBJECT_FIND),
     object    (obj),
     key       (k),
-    effect    (e),
-    cp        (c)
+    effect    (e)
   {}
 };
 
@@ -125,6 +116,42 @@ struct ObjectRefGetFolderData : public FolderData {
   {}
 };
 
+struct ListIndexFolderData : public FolderData {
+  Expr*        object;
+  Expr*         index;
+  WriteEffect* effect;
+
+  ListIndexFolderData( Expr* obj , Expr* idx , WriteEffect* e ):
+    FolderData(FOLD_LIST_INDEX),
+    object    (obj),
+    index     (idx),
+    effect    (e)
+  {}
+};
+
+struct ListRefGetFolderData : public FolderData {
+  Expr* ref;
+  WriteEffect* effect;
+  ListRefGetFolderData( Expr* r , WriteEffect* e ):
+    FolderData(FOLD_LIST_REF_GET),
+    ref       (r),
+    effect    (e)
+  {}
+};
+
+struct ListRefSetFolderData : public FolderData {
+  Expr* ref;
+  Expr* value;
+  WriteEffect* effect;
+
+  ListRefSetFolderData( Expr* r , Expr* v , WriteEffect* e ):
+    FolderData(FOLD_LIST_REF_SET),
+    ref       (r),
+    value     (v),
+    effect    (e)
+  {}
+};
+
 struct ExprFolderData : public FolderData {
   Expr* node;
   ExprFolderData( Expr* n ): FolderData(FOLD_EXPR), node(n) {}
@@ -136,11 +163,9 @@ class Folder {
   // Use to predicate whether this folder can work with this folder request
   // or not. If so, then the Fold callback function will be invoked
   virtual bool CanFold( const FolderData& ) const = 0;
-
   // Fold the input folder data request. If it can fold anything, it will
   // return the folded value as a node
   virtual Expr* Fold    ( Graph* , const FolderData& ) = 0;
-
   // dtor
   virtual ~Folder() {}
 };

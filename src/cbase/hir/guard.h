@@ -69,7 +69,7 @@ LAVA_CBASE_HIR_DEFINE(Guard,public Expr) {
   // this node bailout, it uses this Checkpoint as a way to reconstruct interpreter's
   // state.
   virtual std::uint64_t GVNHash() const {
-    return GVNHash2(type_name(),test()->GVNHash());
+    return GVNHash1(type_name(),test()->GVNHash());
   }
   virtual bool Equal( const Expr* that ) const {
     if(that->IsGuard()) {

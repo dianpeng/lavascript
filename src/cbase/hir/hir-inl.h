@@ -1,5 +1,6 @@
 #ifndef CBASE_HIR_HIR_INL_H_
 #define CBASE_HIR_HIR_INL_H_
+#include "src/hash.h"
 
 namespace lavascript {
 namespace cbase      {
@@ -8,32 +9,32 @@ namespace hir        {
 template< typename T >
 std::uint64_t GVNHash0( T* ptr ) {
   std::uint64_t type = reinterpret_cast<std::uint64_t>(ptr);
-  return type;
+  return Hasher::Hash64(type);
 }
 
 template< typename T , typename V >
 std::uint64_t GVNHash1( T* ptr , const V& value ) {
   std::uint64_t uval = static_cast<std::uint64_t>(value);
   std::uint64_t type = reinterpret_cast<std::uint64_t>(ptr);
-  return (uval << 7) ^ (type);
+  return Hasher::HashCombine64(uval,type);
 }
 
 template< typename T , typename V1 , typename V2 >
 std::uint64_t GVNHash2( T* ptr , const V1& v1 , const V2& v2 ) {
   std::uint64_t uv2 = static_cast<std::uint64_t>(v2);
-  return GVNHash1(ptr,v1) ^ (uv2);
+  return Hasher::HashCombine64(GVNHash1(ptr,v1),uv2);
 }
 
 template< typename T , typename V1, typename V2 , typename V3 >
 std::uint64_t GVNHash3( T* ptr , const V1& v1 , const V2& v2 , const V3& v3 ) {
   std::uint64_t uv3 = static_cast<std::uint64_t>(v3);
-  return GVNHash2(ptr,v1,v2) ^ (uv3);
+  return Hasher::HashCombine64(GVNHash2(ptr,v1,v2),uv3);
 }
 
 template< typename T , typename V1, typename V2, typename V3 , typename V4 >
 std::uint64_t GVNHash4( T* ptr , const V1& v1 , const V2& v2 , const V3& v3 , const V4& v4 ) {
   std::uint64_t uv4 = static_cast<std::uint64_t>(v4);
-  return GVNHash3(ptr,v1,v2,v3) ^ (uv4);
+  return Hasher::HashCombine64(GVNHash3(ptr,v1,v2,v3),uv4);
 }
 
 

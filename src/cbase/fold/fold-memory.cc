@@ -1,4 +1,3 @@
-#include "fold-memory.h"
 #include "folder.h"
 #include "src/cbase/type.h"
 #include "src/cbase/aa.h"
@@ -160,6 +159,8 @@ Expr* MemoryFolder::LoadCollapse( Expr* ref , Expr* value , WriteEffect* effect 
       }
     }
   }
+
+  return NULL;
 }
 
 template< typename Set >

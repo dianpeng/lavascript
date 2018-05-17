@@ -96,9 +96,9 @@ class GraphBuilder {
     // effect group list
     Effect*          effect()          { return effect_.ptr(); }
     const Effect*    effect() const    { return effect_.ptr(); }
-    Checkpoint*      state () const    { return state_;  }
+    Checkpoint*      cp    () const    { return cp_;  }
     zone::Zone*      zone  () const    { return zone_ ;  }
-    void UpdateState( Checkpoint* cp ) { state_ = cp; }
+    void UpdateCP( Checkpoint* cp ) { cp_ = cp; }
 
     LoopEffectPhi*   AsLoopEffectPhi() { return effect()->joined_write_effect()->AsLoopEffectPhi(); }
    private:
@@ -108,7 +108,7 @@ class GraphBuilder {
     GlobalMap          global_;               // global's effect group
     GraphBuilder*      gb_;                   // graph builder
     CheckedLazyInstance<Effect> effect_;      // a list of tracked effect group
-    Checkpoint*        state_;                // current frame state for this environment
+    Checkpoint*        cp_;                   // current frame state for this environment
 
     LAVA_DISALLOW_ASSIGN(Environment);
   };
@@ -297,8 +297,8 @@ class GraphBuilder {
   Expr* NewPSetFallback   ( Expr* , Expr* , Expr* , const BytecodeLocation& );
   Expr* NewPSet           ( Expr* , Expr* , Expr* , const BytecodeLocation& );
 
-  Expr* TrySpeculativePGet( Expr* , Expr* , Expr* , const BytecodeLocation& );
-  Expr* NewPGetFallback   ( Expr* , Expr* , Expr* , const BytecodeLocation& );
+  Expr* TrySpeculativePGet( Expr* , Expr* , const BytecodeLocation& );
+  Expr* NewPGetFallback   ( Expr* , Expr* , const BytecodeLocation& );
   Expr* NewPGet           ( Expr* , Expr* , const BytecodeLocation& );
 
   Expr* NewISet( Expr* , Expr* , Expr* , const BytecodeLocation& );
@@ -502,7 +502,7 @@ GraphBuilder::Environment::Environment( zone::Zone* zone , GraphBuilder* gb ):
   global_   (zone),
   gb_       (gb),
   effect_   (),
-  state_    (gb->InitCheckpoint())
+  cp_       (gb->InitCheckpoint())
 {
   effect_.Init(gb->temp_zone(),InitBarrier::New(gb->graph()));
 }
@@ -514,7 +514,7 @@ GraphBuilder::Environment::Environment( const Environment& env , int type ):
   global_ (env.global_),
   gb_     (env.gb_),
   effect_ (),
-  state_  (env.state_ )
+  cp_     (env.cp_)
 {
   WriteEffect* effect = NULL;
   if(type == LOOP_SCOPE) {
@@ -535,7 +535,7 @@ GraphBuilder::Environment::Environment( const Environment& env ):
   global_ (env.global_),
   gb_     (env.gb_),
   effect_ (),
-  state_  (env.state_ )
+  cp_     (env.cp_)
 {
   effect_.Init(*env.effect_);
 }
@@ -794,7 +794,7 @@ bool GraphBuilder::SpeculativeInline( const Handle<Prototype>& proto , BytecodeI
     // inline function call must be done *before* the function body generated, so
     // we need to add a CondTrap which is a control flow node instead of expression.
     auto tt = TestType::New(graph_,TPKIND_CLOSURE,f);
-    auto ct = CondTrap::New(graph_,tt,env()->state(),region());
+    auto ct = CondTrap::New(graph_,tt,env()->cp(),region());
     auto rg = Region::New(graph_,ct);
     set_region(rg);
     trap_list_.push_back(ct);
@@ -929,7 +929,7 @@ Expr* GraphBuilder::AddTypeFeedbackIfNeed( Expr* n , TypeKind tp , const Bytecod
   // generate type test node
   auto tt  = TestType::New(graph_,tp,n);
   // generate guard node
-  auto gd  = NewGuard(tt,env()->state());
+  auto gd  = NewGuard(tt,env()->cp());
   // return the new guarded node
   return gd;
 }
@@ -1224,9 +1224,35 @@ Expr* GraphBuilder::LowerICall( ICall* node , const BytecodeLocation& pc ) {
 // ====================================================================
 // Property Get/Set
 // ====================================================================
-Expr* GraphBuilder::NewPSet( Expr* object , Expr* key , Expr* value ,
-                                                        const BytecodeLocation& bc ) {
-  auto ret = PSet::New(graph_,object,key,value);
+Expr* GraphBuilder::TrySpeculativePGet( Expr* object , Expr* key , const BytecodeLocation& bc ) {
+  // try to get the type of the object
+  if(auto tt = runtime_trace_.GetTrace(bc.address()); tt) {
+    if(auto &v = tt->data[1]; v.IsObject()) {
+      // the traced value shows that this instruction issues towards an object
+      // so we try to specialize towards object
+      object = AddTypeFeedbackIfNeed(object,TPKIND_OBJECT,bc);
+      // try to fold the reference lookup here
+      auto ref = folder_chain_->Fold(graph_,
+          ObjectFindFolderData{object,key,env()->effect()->joined_write_effect()});
+      if(!ref) {
+        // create a ObjectFind node
+        auto of = ObjectFind::New(graph_,object,key,env()->cp());
+        env()->effect()->root()->AddReadEffect(of);
+        // try to fold the newly created reference node
+        ref = folder_chain_->Fold(graph_,ExprFolderData{of});
+      }
+      // create the final reference read node
+      auto ret = ObjectRefGet::New(graph_,ref);
+      // this is a read operation , so insert it into read chain
+      env()->effect()->root()->AddReadEffect(ret);
+      return ret;
+    }
+  }
+  return NULL;
+}
+
+Expr* GraphBuilder::NewPGetFallback( Expr* object , Expr* key , const BytecodeLocation& bc ) {
+  auto ret = PGet::New(graph_,object,key);
   auto cp = GenerateCheckpoint(bc);
   cp->AddOperand(ret);
   env()->effect()->root()->UpdateWriteEffect(ret);
@@ -1235,7 +1261,15 @@ Expr* GraphBuilder::NewPSet( Expr* object , Expr* key , Expr* value ,
 }
 
 Expr* GraphBuilder::NewPGet( Expr* object , Expr* key , const BytecodeLocation& bc ) {
-  auto ret = PGet::New(graph_,object,key);
+  if(auto ret = TrySpeculativePGet(object,key,bc); ret)
+    return ret;
+  else
+    return NewPGetFallback(object,key,bc);
+}
+
+Expr* GraphBuilder::NewPSet( Expr* object , Expr* key , Expr* value ,
+                                                        const BytecodeLocation& bc ) {
+  auto ret = PSet::New(graph_,object,key,value);
   auto cp = GenerateCheckpoint(bc);
   cp->AddOperand(ret);
   env()->effect()->root()->UpdateWriteEffect(ret);
@@ -1310,13 +1344,13 @@ Checkpoint* GraphBuilder::GenerateCheckpoint( const BytecodeLocation& pc ) {
   }
 
   // update the checkpoint node from the environment object
-  env()->UpdateState(cp);
+  env()->UpdateCP(cp);
   return cp;
 }
 
 void GraphBuilder::GenerateMergeCheckpoint( const Environment& that ,
                                             const BytecodeLocation& bc ) {
-  if(!that.state()->IsIdentical(env()->state())) {
+  if(!that.cp()->IsIdentical(env()->cp())) {
     GenerateCheckpoint(bc);
   }
 }
@@ -1541,13 +1575,16 @@ GraphBuilder::TryFoldIf( BytecodeIterator* itr ) {
 GraphBuilder::StopReason
 GraphBuilder::BuildIf( BytecodeIterator* itr ) {
   lava_debug(NORMAL,lava_verify(itr->opcode() == BC_JMPF););
+
   // try to fold the branch
   if(auto stat = TryFoldIf(itr); stat != STOP_NA)
     return stat;
+
   // do the normal branch
   std::uint8_t cond;    // condition's register
   std::uint16_t offset; // jump target when condition evaluated to be false
   itr->GetOperand(&cond,&offset);
+
   // create the leading If node
   If*      if_region    = If::New(graph_,StackGet(cond),region());
   IfFalse* false_region = IfFalse::New(graph_,if_region);
@@ -1556,8 +1593,10 @@ GraphBuilder::BuildIf( BytecodeIterator* itr ) {
   ControlFlow* rhs      = NULL;
   Region*  merge        = Region::New(graph_);
   if_region->set_merge(merge);
+
   // setup a BranchStartEffect to mark the effect chain in HIR
   env()->InsertBranchStartEffect(if_region);
+
   // duplicate an environment for branching into the if_true branch
   Environment true_env(*env(),Environment::LEXICAL_SCOPE);
   std::uint16_t final_cursor;
@@ -1566,8 +1605,10 @@ GraphBuilder::BuildIf( BytecodeIterator* itr ) {
   // 1. Build code inside of the *true* branch and it will also help us to
   //    identify whether we have dangling elif/else branch
   itr->Move();
+
   // backup the old stack and use the new stack to do simulation
   BACKUP_ENVIRONMENT(&true_env,this) {
+
     // swith to a true region
     set_region(true_region);
     {

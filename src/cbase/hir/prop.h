@@ -46,7 +46,7 @@ LAVA_CBASE_HIR_DEFINE(PSet,public HardBarrier) {
   inline static PSet* New( Graph* , Expr* , Expr* , Expr* );
 
   Expr* object() const { return operand_list()->First(); }
-  Expr* key   () const { return operand_list()->Index(1);}
+  Expr* key   () const { return Operand(1);}
   Expr* value () const { return operand_list()->Last (); }
  public:
   PSet( Graph* graph , std::uint32_t id , Expr* object , Expr* index , Expr* value ):
@@ -101,7 +101,7 @@ LAVA_CBASE_HIR_DEFINE(ISet,public HardBarrier) {
   inline static ISet* New( Graph* , Expr* , Expr* , Expr* );
 
   Expr* object() const { return operand_list()->First(); }
-  Expr* index () const { return operand_list()->Index(1);}
+  Expr* index () const { return Operand(1);}
   Expr* value () const { return operand_list()->Last (); }
 
   ISet( Graph* graph , std::uint32_t id , Expr* object , Expr* index , Expr* value ):
@@ -175,7 +175,7 @@ LAVA_CBASE_HIR_DEFINE(ListResize,public SoftBarrier) {
   }
 
   Expr*           object() const { return operand_list()->First();  }
-  Expr*           index () const { return operand_list()->Index(1); }
+  Expr*           index () const { return Operand(1); }
   Checkpoint* checkpoint() const { return operand_list()->Last()->AsCheckpoint(); }
 };
 
@@ -200,7 +200,7 @@ LAVA_CBASE_HIR_DEFINE(ObjectFind,public StaticRef) {
   }
 
   Expr*           object() const { return operand_list()->First(); }
-  Expr*           key   () const { return operand_list()->Index(1);}
+  Expr*           key   () const { return Operand(1);}
   Checkpoint* checkpoint() const { return operand_list()->Last()->AsCheckpoint(); }
 
  private:
@@ -239,7 +239,7 @@ LAVA_CBASE_HIR_DEFINE(ListIndex,public StaticRef) {
   }
 
   Expr*           object() const { return operand_list()->First(); }
-  Expr*           index () const { return operand_list()->Index(1); }
+  Expr*           index () const { return Operand(1); }
   Checkpoint* checkpoint() const { return operand_list()->Last()->AsCheckpoint(); }
  private:
   LAVA_DISALLOW_COPY_AND_ASSIGN(ListIndex)

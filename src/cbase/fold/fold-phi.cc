@@ -1,4 +1,3 @@
-#include "fold-phi.h"
 #include "fold-arith.h" // fold ternary
 #include "folder.h"
 
@@ -66,17 +65,6 @@ Expr* PhiFolder::Fold( Phi* phi ) {
 }
 
 } // namespace
-
-Expr* FoldPhi( Graph* graph , Expr* lhs , Expr* rhs , ControlFlow* region ) {
-  PhiFolder folder(NULL);
-  return folder.Fold( graph , PhiFolderData{lhs,rhs,region} );
-}
-
-Expr* FoldPhi( Graph* graph , Phi* phi ) {
-  PhiFolder folder(NULL);
-  return folder.Fold( graph , ExprFolderData{phi} );
-}
-
 } // namespace hir
 } // namespace cbase
 } // namespace lavascript

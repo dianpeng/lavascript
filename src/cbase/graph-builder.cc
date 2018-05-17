@@ -102,13 +102,13 @@ class GraphBuilder {
 
     LoopEffectPhi*   AsLoopEffectPhi() { return effect()->joined_write_effect()->AsLoopEffectPhi(); }
    private:
-    zone::Zone*        zone_;                 // zone allocator
-    ValueStack         stack_;                // register stack
-    UpValueVectorStack upval_stk_;            // upvalue's value stack
-    GlobalMap          global_;               // global's effect group
-    GraphBuilder*      gb_;                   // graph builder
-    CheckedLazyInstance<Effect> effect_;      // a list of tracked effect group
-    Checkpoint*        cp_;                   // current frame state for this environment
+    zone::Zone*        zone_;            // zone allocator
+    ValueStack         stack_;           // register stack
+    UpValueVectorStack upval_stk_;       // upvalue's value stack
+    GlobalMap          global_;          // global's effect group
+    GraphBuilder*      gb_;              // graph builder
+    CheckedLazyInstance<Effect> effect_; // a list of tracked effect group
+    Checkpoint*        cp_;              // current frame state for this environment
 
     LAVA_DISALLOW_ASSIGN(Environment);
   };
@@ -185,7 +185,7 @@ class GraphBuilder {
     bool                        tcall;     // whether it is a tail call
 
    public:
-    inline FuncInfo( const Handle<Prototype>& , ControlFlow* , std::uint32_t , bool tcall = false );
+    inline FuncInfo( const Handle<Prototype>& , ControlFlow* , std::uint32_t        , bool tcall = false );
     inline FuncInfo( const Handle<Prototype>& , ControlFlow* , const std::uint32_t* , bool tcall = false );
     inline FuncInfo( FuncInfo&& );
 
@@ -278,14 +278,9 @@ class GraphBuilder {
   Expr* NewUnary            ( Expr* , Unary::Operator , const BytecodeLocation& );
   Expr* TrySpeculativeUnary ( Expr* , Unary::Operator , const BytecodeLocation& );
   Expr* NewUnaryFallback    ( Expr* , Unary::Operator );
-
   // Binary
-  Expr* NewBinary           ( Expr* , Expr* , Binary::Operator ,
-                                                                    const BytecodeLocation& );
-  Expr* TrySpecialTestBinary( Expr* , Expr* , Binary::Operator ,
-                                                                    const BytecodeLocation& );
-  Expr* TrySpeculativeBinary( Expr* , Expr* , Binary::Operator ,
-                                                                    const BytecodeLocation& );
+  Expr* NewBinary           ( Expr* , Expr* , Binary::Operator , const BytecodeLocation& );
+  Expr* TrySpeculativeBinary( Expr* , Expr* , Binary::Operator , const BytecodeLocation& );
   Expr* NewBinaryFallback   ( Expr* , Expr* , Binary::Operator );
   // Ternary
   Expr* NewTernary( Expr* , Expr* , Expr* , const BytecodeLocation& );
@@ -647,7 +642,9 @@ class GraphBuilder::FuncScope {
 
 class GraphBuilder::InlineScope {
  public:
-  InlineScope( GraphBuilder* , const Handle<Prototype>& , std::size_t new_base , bool tcall , ControlFlow* );
+  InlineScope( GraphBuilder* , const Handle<Prototype>& , std::size_t new_base ,
+                                                          bool        tcall ,
+                                                          ControlFlow* );
   ~InlineScope();
  private:
   GraphBuilder* gb_;
@@ -655,7 +652,8 @@ class GraphBuilder::InlineScope {
 
 class GraphBuilder::LoopScope {
  public:
-  LoopScope( GraphBuilder* gb , const std::uint32_t* pc ) : gb_(gb) { gb->func_info().EnterLoop(pc); }
+  LoopScope( GraphBuilder* gb , const std::uint32_t* pc ) :
+    gb_(gb) { gb->func_info().EnterLoop(pc); }
   ~LoopScope() { gb_->func_info().LeaveLoop(); }
  private:
   GraphBuilder* gb_;
@@ -741,8 +739,8 @@ bool GraphBuilder::DoInline( const Handle<Prototype>& proto , std::uint8_t base 
   Expr* ret    = NULL;
   auto new_itr = proto->GetBytecodeIterator();
   {
+    // setup inline function lexical scope
     InlineScope scope(this,proto,func_info().base + base ,tcall,region());
-
     // create the inline start node to mark the Graph
     auto istart = InlineStart::New(graph_,region());
     set_region(istart);
@@ -772,7 +770,6 @@ bool GraphBuilder::DoInline( const Handle<Prototype>& proto , std::uint8_t base 
         ret = phi;
       }
     }
-
     set_region(iend);
   }
 
@@ -888,11 +885,13 @@ Expr* GraphBuilder::NewBoolean( bool value ) {
 
 IRList* GraphBuilder::NewIRList( std::size_t size ) {
   auto ret = IRList::New(graph_,size);
+  env()->effect()->root()->UpdateWriteEffect(ret);
   return ret;
 }
 
 IRObject* GraphBuilder::NewIRObject( std::size_t size ) {
   auto ret = IRObject::New(graph_,size);
+  env()->effect()->root()->UpdateWriteEffect(ret);
   return ret;
 }
 
@@ -990,47 +989,10 @@ Expr* GraphBuilder::NewUnaryFallback( Expr* node , Unary::Operator op ) {
 Expr* GraphBuilder::NewBinary  ( Expr* lhs , Expr* rhs , Binary::Operator op , const BytecodeLocation& pc ) {
   if(auto new_node = folder_chain_->Fold(graph_,BinaryFolderData{op,lhs,rhs}); new_node)
     return new_node;
-  // try to specialize it into certain specific common cases which doesn't
-  // require guard instruction and deoptimization
-  if(auto new_node = TrySpecialTestBinary(lhs,rhs,op,pc); new_node) return new_node;
   // try speculative binary node
   if(auto new_node = TrySpeculativeBinary(lhs,rhs,op,pc); new_node) return new_node;
   // fallback to use normal binary dispatch
   return NewBinaryFallback(lhs,rhs,op);
-}
-
-Expr* GraphBuilder::TrySpecialTestBinary( Expr* lhs , Expr* rhs , Binary::Operator op ,
-                                                                  const BytecodeLocation& pc ) {
-  (void)pc;
-  if(op == Binary::EQ || op == Binary::NE) {
-    if((lhs->IsICall() && rhs->IsString()) || (rhs->IsICall() && lhs->IsString())) {
-      /**
-       * try to capture the special written code and convert it into IR node
-       * which can be optimized later on
-       */
-      auto icall = lhs->IsICall() ? lhs->AsICall()      : rhs->AsICall();
-      auto type  = lhs->IsString()? lhs->AsZoneString() : rhs->AsZoneString();
-
-      if(type == "real") {
-        return TestType::New(graph_,TPKIND_FLOAT64  ,icall->GetArgument(0));
-      } else if(type == "boolean") {
-        return TestType::New(graph_,TPKIND_BOOLEAN  ,icall->GetArgument(0));
-      } else if(type == "null") {
-        return TestType::New(graph_,TPKIND_NIL      ,icall->GetArgument(0));
-      } else if(type == "list") {
-        return TestType::New(graph_,TPKIND_LIST     ,icall->GetArgument(0));
-      } else if(type == "object") {
-        return TestType::New(graph_,TPKIND_OBJECT   ,icall->GetArgument(0));
-      } else if(type == "closure") {
-        return TestType::New(graph_,TPKIND_CLOSURE  ,icall->GetArgument(0));
-      } else if(type == "iterator") {
-        return TestType::New(graph_,TPKIND_ITERATOR ,icall->GetArgument(0));
-      } else if(type == "extension") {
-        return TestType::New(graph_,TPKIND_EXTENSION,icall->GetArgument(0));
-      }
-    }
-  }
-  return NULL; // fallback
 }
 
 Expr* GraphBuilder::TrySpeculativeBinary( Expr* lhs , Expr* rhs , Binary::Operator op,
@@ -1103,8 +1065,7 @@ Expr* GraphBuilder::TrySpeculativeBinary( Expr* lhs , Expr* rhs , Binary::Operat
           if(auto ret = folder_chain_->Fold(graph_,BinaryFolderData{op,lhs,rhs}); ret)
             return ret;
           rhs = AddTypeFeedbackIfNeed(rhs,rhs_val,pc);
-          if(GetTypeInference(lhs) == TPKIND_BOOLEAN &&
-             GetTypeInference(rhs) == TPKIND_BOOLEAN) {
+          if(GetTypeInference(lhs) == TPKIND_BOOLEAN && GetTypeInference(rhs) == TPKIND_BOOLEAN) {
             auto l = NewUnboxNode(graph_,lhs,TPKIND_BOOLEAN);
             auto r = NewUnboxNode(graph_,rhs,TPKIND_BOOLEAN);
             return NewBoxNode<BooleanLogic>(graph_, TPKIND_BOOLEAN, l, r, op);
@@ -1241,11 +1202,15 @@ Expr* GraphBuilder::TrySpeculativePGet( Expr* object , Expr* key , const Bytecod
         // try to fold the newly created reference node
         ref = folder_chain_->Fold(graph_,ExprFolderData{of});
       }
-      // create the final reference read node
-      auto ret = ObjectRefGet::New(graph_,ref);
-      // this is a read operation , so insert it into read chain
-      env()->effect()->root()->AddReadEffect(ret);
-      return ret;
+      // try to fold the get operation
+      if(auto new_ret = folder_chain_->Fold(graph_,
+            ObjectRefGetFolderData{ref,env()->effect()->joined_write_effect()}); new_ret) {
+        return new_ret;
+      } else {
+        auto ret = ObjectRefGet::New(graph_,ref);
+        env()->effect()->root()->AddReadEffect(ret);
+        return ret;
+      }
     }
   }
   return NULL;
@@ -1267,8 +1232,33 @@ Expr* GraphBuilder::NewPGet( Expr* object , Expr* key , const BytecodeLocation& 
     return NewPGetFallback(object,key,bc);
 }
 
-Expr* GraphBuilder::NewPSet( Expr* object , Expr* key , Expr* value ,
-                                                        const BytecodeLocation& bc ) {
+Expr* GraphBuilder::TrySpeculativePSet( Expr* object , Expr* key , Expr* value ,
+                                                                   const BytecodeLocation& bc ) {
+  if(auto tt = runtime_trace_.GetTrace(bc.address()); tt) {
+    if(auto &v = tt->data[0]; v.IsObject()) {
+      object = AddTypeFeedbackIfNeed(object,TPKIND_OBJECT,bc);
+      auto ref = folder_chain_->Fold(graph_,
+          ObjectFindFolderData{object,key,env()->effect()->joined_write_effect()});
+      if(!ref) {
+        auto of = ObjectFind::New(graph_,object,key,env()->cp());
+        env()->effect()->root()->AddReadEffect(of);
+        ref = folder_chain_->Fold(graph_,ExprFolderData{of});
+      }
+      if(auto new_ret = folder_chain_->Fold(graph_,
+            ObjectRefSetFolderData{ref,value,env()->effect()->joined_write_effect()}); new_ret) {
+        return new_ret; // store collapsing
+      } else {
+        auto ret = ObjectRefSet::New(graph_,ref,value);
+        env()->effect()->root()->UpdateWriteEffect(ret);
+        return ret;
+      }
+    }
+  }
+  return NULL;
+}
+
+Expr* GraphBuilder::NewPSetFallback( Expr* object , Expr* key , Expr* value ,
+                                                                const BytecodeLocation& bc ) {
   auto ret = PSet::New(graph_,object,key,value);
   auto cp = GenerateCheckpoint(bc);
   cp->AddOperand(ret);
@@ -1277,6 +1267,12 @@ Expr* GraphBuilder::NewPSet( Expr* object , Expr* key , Expr* value ,
   return ret;
 }
 
+Expr* GraphBuilder::NewPSet( Expr* object , Expr* key , Expr* value , const BytecodeLocation& bc ) {
+  if(auto ret = TrySpeculativePSet(object,key,value,bc); ret)
+    return ret;
+  else
+    return NewPSetFallback(object,key,value,bc);
+}
 // ====================================================================
 // Index Get/Set
 // ====================================================================
@@ -1648,10 +1644,8 @@ GraphBuilder::BuildIf( BytecodeIterator* itr ) {
   merge->AddBackwardEdge(rhs);
   itr->BranchTo(final_cursor);
   set_region(merge);
-
   // 4. handle PHI node
   InsertPhi(env(),&true_env,merge);
-
   // 5. generate new Checkpoint node eagerly after the merge if needed
   GenerateMergeCheckpoint(true_env,itr->bytecode_location());
 
@@ -1813,47 +1807,61 @@ GraphBuilder::BuildLoopBody( BytecodeIterator* itr , ControlFlow* loop_header ) 
   BACKUP_ENVIRONMENT(&loop_env,this) {
     // entier the loop scope
     LoopScope lscope(this,itr->pc());
+
     // create new loop body node
     body = Loop::New(graph_);
+
     // set it as the current region node
     set_region(body);
     auto loop_effect_phi = env()->AsLoopEffectPhi();
+
     // patch the loop effect phi with correct region node
     {
       loop_effect_phi->set_region(body);
       body->AddOperand(loop_effect_phi);
       func_info().current_loop().loop_effect_phi = loop_effect_phi;
     }
+
     // generate PHI node at the head of the *block*
     GenerateLoopPhi();
+
     // iterate all BC inside of the loop body
     StopReason reason = BuildLoopBlock(itr);
     if(reason == STOP_BAILOUT)
       return STOP_BAILOUT;
     lava_debug(NORMAL, lava_verify(reason == STOP_SUCCESS || reason == STOP_JUMP););
     cont_pc = itr->bytecode_location();
+
     // now we should stop at the FEND1/FEND2/FEEND instruction
     auto exit_cond = BuildLoopEndCondition(itr,body);
     lava_debug(NORMAL,lava_verify(!exit););
+
     // set up LoopExit node
     exit = LoopExit::New(graph_,exit_cond);
+
     // connect each control flow node together
     exit->AddBackwardEdge (region());
     body->AddBackwardEdge (loop_header);
     body->AddBackwardEdge (exit);
     after->AddBackwardEdge(exit);
+
     // skip the last end instruction
     itr->Move();
+
     // patch all the Phi node
     PatchLoopPhi();
+
     // set the loop effect phi node's backward effect operand , must be after PatchLoopPhi call
     func_info().current_loop().loop_effect_phi->SetBackwardEffect(
         env()->effect()->joined_write_effect());
+
     // break should jump here which is *after* the merge region
     brk_pc = itr->bytecode_location();
+
     // patch all the pending continue and break node
     PatchUnconditionalJump( &func_info().current_loop().pending_continue , exit , cont_pc );
     PatchUnconditionalJump( &func_info().current_loop().pending_break    , after, brk_pc  );
+
     lava_debug(NORMAL,
       lava_verify(func_info().current_loop().pending_continue.empty());
       lava_verify(func_info().current_loop().pending_break.empty   ());
@@ -1921,8 +1929,10 @@ GraphBuilder::StopReason GraphBuilder::BuildBytecode( BytecodeIterator* itr ) {
     case BC_GERV :
     case BC_EQRV :
     case BC_NERV :
-      temp = NewBinary(NewNumber(a2),StackGet(a3), Binary::BytecodeToOperator(itr->opcode()),
-                                                   itr->bytecode_location());
+      temp = NewBinary(NewNumber(a2),
+                       StackGet(a3),
+                       Binary::BytecodeToOperator(itr->opcode()),
+                       itr->bytecode_location());
       StackSet(a1,temp);
       break;
 
@@ -1938,8 +1948,10 @@ GraphBuilder::StopReason GraphBuilder::BuildBytecode( BytecodeIterator* itr ) {
     case BC_GEVR :
     case BC_EQVR :
     case BC_NEVR :
-      temp = NewBinary(StackGet(a2), NewNumber(a3), Binary::BytecodeToOperator(itr->opcode()),
-                                                    itr->bytecode_location());
+      temp = NewBinary(StackGet(a2),
+                       NewNumber(a3),
+                       Binary::BytecodeToOperator(itr->opcode()),
+                       itr->bytecode_location());
       StackSet(a1,temp);
       break;
     case BC_ADDVV:
@@ -1954,22 +1966,28 @@ GraphBuilder::StopReason GraphBuilder::BuildBytecode( BytecodeIterator* itr ) {
     case BC_GEVV :
     case BC_EQVV :
     case BC_NEVV :
-      temp = NewBinary(StackGet(a2), StackGet(a3), Binary::BytecodeToOperator(itr->opcode()),
-                                                   itr->bytecode_location());
+      temp = NewBinary(StackGet(a2),
+                       StackGet(a3),
+                       Binary::BytecodeToOperator(itr->opcode()),
+                       itr->bytecode_location());
       StackSet(a1,temp);
       break;
 
     case BC_EQSV:
     case BC_NESV:
-      temp = NewBinary(NewString(a2), StackGet(a3), Binary::BytecodeToOperator(itr->opcode()),
-                                                    itr->bytecode_location());
+      temp = NewBinary(NewString(a2),
+                       StackGet(a3),
+                       Binary::BytecodeToOperator(itr->opcode()),
+                       itr->bytecode_location());
       StackSet(a1,temp);
       break;
 
     case BC_EQVS:
     case BC_NEVS:
-      temp = NewBinary(StackGet(a2),NewString(a3), Binary::BytecodeToOperator(itr->opcode()),
-                                                   itr->bytecode_location());
+      temp = NewBinary(StackGet(a2),
+                       NewString(a3),
+                       Binary::BytecodeToOperator(itr->opcode()),
+                       itr->bytecode_location());
       StackSet(a1,temp);
       break;
 
@@ -1981,7 +1999,8 @@ GraphBuilder::StopReason GraphBuilder::BuildBytecode( BytecodeIterator* itr ) {
       return BuildTernary(itr);
 
     case BC_NEGATE: case BC_NOT:
-      temp = NewUnary(StackGet(a2), Unary::BytecodeToOperator(itr->opcode()) , itr->bytecode_location());
+      temp = NewUnary(StackGet(a2),
+                      Unary::BytecodeToOperator(itr->opcode()),itr->bytecode_location());
       StackSet(a1,temp);
       break;
 
@@ -2119,7 +2138,11 @@ GraphBuilder::StopReason GraphBuilder::BuildBytecode( BytecodeIterator* itr ) {
 
     case BC_ICALL:
     case BC_TICALL:
-      StackSet(kAccRegisterIndex,NewICall(a1,a2,a3,(itr->opcode() == BC_TICALL),itr->bytecode_location()));
+      StackSet(kAccRegisterIndex,NewICall(a1,
+                                          a2,
+                                          a3,
+                                          (itr->opcode() == BC_TICALL),
+                                          itr->bytecode_location()));
       break;
 
     case BC_TCALL:
@@ -2333,7 +2356,9 @@ GraphBuilder::StopReason GraphBuilder::PeelOSRLoop( BytecodeIterator* itr ) {
       if(!func_info().current_loop().pending_continue.empty()) {
         // create a new region lazily
         Region* r = Region::New(graph_,region());
-        PatchUnconditionalJump(&(func_info().current_loop().pending_continue), r, itr->bytecode_location());
+        PatchUnconditionalJump(&(func_info().current_loop().pending_continue),
+                               r,
+                               itr->bytecode_location());
         set_region(r);
       }
       // save peeled part's all break
@@ -2396,24 +2421,29 @@ GraphBuilder::BuildOSRStart( const Handle<Prototype>& entry ,  const std::uint32
   return STOP_SUCCESS;
 }
 
-bool GraphBuilder::BuildOSR( const Handle<Prototype>& entry , const std::uint32_t* osr_start ,
-                                                              Graph* graph ) {
+bool GraphBuilder::BuildOSR( const Handle<Prototype>& entry ,
+                             const std::uint32_t* osr_start ,
+                             Graph* graph ) {
   return BuildOSRStart(entry,osr_start,graph) == STOP_SUCCESS;
 }
 
 } // namespace
 
-bool BuildPrototype( const Handle<Script>& script , const Handle<Prototype>& prototype ,
-                                                    const RuntimeTrace& rt ,
-                                                    Graph* output ) {
+bool BuildPrototype( const Handle<Script>& script ,
+                     const Handle<Prototype>& prototype ,
+                     const RuntimeTrace& rt ,
+                     Graph* output ) {
+
   GraphBuilder gb(script,rt);
   return gb.Build(prototype,output);
 }
 
-bool BuildPrototypeOSR( const Handle<Script>& script , const Handle<Prototype>& prototype ,
-                                                       const RuntimeTrace& rt ,
-                                                       const std::uint32_t* address ,
-                                                       Graph* graph ) {
+bool BuildPrototypeOSR( const Handle<Script>& script ,
+                        const Handle<Prototype>& prototype ,
+                        const RuntimeTrace& rt ,
+                        const std::uint32_t* address ,
+                        Graph* graph ) {
+
   GraphBuilder gb(script,rt);
   return gb.BuildOSR(prototype,address,graph);
 }

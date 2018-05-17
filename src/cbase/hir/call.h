@@ -42,7 +42,7 @@ LAVA_CBASE_HIR_DEFINE(ICall,public WriteEffect) {
   }
   Expr* GetArgument( std::uint8_t arg ) {
     lava_debug(NORMAL,lava_verify(arg < operand_list()->size()););
-    return operand_list()->Index(arg);
+    return Operand(arg);
   }
   // intrinsic call method index
   interpreter::IntrinsicCall ic() const { return ic_; }

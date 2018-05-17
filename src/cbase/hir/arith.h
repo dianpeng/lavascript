@@ -156,7 +156,7 @@ LAVA_CBASE_HIR_DEFINE(Ternary,public Expr) {
   }
 
   Expr* condition() const { return operand_list()->First(); }
-  Expr* lhs      () const { return operand_list()->Index(1); }
+  Expr* lhs      () const { return Operand(1); }
   Expr* rhs      () const { return operand_list()->Last(); }
  private:
   LAVA_DISALLOW_COPY_AND_ASSIGN(Ternary)

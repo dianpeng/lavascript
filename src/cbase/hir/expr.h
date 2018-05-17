@@ -34,7 +34,7 @@ LAVA_CBASE_HIR_DEFINE(Expr,public Node) {
   // function
   const OperandList* operand_list() const { return &operand_list_; }
   // Helper accessor
-  const Expr* Operand( std::size_t index ) const { return operand_list()->Index(index); }
+  Expr* Operand( std::size_t index ) const { return operand_list_.Index(index); }
   // This function will add the input node into this node's operand list and
   // it will take care of the input node's ref list as well
   inline void AddOperand( Expr* node );
@@ -49,7 +49,7 @@ LAVA_CBASE_HIR_DEFINE(Expr,public Node) {
   //      so we can fast modify/remove us from its list
   const OperandRefList* ref_list() const { return &ref_list_; }
   // Helper accessor
-  const OperandRef&     Ref( std::size_t index ) { return ref_list()->Index(index); }
+  const OperandRef&     Ref( std::size_t index ) { return ref_list_.Index(index); }
   // Add the referece into the reference list
   void AddRef( Node* who_uses_me , const OperandIterator& iter ) {
     ref_list_.PushBack(zone(),OperandRef(iter,who_uses_me));

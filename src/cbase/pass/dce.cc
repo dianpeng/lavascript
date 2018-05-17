@@ -61,8 +61,8 @@ void DCEImpl::Visit( Graph* graph ) {
       if(n->IsPhi()) {
         auto phi = n->AsPhi();
         lava_debug(NORMAL,lava_verify(phi->operand_list()->size() == 2););
-        auto v = bval ? phi->operand_list()->Index(IfTrue::kIndex) :  // true
-                        phi->operand_list()->Index(IfFalse::kIndex) ; // false
+        auto v = bval ? phi->Operand(IfTrue::kIndex) :  // true
+                        phi->Operand(IfFalse::kIndex) ; // false
 
         // use v to replace all the phi uses
         phi->Replace(v);

@@ -209,6 +209,54 @@ std::size_t EffectPhiBase::dependency_size() const {
 	return ret;
 }
 
+Expr* IRList::Load( Expr* index ) const {
+  if(index->Is<Float64>()) {
+    if(std::uint32_t idx = 0; CastToIndex(index->As<Float64>()->value(),&idx)) {
+      if(idx < operand_list()->size()) {
+        return Operand(idx);
+      }
+    }
+  }
+  return NULL;
+}
+
+bool IRList::Store( Expr* index , Expr* value ) {
+  if(index->Is<Float64>()) {
+    if(std::uint32_t idx = 0; CastToIndex(index->As<Float64>()->value(),&idx)) {
+      ReplaceOperand(idx,value);
+      return true;
+    }
+  }
+  return false;
+}
+
+Expr* IRObject::Load( Expr* key ) const {
+  if(key->IsString()) {
+    auto &str = key->AsZoneString();
+    lava_foreach( auto &k , operand_list()->GetForwardIterator() ) {
+      auto kv = k->As<IRObjectKV>();
+      if(kv->key()->IsString() && kv->key()->AsZoneString() == str) {
+        return kv->value();
+      }
+    }
+  }
+  return NULL;
+}
+
+bool IRObject::Store( Expr* key , Expr* value ) {
+  if(key->IsString()) {
+    auto &str = key->AsZoneString();
+    lava_foreach( auto &k , operand_list()->GetForwardIterator() ) {
+      auto kv = k->As<IRObjectKV>();
+      if(kv->key()->IsString() && kv->key()->AsZoneString() == str) {
+        kv->ReplaceOperand(1,value);
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
 void ControlFlow::Replace( ControlFlow* node ) {
   if(IsIdentical(node)) return;
   // 1. transfer all *use* node

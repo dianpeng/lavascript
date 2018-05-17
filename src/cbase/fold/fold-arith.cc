@@ -13,13 +13,41 @@ namespace            {
 
 using namespace ::lavascript::interpreter;
 
-inline bool IsUnaryMinus( Expr* node ) {
+// Folder implementation
+class ArithFolder : public Folder {
+ public:
+  ArithFolder( zone::Zone* zone ) { (void)zone; }
+  virtual bool CanFold( const FolderData& data ) const;
+  virtual Expr* Fold( Graph* graph , const FolderData& data );
+ private:
+  inline bool IsUnaryMinus( Expr* );
+  inline bool IsUnaryNot  ( Expr* );
+  inline bool IsTrue      ( Expr* , TypeKind );
+  inline bool IsFalse     ( Expr* , TypeKind );
+  template< typename T > inline bool IsNumber( Expr* , T );
+
+  Expr* Fold                  ( Graph* , Unary::Operator  , Expr* );
+  Expr* Float64Reassociate    ( Graph* , Binary::Operator , Expr* , Expr* );
+  Expr* SimplifyLogicAnd      ( Graph* , TypeKind , TypeKind , Expr* , Expr* );
+  Expr* SimplifyLogicOr       ( Graph* , TypeKind , TypeKind , Expr* , Expr* );
+  Expr* SimplifyBooleanCompare( Graph* , Binary::Operator , TypeKind , TypeKind , Expr* , Expr* );
+  Expr* SimplifyBinary        ( Graph* , Binary::Operator , Expr* , Expr* );
+  Expr* MatchBinaryPattern    ( Graph* , Binary::Operator , Expr* , Expr* );
+  Expr* Fold                  ( Graph* , Binary::Operator , Expr* , Expr* );
+  Expr* Fold                  ( Graph* , Expr* , Expr* , Expr* );
+};
+
+LAVA_REGISTER_FOLDER("arith-folder",ArithFolderFactory,ArithFolder);
+
+inline bool ArithFolder::IsUnaryMinus( Expr* node ) {
   return node->IsUnary() && node->AsUnary()->op() == Unary::MINUS;
 }
-inline bool IsUnaryNot  ( Expr* node ) {
+
+inline bool ArithFolder::IsUnaryNot  ( Expr* node ) {
   return node->IsUnary() && node->AsUnary()->op() == Unary::NOT;
 }
-inline bool IsTrue( Expr* node , TypeKind tp ) {
+
+inline bool ArithFolder::IsTrue( Expr* node , TypeKind tp ) {
   if(node->IsBoolean() && node->AsBoolean()->value())
     return true;
   else {
@@ -30,7 +58,8 @@ inline bool IsTrue( Expr* node , TypeKind tp ) {
     return false;
   }
 }
-inline bool IsFalse( Expr* node , TypeKind tp ) {
+
+inline bool ArithFolder::IsFalse( Expr* node , TypeKind tp ) {
   if(node->IsBoolean() && !node->AsBoolean()->value())
     return true;
   else {
@@ -40,14 +69,13 @@ inline bool IsFalse( Expr* node , TypeKind tp ) {
   }
   return false;
 }
+
 template< typename T >
-inline bool IsNumber( Expr* node , T value ) {
-  return node->IsFloat64() ?
-         (static_cast<double>(value) == node->AsFloat64()->value()) : false;
+inline bool ArithFolder::IsNumber( Expr* node , T value ) {
+  return node->IsFloat64() ? (static_cast<double>(value) == node->AsFloat64()->value()) : false;
 }
 
-// Fold the unary operations
-Expr* Fold( Graph* graph , Unary::Operator op , Expr* expr ) {
+Expr* ArithFolder::Fold( Graph* graph , Unary::Operator op , Expr* expr ) {
   if(op == Unary::MINUS) {
     if(expr->IsFloat64()) {
       return Float64::New(graph,-expr->AsFloat64()->value());
@@ -97,10 +125,8 @@ Expr* Fold( Graph* graph , Unary::Operator op , Expr* expr ) {
   }
   return NULL;
 }
-// Doing simple algebra reassocication to enable better value inference during GVN and DCE phase
-// We can *only* do algebra reassociation when lhs and rhs are both float64 type otherwise we cannot
-// do anything due to the fact that the extension type bailout every types of optimization
-Expr* Float64Reassociate( Graph* graph , Binary::Operator op , Expr* lhs , Expr* rhs ) {
+
+Expr* ArithFolder::Float64Reassociate( Graph* graph , Binary::Operator op , Expr* lhs , Expr* rhs ) {
   /**
    * Due to the fact that our operands are both floating point number, not too much
    * operation can be safely done.
@@ -117,29 +143,26 @@ Expr* Float64Reassociate( Graph* graph , Binary::Operator op , Expr* lhs , Expr*
    */
   if(IsUnaryMinus(lhs) && op == Binary::ADD) {
     // 1. (-a) + b  => b - a
-    return NewBoxNode<Float64Arithmetic>( graph , TPKIND_FLOAT64,
-                                          NewUnboxNode(graph,rhs,TPKIND_FLOAT64),
-                                          NewUnboxNode(graph,lhs->AsUnary()->operand(),TPKIND_FLOAT64),
-                                          Binary::SUB);
+    auto l = NewUnboxNode(graph,rhs                      ,TPKIND_FLOAT64);
+    auto r = NewUnboxNode(graph,lhs->AsUnary()->operand(),TPKIND_FLOAT64);
+    return NewBoxNode<Float64Arithmetic>(graph,TPKIND_FLOAT64,l,r,Binary::SUB);
   } else if(IsUnaryMinus(rhs) && op == Binary::ADD) {
+    auto l = NewUnboxNode(graph,lhs                      ,TPKIND_FLOAT64);
+    auto r = NewUnboxNode(graph,rhs->AsUnary()->operand(),TPKIND_FLOAT64);
     // 2. a + (-b) => a - b
-    return NewBoxNode<Float64Arithmetic>( graph , TPKIND_FLOAT64,
-                                          NewUnboxNode(graph,lhs,TPKIND_FLOAT64),
-                                          NewUnboxNode(graph,rhs->AsUnary()->operand(),TPKIND_FLOAT64),
-                                          Binary::SUB);
+    return NewBoxNode<Float64Arithmetic>(graph,TPKIND_FLOAT64,l,r,Binary::SUB);
   } else if(IsUnaryMinus(lhs) && op == Binary::SUB) {
     // 3. -a - b => -b - a
     auto new_lhs = Float64Negate::New( graph , NewUnboxNode(graph,rhs,TPKIND_FLOAT64));
-    return NewBoxNode<Float64Arithmetic>( graph , TPKIND_FLOAT64,
-                                          NewUnboxNode(graph,new_lhs,TPKIND_FLOAT64),
-                                          NewUnboxNode(graph,lhs->AsUnary()->operand(),TPKIND_FLOAT64),
-                                          Binary::SUB);
+    auto l       = NewUnboxNode(graph,new_lhs                  ,TPKIND_FLOAT64);
+    auto r       = NewUnboxNode(graph,lhs->AsUnary()->operand(),TPKIND_FLOAT64);
+    return NewBoxNode<Float64Arithmetic>(graph,TPKIND_FLOAT64,l,r,Binary::SUB);
+
   } else if(IsUnaryMinus(rhs) && op == Binary::SUB) {
     // 4. a - (-b) => a + b
-    return NewBoxNode<Float64Arithmetic>( graph , TPKIND_FLOAT64 ,
-                                          NewUnboxNode(graph,lhs,TPKIND_FLOAT64),
-                                          NewUnboxNode(graph,rhs->AsUnary()->operand(),TPKIND_FLOAT64),
-                                          Binary::ADD);
+    auto l  = NewUnboxNode(graph,                      lhs,TPKIND_FLOAT64);
+    auto r  = NewUnboxNode(graph,rhs->AsUnary()->operand(),TPKIND_FLOAT64);
+    return NewBoxNode<Float64Arithmetic>(graph ,TPKIND_FLOAT64,l,r,Binary::ADD);
   } else if(op == Binary::DIV && IsNumber(rhs,1)) {
     // 5. a / 1 => a
     return lhs;
@@ -148,20 +171,22 @@ Expr* Float64Reassociate( Graph* graph , Binary::Operator op , Expr* lhs , Expr*
     return NewBoxNode<Float64Negate>(graph,TPKIND_FLOAT64,NewUnboxNode(graph,lhs,TPKIND_FLOAT64));
   } else if(IsUnaryMinus(lhs) && IsUnaryMinus(rhs) && op == Binary::MUL) {
     // 7. -a * -b => a * b
-    return NewBoxNode<Float64Arithmetic>( graph , TPKIND_FLOAT64,
-                                          NewUnboxNode(graph,lhs->AsUnary()->operand(),TPKIND_FLOAT64),
-                                          NewUnboxNode(graph,rhs->AsUnary()->operand(),TPKIND_FLOAT64),
-                                          Binary::MUL );
+    auto l = NewUnboxNode(graph,lhs->AsUnary()->operand(),TPKIND_FLOAT64);
+    auto r = NewUnboxNode(graph,rhs->AsUnary()->operand(),TPKIND_FLOAT64);
+    return NewBoxNode<Float64Arithmetic>(graph,TPKIND_FLOAT64,l,r,Binary::MUL);
   } else {
     return NULL;
   }
 }
-Expr* SimplifyLogicAnd( Graph* graph , TypeKind lhs_type , TypeKind rhs_type , Expr* lhs , Expr* rhs ) {
+
+Expr* ArithFolder::SimplifyLogicAnd( Graph* graph , TypeKind lhs_type , TypeKind rhs_type ,
+                                                                        Expr*    lhs ,
+                                                                        Expr*    rhs ) {
   (void)lhs_type;
   (void)rhs_type;
 
   if(IsFalse(lhs,lhs_type)) { return Boolean::New(graph,false); }  // false && any ==> false
-  if(IsTrue (lhs,lhs_type)) { return rhs; }                                 // true  && any ==> any
+  if(IsTrue (lhs,lhs_type)) { return rhs;                       }  // true  && any ==> any
   if(lhs->Equal(rhs)) return lhs; // a && a ==> a
   if(IsUnaryNot(lhs) && lhs->AsUnary()->operand() == rhs) {
     // !a && a ==> false
@@ -173,11 +198,14 @@ Expr* SimplifyLogicAnd( Graph* graph , TypeKind lhs_type , TypeKind rhs_type , E
   }
   return NULL;
 }
-Expr* SimplifyLogicOr ( Graph* graph , TypeKind lhs_type , TypeKind rhs_type , Expr* lhs, Expr* rhs ) {
+
+Expr* ArithFolder::SimplifyLogicOr ( Graph* graph , TypeKind lhs_type , TypeKind rhs_type ,
+                                                                        Expr*    lhs,
+                                                                        Expr*    rhs ) {
   (void)rhs_type;
 
   if(IsTrue (lhs,lhs_type)) { return Boolean::New(graph,true); }  // true || any ==> true
-  if(IsFalse(lhs,lhs_type)) { return rhs; }                                // false|| any ==> any
+  if(IsFalse(lhs,lhs_type)) { return rhs;                      }  // false|| any ==> any
   if(lhs->Equal(rhs)) return lhs; // a || a ==> a
   if(IsUnaryNot(lhs) && lhs->AsUnary()->operand() == rhs) {
     // !a || a ==> true
@@ -189,10 +217,11 @@ Expr* SimplifyLogicOr ( Graph* graph , TypeKind lhs_type , TypeKind rhs_type , E
   }
   return NULL;
 }
-Expr* SimplifyBooleanCompare( Graph* graph , Binary::Operator op, TypeKind lhs_type ,
-                                                                  TypeKind rhs_type ,
-                                                                  Expr* lhs,
-                                                                  Expr* rhs ) {
+
+Expr* ArithFolder::SimplifyBooleanCompare( Graph* graph , Binary::Operator op, TypeKind lhs_type ,
+                                                                               TypeKind rhs_type ,
+                                                                               Expr*    lhs,
+                                                                               Expr*    rhs ) {
   (void)op;
   if(lhs_type == TPKIND_BOOLEAN && rhs->IsBoolean()) {
     return rhs->AsBoolean()->value() ?  lhs :
@@ -203,7 +232,8 @@ Expr* SimplifyBooleanCompare( Graph* graph , Binary::Operator op, TypeKind lhs_t
   }
   return NULL;
 }
-Expr* SimplifyBinary( Graph* graph , Binary::Operator op , Expr* lhs , Expr* rhs ) {
+
+Expr* ArithFolder::SimplifyBinary( Graph* graph , Binary::Operator op , Expr* lhs , Expr* rhs ) {
   auto lhs_type = GetTypeInference(lhs);
   auto rhs_type = GetTypeInference(rhs);
   if(lhs_type == TPKIND_FLOAT64 && rhs_type == TPKIND_FLOAT64) {
@@ -214,31 +244,47 @@ Expr* SimplifyBinary( Graph* graph , Binary::Operator op , Expr* lhs , Expr* rhs
     return SimplifyLogicOr (graph,lhs_type,rhs_type,lhs,rhs);
   } else if(((lhs_type == TPKIND_BOOLEAN && rhs->IsBoolean()) ||
              (rhs_type == TPKIND_BOOLEAN && lhs->IsBoolean()))&&
-            (op == Binary::EQ || op == Binary::NE)) {
-    /**
-     * This situation is that the left hand side is a speculative boolean
-     * and the right hand side is a bollean literal or vise versa , example :
-     *
-     * if(a == true) or if(false == b)
-     *
-     * The above format can be simplifed to be if(a) or if(!b) which genreates
-     * same boolean result.
-     *
-     * One thing to note is this rule doesn't apply on other types because in
-     * lavascript `a` in a boolean context evaluate to a itself but `a == true`
-     * evaluate to a boolean result.
-     *
-     * This also helps infer phase since infer looks for something like (a) or
-     * (!a) in boolean context and doesn't expect something like (a == true)or
-     * (a == false)
-     *
-     */
+             (op == Binary::EQ || op == Binary::NE)) {
+    // rewrite if(a == true) ==> if(a) and if(a == false) ==> if(!a)
     return SimplifyBooleanCompare(graph,op,lhs_type,rhs_type,lhs,rhs);
   }
   return NULL;
 }
 
-Expr* Fold( Graph* graph , Binary::Operator op , Expr* lhs , Expr* rhs ) {
+Expr* ArithFolder::MatchBinaryPattern( Graph* graph , Binary::Operator op , Expr* lhs ,
+                                                                            Expr* rhs ) {
+  // This function try to capture certain types of binary operation and lower
+  // them into internal graph node
+  if(op == Binary::EQ || op == Binary::NE) {
+    if((lhs->IsICall() && rhs->IsString()) || (rhs->IsICall() && lhs->IsString())) {
+      // convert : type(var) == "type-name" ==> TestType node
+      auto icall = lhs->IsICall() ? lhs->AsICall()      : rhs->AsICall();
+      auto type  = lhs->IsString()? lhs->AsZoneString() : rhs->AsZoneString();
+
+      if(type == "real") {
+        return TestType::New(graph,TPKIND_FLOAT64  ,icall->GetArgument(0));
+      } else if(type == "boolean") {
+        return TestType::New(graph,TPKIND_BOOLEAN  ,icall->GetArgument(0));
+      } else if(type == "null") {
+        return TestType::New(graph,TPKIND_NIL      ,icall->GetArgument(0));
+      } else if(type == "list") {
+        return TestType::New(graph,TPKIND_LIST     ,icall->GetArgument(0));
+      } else if(type == "object") {
+        return TestType::New(graph,TPKIND_OBJECT   ,icall->GetArgument(0));
+      } else if(type == "closure") {
+        return TestType::New(graph,TPKIND_CLOSURE  ,icall->GetArgument(0));
+      } else if(type == "iterator") {
+        return TestType::New(graph,TPKIND_ITERATOR ,icall->GetArgument(0));
+      } else if(type == "extension") {
+        return TestType::New(graph,TPKIND_EXTENSION,icall->GetArgument(0));
+      }
+    }
+  }
+  return NULL; // fallback
+
+}
+
+Expr* ArithFolder::Fold( Graph* graph , Binary::Operator op , Expr* lhs , Expr* rhs ) {
   if(lhs->IsFloat64() && rhs->IsFloat64()) {
     auto lval = lhs->AsFloat64()->value();
     auto rval = rhs->AsFloat64()->value();
@@ -285,10 +331,15 @@ Expr* Fold( Graph* graph , Binary::Operator op , Expr* lhs , Expr* rhs ) {
       return NULL;
     }
   }
-  return SimplifyBinary(graph,op,lhs,rhs);
+
+  // try other types of folding rules
+  if(auto ret = SimplifyBinary    (graph,op,lhs,rhs); ret) return ret;
+  if(auto ret = MatchBinaryPattern(graph,op,lhs,rhs); ret) return ret;
+
+  return NULL;
 }
 
-Expr* Fold( Graph* graph , Expr* cond , Expr* lhs , Expr* rhs ) {
+Expr* ArithFolder::Fold( Graph* graph , Expr* cond , Expr* lhs , Expr* rhs ) {
   switch(cond->type()) {
     case HIR_FLOAT64:
     case HIR_LONG_STRING:
@@ -332,19 +383,11 @@ Expr* Fold( Graph* graph , Expr* cond , Expr* lhs , Expr* rhs ) {
   return NULL;
 }
 
-// Folder implementation
-class ArithFolder : public Folder {
- public:
-  ArithFolder( zone::Zone* zone ) { (void)zone; }
-  virtual bool CanFold( const FolderData& data ) const;
-  virtual Expr* Fold( Graph* graph , const FolderData& data );
-};
-
 
 bool ArithFolder::CanFold( const FolderData& data ) const {
   return data.fold_type() == FOLD_UNARY   ||
-    data.fold_type() == FOLD_BINARY  ||
-    data.fold_type() == FOLD_TERNARY;
+         data.fold_type() == FOLD_BINARY  ||
+         data.fold_type() == FOLD_TERNARY;
 }
 
 Expr* ArithFolder::Fold( Graph* graph , const FolderData& data ) {
@@ -352,45 +395,32 @@ Expr* ArithFolder::Fold( Graph* graph , const FolderData& data ) {
     case FOLD_UNARY:
       {
         auto d = static_cast<const UnaryFolderData&>(data);
-        return FoldUnary(graph,d.op,d.node);
+        return Fold(graph,d.op,d.node);
       }
     case FOLD_BINARY:
       {
         auto d = static_cast<const BinaryFolderData&>(data);
-        return FoldBinary(graph,d.op,d.lhs,d.rhs);
+        return Fold(graph,d.op,d.lhs,d.rhs);
       }
     case FOLD_TERNARY:
       {
         auto d = static_cast<const TernaryFolderData&>(data);
-        return FoldTernary(graph,d.cond,d.lhs,d.rhs);
+        return Fold(graph,d.cond,d.lhs,d.rhs);
       }
     default: lava_die(); return NULL;
   }
 }
 
-LAVA_REGISTER_FOLDER("arith-folder",ArithFolderFactory,ArithFolder);
-
 } // namespace
 
-Expr* FoldUnary  ( Graph* graph , Unary::Operator op , Expr* expr ) {
-  return Fold(graph,op,expr);
-}
-
 Expr* FoldBinary ( Graph* graph , Binary::Operator op , Expr* lhs , Expr* rhs ) {
-  return Fold(graph,op,lhs,rhs);
+  ArithFolder folder(NULL);
+  return folder.Fold(graph,BinaryFolderData{op,lhs,rhs});
 }
 
 Expr* FoldTernary( Graph* graph , Expr* cond , Expr* lhs , Expr* rhs ) {
-  return Fold(graph,cond,lhs,rhs);
-}
-
-Expr* SimplifyLogic ( Graph* graph , Expr* lhs , Expr* rhs , Binary::Operator op ) {
-  if(op == Binary::AND) {
-    return SimplifyLogicAnd(graph,GetTypeInference(lhs), GetTypeInference(rhs), lhs, rhs);
-  } else {
-    lava_debug(NORMAL,lava_verify(op == Binary::OR););
-    return SimplifyLogicOr (graph,GetTypeInference(lhs), GetTypeInference(rhs), lhs, rhs);
-  }
+  ArithFolder folder(NULL);
+  return folder.Fold(graph,TernaryFolderData{cond,lhs,rhs});
 }
 
 } // namespace hir

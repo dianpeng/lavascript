@@ -29,8 +29,11 @@ class MemoryFolder : public Folder {
   Expr* Fold( Graph* , const ListRefSetFolderData&   );
   Expr* Fold( Graph* , const ExprFolderData& );
 
-  template< typename Set , typename Get > Expr* LoadCollapse( Expr* , Expr* , WriteEffect* );
-  template< typename Set >                Expr* StoreForward( Expr* , WriteEffect* );
+  template< typename Set , typename Get , typename T >
+  Expr* StoreCollapse( Expr* , Expr* , WriteEffect* );
+
+  template< typename Set , typename T >
+  Expr* StoreForward( Expr* , WriteEffect* );
  private:
   static const char* kObjectRef;
   static const char* kListRef;
@@ -132,8 +135,8 @@ StaticRef* MemoryFolder::FindRef( Expr* object , Expr* key , WriteEffect* effect
   return NULL;
 }
 
-template< typename Set, typename Get >
-Expr* MemoryFolder::LoadCollapse( Expr* ref , Expr* value , WriteEffect* effect ) {
+template< typename Set, typename Get , typename T >
+Expr* MemoryFolder::StoreCollapse( Expr* ref , Expr* value , WriteEffect* effect ) {
   // store collapsing. eg :
   // a[1] = 20;
   // a[1] = 30;
@@ -144,8 +147,10 @@ Expr* MemoryFolder::LoadCollapse( Expr* ref , Expr* value , WriteEffect* effect 
       if(rd->Is<Get>()) {
         switch(AA::Query(FieldRefNode{ref},FieldRefNode{rd->As<Get>()->ref()})) {
           case AA::AA_MUST:
-          case AA::AA_MAY : return NULL; // there's a read
-          default: break;
+          case AA::AA_MAY :
+            return NULL; // there's a read
+          default:
+            break;
         }
       }
     }
@@ -157,16 +162,22 @@ Expr* MemoryFolder::LoadCollapse( Expr* ref , Expr* value , WriteEffect* effect 
         e->ReplaceOperand(1,value);
         return e;
       }
+    } else if(e->Is<T>()) {
+      FieldRefNode n{ref};
+      if(n.object()->Equal(e->As<T>())) {
+        // collapsing store like this:
+        // a = { "a" : 1 }; a.a = 2; ==> a = { "a" : 2 };
+        ComponentBase* i = static_cast<ComponentBase*>(e->As<T>());
+        if(i->Store(n.comp(),value)) return e->As<T>();
+      }
     }
   }
 
   return NULL;
 }
 
-template< typename Set >
+template< typename Set , typename T >
 Expr* MemoryFolder::StoreForward( Expr* ref , WriteEffect* effect ) {
-  if(!ref->Is<StaticRef>()) return NULL; // none static ref cannot do forwarding
-                                         // but I don't know whether we have it or not
   for( auto e = effect; !e->Is<HardBarrier>() ; e = e->NextWrite() ) {
     // walk through all the write happened before this Load operation and
     // try to find one write that writes to exactly same position this load
@@ -176,6 +187,14 @@ Expr* MemoryFolder::StoreForward( Expr* ref , WriteEffect* effect ) {
         case AA::AA_MAY : return NULL;
         case AA::AA_MUST: return e->As<Set>()->value(); // forwarding
         default:          break;
+      }
+    } else if(e->Is<T>()) {
+      FieldRefNode n{ref};
+      if(n.object()->Equal(e->As<T>())) {
+        // forward store like this:
+        // a = { "a" : 1 }; return a.a == > return 1;
+        ComponentBase* i = static_cast<ComponentBase*>(e->As<T>());
+        if(auto result = i->Load(n.comp()); result) return result;
       }
     }
   }
@@ -199,12 +218,12 @@ Expr* MemoryFolder::Fold( Graph* graph , const ObjectFindFolderData& data ) {
 
 Expr* MemoryFolder::Fold( Graph* graph , const ObjectRefGetFolderData& data ) {
   (void)graph;
-  return StoreForward<ObjectRefSet>(data.ref,data.effect);
+  return StoreForward<ObjectRefSet,IRObject>(data.ref,data.effect);
 }
 
 Expr* MemoryFolder::Fold( Graph* graph , const ObjectRefSetFolderData& data ) {
   (void)graph;
-  return LoadCollapse<ObjectRefSet,ObjectRefGet>(data.ref,data.value,data.effect);
+  return StoreCollapse<ObjectRefSet,ObjectRefGet,IRObject>(data.ref,data.value,data.effect);
 }
 
 Expr* MemoryFolder::Fold( Graph* graph , const ListIndexFolderData& data ) {
@@ -214,12 +233,12 @@ Expr* MemoryFolder::Fold( Graph* graph , const ListIndexFolderData& data ) {
 
 Expr* MemoryFolder::Fold( Graph* graph , const ListRefGetFolderData& data ) {
   (void)graph;
-  return StoreForward<ListRefSet>(data.ref,data.effect);
+  return StoreForward<ListRefSet,IRList>(data.ref,data.effect);
 }
 
 Expr* MemoryFolder::Fold( Graph* graph , const ListRefSetFolderData& data ) {
   (void)graph;
-  return LoadCollapse<ListRefSet,ListRefGet>(data.ref,data.value,data.effect);
+  return StoreCollapse<ListRefSet,ListRefGet,IRList>(data.ref,data.value,data.effect);
 }
 
 bool MemoryFolder::CanFold( const FolderData& data ) const {

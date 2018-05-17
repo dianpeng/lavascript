@@ -7,12 +7,12 @@ namespace hir        {
 int AA::Query( const FieldRefNode& lnode , const FieldRefNode& rnode ) {
   if(lnode.node()->IsIdentical(rnode.node())) return AA_MUST;
   {
-    if((lnode.IsListRef  () &&  rnode.IsListRef()) ||
-        (lnode.IsObjectRef() && !rnode.IsObjectRef()))
+    if((lnode.IsListRef  () && !rnode.IsListRef()) ||
+       (lnode.IsObjectRef() && !rnode.IsObjectRef()))
       return AA_NOT; // not same reference
 
-    if(lnode.object()->Equal(rnode.object()) &&
-        lnode.comp  ()->Equal(rnode.comp  ()))
+    // this comparison doesn't tell difference between static-ref with resize-ref
+    if(lnode.object()->Equal(rnode.object()) && lnode.comp()->Equal(rnode.comp()))
       return AA_MUST;
   }
   return AA_MAY;

@@ -58,7 +58,7 @@ TypeKind GetPhiType( Phi* node ) {
   if(node->operand_list()->size() == 0)
     return TPKIND_UNKNOWN;
   else {
-    auto tk = GetTypeInference(node->operand_list()->Index(0));
+    auto tk = GetTypeInference(node->Operand(0));
     if(tk == TPKIND_UNKNOWN)
       return TPKIND_UNKNOWN;
     auto itr = node->operand_list()->GetForwardIterator();

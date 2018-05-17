@@ -67,18 +67,34 @@ LAVA_CBASE_HIR_DEFINE(OSRLoad,public Expr) {
   LAVA_DISALLOW_COPY_AND_ASSIGN(OSRLoad)
 };
 
+// To make lookup a subcomponent from a list or object have uniform
+// interface, we create this class to help us out. Many cases that
+// optimization pass needs to treat IRList and IRObject as a lookup
+// interface.
+class ComponentBase {
+ public:
+  // Get a node with index or key from this object , if it cannot
+  // find one with the input key specified as Expr node , then it
+  // returns NULL
+  virtual Expr* Load ( Expr*         ) const = 0;
+  virtual bool  Store( Expr* , Expr* )       = 0;
+};
+
 // --------------------------------------------------------------------------
 // IRList
-LAVA_CBASE_HIR_DEFINE(IRList,public MemoryNode) {
+LAVA_CBASE_HIR_DEFINE(IRList,public WriteEffect,public ComponentBase) {
  public:
   inline static IRList* New( Graph* , std::size_t size );
   void Add( Expr* node ) { AddOperand(node); }
   std::size_t Size() const { return operand_list()->size(); }
   IRList( Graph* graph , std::uint32_t id , std::size_t size ):
-    MemoryNode(HIR_LIST,id,graph)
+    WriteEffect(HIR_LIST,id,graph)
   {
     (void)size; // implicit indicated by the size of operand_list()
   }
+
+  virtual Expr* Load ( Expr*         ) const;
+  virtual bool  Store( Expr* , Expr* ) ;
  private:
   LAVA_DISALLOW_COPY_AND_ASSIGN(IRList)
 };
@@ -105,7 +121,7 @@ LAVA_CBASE_HIR_DEFINE(IRObjectKV,public Expr) {
 
 // --------------------------------------------------------------------------
 // IRObject
-LAVA_CBASE_HIR_DEFINE(IRObject,public MemoryNode) {
+LAVA_CBASE_HIR_DEFINE(IRObject,public WriteEffect,public ComponentBase) {
  public:
   inline static IRObject* New( Graph* , std::size_t size );
   void Add( Expr* key , Expr* val ) {
@@ -114,10 +130,13 @@ LAVA_CBASE_HIR_DEFINE(IRObject,public MemoryNode) {
   }
   std::size_t Size() const { return operand_list()->size(); }
   IRObject( Graph* graph , std::uint32_t id , std::size_t size ):
-    MemoryNode(HIR_OBJECT,id,graph)
+    WriteEffect(HIR_OBJECT,id,graph)
   {
     (void)size;
   }
+
+  virtual Expr* Load ( Expr*         ) const;
+  virtual bool  Store( Expr* , Expr* ) ;
  private:
   LAVA_DISALLOW_COPY_AND_ASSIGN(IRObject)
 };

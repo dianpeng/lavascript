@@ -11,19 +11,10 @@ namespace hir {
 
 class Folder;
 
-/**
- * Helper function to simplify some expression node. These functions
- * are used inside of GraphBuilder to do constant folding and this
- * could avoid checkpoint generation which will use lots of memory
- *
- * If function returns NULL , it means it cannot do any constant folding;
- * otherwise it will return the new node
- */
-
-Expr* FoldUnary    ( Graph* , Unary::Operator , Expr* );
+// Exposed internal fold function for certain specific use case , genernally
+// user should use FoldChain as interface to use fully fold optimization pipeline
 Expr* FoldBinary   ( Graph* , Binary::Operator, Expr* , Expr* );
 Expr* FoldTernary  ( Graph* , Expr* , Expr* , Expr* );
-Expr* SimplifyLogic( Graph* , Expr* , Expr* , Binary::Operator );
 
 } // namespace hir
 } // namespace cbase

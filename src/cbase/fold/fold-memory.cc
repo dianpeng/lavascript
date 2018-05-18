@@ -3,6 +3,7 @@
 #include "src/cbase/aa.h"
 #include "src/util.h"
 
+#include <utility>
 #include <unordered_set>
 
 namespace lavascript {
@@ -43,27 +44,39 @@ class MemoryFolder : public Folder {
   // chain and return result :
   // 1) AA_MUST , all the branch start with the input EffectPhi has alias
   //    with the input memory reference , all branch is AA_MUST.
+  //    To simplify problem, AA_MUST is treated same as AA_MAY, there're
+  //    no aliased nodes been recored , so no forwarding and collapsing
+  //    gonna be performed
+  //
   // 2) AA_NOT  , all the branch start with the input EffectPhi doesn't
   //    have the alias with the input memory reference, ie all branch is
   //    AA_NOT
-  // 3) not 1) and not 2)
+  //
+  // 3) AA_MAY  , not 1) and not 2)
   //
   // This function help us to make our StoreCollapse and StoreForward work
   // cross the split , though it will not be as good as tracing JIT since
   // they essentially doesn't have branch at all
+  struct Must {};
+
   struct BranchAA {
-    int   result;      // normal AA result
-    Effect* node;      // which node is aliased
-    WriteEffect* next; // next barrier node that is imm-precedence of the
-                       // BranchStartEffect when the result is AA_NOT
+    int             result;             // normal AA result
+    BranchStartEffect* end;
+
+    BranchAA(                      ): result(AA::AA_MAY ),end(NULL) {}
+    BranchAA( const Must&          ): result(AA::AA_MUST),end(NULL) {}
+    BranchAA( BranchStartEffect* n ): result(AA::AA_NOT ),end(n)    {}
   };
 
   template< typename Set, typename Get, typename T >
   BranchAA StoreCollapseBranchAA( const FieldRefNode& , EffectPhi* );
-
   template< typename Set, typename Get, typename T >
-  BranchAA StoreForwardBranchAA ( const FieldRefNode& , EffectPhi* );
+  BranchAA StoreCollapseSingleBranchAA( const FieldRefNode& , WriteEffect* );
 
+  template< typename Set, typename T >
+  BranchAA StoreForwardBranchAA ( const FieldRefNode& , EffectPhi* );
+  template< typename Set, typename T >
+  BranchAA StoreForwardSingleBranchAA ( const FieldRefNode& , WriteEffect* );
 
  private:
   static const char* kObjectRef;
@@ -166,13 +179,85 @@ StaticRef* MemoryFolder::FindRef( Expr* object , Expr* key , WriteEffect* effect
   return NULL;
 }
 
+template< typename Set, typename Get, typename T >
+MemoryFolder::BranchAA MemoryFolder::StoreCollapseSingleBranchAA( const FieldRefNode& ref ,
+                                                                  WriteEffect*        e  ) {
+  do {
+    // 1. check all the read happened before the *NextWrite*
+    lava_foreach(auto rd, e->read_effect()->GetForwardIterator()) {
+      if(rd->Is<Get>()) {
+        switch(AA::Query(ref,FieldRefNode{rd->As<Get>()->ref()})) {
+          case AA::AA_MUST: return BranchAA{Must{}};
+          case AA::AA_MAY : return BranchAA{}  ; // may
+          case AA::AA_NOT : break;               // continue
+          default: break;
+        }
+      }
+    }
+
+    // 2. now checkcurrent effect node to see whether we need to go on
+    if(e->Is<HardBarrier>()) {
+      if(e->Is<EffectPhi>()) {
+        // nested branches
+        return StoreCollapseBranchAA<Set,Get,T>(ref,e->As<EffectPhi>());
+      }
+      // we don't know what happened here since we stop at a HardBarrier
+      return BranchAA{};
+    } else if(e->Is<BranchStartEffect>()) {
+      return BranchAA{e->As<BranchStartEffect>()};
+    }
+
+    // 3. check the write
+    if(e->Is<Set>()) {
+      switch(AA::Query(ref,FieldRefNode{e->As<Set>()->ref()})) {
+        case AA::AA_MUST: return BranchAA{Must{}};
+        case AA::AA_MAY : return BranchAA{};
+        case AA::AA_NOT : break;
+        default: break;
+      }
+    } else if(e->Is<T>()) {
+      if(ref.object()->Equal(e->As<T>())) {
+        return BranchAA{Must{}};
+      }
+      // else not aliased with each other
+    }
+
+    // go to next write
+    e = e->NextWrite();
+  } while(true);
+
+  lava_die(); return BranchAA{};
+}
+
 template< typename Set, typename Get , typename T >
-Expr* MemoryFolder::StoreCollapse( Expr* ref , Expr* value , WriteEffect* effect ) {
+MemoryFolder::BranchAA MemoryFolder::StoreCollapseBranchAA( const FieldRefNode& ref ,
+                                                            EffectPhi*          phi ) {
+  if(phi->operand_list()->size() < 2) return BranchAA{}; // FIXME:: assert ?
+  auto first = phi->Operand(0)->As<WriteEffect>();
+  auto aa = StoreCollapseSingleBranchAA<Set,Get,T>(ref,first);
+  if(aa.result == AA::AA_MAY)
+    return BranchAA{};
+
+  // handle rest of the branches
+  for( std::size_t i = 1 ; i < phi->operand_list()->size() ; ++i ) {
+    auto temp = StoreCollapseSingleBranchAA<Set,Get,T>(ref,phi->Operand(i)->As<WriteEffect>());
+    if((temp.result == AA::AA_MAY) || (aa.result != temp.result)) {
+      return BranchAA{};
+    }
+    lava_debug(NORMAL,
+      if(aa.result == AA::AA_NOT ) lava_verify(aa.end->IsIdentical (temp.end ));
+    );
+  }
+  return aa;
+}
+
+template< typename Set, typename Get , typename T >
+Expr* MemoryFolder::StoreCollapse( Expr* ref , Expr* value , WriteEffect* e ) {
   // store collapsing. eg :
   // a[1] = 20;
   // a[1] = 30;
   // dedup the second write operation
-  for( auto e = effect; !e->Is<HardBarrier>() ; e = e->NextWrite() ) {
+  do {
     // 1. go through all the read happened before this write opereations
     lava_foreach( auto rd , e->read_effect()->GetForwardIterator() ) {
       if(rd->Is<Get>()) {
@@ -186,7 +271,26 @@ Expr* MemoryFolder::StoreCollapse( Expr* ref , Expr* value , WriteEffect* effect
       }
     }
 
-    // 2. check this write operation
+    // 2. check the effect node's type , break when the effect is a hard barrier
+    if(e->Is<HardBarrier>()) {
+      if(e->Is<EffectPhi>()) {
+        // do a branch alias analyzing
+        auto res = StoreCollapseBranchAA<Set,Get,T>(FieldRefNode{ref},e->As<EffectPhi>());
+        switch(res.result) {
+          case AA::AA_MAY :
+          case AA::AA_MUST:
+            break;
+          default:
+            e = res.end->NextWrite();
+            continue; // continue the loop again
+        }
+      }
+
+      // not able to optimize
+      return NULL;
+    }
+
+    // 3. check this write operation
     if(e->Is<Set>()) {
       if(AA::Query(FieldRefNode{ref},FieldRefNode{e->As<Set>()->ref()}) == AA::AA_MUST) {
         // collapsing
@@ -199,17 +303,91 @@ Expr* MemoryFolder::StoreCollapse( Expr* ref , Expr* value , WriteEffect* effect
         // collapsing store like this:
         // a = { "a" : 1 }; a.a = 2; ==> a = { "a" : 2 };
         auto i = static_cast<ComponentBase*>(e->As<T>());
-        if(i->Store(n.comp(),value)) return e->As<T>();
+        if(i->Store(n.comp(),value))
+          return e->As<T>();
+        else
+          return NULL;
       }
     }
-  }
+
+    // 4. move to next write effect
+    e = e->NextWrite();
+  } while(true);
 
   return NULL;
 }
 
 template< typename Set , typename T >
-Expr* MemoryFolder::StoreForward( Expr* ref , WriteEffect* effect ) {
-  for( auto e = effect; !e->Is<HardBarrier>() ; e = e->NextWrite() ) {
+MemoryFolder::BranchAA MemoryFolder::StoreForwardSingleBranchAA( const FieldRefNode& ref ,
+                                                                 WriteEffect*          e ) {
+  do {
+    // only need to care about write effect node , no need to do read
+    if(e->Is<HardBarrier>()) {
+      if(e->Is<EffectPhi>()) {
+        return StoreForwardBranchAA<Set,T>(ref,e->As<EffectPhi>());
+      }
+      return BranchAA{}; // may be aliased
+    } else if(e->Is<BranchStartEffect>()) {
+      return BranchAA{e->As<BranchStartEffect>()}; // not aliase with each other
+    }
+
+    if(e->Is<Set>()) {
+      switch(AA::Query(ref,FieldRefNode{e->As<Set>()->ref()})) {
+        case AA::AA_MAY : return BranchAA{};
+        case AA::AA_MUST: return BranchAA{Must{}};
+        default:          break;
+      }
+    } else if(e->Is<T>()) {
+      if(ref.object()->Equal(e->As<T>())) {
+        return BranchAA{Must{}};
+      }
+    }
+
+    e = e->NextWrite();
+  } while(true);
+
+  lava_die();
+  return BranchAA{};
+}
+
+template< typename Set , typename T >
+MemoryFolder::BranchAA MemoryFolder::StoreForwardBranchAA( const FieldRefNode& ref ,
+                                                           EffectPhi*          phi ) {
+  if(phi->operand_list()->size() < 2) return BranchAA{}; // FIXME:: assert ?
+  auto first = phi->Operand(0)->As<WriteEffect>();
+  auto aa    = StoreForwardSingleBranchAA<Set,T>(ref,first);
+  if(aa.result == AA::AA_MAY) return BranchAA{};
+
+  for( std::size_t i = 1 ; i < phi->operand_list()->size() ; ++i ) {
+    auto temp = StoreForwardSingleBranchAA<Set,T>(ref,phi->Operand(i)->As<WriteEffect>());
+    if(temp.result == AA::AA_MAY || (temp.result != aa.result))
+      return BranchAA{};
+    lava_debug(NORMAL,
+      if(temp.result == AA::AA_NOT ) lava_verify(temp.end->IsIdentical(aa.end));
+    );
+  }
+
+  return aa;
+}
+
+template< typename Set , typename T >
+Expr* MemoryFolder::StoreForward( Expr* ref , WriteEffect* e ) {
+  do {
+    if(e->Is<HardBarrier>()) {
+      if(e->Is<EffectPhi>()) {
+        auto res = StoreForwardBranchAA<Set,T>(FieldRefNode{ref},e->As<EffectPhi>());
+        switch(res.result) {
+          case AA::AA_MUST:
+          case AA::AA_MAY:
+            break;
+          default:
+            e = res.end->NextWrite();
+            continue;
+        }
+      }
+      return NULL;
+    }
+
     // walk through all the write happened before this Load operation and
     // try to find one write that writes to exactly same position this load
     // operates on and then try to do a forwarding.
@@ -228,7 +406,9 @@ Expr* MemoryFolder::StoreForward( Expr* ref , WriteEffect* effect ) {
         if(auto result = i->Load(n.comp()); result) return result;
       }
     }
-  }
+    // go to next write
+    e = e->NextWrite();
+  } while(true);
   return NULL;
 }
 

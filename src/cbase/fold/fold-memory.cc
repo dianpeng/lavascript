@@ -33,7 +33,38 @@ class MemoryFolder : public Folder {
   Expr* StoreCollapse( Expr* , Expr* , WriteEffect* );
 
   template< typename Set , typename T >
-  Expr* StoreForward( Expr* , WriteEffect* );
+  Expr* StoreForward ( Expr* , WriteEffect* );
+
+
+  // helper function to do deep branch/split AA. The following function
+  // will try to make AA cross branch generated EffectPhi node until hit
+  // the outer most BranchStartEffect which is just a marker node. The
+  // way it works is that it tries to do AA across *all* branches' effect
+  // chain and return result :
+  // 1) AA_MUST , all the branch start with the input EffectPhi has alias
+  //    with the input memory reference , all branch is AA_MUST.
+  // 2) AA_NOT  , all the branch start with the input EffectPhi doesn't
+  //    have the alias with the input memory reference, ie all branch is
+  //    AA_NOT
+  // 3) not 1) and not 2)
+  //
+  // This function help us to make our StoreCollapse and StoreForward work
+  // cross the split , though it will not be as good as tracing JIT since
+  // they essentially doesn't have branch at all
+  struct BranchAA {
+    int   result;      // normal AA result
+    Effect* node;      // which node is aliased
+    WriteEffect* next; // next barrier node that is imm-precedence of the
+                       // BranchStartEffect when the result is AA_NOT
+  };
+
+  template< typename Set, typename Get, typename T >
+  BranchAA StoreCollapseBranchAA( const FieldRefNode& , EffectPhi* );
+
+  template< typename Set, typename Get, typename T >
+  BranchAA StoreForwardBranchAA ( const FieldRefNode& , EffectPhi* );
+
+
  private:
   static const char* kObjectRef;
   static const char* kListRef;
@@ -167,7 +198,7 @@ Expr* MemoryFolder::StoreCollapse( Expr* ref , Expr* value , WriteEffect* effect
       if(n.object()->Equal(e->As<T>())) {
         // collapsing store like this:
         // a = { "a" : 1 }; a.a = 2; ==> a = { "a" : 2 };
-        ComponentBase* i = static_cast<ComponentBase*>(e->As<T>());
+        auto i = static_cast<ComponentBase*>(e->As<T>());
         if(i->Store(n.comp(),value)) return e->As<T>();
       }
     }
@@ -193,7 +224,7 @@ Expr* MemoryFolder::StoreForward( Expr* ref , WriteEffect* effect ) {
       if(n.object()->Equal(e->As<T>())) {
         // forward store like this:
         // a = { "a" : 1 }; return a.a == > return 1;
-        ComponentBase* i = static_cast<ComponentBase*>(e->As<T>());
+        auto i = static_cast<ComponentBase*>(e->As<T>());
         if(auto result = i->Load(n.comp()); result) return result;
       }
     }

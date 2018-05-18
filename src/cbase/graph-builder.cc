@@ -30,11 +30,8 @@ namespace hir        {
 namespace            {
 
 typedef zone::stl::ZoneVector<Expr*> ValueStack;
-
 using namespace ::lavascript::interpreter;
 
-
-// -------------------------------------------------------------------------------------
 // This is a HIR/MIR graph consturction , the LIR is essentially a traditional CFG
 // The graph is a sea of nodes style and it is responsible for all optimization before
 // scheduling

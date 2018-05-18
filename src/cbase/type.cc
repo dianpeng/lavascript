@@ -26,7 +26,8 @@ TypeKind MapValueTypeToTypeKind( ValueType type ) {
     case TYPE_EXTENSION: return TPKIND_EXTENSION;
     case TYPE_CLOSURE:   return TPKIND_CLOSURE;
     default:
-      lava_unreachF("we should never see value type %s appear in the value stack",GetValueTypeName(type));
+      lava_unreachF("we should never see value type %s appear in the value stack",
+          GetValueTypeName(type));
       return TPKIND_UNKNOWN;
   }
 }
@@ -67,13 +68,10 @@ TPKind::TPKindBuilder::TPKindBuilder() :
   // initialize all the type_kind_ field inside of the TPKind
   // object
 #define __(A,B) Node(TPKIND_##B)->type_kind_ = TPKIND_##B;
-
   LAVASCRIPT_CBASE_TYPE_KIND_LIST(__)
-
 #undef __ // __
 
   root_ =  Node(TPKIND_ROOT);
-
   /**
    * Currently we just hard coded the whole relationship for
    * the basica type system.

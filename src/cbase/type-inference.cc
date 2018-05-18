@@ -11,9 +11,7 @@ using namespace ::lavascript::interpreter;
 namespace {
 
 TypeKind GetICallType( ICall* icall ) {
-  /**
-   * TODO:: change these type mappings as part of builtins x macro
-   */
+  // TODO:: X Macro ?
   switch(icall->ic()) {
 #define IMPL(NAME,TYPE) case INTRINSIC_CALL_##NAME: return TYPE;
     IMPL(MIN ,TPKIND_FLOAT64);

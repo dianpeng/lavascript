@@ -192,9 +192,7 @@ class FolderFactory {
   };
 
   typedef std::vector<FolderFactoryEntry> FolderFactoryEntryList;
-
   static void RegisterFactory( const char* name , std::unique_ptr<FolderFactory>&& );
-
   static FolderFactoryEntryList& GetFolderFactoryEntryList();
 };
 

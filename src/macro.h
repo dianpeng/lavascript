@@ -1,5 +1,5 @@
-#ifndef COMMON_H_
-#define COMMON_H_
+#ifndef MACRO_H_
+#define MACRO_H_
 
 #define LAVA_DISALLOW_COPY_AND_ASSIGN(X) \
   void operator = (const X&) = delete;   \
@@ -15,4 +15,4 @@
 #error "compiler not support currently!!"
 #endif // __GNUG__
 
-#endif // COMMON_H_
+#endif // MACRO_H_

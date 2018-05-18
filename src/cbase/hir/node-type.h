@@ -12,9 +12,9 @@
 // High level HIR node. Used to describe unttyped polymorphic operations
 #define CBASE_HIR_EXPRESSION_HIGH(__)                                  \
   /* compound */                                                       \
-  __(IRList       ,LIST     ,"list"     ,NoLeaf,NoEffect)              \
-  __(IRObjectKV   ,OBJECT_KV,"object_kv",NoLeaf,NoEffect)              \
-  __(IRObject     ,OBJECT   ,"object"   ,NoLeaf,NoEffect)              \
+  __(IRList       ,LIST     ,"list"     ,NoLeaf,Effect)                \
+  __(IRObjectKV   ,OBJECT_KV,"object_kv",NoLeaf,Effect)                \
+  __(IRObject     ,OBJECT   ,"object"   ,NoLeaf,Effect)                \
   /* closure */                                                        \
   __(Closure      ,CLOSURE  ,"closure"  ,Leaf  ,Effect)                \
   __(InitCls      ,INIT_CLS ,"init_cls" ,NoLeaf,Effect)                \
@@ -30,35 +30,36 @@
   __(UGet         ,UGET     ,"uget"     ,Leaf  ,NoEffect)              \
   __(USet         ,USET     ,"uset"     ,Leaf  ,Effect)                \
   /* property/idx */                                                   \
-  __(PGet         ,PGET     ,"pget"     ,NoLeaf,NoEffect)              \
+  __(PGet         ,PGET     ,"pget"     ,NoLeaf,Effect)                \
   __(PSet         ,PSET     ,"pset"     ,NoLeaf,Effect)                \
-  __(IGet         ,IGET     ,"iget"     ,NoLeaf,NoEffect)              \
+  __(IGet         ,IGET     ,"iget"     ,NoLeaf,Effect)                \
   __(ISet         ,ISET     ,"iset"     ,NoLeaf,Effect)                \
   /* gget */                                                           \
-  __(GGet         ,GGET     ,"gget"     ,NoLeaf,NoEffect)              \
+  __(GGet         ,GGET     ,"gget"     ,NoLeaf,Effect)                \
   __(GSet         ,GSET     ,"gset"     ,NoLeaf,Effect)                \
   /* iterator */                                                       \
-  __(ItrNew       ,ITR_NEW  ,"itr_new"  ,NoLeaf,NoEffect)              \
-  __(ItrNext      ,ITR_NEXT ,"itr_next" ,NoLeaf,NoEffect)              \
-  __(ItrTest      ,ITR_TEST ,"itr_test" ,NoLeaf,NoEffect)              \
-  __(ItrDeref     ,ITR_DEREF,"itr_deref",NoLeaf,NoEffect)              \
+  __(ItrNew       ,ITR_NEW  ,"itr_new"  ,NoLeaf,Effect)                \
+  __(ItrNext      ,ITR_NEXT ,"itr_next" ,NoLeaf,Effect)                \
+  __(ItrTest      ,ITR_TEST ,"itr_test" ,NoLeaf,Effect)                \
+  __(ItrDeref     ,ITR_DEREF,"itr_deref",NoLeaf,Effect)                \
   /* call     */                                                       \
   __(Call         ,CALL     ,"call"     ,NoLeaf,Effect)                \
   /* intrinsic call */                                                 \
-  __(ICall        ,ICALL    ,"icall"    ,NoLeaf,NoEffect)              \
+  __(ICall        ,ICALL    ,"icall"    ,NoLeaf,Effect)                \
   /* phi */                                                            \
-  __(Phi           ,PHI     ,"phi"      ,NoLeaf,NoEffect)              \
+  __(Phi           ,PHI     ,"phi"      ,NoLeaf,Effect)                \
   /* misc */                                                           \
   __(Projection   ,PROJECTION      ,"projection",NoLeaf,NoEffect)      \
   /* osr */                                                            \
   __(OSRLoad      ,OSR_LOAD        ,"osr_load"  ,Leaf,Effect)          \
   /* checkpoints */                                                    \
-  __(Checkpoint   ,CHECKPOINT      ,"checkpoint" ,NoLeaf,Effect)       \
+  __(Checkpoint   ,CHECKPOINT      ,"checkpoint" ,NoLeaf,NoEffect)     \
   __(StackSlot    ,STACK_SLOT      ,"stack_slot" ,NoLeaf,NoEffect)     \
   /* effect */                                                         \
   __(LoopEffectPhi,LOOP_EFFECT_PHI ,"loop_effect_phi",NoLeaf,Effect)   \
   __(EffectPhi    ,EFFECT_PHI      ,"effect_phi" ,NoLeaf,Effect)       \
   __(InitBarrier  ,INIT_BARRIER    ,"init_barrier",NoLeaf,Effect)      \
+  __(EmptyWriteEffect,EMPTY_WRITE_EFFECT,"empty_write_effect",NoLeaf,Effect)    \
   __(BranchStartEffect,BRANCH_START_EFFECT,"branch_start_effect",NoLeaf,Effect)
 
 /**
@@ -83,15 +84,15 @@
   __(SStringNe        ,SSTRING_NE        ,"sstring_ne"        ,NoLeaf,NoEffect) \
 
 #define CBASE_HIR_EXPRESSION_LOW_PROPERTY(__)                         \
-  __(ObjectFind   ,OBJECT_FIND   ,"object_find"   ,NoLeaf,NoEffect)   \
+  __(ObjectFind   ,OBJECT_FIND   ,"object_find"   ,NoLeaf,Effect)     \
   __(ObjectUpdate ,OBJECT_UPDATE ,"object_update" ,NoLeaf,Effect)     \
   __(ObjectInsert ,OBJECT_INSERT ,"object_insert" ,NoLeaf,Effect)     \
-  __(ListIndex    ,LIST_INDEX    ,"list_index"    ,NoLeaf,NoEffect)   \
+  __(ListIndex    ,LIST_INDEX    ,"list_index"    ,NoLeaf,Effect)     \
   __(ListInsert   ,LIST_INSERT   ,"list_insert"   ,NoLeaf,Effect)     \
-  __(ObjectRefSet ,OBJECT_REF_SET,"object_ref_set",NoLeaf,NoEffect)   \
-  __(ObjectRefGet ,OBJECT_REF_GET,"object_ref_get",NoLeaf,NoEffect)   \
-  __(ListRefSet   ,LIST_REF_SET  ,"list_ref_set"  ,NoLeaf,NoEffect)   \
-  __(ListRefGet   ,LIST_REF_GET  ,"list_ref_get"  ,NoLeaf,NoEffect)
+  __(ObjectRefSet ,OBJECT_REF_SET,"object_ref_set",NoLeaf,Effect)     \
+  __(ObjectRefGet ,OBJECT_REF_GET,"object_ref_get",NoLeaf,Effect)     \
+  __(ListRefSet   ,LIST_REF_SET  ,"list_ref_set"  ,NoLeaf,Effect)     \
+  __(ListRefGet   ,LIST_REF_GET  ,"list_ref_get"  ,NoLeaf,Effect)
 
 
 // All the low HIR nodes

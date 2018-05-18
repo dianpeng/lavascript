@@ -110,7 +110,7 @@ struct ObjectRefGetFolderData : public FolderData {
   WriteEffect* effect;
 
   ObjectRefGetFolderData( Expr* r , WriteEffect* e ):
-    FolderData(FOLD_OBJECT_REF_SET),
+    FolderData(FOLD_OBJECT_REF_GET),
     ref       (r),
     effect    (e)
   {}

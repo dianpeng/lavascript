@@ -98,19 +98,16 @@ bool CheckGraphOSR( const char* source , std::size_t offset ) {
     return false;
   }
   Handle<Script> scp( Script::New(ctx.gc(),&ctx,sb) );
-
   DumpWriter dw;
   sb.Dump(&dw);
-
   RuntimeTrace tt;
   Graph graph;
-
   if(!BuildPrototypeOSR(scp,scp->main(),tt,scp->main()->code_buffer() + offset,&graph)) {
     std::cerr<<"cannot build graph"<<std::endl;
     return false;
   }
-
-  std::cerr << GraphPrinter::Print(graph,GraphPrinter::Option(GraphPrinter::Option::EFFECT_CHAIN,false)) << std::endl;
+  std::cerr << GraphPrinter::Print(graph,GraphPrinter::Option(
+        GraphPrinter::Option::EFFECT_CHAIN,false)) << std::endl;
   PrintHeap(graph);
   return true;
 }
@@ -122,13 +119,15 @@ bool CheckGraphOSR( const char* source , std::size_t offset ) {
 
 TEST(GraphBuilder,Basic) {
   CASE(
-      g = 0;
-      if(xx) {
-        x.g = 20;
-      } else {
-        x.f = 30;
-      }
-      return gg;
+    var x = [1,2,3,4,5];
+    xx = [1,2,3,4];
+    if(gg) {
+      xx[0] = 1;
+    } else {
+      xx[1] = 2;
+    }
+
+    return x[1];
   );
 }
 

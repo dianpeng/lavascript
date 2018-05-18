@@ -41,8 +41,7 @@ class GraphBuilder {
   // all intenral class forward declaration
   struct FuncInfo;
 
-  // Environment --------------------------------------------------------------
-  //
+  // Environment
   // Track *all* program states in each lexical scope and created on the fly when
   // we enter into a new scope and merge it back when we exit the lexical scope.
   class Environment {
@@ -66,20 +65,19 @@ class GraphBuilder {
     Environment( const Environment& , int    );
     Environment( const Environment& );
 
-    void InsertBranchStartEffect( If* );
+    void InsertBranchStartEffect( ControlFlow* );
    public:
     // init environment object from prototype object
-    void EnterFunctionScope  ( const FuncInfo& );
-    void PopulateArgument    ( const FuncInfo& );
-    void ExitFunctionScope   ( const FuncInfo& );
+    void EnterFunctionScope( const FuncInfo& );
+    void PopulateArgument  ( const FuncInfo& );
+    void ExitFunctionScope ( const FuncInfo& );
 
     // getter/setter
-    Expr*  GetUpValue( std::uint8_t );
-    Expr*  GetGlobal ( const void* , std::size_t , const KeyProvider& );
-    bool   HasUpValue( std::uint8_t ) const;
+    Expr*  GetUpValue      ( std::uint8_t );
+    Expr*  GetGlobal       ( const void* , std::size_t , const KeyProvider& );
 
-    void   SetUpValue( std::uint8_t , Expr* );
-    void   SetGlobal ( const void* , std::size_t , const KeyProvider& , Expr* );
+    void   SetUpValue      ( std::uint8_t , Expr* );
+    void   SetGlobal       ( const void* , std::size_t , const KeyProvider& , Expr* );
     // accessor
     ValueStack*      stack()    { return &stack_;          }
     UpValueVector*   upvalue()  { return &upval_stk_.back(); }
@@ -95,7 +93,7 @@ class GraphBuilder {
     const Effect*    effect() const    { return effect_.ptr(); }
     Checkpoint*      cp    () const    { return cp_;  }
     zone::Zone*      zone  () const    { return zone_ ;  }
-    void UpdateCP( Checkpoint* cp ) { cp_ = cp; }
+    void UpdateCP   ( Checkpoint* cp ) { cp_ = cp; }
 
     LoopEffectPhi*   AsLoopEffectPhi() { return effect()->joined_write_effect()->AsLoopEffectPhi(); }
    private:
@@ -286,15 +284,24 @@ class GraphBuilder {
   Expr* LowerICall( ICall* , const BytecodeLocation& );
  private: // Property/Index Get/Set
   Expr* TrySpeculativePSet( Expr* , Expr* , Expr* , const BytecodeLocation& );
+  Expr* TryFoldTyppedPSet ( Expr* , Expr* , Expr* , const BytecodeLocation& );
   Expr* NewPSetFallback   ( Expr* , Expr* , Expr* , const BytecodeLocation& );
   Expr* NewPSet           ( Expr* , Expr* , Expr* , const BytecodeLocation& );
 
   Expr* TrySpeculativePGet( Expr* , Expr* , const BytecodeLocation& );
+  Expr* TryFoldTyppedPGet ( Expr* , Expr* , const BytecodeLocation& );
   Expr* NewPGetFallback   ( Expr* , Expr* , const BytecodeLocation& );
   Expr* NewPGet           ( Expr* , Expr* , const BytecodeLocation& );
 
-  Expr* NewISet( Expr* , Expr* , Expr* , const BytecodeLocation& );
-  Expr* NewIGet( Expr* , Expr* , const BytecodeLocation& );
+  Expr* TrySpeculativeISet( Expr* , Expr* , Expr* , const BytecodeLocation& );
+  Expr* TryFoldTyppedISet ( Expr* , Expr* , Expr* , const BytecodeLocation& );
+  Expr* NewISetFallback   ( Expr* , Expr* , Expr* , const BytecodeLocation& );
+  Expr* NewISet           ( Expr* , Expr* , Expr* , const BytecodeLocation& );
+
+  Expr* TrySpeculativeIGet( Expr* , Expr* , const BytecodeLocation& );
+  Expr* TryFoldTyppedIGet ( Expr* , Expr* , const BytecodeLocation& );
+  Expr* NewIGetFallback   ( Expr* , Expr* , const BytecodeLocation& );
+  Expr* NewIGet           ( Expr* , Expr* , const BytecodeLocation& );
 
  private: // Global variables
   void NewGGet( std::uint8_t , std::uint16_t , bool sso );
@@ -312,9 +319,6 @@ class GraphBuilder {
   // Get a init checkpoint , checkpoint that has IRInfo points to the first of the bytecode ,
   // of the top most inlined function.
   Checkpoint* InitCheckpoint ();
- private: // Helper for type trace
-  // Check whether the traced type for this bytecode is the expected one wrt the index's value
-  bool IsTraceTypeSame( TypeKind , std::size_t index , const BytecodeLocation& );
  private: // Phi
   Expr* NewPhi( Expr* , Expr* , ControlFlow* );
  private: // Misc
@@ -514,7 +518,6 @@ GraphBuilder::Environment::Environment( const Environment& env , int type ):
     effect = LoopEffectPhi::New( gb_->graph() , env.effect()->joined_write_effect() );
   } else {
     effect = env.effect()->joined_write_effect();
-    lava_debug(NORMAL,lava_verify(effect->Is<BranchStartEffect>()););
   }
   // initialize effect object inside of this environment
   effect_.Init(gb_->temp_zone(),effect);
@@ -532,7 +535,7 @@ GraphBuilder::Environment::Environment( const Environment& env ):
   effect_.Init(*env.effect_);
 }
 
-void GraphBuilder::Environment::InsertBranchStartEffect( If* region ) {
+void GraphBuilder::Environment::InsertBranchStartEffect( ControlFlow* region ) {
   auto se = BranchStartEffect::New(gb_->graph());
   effect()->root()->UpdateWriteEffect(se);
   region->AddStmt(se);
@@ -575,12 +578,6 @@ void GraphBuilder::Environment::SetUpValue( std::uint8_t index , Expr* value ) {
   effect()->root()->UpdateWriteEffect(uset);
   gb_->region()->AddStmt(uset);
   upvalue()->at(index) = value;
-}
-
-bool GraphBuilder::Environment::HasUpValue( std::uint8_t index ) const {
-  lava_debug(NORMAL,lava_verify(index < upvalue()->size()););
-  auto v = upvalue()->at(index);
-  return v != NULL;
 }
 
 Expr* GraphBuilder::Environment::GetGlobal ( const void* key , std::size_t length ,
@@ -1182,6 +1179,33 @@ Expr* GraphBuilder::LowerICall( ICall* node , const BytecodeLocation& pc ) {
 // ====================================================================
 // Property Get/Set
 // ====================================================================
+Expr* GraphBuilder::TryFoldTyppedPGet ( Expr* object , Expr* key , const BytecodeLocation& bc ) {
+  (void)bc;
+  lava_debug(CRAZY,lava_verify(GetTypeInference(object) == TPKIND_OBJECT););
+
+  // assumption is object is typped, regardless via a GUARD or naturally typped
+  // try to fold the reference lookup here
+  auto ref = folder_chain_->Fold(graph_,ObjectFindFolderData{object,key,env()->effect()->joined_write_effect()});
+  if(!ref) {
+    // create a ObjectFind node
+    auto of = ObjectFind::New(graph_,object,key,env()->cp());
+    env()->effect()->root()->AddReadEffect(of);
+    // try to fold the newly created reference node
+    ref = folder_chain_->Fold(graph_,ExprFolderData{of});
+  }
+  // try to fold the get operation
+  if(auto new_ret = folder_chain_->Fold(graph_,
+        ObjectRefGetFolderData{ref,env()->effect()->joined_write_effect()}); new_ret) {
+    return new_ret;
+  } else {
+    auto ret = ObjectRefGet::New(graph_,ref);
+    env()->effect()->root()->AddReadEffect(ret);
+    return ret;
+  }
+
+  lava_die(); return NULL;
+}
+
 Expr* GraphBuilder::TrySpeculativePGet( Expr* object , Expr* key , const BytecodeLocation& bc ) {
   // try to get the type of the object
   if(auto tt = runtime_trace_.GetTrace(bc.address()); tt) {
@@ -1189,26 +1213,10 @@ Expr* GraphBuilder::TrySpeculativePGet( Expr* object , Expr* key , const Bytecod
       // the traced value shows that this instruction issues towards an object
       // so we try to specialize towards object
       object = AddTypeFeedbackIfNeed(object,TPKIND_OBJECT,bc);
-      // try to fold the reference lookup here
-      auto ref = folder_chain_->Fold(graph_,
-          ObjectFindFolderData{object,key,env()->effect()->joined_write_effect()});
-      if(!ref) {
-        // create a ObjectFind node
-        auto of = ObjectFind::New(graph_,object,key,env()->cp());
-        env()->effect()->root()->AddReadEffect(of);
-        // try to fold the newly created reference node
-        ref = folder_chain_->Fold(graph_,ExprFolderData{of});
-      }
-      // try to fold the get operation
-      if(auto new_ret = folder_chain_->Fold(graph_,
-            ObjectRefGetFolderData{ref,env()->effect()->joined_write_effect()}); new_ret) {
-        return new_ret;
-      } else {
-        auto ret = ObjectRefGet::New(graph_,ref);
-        env()->effect()->root()->AddReadEffect(ret);
-        return ret;
-      }
+      return TryFoldTyppedPGet(object,key,bc);
     }
+  } else if(auto tp = GetTypeInference(object); tp == TPKIND_OBJECT) {
+    return TryFoldTyppedPGet(object,key,bc);
   }
   return NULL;
 }
@@ -1229,27 +1237,40 @@ Expr* GraphBuilder::NewPGet( Expr* object , Expr* key , const BytecodeLocation& 
     return NewPGetFallback(object,key,bc);
 }
 
+Expr* GraphBuilder::TryFoldTyppedPSet ( Expr* object , Expr* key , Expr* value ,
+                                                                   const BytecodeLocation& bc ) {
+  (void)bc;
+  lava_debug(CRAZY,lava_verify(GetTypeInference(object) == TPKIND_OBJECT););
+
+  auto ref = folder_chain_->Fold(graph_,
+      ObjectFindFolderData{object,key,env()->effect()->joined_write_effect()});
+  if(!ref) {
+    auto of = ObjectFind::New(graph_,object,key,env()->cp());
+    env()->effect()->root()->AddReadEffect(of);
+    ref = folder_chain_->Fold(graph_,ExprFolderData{of});
+  }
+  if(auto new_ret = folder_chain_->Fold(graph_,
+        ObjectRefSetFolderData{ref,value,env()->effect()->joined_write_effect()}); new_ret) {
+    return new_ret; // store collapsing
+  } else {
+    auto ret = ObjectRefSet::New(graph_,ref,value);
+    env()->effect()->root()->UpdateWriteEffect(ret);
+    region()->AddStmt(ret);
+    return ret;
+  }
+
+  lava_die(); return NULL;
+}
+
 Expr* GraphBuilder::TrySpeculativePSet( Expr* object , Expr* key , Expr* value ,
                                                                    const BytecodeLocation& bc ) {
   if(auto tt = runtime_trace_.GetTrace(bc.address()); tt) {
     if(auto &v = tt->data[0]; v.IsObject()) {
       object = AddTypeFeedbackIfNeed(object,TPKIND_OBJECT,bc);
-      auto ref = folder_chain_->Fold(graph_,
-          ObjectFindFolderData{object,key,env()->effect()->joined_write_effect()});
-      if(!ref) {
-        auto of = ObjectFind::New(graph_,object,key,env()->cp());
-        env()->effect()->root()->AddReadEffect(of);
-        ref = folder_chain_->Fold(graph_,ExprFolderData{of});
-      }
-      if(auto new_ret = folder_chain_->Fold(graph_,
-            ObjectRefSetFolderData{ref,value,env()->effect()->joined_write_effect()}); new_ret) {
-        return new_ret; // store collapsing
-      } else {
-        auto ret = ObjectRefSet::New(graph_,ref,value);
-        env()->effect()->root()->UpdateWriteEffect(ret);
-        return ret;
-      }
+      return TryFoldTyppedPSet(object,key,value,bc);
     }
+  } else if(auto tp = GetTypeInference(object); tp == TPKIND_OBJECT) {
+    return TryFoldTyppedPSet(object,key,value,bc);
   }
   return NULL;
 }
@@ -1273,7 +1294,45 @@ Expr* GraphBuilder::NewPSet( Expr* object , Expr* key , Expr* value , const Byte
 // ====================================================================
 // Index Get/Set
 // ====================================================================
-Expr* GraphBuilder::NewISet( Expr* object, Expr* index, Expr* value , const BytecodeLocation& bc ) {
+Expr* GraphBuilder::TryFoldTyppedISet( Expr* object , Expr* index , Expr* value ,
+                                                                    const BytecodeLocation& bc ) {
+  (void)bc;
+  lava_debug(CRAZY,lava_verify(GetTypeInference(object) == TPKIND_LIST););
+
+  auto ref = folder_chain_->Fold(graph_,
+      ListIndexFolderData{object,index,env()->effect()->joined_write_effect()});
+  if(!ref) {
+    auto of = ListIndex::New(graph_,object,index,env()->cp());
+    env()->effect()->root()->AddReadEffect(of);
+    ref = folder_chain_->Fold(graph_,ExprFolderData{of});
+  }
+
+  if(auto new_ret = folder_chain_->Fold(graph_,
+        ListRefSetFolderData{ref,value,env()->effect()->joined_write_effect()}); new_ret) {
+    return new_ret;
+  } else {
+    auto ret = ListRefSet::New(graph_,ref,value);
+    env()->effect()->root()->UpdateWriteEffect(ret);
+    region()->AddStmt(ret);
+    return ret;
+  }
+}
+
+Expr* GraphBuilder::TrySpeculativeISet( Expr* object, Expr* index, Expr* value ,
+                                                                   const BytecodeLocation& bc ) {
+  if(auto tt = runtime_trace_.GetTrace(bc.address()); tt) {
+    if(auto &v = tt->data[0]; v.IsList()) {
+      object = AddTypeFeedbackIfNeed(object,TPKIND_LIST,bc);
+      return TryFoldTyppedISet(object,index,value,bc);
+    }
+  } else if(auto tp = GetTypeInference(object); tp == TPKIND_LIST) {
+    return TryFoldTyppedISet(object,index,value,bc);
+  }
+
+  return NULL;
+}
+
+Expr* GraphBuilder::NewISetFallback( Expr* object, Expr* index, Expr* value , const BytecodeLocation& bc ) {
   auto ret = ISet::New(graph_,object,index,value);
   auto cp  = GenerateCheckpoint(bc);
   cp->AddOperand(ret);
@@ -1282,13 +1341,62 @@ Expr* GraphBuilder::NewISet( Expr* object, Expr* index, Expr* value , const Byte
   return ret;
 }
 
-Expr* GraphBuilder::NewIGet( Expr* object, Expr* index , const BytecodeLocation& bc ) {
+Expr* GraphBuilder::NewISet( Expr* object, Expr* index, Expr* value, const BytecodeLocation& bc ) {
+  if(auto ret = TrySpeculativeISet(object,index,value,bc); ret)
+    return ret;
+  else
+    return NewISetFallback(object,index,value,bc);
+}
+
+
+Expr* GraphBuilder::TryFoldTyppedIGet( Expr* object , Expr* index , const BytecodeLocation& bc ) {
+  (void)bc;
+  lava_debug(CRAZY,lava_verify(GetTypeInference(object) == TPKIND_LIST););
+  auto ref = folder_chain_->Fold(graph_,
+      ListIndexFolderData{object,index,env()->effect()->joined_write_effect()});
+  if(!ref) {
+    auto of = ListIndex::New(graph_,object,index,env()->cp());
+    env()->effect()->root()->AddReadEffect(of);
+    ref = folder_chain_->Fold(graph_,ExprFolderData{of});
+  }
+
+  if(auto new_ret = folder_chain_->Fold(graph_,
+        ListRefGetFolderData{ref,env()->effect()->joined_write_effect()}); new_ret) {
+    return new_ret;
+  } else {
+    auto ret = ListRefGet::New(graph_,ref);
+    env()->effect()->root()->AddReadEffect(ret);
+    return ret;
+  }
+}
+
+Expr* GraphBuilder::TrySpeculativeIGet( Expr* object, Expr* index, const BytecodeLocation& bc ) {
+  if(auto tt = runtime_trace_.GetTrace(bc.address()); tt) {
+    if(auto &v = tt->data[0]; v.IsList()) {
+      object = AddTypeFeedbackIfNeed(object,TPKIND_LIST,bc);
+      return TryFoldTyppedIGet(object,index,bc);
+    }
+  } else if(auto tp = GetTypeInference(object); tp == TPKIND_LIST) {
+    return TryFoldTyppedIGet(object,index,bc);
+  }
+
+  return NULL;
+}
+
+Expr* GraphBuilder::NewIGetFallback( Expr* object, Expr* index , const BytecodeLocation& bc ) {
   auto ret = IGet::New(graph_,object,index);
   auto cp  = GenerateCheckpoint(bc);
   cp->AddOperand(ret);
   env()->effect()->root()->UpdateWriteEffect(ret);
   region()->AddStmt(ret);
   return ret;
+}
+
+Expr* GraphBuilder::NewIGet( Expr* object, Expr* index, const BytecodeLocation& bc ) {
+  if(auto ret = TrySpeculativeIGet(object,index,bc); ret)
+    return ret;
+  else
+    return NewIGetFallback(object,index,bc);
 }
 
 // ========================================================================
@@ -1352,31 +1460,6 @@ Checkpoint* GraphBuilder::InitCheckpoint() {
   return Checkpoint::New(graph_,graph_->zone()->New<IRInfo>(method_index(),BytecodeLocation()));
 }
 
-// =========================================================================
-// Type Trace
-// =========================================================================
-bool GraphBuilder::IsTraceTypeSame( TypeKind tp , std::size_t index , const BytecodeLocation& pc ) {
-  // sanity check against the input argument
-  lava_debug(CRAZY,
-    std::uint32_t a1,a2,a3,a4;
-    Bytecode bc;
-    pc.Decode(&bc,&a1,&a2,&a3,&a4);
-    auto &usage = GetBytecodeUsage(bc);
-    // the index must not be bigger than the instruction's accepted input argument size
-    lava_verify( usage.used_size() > index );
-    // the index must points to a register slot instead of other types of argument type
-    lava_verify( usage.GetArgument(index) == BytecodeUsage::INPUT ||
-                 usage.GetArgument(index) == BytecodeUsage::OUTPUT||
-                 usage.GetArgument(index) == BytecodeUsage::INOUT );
-  );
-
-  auto tt = runtime_trace_.GetTrace(pc.address());
-  if(tt) {
-    auto &v = tt->data[index];
-    return MapValueToTypeKind(v) == tp;
-  }
-  return false;
-}
 
 // ====================================================================
 // Misc
@@ -1587,11 +1670,8 @@ GraphBuilder::BuildIf( BytecodeIterator* itr ) {
   Region*  merge        = Region::New(graph_);
   if_region->set_merge(merge);
 
-  // setup a BranchStartEffect to mark the effect chain in HIR
-  env()->InsertBranchStartEffect(if_region);
-
   // duplicate an environment for branching into the if_true branch
-  Environment true_env(*env(),Environment::LEXICAL_SCOPE);
+  Environment   true_env(*env(),Environment::LEXICAL_SCOPE);
   std::uint16_t final_cursor;
   bool          have_false_branch;
 
@@ -1601,9 +1681,10 @@ GraphBuilder::BuildIf( BytecodeIterator* itr ) {
 
   // backup the old stack and use the new stack to do simulation
   BACKUP_ENVIRONMENT(&true_env,this) {
-
     // swith to a true region
     set_region(true_region);
+    // generate a separator effect
+    env()->InsertBranchStartEffect(true_region);
     {
       StopReason reason = BuildIfBlock(itr,itr->OffsetAt(offset));
       if(reason == STOP_BAILOUT) {
@@ -1625,6 +1706,8 @@ GraphBuilder::BuildIf( BytecodeIterator* itr ) {
     // build the false branch regardless whether it has one or not
     if(have_false_branch) {
       set_region(false_region);
+      // generate a sperator region
+      env()->InsertBranchStartEffect(region());
       // goto false branch
       itr->BranchTo(offset);
       if(BuildIfBlock(itr,itr->OffsetAt(final_cursor)) == STOP_BAILOUT)
@@ -1633,7 +1716,8 @@ GraphBuilder::BuildIf( BytecodeIterator* itr ) {
     } else {
       // reach here means we don't have a elif/else branch
       final_cursor = offset;
-      lhs = false_region;
+      lhs          = false_region;
+      env()->InsertBranchStartEffect(false_region);
     }
   }
   // 3. set the merge backward edge

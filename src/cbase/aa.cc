@@ -11,9 +11,34 @@ int AA::Query( const FieldRefNode& lnode , const FieldRefNode& rnode ) {
        (lnode.IsObjectRef() && !rnode.IsObjectRef()))
       return AA_NOT; // not same reference
 
-    // this comparison doesn't tell difference between static-ref with resize-ref
-    if(lnode.object()->Equal(rnode.object()) && lnode.comp()->Equal(rnode.comp()))
-      return AA_MUST;
+    if(lnode.object()->Equal(rnode.object())) {
+      if(lnode.comp()->Equal(rnode.comp())) return AA_MUST;
+
+      if((lnode.comp()->IsFloat64() && rnode.comp()->IsFloat64()) ||
+         (lnode.comp()->IsString () && rnode.comp()->IsString ())) {
+        return AA_NOT;
+      }
+    } else {
+      auto lobj = lnode.object();
+      auto robj = rnode.object();
+
+      // 1. literal doesn't alias with each other
+      // 2. literal doesn't alias with UGet/Arg node
+
+      if(lobj->Is<IRList>() || lobj->Is<IRObject>()) {
+        if(robj->Is<Arg>() || robj->Is<UGet>())
+          return AA_NOT;
+        else if(robj->Is<IRList>() || robj->Is<IRObject>())
+          return AA_NOT;
+      }
+
+      if(robj->Is<IRList>() || robj->Is<IRObject>()) {
+        if(lobj->Is<Arg>() || lobj->Is<UGet>())
+          return AA_NOT;
+        else if(lobj->Is<IRList>() || lobj->Is<IRObject>())
+          return AA_NOT;
+      }
+    }
   }
   return AA_MAY;
 }

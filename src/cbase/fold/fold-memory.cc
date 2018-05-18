@@ -200,11 +200,11 @@ MemoryFolder::BranchAA MemoryFolder::StoreCollapseSingleBranchAA( const FieldRef
       if(e->Is<EffectPhi>()) {
         // nested branches
         return StoreCollapseBranchAA<Set,Get,T>(ref,e->As<EffectPhi>());
+      } else if(e->Is<BranchStartEffect>()) {
+        return BranchAA{e->As<BranchStartEffect>()};
       }
       // we don't know what happened here since we stop at a HardBarrier
       return BranchAA{};
-    } else if(e->Is<BranchStartEffect>()) {
-      return BranchAA{e->As<BranchStartEffect>()};
     }
 
     // 3. check the write
@@ -245,7 +245,8 @@ MemoryFolder::BranchAA MemoryFolder::StoreCollapseBranchAA( const FieldRefNode& 
       return BranchAA{};
     }
     lava_debug(NORMAL,
-      if(aa.result == AA::AA_NOT ) lava_verify(aa.end->IsIdentical (temp.end ));
+      if(aa.result == AA::AA_NOT )
+        lava_verify(aa.end->NextWrite()->IsIdentical(temp.end->NextWrite()));
     );
   }
   return aa;
@@ -302,8 +303,7 @@ Expr* MemoryFolder::StoreCollapse( Expr* ref , Expr* value , WriteEffect* e ) {
       if(n.object()->Equal(e->As<T>())) {
         // collapsing store like this:
         // a = { "a" : 1 }; a.a = 2; ==> a = { "a" : 2 };
-        auto i = static_cast<ComponentBase*>(e->As<T>());
-        if(i->Store(n.comp(),value))
+        if(auto i = static_cast<ComponentBase*>(e->As<T>());i->Store(n.comp(),value))
           return e->As<T>();
         else
           return NULL;
@@ -325,10 +325,10 @@ MemoryFolder::BranchAA MemoryFolder::StoreForwardSingleBranchAA( const FieldRefN
     if(e->Is<HardBarrier>()) {
       if(e->Is<EffectPhi>()) {
         return StoreForwardBranchAA<Set,T>(ref,e->As<EffectPhi>());
+      } else if(e->Is<BranchStartEffect>()) {
+        return BranchAA{e->As<BranchStartEffect>()}; // not aliase with each other
       }
       return BranchAA{}; // may be aliased
-    } else if(e->Is<BranchStartEffect>()) {
-      return BranchAA{e->As<BranchStartEffect>()}; // not aliase with each other
     }
 
     if(e->Is<Set>()) {
@@ -363,7 +363,8 @@ MemoryFolder::BranchAA MemoryFolder::StoreForwardBranchAA( const FieldRefNode& r
     if(temp.result == AA::AA_MAY || (temp.result != aa.result))
       return BranchAA{};
     lava_debug(NORMAL,
-      if(temp.result == AA::AA_NOT ) lava_verify(temp.end->IsIdentical(aa.end));
+      if(temp.result == AA::AA_NOT )
+        lava_verify(temp.end->NextWrite()->IsIdentical(aa.end->NextWrite()));
     );
   }
 
@@ -454,9 +455,12 @@ Expr* MemoryFolder::Fold( Graph* graph , const ListRefSetFolderData& data ) {
 
 bool MemoryFolder::CanFold( const FolderData& data ) const {
   switch(data.fold_type()) {
-    case FOLD_OBJECT_FIND:
+    case FOLD_OBJECT_FIND   :
     case FOLD_OBJECT_REF_GET:
     case FOLD_OBJECT_REF_SET:
+    case FOLD_LIST_INDEX    :
+    case FOLD_LIST_REF_SET  :
+    case FOLD_LIST_REF_GET  :
       return true;
     case FOLD_EXPR:
       if(auto d = static_cast<const ExprFolderData&>(data); d.node->Is<StaticRef>())

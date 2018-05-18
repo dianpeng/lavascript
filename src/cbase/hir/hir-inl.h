@@ -1,6 +1,5 @@
 #ifndef CBASE_HIR_HIR_INL_H_
 #define CBASE_HIR_HIR_INL_H_
-#include "src/hash.h"
 
 namespace lavascript {
 namespace cbase      {
@@ -576,6 +575,16 @@ inline BranchStartEffect* BranchStartEffect::New( Graph* graph , WriteEffect* ef
   auto ret = New(graph);
   ret->HappenAfter(effect);
   return ret;
+}
+
+inline EmptyWriteEffect* EmptyWriteEffect::New( Graph* graph ) {
+  return graph->zone()->New<EmptyWriteEffect>(graph,graph->AssignID());
+}
+
+inline EmptyWriteEffect* EmptyWriteEffect::New( Graph* graph , WriteEffect* before ) {
+  auto e = New(graph);
+  e->HappenAfter(before);
+  return e;
 }
 
 inline ICall* ICall::New( Graph* graph , interpreter::IntrinsicCall ic , bool tc ) {

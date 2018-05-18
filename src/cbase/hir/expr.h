@@ -1,6 +1,7 @@
 #ifndef CBASE_HIR_EXPR_H_
 #define CBASE_HIR_EXPR_H_
 #include "node.h"
+#include "src/hash.h"
 #include "src/iterator.h"
 #include <functional>
 
@@ -23,8 +24,11 @@ LAVA_CBASE_HIR_DEFINE(Expr,public Node) {
   // are not supposed to be used again.
   virtual void Replace( Expr* );
  public:
+  // The GVN can work on node that doesn't have side effect. Node can opt in GVN by
+  // rewriting the following 2 functions. The default implementation does a strict
+  // comparison, basically identical comparison.
   // default GVNHash function implementation
-  virtual std::uint64_t GVNHash()        const { return static_cast<std::uint64_t>(id()); }
+  virtual std::uint64_t GVNHash()        const { return Hasher::Hash(id()); }
 
   // default GVN Equal comparison function implementation
   virtual bool Equal( const Expr* that ) const { return IsIdentical(that); }

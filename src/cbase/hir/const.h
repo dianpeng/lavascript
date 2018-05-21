@@ -6,7 +6,8 @@ namespace lavascript {
 namespace cbase      {
 namespace hir        {
 
-LAVA_CBASE_HIR_DEFINE(Float64,public Expr) {
+LAVA_CBASE_HIR_DEFINE(Tag=FLOAT64;Name="float64";Leaf=Leaf;Effect=NoEffect,
+    Float64,public Expr) {
  public:
   inline static Float64* New( Graph* , double );
   double               value() const { return value_; }
@@ -23,7 +24,8 @@ LAVA_CBASE_HIR_DEFINE(Float64,public Expr) {
   LAVA_DISALLOW_COPY_AND_ASSIGN(Float64)
 };
 
-LAVA_CBASE_HIR_DEFINE(Boolean,public Expr) {
+LAVA_CBASE_HIR_DEFINE(Tag=BOOLEAN;Name="boolean";Leaf=Leaf;Effect=NoEffect,
+    Boolean,public Expr) {
  public:
   inline static Boolean* New( Graph* , bool );
   bool value() const { return value_; }
@@ -42,7 +44,8 @@ LAVA_CBASE_HIR_DEFINE(Boolean,public Expr) {
   LAVA_DISALLOW_COPY_AND_ASSIGN(Boolean)
 };
 
-LAVA_CBASE_HIR_DEFINE(LString,public Expr) {
+LAVA_CBASE_HIR_DEFINE(Tag=LSTRING;Name="lstring";Leaf=Leaf;Effect=NoEffect,
+    LString,public Expr) {
  public:
   inline static LString* New( Graph* , const LongString& );
   inline static LString* New( Graph* , const char* );
@@ -63,7 +66,8 @@ LAVA_CBASE_HIR_DEFINE(LString,public Expr) {
   LAVA_DISALLOW_COPY_AND_ASSIGN(LString)
 };
 
-LAVA_CBASE_HIR_DEFINE(SString,public Expr) {
+LAVA_CBASE_HIR_DEFINE(Tag=SSTRING;Name="sstring";Leaf=Leaf;Effect=NoEffect,
+    SString,public Expr) {
  public:
   inline static SString* New( Graph* , const SSO& );
   inline static SString* New( Graph* , const char* );
@@ -84,7 +88,8 @@ LAVA_CBASE_HIR_DEFINE(SString,public Expr) {
   LAVA_DISALLOW_COPY_AND_ASSIGN(SString)
 };
 
-LAVA_CBASE_HIR_DEFINE(Nil,public Expr) {
+LAVA_CBASE_HIR_DEFINE(Tag=NIL;Name="nil";Leaf=Leaf;Effect=NoEffect,
+    Nil,public Expr) {
  public:
   inline static Nil* New( Graph* );
   Nil( Graph* graph , std::uint32_t id ): Expr(HIR_NIL,id,graph) {}

@@ -16,7 +16,8 @@ namespace hir        {
 // the binary node is even a side effect node and it will generate
 // a checkpoint/framestate.
 // ----------------------------------------------------------------
-LAVA_CBASE_HIR_DEFINE(Unary,public Expr) {
+LAVA_CBASE_HIR_DEFINE(Tag=UNARY;Name="unary";Leaf=NoLeaf;Effect=NoEffect,
+    Unary,public Expr) {
  public:
   enum Operator { MINUS, NOT };
   inline static Unary* New( Graph* , Expr* , Operator );
@@ -98,7 +99,8 @@ LAVA_CBASE_HIR_DEFINE(DynamicBinary,public HardBarrier,public BinaryNode) {
   Binary::Operator op_;
 };
 
-LAVA_CBASE_HIR_DEFINE(Arithmetic,public DynamicBinary) {
+LAVA_CBASE_HIR_DEFINE(Tag=ARITHMETIC;Name="arithmetic";Leaf=NoLeaf;Effect=Effect,
+    Arithmetic,public DynamicBinary) {
  public:
   static inline Arithmetic* New( Graph* , Expr* , Expr* , Binary::Operator );
 
@@ -109,7 +111,8 @@ LAVA_CBASE_HIR_DEFINE(Arithmetic,public DynamicBinary) {
   }
 };
 
-LAVA_CBASE_HIR_DEFINE(Compare,public DynamicBinary) {
+LAVA_CBASE_HIR_DEFINE(Tag=COMPARE;Name="compare";Leaf=NoLeaf;Effect=Effect,
+    Compare,public DynamicBinary) {
  public:
   static inline Compare* New( Graph* , Expr* , Expr* , Binary::Operator );
 
@@ -122,7 +125,8 @@ LAVA_CBASE_HIR_DEFINE(Compare,public DynamicBinary) {
 
 // This is a binary node but it is not a dynamic dispatched node so not inherit from the
 // the dynamic binary node. logical node is a normal node which will not do dynamic dispatch
-LAVA_CBASE_HIR_DEFINE(Logical,public Expr,public BinaryNode) {
+LAVA_CBASE_HIR_DEFINE(Tag=LOGICAL;Name="logical";Leaf=NoLeaf;Effect=NoEffect,
+    Logical,public Expr,public BinaryNode) {
  public:
   using Operator = Binary::Operator;
 
@@ -144,7 +148,8 @@ LAVA_CBASE_HIR_DEFINE(Logical,public Expr,public BinaryNode) {
   Binary::Operator op_;
 };
 
-LAVA_CBASE_HIR_DEFINE(Ternary,public Expr) {
+LAVA_CBASE_HIR_DEFINE(Tag=TERNARY;Name="ternary";Leaf=NoLeaf;Effect=NoEffect,
+    Ternary,public Expr) {
  public:
   inline static Ternary* New( Graph* , Expr* , Expr* , Expr* );
   Ternary( Graph* graph , std::uint32_t id , Expr* cond , Expr* lhs , Expr* rhs ):
@@ -165,7 +170,8 @@ LAVA_CBASE_HIR_DEFINE(Ternary,public Expr) {
 /* -------------------------------------------------------
  * Low level operations
  * ------------------------------------------------------*/
-LAVA_CBASE_HIR_DEFINE(Float64Negate,public Expr) {
+LAVA_CBASE_HIR_DEFINE(Tag=FLOAT64_NEGATE;Name="float64_negate";Leaf=NoLeaf;Effect=NoEffect,
+    Float64Negate,public Expr) {
  public:
   inline static Float64Negate* New( Graph* , Expr* );
   Expr* operand() const { return operand_list()->First(); }
@@ -191,7 +197,8 @@ LAVA_CBASE_HIR_DEFINE(Float64Negate,public Expr) {
 
 // Specialized logic operator, its lhs is type fixed by boolean. ie, we are
 // sure its lhs operand outputs boolean in an unboxed format.
-LAVA_CBASE_HIR_DEFINE(BooleanNot,public Expr) {
+LAVA_CBASE_HIR_DEFINE(Tag=BOOLEAN_NOT;Name="boolean_not";Leaf=NoLeaf;Effect=NoEffect,
+    BooleanNot,public Expr) {
  public:
   inline static BooleanNot* New( Graph* , Expr* );
   Expr* operand() const { return operand_list()->First(); }
@@ -242,7 +249,8 @@ LAVA_CBASE_HIR_DEFINE(SpecializeBinary,public Expr,public BinaryNode) {
   Binary::Operator op_;
 };
 
-LAVA_CBASE_HIR_DEFINE(Float64Arithmetic,public SpecializeBinary) {
+LAVA_CBASE_HIR_DEFINE(Tag=FLOAT64_ARITHMETIC;Name="float64_arithmetic";Leaf=NoLeaf;Effect=NoEffect,
+    Float64Arithmetic,public SpecializeBinary) {
  public:
   using Operator = Binary::Operator;
 
@@ -258,7 +266,8 @@ LAVA_CBASE_HIR_DEFINE(Float64Arithmetic,public SpecializeBinary) {
   LAVA_DISALLOW_COPY_AND_ASSIGN(Float64Arithmetic)
 };
 
-LAVA_CBASE_HIR_DEFINE(Float64Bitwise,public SpecializeBinary) {
+LAVA_CBASE_HIR_DEFINE(Tag=FLOAT64_BITWISE;Name="float64_bitwise";Leaf=NoLeaf;Effect=NoEffect,
+    Float64Bitwise,public SpecializeBinary) {
  public:
   using Operator = Binary::Operator;
 
@@ -274,7 +283,8 @@ LAVA_CBASE_HIR_DEFINE(Float64Bitwise,public SpecializeBinary) {
   LAVA_DISALLOW_COPY_AND_ASSIGN(Float64Bitwise)
 };
 
-LAVA_CBASE_HIR_DEFINE(Float64Compare,public SpecializeBinary) {
+LAVA_CBASE_HIR_DEFINE(Tag=FLOAT64_COMPARE;Name="float64_compare";Leaf=NoLeaf;Effect=NoEffect,
+    Float64Compare,public SpecializeBinary) {
  public:
   using Operator = Binary::Operator;
 
@@ -290,7 +300,8 @@ LAVA_CBASE_HIR_DEFINE(Float64Compare,public SpecializeBinary) {
   LAVA_DISALLOW_COPY_AND_ASSIGN(Float64Compare)
 };
 
-LAVA_CBASE_HIR_DEFINE(StringCompare,public SpecializeBinary) {
+LAVA_CBASE_HIR_DEFINE(Tag=STRING_COMPARE;Name="string_compare";Leaf=NoLeaf;Effect=NoEffect,
+    StringCompare,public SpecializeBinary) {
  public:
   using Operator = Binary::Operator;
   inline static StringCompare* New( Graph* , Expr* , Expr* , Operator );
@@ -303,7 +314,8 @@ LAVA_CBASE_HIR_DEFINE(StringCompare,public SpecializeBinary) {
   LAVA_DISALLOW_COPY_AND_ASSIGN(StringCompare);
 };
 
-LAVA_CBASE_HIR_DEFINE(SStringEq,public SpecializeBinary) {
+LAVA_CBASE_HIR_DEFINE(Tag=SSTRING_EQ;Name="sstring_eq";Leaf=NoLeaf;Effect=NoEffect,
+    SStringEq,public SpecializeBinary) {
  public:
   inline static SStringEq* New( Graph* , Expr* , Expr* );
   SStringEq( Graph* graph , std::uint32_t id , Expr* lhs , Expr* rhs ):
@@ -314,7 +326,8 @@ LAVA_CBASE_HIR_DEFINE(SStringEq,public SpecializeBinary) {
   LAVA_DISALLOW_COPY_AND_ASSIGN(SStringEq)
 };
 
-LAVA_CBASE_HIR_DEFINE(SStringNe,public SpecializeBinary) {
+LAVA_CBASE_HIR_DEFINE(Tag=SSTRING_NE;Name="sstring_ne";Leaf=NoLeaf;Effect=NoEffect,
+    SStringNe,public SpecializeBinary) {
  public:
   inline static SStringNe* New( Graph* , Expr* , Expr* );
   SStringNe( Graph* graph , std::uint32_t id , Expr* lhs , Expr* rhs ):
@@ -325,7 +338,8 @@ LAVA_CBASE_HIR_DEFINE(SStringNe,public SpecializeBinary) {
   LAVA_DISALLOW_COPY_AND_ASSIGN(SStringNe)
 };
 
-LAVA_CBASE_HIR_DEFINE(BooleanLogic,public SpecializeBinary) {
+LAVA_CBASE_HIR_DEFINE(Tag=BOOLEAN_LOGIC;Name="boolean_logic";Leaf=NoLeaf;Effect=NoEffect,
+    BooleanLogic,public SpecializeBinary) {
  public:
    inline static BooleanLogic* New( Graph* , Expr* , Expr* , Operator op );
    BooleanLogic( Graph* graph , std::uint32_t id , Expr* lhs , Expr* rhs , Operator op ):

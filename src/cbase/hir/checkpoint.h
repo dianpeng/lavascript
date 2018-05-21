@@ -40,7 +40,8 @@ namespace hir        {
 //    Checkpoint , it just means when node bailout, it uses this Checkpoint to reconstruct
 //    interpreter states/frame. But this is not dependent.
 //
-LAVA_CBASE_HIR_DEFINE(Checkpoint,public Expr) {
+LAVA_CBASE_HIR_DEFINE(Tag=CHECKPOINT;Name="checkpoint";Leaf=NoLeaf;Effect=NoEffect,
+    Checkpoint,public Expr) {
  public:
   inline static Checkpoint* New( Graph* , IRInfo* );
   // add a stack traced value into checkpoint object
@@ -57,7 +58,8 @@ LAVA_CBASE_HIR_DEFINE(Checkpoint,public Expr) {
   LAVA_DISALLOW_COPY_AND_ASSIGN(Checkpoint)
 };
 
-LAVA_CBASE_HIR_DEFINE(StackSlot,public Expr) {
+LAVA_CBASE_HIR_DEFINE(Tag=STACK_SLOT;Name="stack_slot";Leaf=NoLeaf;Effect=NoEffect,
+    StackSlot,public Expr) {
  public:
   inline static StackSlot* New( Graph* , Expr* , std::uint32_t );
   std::uint32_t index() const { return index_; }

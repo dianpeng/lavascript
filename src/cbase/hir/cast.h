@@ -21,7 +21,8 @@ namespace hir        {
  *    SSE. The input and output to this operation are always unboxed value.
  */
 
-LAVA_CBASE_HIR_DEFINE(ConvBoolean,public Expr) {
+LAVA_CBASE_HIR_DEFINE(Tag=CONV_BOOLEAN;Name="conv_boolean";Leaf=NoLeaf;Effect=Effect,
+    ConvBoolean,public Expr) {
  public:
   // New a normal conv boolean operation, takes a boxed input and produce a unboxed
   // output.
@@ -43,7 +44,8 @@ LAVA_CBASE_HIR_DEFINE(ConvBoolean,public Expr) {
 
 // convert a boxed expression into a negative boolean. Basically if the input evaluates
 // to be true , then this node return false in unbox version ; otherwise it returns true.
-LAVA_CBASE_HIR_DEFINE(ConvNBoolean,public Expr) {
+LAVA_CBASE_HIR_DEFINE(Tag=CONV_NBOOLEAN;Name="conv_nboolean";Leaf=NoLeaf;Effect=Effect,
+    ConvNBoolean,public Expr) {
  public:
   inline static ConvNBoolean* New   ( Graph* , Expr* );
   inline static Box*          NewBox( Graph* , Expr* );

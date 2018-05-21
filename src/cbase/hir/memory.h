@@ -25,7 +25,8 @@ LAVA_CBASE_HIR_DEFINE(MemoryNode,public Expr) {
 
 // --------------------------------------------------------------------------
 // Argument
-LAVA_CBASE_HIR_DEFINE(Arg,public MemoryNode) {
+LAVA_CBASE_HIR_DEFINE(Tag=ARG;Name="arg";Leaf=Leaf;Effect=Effect,
+    Arg,public MemoryNode) {
  public:
   inline static Arg* New( Graph* , std::uint32_t );
   std::uint32_t index() const { return index_; }
@@ -47,7 +48,8 @@ LAVA_CBASE_HIR_DEFINE(Arg,public MemoryNode) {
 
 // --------------------------------------------------------------------------
 // OSRLoad
-LAVA_CBASE_HIR_DEFINE(OSRLoad,public Expr) {
+LAVA_CBASE_HIR_DEFINE(Tag=OSR_LOAD;Name="osr_load";Leaf=Leaf;Effect=Effect,
+    OSRLoad,public Expr) {
  public:
   inline static OSRLoad* New( Graph* , std::uint32_t );
   // Offset in sizeof(Value)/8 bytes to load this value from osr input buffer
@@ -82,7 +84,8 @@ class ComponentBase {
 
 // --------------------------------------------------------------------------
 // IRList
-LAVA_CBASE_HIR_DEFINE(IRList,public WriteEffect,public ComponentBase) {
+LAVA_CBASE_HIR_DEFINE(Tag=LIST;Name="list";Leaf=NoLeaf;Effect=Effect,
+    IRList,public WriteEffect,public ComponentBase) {
  public:
   inline static IRList* New( Graph* , std::size_t size );
   void Add( Expr* node ) { AddOperand(node); }
@@ -101,7 +104,8 @@ LAVA_CBASE_HIR_DEFINE(IRList,public WriteEffect,public ComponentBase) {
 
 // --------------------------------------------------------------------------
 // IRObjectKV
-LAVA_CBASE_HIR_DEFINE(IRObjectKV,public Expr) {
+LAVA_CBASE_HIR_DEFINE(Tag=OBJECT_KV;Name="object_kv";Leaf=NoLeaf;Effect=NoEffect,
+    IRObjectKV,public Expr) {
  public:
   inline static IRObjectKV* New( Graph* , Expr* , Expr* );
   Expr* key  () const { return operand_list()->First(); }
@@ -121,7 +125,8 @@ LAVA_CBASE_HIR_DEFINE(IRObjectKV,public Expr) {
 
 // --------------------------------------------------------------------------
 // IRObject
-LAVA_CBASE_HIR_DEFINE(IRObject,public WriteEffect,public ComponentBase) {
+LAVA_CBASE_HIR_DEFINE(Tag=OBJECT;Name="object";Leaf=NoLeaf;Effect=Effect,
+    IRObject,public WriteEffect,public ComponentBase) {
  public:
   inline static IRObject* New( Graph* , std::size_t size );
   void Add( Expr* key , Expr* val ) {

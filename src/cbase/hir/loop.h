@@ -12,7 +12,8 @@ namespace hir        {
 // Loop related blocks
 //
 // --------------------------------------------------------------------------
-LAVA_CBASE_HIR_DEFINE(LoopHeader,public ControlFlow) {
+LAVA_CBASE_HIR_DEFINE(Tag=LOOP_HEADER;Name="loop_header";Leaf=NoLeaf;Effect=NoEffect,
+    LoopHeader,public ControlFlow) {
  public:
   inline static LoopHeader* New( Graph* , ControlFlow* );
 
@@ -33,7 +34,8 @@ LAVA_CBASE_HIR_DEFINE(LoopHeader,public ControlFlow) {
   LAVA_DISALLOW_COPY_AND_ASSIGN(LoopHeader);
 };
 
-LAVA_CBASE_HIR_DEFINE(Loop,public Merge) {
+LAVA_CBASE_HIR_DEFINE(Tag=LOOP;Name="loop";Leaf=NoLeaf;Effect=NoEffect,
+    Loop,public Merge) {
  public:
   inline static Loop* New( Graph* );
   Loop( Graph* graph , std::uint32_t id ): Merge(HIR_LOOP,id,graph) {}
@@ -41,7 +43,8 @@ LAVA_CBASE_HIR_DEFINE(Loop,public Merge) {
   LAVA_DISALLOW_COPY_AND_ASSIGN(Loop)
 };
 
-LAVA_CBASE_HIR_DEFINE(LoopExit,public ControlFlow) {
+LAVA_CBASE_HIR_DEFINE(Tag=LOOP_EXIT;Name="loop_exit";Leaf=NoLeaf;Effect=NoEffect,
+    LoopExit,public ControlFlow) {
  public:
   inline static LoopExit* New( Graph* , Expr* );
   Expr* condition() const { return operand_list()->First(); }

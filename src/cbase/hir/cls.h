@@ -9,7 +9,8 @@ namespace hir        {
 // ----------------------------------------------------------------
 // Closure
 // ----------------------------------------------------------------
-LAVA_CBASE_HIR_DEFINE(Closure,public Expr) {
+LAVA_CBASE_HIR_DEFINE(Tag=CLOSURE;Name="closure";Leaf=Leaf;Effect=NoEffect,
+    Closure,public Expr) {
  public:
   static inline Closure* New( Graph* , std::uint32_t ref );
   // reference to the prototype inside of the Script object
@@ -24,7 +25,8 @@ LAVA_CBASE_HIR_DEFINE(Closure,public Expr) {
   LAVA_DISALLOW_COPY_AND_ASSIGN(Closure);
 };
 
-LAVA_CBASE_HIR_DEFINE(InitCls,public Expr) {
+LAVA_CBASE_HIR_DEFINE(Tag=INIT_CLS;Name="init_cls";Leaf=NoLeaf;Effect=Effect,
+    InitCls,public Expr) {
  public:
   inline static InitCls* New( Graph* , Expr* );
   InitCls( Graph* graph , std::uint32_t id , Expr* key ):

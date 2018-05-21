@@ -16,7 +16,8 @@ namespace hir        {
 // 2) Low level memory operation. These operations requires the type of the
 //    node to be object or list. These operations will generate lookup opereation
 //    and dereference/reference node.
-LAVA_CBASE_HIR_DEFINE(PGet,public HardBarrier) {
+LAVA_CBASE_HIR_DEFINE(Tag=PGET;Name="pget";Leaf=NoLeaf;Effect=Effect,
+    PGet,public HardBarrier) {
  public:
   inline static PGet* New( Graph* , Expr* , Expr* );
 
@@ -41,7 +42,8 @@ LAVA_CBASE_HIR_DEFINE(PGet,public HardBarrier) {
   LAVA_DISALLOW_COPY_AND_ASSIGN(PGet)
 };
 
-LAVA_CBASE_HIR_DEFINE(PSet,public HardBarrier) {
+LAVA_CBASE_HIR_DEFINE(Tag=PSET;Name="pset";Leaf=NoLeaf;Effect=Effect,
+    PSet,public HardBarrier) {
  public:
   inline static PSet* New( Graph* , Expr* , Expr* , Expr* );
 
@@ -70,7 +72,8 @@ LAVA_CBASE_HIR_DEFINE(PSet,public HardBarrier) {
   LAVA_DISALLOW_COPY_AND_ASSIGN(PSet)
 };
 
-LAVA_CBASE_HIR_DEFINE(IGet,public HardBarrier) {
+LAVA_CBASE_HIR_DEFINE(Tag=IGET;Name="iget";Leaf=NoLeaf;Effect=Effect,
+    IGet,public HardBarrier) {
  public:
   inline static IGet* New( Graph* , Expr* , Expr* );
 
@@ -96,7 +99,8 @@ LAVA_CBASE_HIR_DEFINE(IGet,public HardBarrier) {
   LAVA_DISALLOW_COPY_AND_ASSIGN(IGet)
 };
 
-LAVA_CBASE_HIR_DEFINE(ISet,public HardBarrier) {
+LAVA_CBASE_HIR_DEFINE(Tag=ISET;Name="iset";Leaf=NoLeaf;Effect=Effect,
+    ISet,public HardBarrier) {
  public:
   inline static ISet* New( Graph* , Expr* , Expr* , Expr* );
 
@@ -196,7 +200,8 @@ LAVA_CBASE_HIR_DEFINE(StaticRef,public ReadEffect) {
 };
 
 
-LAVA_CBASE_HIR_DEFINE(ObjectFind,public StaticRef) {
+LAVA_CBASE_HIR_DEFINE(Tag=OBJECT_FIND;Name="object_find";Leaf=NoLeaf;Effect=Effect,
+    ObjectFind,public StaticRef) {
  public:
   static inline ObjectFind* New( Graph* , Expr* , Expr* , Checkpoint* );
 
@@ -217,7 +222,8 @@ LAVA_CBASE_HIR_DEFINE(ObjectFind,public StaticRef) {
   LAVA_DISALLOW_COPY_AND_ASSIGN(ObjectFind)
 };
 
-LAVA_CBASE_HIR_DEFINE(ObjectUpdate,public ObjectResize) {
+LAVA_CBASE_HIR_DEFINE(Tag=OBJECT_UPDATE;Name="object_update";Leaf=NoLeaf;Effect=Effect,
+    ObjectUpdate,public ObjectResize) {
  public:
   static inline ObjectUpdate* New( Graph* , Expr* , Expr* );
   ObjectUpdate( Graph* graph , std::uint32_t id , Expr* object , Expr* key ):
@@ -226,7 +232,8 @@ LAVA_CBASE_HIR_DEFINE(ObjectUpdate,public ObjectResize) {
   LAVA_DISALLOW_COPY_AND_ASSIGN(ObjectUpdate)
 };
 
-LAVA_CBASE_HIR_DEFINE(ObjectInsert,public ObjectResize) {
+LAVA_CBASE_HIR_DEFINE(Tag=OBJECT_INSERT;Name="object_insert";Leaf=NoLeaf;Effect=Effect,
+    ObjectInsert,public ObjectResize) {
  public:
   static inline ObjectInsert* New( Graph* , Expr* , Expr*  );
   ObjectInsert( Graph* graph , std::uint32_t id , Expr* object , Expr* key ):
@@ -235,7 +242,8 @@ LAVA_CBASE_HIR_DEFINE(ObjectInsert,public ObjectResize) {
   LAVA_DISALLOW_COPY_AND_ASSIGN(ObjectInsert)
 };
 
-LAVA_CBASE_HIR_DEFINE(ListIndex,public StaticRef) {
+LAVA_CBASE_HIR_DEFINE(Tag=LIST_INDEXT;Name="list_index";Leaf=NoLeaf;Effect=Effect,
+    ListIndex,public StaticRef) {
  public:
   static inline ListIndex* New( Graph* , Expr* , Expr* , Checkpoint* checkpoint );
 
@@ -255,7 +263,8 @@ LAVA_CBASE_HIR_DEFINE(ListIndex,public StaticRef) {
   LAVA_DISALLOW_COPY_AND_ASSIGN(ListIndex)
 };
 
-LAVA_CBASE_HIR_DEFINE(ListInsert,public ListResize) {
+LAVA_CBASE_HIR_DEFINE(Tag=LIST_INSERT;Name="list_insert";Leaf=NoLeaf;Effect=Effect,
+    ListInsert,public ListResize) {
  public:
   static inline ListInsert* New( Graph* , Expr* , Expr* , Checkpoint* );
   ListInsert( Graph* graph , std::uint32_t id , Expr* object , Expr* index , Checkpoint* cp ):
@@ -335,7 +344,8 @@ LAVA_CBASE_HIR_DEFINE(RefSet,public WriteEffect) {
   Expr* value() const { return operand_list()->Last(); }
 };
 
-LAVA_CBASE_HIR_DEFINE(ObjectRefGet,public RefGet) {
+LAVA_CBASE_HIR_DEFINE(Tag=OBJECT_REF_GET;Name="object_ref_get";Leaf=NoLeaf;Effect=Effect,
+    ObjectRefGet,public RefGet) {
  public:
   static ObjectRefGet* New( Graph* , Expr* );
 
@@ -351,7 +361,8 @@ LAVA_CBASE_HIR_DEFINE(ObjectRefGet,public RefGet) {
   LAVA_DISALLOW_COPY_AND_ASSIGN(ObjectRefGet)
 };
 
-LAVA_CBASE_HIR_DEFINE(ObjectRefSet,public RefSet) {
+LAVA_CBASE_HIR_DEFINE(Tag=OBJECT_REF_SET;Name="object_ref_set";Leaf=NoLeaf;Effect=Effect,
+    ObjectRefSet,public RefSet) {
  public:
   static ObjectRefSet* New( Graph* , Expr* , Expr* );
 
@@ -366,7 +377,8 @@ LAVA_CBASE_HIR_DEFINE(ObjectRefSet,public RefSet) {
   LAVA_DISALLOW_COPY_AND_ASSIGN(ObjectRefSet)
 };
 
-LAVA_CBASE_HIR_DEFINE(ListRefGet,public RefGet) {
+LAVA_CBASE_HIR_DEFINE(Tag=LIST_REF_GET;Name="list_ref_get";Leaf=NoLeaf;Effect=Effect,
+    ListRefGet,public RefGet) {
  public:
   static ListRefGet* New( Graph* , Expr* );
 
@@ -381,7 +393,8 @@ LAVA_CBASE_HIR_DEFINE(ListRefGet,public RefGet) {
   LAVA_DISALLOW_COPY_AND_ASSIGN(ListRefGet)
 };
 
-LAVA_CBASE_HIR_DEFINE(ListRefSet,public RefSet) {
+LAVA_CBASE_HIR_DEFINE(Tag=LIST_REF_SET;Name="list_ref_set";Leaf=NoLeaf;Effect=Effect,
+    ListRefSet,public RefSet) {
  public:
   static ListRefSet* New( Graph* , Expr* , Expr* );
 

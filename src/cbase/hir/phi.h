@@ -34,7 +34,8 @@ LAVA_CBASE_HIR_DEFINE(PhiNode,public Expr) {
 
 // Normal value phi node. Used in the merged region for join value produced by
 // different branch in control flow graph.
-LAVA_CBASE_HIR_DEFINE(Phi,public PhiNode) {
+LAVA_CBASE_HIR_DEFINE(Tag=PHI;Name="phi";Leaf=NoLeaf;Effect=NoEffect,
+    Phi,public PhiNode) {
  public:
   inline static Phi* New( Graph* );
   inline static Phi* New( Graph* , Expr* , Expr* );
@@ -55,7 +56,8 @@ LAVA_CBASE_HIR_DEFINE(Phi,public PhiNode) {
   LAVA_DISALLOW_COPY_AND_ASSIGN(Phi)
 };
 
-LAVA_CBASE_HIR_DEFINE(Projection,public Expr) {
+LAVA_CBASE_HIR_DEFINE(Tag=PROJECTION;Name="projection";Leaf=NoLeaf;Effect=NoEffect,
+    Projection,public Expr) {
  public:
   inline static Projection* New( Graph* , Expr* , std::uint32_t index );
   Expr* operand() const { return operand_list()->First(); }

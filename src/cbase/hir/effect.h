@@ -157,7 +157,8 @@ LAVA_CBASE_HIR_DEFINE(EffectPhiBase,public HardBarrier) {
 // EffectPhi is a phi node inserted at merge region used to fan in all the branch's
 // phi node. Each branch will use a InitBarrier to separate each branch's effect
 // chain regardlessly
-LAVA_CBASE_HIR_DEFINE(EffectPhi,public EffectPhiBase) {
+LAVA_CBASE_HIR_DEFINE(Tag=EFFECT_PHI;Name="effect_phi";Leaf=NoLeaf;Effect=Effect,
+    EffectPhi,public EffectPhiBase) {
  public:
   static inline EffectPhi* New( Graph* );
   static inline EffectPhi* New( Graph* , ControlFlow* );
@@ -176,7 +177,8 @@ LAVA_CBASE_HIR_DEFINE(EffectPhi,public EffectPhiBase) {
 // cross loop carried dependency boundary. Due to the cycle , when do analyze of aliasing
 // or previous store, one will have to visit the store happened *after the loop*. And it
 // also means the only the fly memory optimization cannot be applied to stuff in the loop
-LAVA_CBASE_HIR_DEFINE(LoopEffectPhi,public EffectPhiBase) {
+LAVA_CBASE_HIR_DEFINE(Tag=LOOP_EFFECT_PHI;Name="loop_effect_phi";Leaf=NoLeaf;Effect=Effect,
+    LoopEffectPhi,public EffectPhiBase) {
  public:
   // The loop effect phi node will be created right before entering into the loop, so at
   // that moment only one fallthrough branch's WriteEffect node is known. The new function
@@ -195,7 +197,8 @@ LAVA_CBASE_HIR_DEFINE(LoopEffectPhi,public EffectPhiBase) {
 
 // InitBarrier is an object to separate effect chain in lexical scope. It is mainly to
 // use mark the start of the effect chain
-LAVA_CBASE_HIR_DEFINE(InitBarrier,public HardBarrier) {
+LAVA_CBASE_HIR_DEFINE(Tag=INIT_BARRIER;Name="init_barrier";Leaf=NoLeaf;Effect=Effect,
+    InitBarrier,public HardBarrier) {
  public:
   static inline InitBarrier* New( Graph* );
   InitBarrier( Graph* graph , std::uint32_t id ) : HardBarrier(HIR_INIT_BARRIER,id,graph) {}
@@ -205,7 +208,8 @@ LAVA_CBASE_HIR_DEFINE(InitBarrier,public HardBarrier) {
 
 // BranchStartEffect is an object to be used to *mark* the control flow. It doesn't have any
 // actual barrier impact but just to mark the separation of control flow region, ie *If* node.
-LAVA_CBASE_HIR_DEFINE(BranchStartEffect,public HardBarrier) {
+LAVA_CBASE_HIR_DEFINE(Tag=BRANCH_START_EFFECT;Name="branch_start_effect";Leaf=NoLeaf;Effect=Effect,
+    BranchStartEffect,public HardBarrier) {
  public:
   static inline BranchStartEffect* New( Graph* );
   static inline BranchStartEffect* New( Graph*  , WriteEffect* );
@@ -216,7 +220,8 @@ LAVA_CBASE_HIR_DEFINE(BranchStartEffect,public HardBarrier) {
   LAVA_DISALLOW_COPY_AND_ASSIGN(BranchStartEffect)
 };
 
-LAVA_CBASE_HIR_DEFINE(EmptyWriteEffect,public WriteEffect) {
+LAVA_CBASE_HIR_DEFINE(Tag=EMPTY_WRITE_EFFECT;Name="empty_write_effect";Leaf=NoLeaf;Effect=Effect,
+    EmptyWriteEffect,public WriteEffect) {
  public:
   static inline EmptyWriteEffect* New( Graph* );
   static inline EmptyWriteEffect* New( Graph* , WriteEffect* );

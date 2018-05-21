@@ -9,7 +9,8 @@ namespace hir        {
 // -------------------------------------------------------------------------
 // Iterator node (side effect)
 // -------------------------------------------------------------------------
-LAVA_CBASE_HIR_DEFINE(ItrNew,public HardBarrier) {
+LAVA_CBASE_HIR_DEFINE(Tag=ITR_NEW;Name="itr_new";Leaf=NoLeaf;Effect=Effect,
+    ItrNew,public HardBarrier) {
  public:
   inline static ItrNew* New( Graph* , Expr* );
   Expr* operand() const { return operand_list()->First(); }
@@ -23,7 +24,8 @@ LAVA_CBASE_HIR_DEFINE(ItrNew,public HardBarrier) {
   LAVA_DISALLOW_COPY_AND_ASSIGN(ItrNew)
 };
 
-LAVA_CBASE_HIR_DEFINE(ItrNext,public HardBarrier) {
+LAVA_CBASE_HIR_DEFINE(Tag=ITR_NEXT;Name="itr_next";Leaf=NoLeaf;Effect=Effect,
+    ItrNext,public HardBarrier) {
  public:
   inline static ItrNext* New( Graph* , Expr* );
   Expr* operand() const { return operand_list()->First(); }
@@ -37,7 +39,8 @@ LAVA_CBASE_HIR_DEFINE(ItrNext,public HardBarrier) {
   LAVA_DISALLOW_COPY_AND_ASSIGN(ItrNext)
 };
 
-LAVA_CBASE_HIR_DEFINE(ItrTest,public HardBarrier) {
+LAVA_CBASE_HIR_DEFINE(Tag=ITR_TEST;Name="itr_test";Leaf=NoLeaf;Effect=Effect,
+    ItrTest,public HardBarrier) {
  public:
   inline static ItrTest* New( Graph* , Expr* );
   Expr* operand() const { return operand_list()->First(); }
@@ -51,7 +54,8 @@ LAVA_CBASE_HIR_DEFINE(ItrTest,public HardBarrier) {
   LAVA_DISALLOW_COPY_AND_ASSIGN(ItrTest)
 };
 
-LAVA_CBASE_HIR_DEFINE(ItrDeref,public HardBarrier) {
+LAVA_CBASE_HIR_DEFINE(Tag=ITR_DEREF;Name="itr_deref";Leaf=NoLeaf;Effect=Effect,
+    ItrDeref,public HardBarrier) {
  public:
   enum {
     PROJECTION_KEY = 0,

@@ -8,7 +8,8 @@ namespace hir        {
 
 // Represent fallback to interpreter, manually generate this node means we want to
 // abort at current stage in the graph.
-LAVA_CBASE_HIR_DEFINE(Trap,public ControlFlow) {
+LAVA_CBASE_HIR_DEFINE(Tag=TRACE;Name="trap";Leaf=NoLeaf;Effect=NoEffect,
+    Trap,public ControlFlow) {
  public:
   inline static Trap* New( Graph* , Checkpoint* , ControlFlow* );
 
@@ -24,7 +25,8 @@ LAVA_CBASE_HIR_DEFINE(Trap,public ControlFlow) {
 };
 
 
-LAVA_CBASE_HIR_DEFINE(CondTrap,public ControlFlow) {
+LAVA_CBASE_HIR_DEFINE(Tag=COND_TRAP;Name="cond_trap";Leaf=NoLeaf;Effect=NoEffect,
+    CondTrap,public ControlFlow) {
  public:
   inline static CondTrap* New( Graph* , Test* , Checkpoint* , ControlFlow* );
 

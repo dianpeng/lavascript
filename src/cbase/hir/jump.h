@@ -6,7 +6,8 @@ namespace lavascript {
 namespace cbase      {
 namespace hir        {
 
-LAVA_CBASE_HIR_DEFINE(Jump,public ControlFlow) {
+LAVA_CBASE_HIR_DEFINE(Tag=JUMP;Name="jump";Leaf=NoLeaf;Effect=NoEffect,
+    Jump,public ControlFlow) {
  public:
   inline static Jump* New( Graph* , const std::uint32_t* , ControlFlow* );
   // which target this jump jumps to
@@ -39,7 +40,8 @@ LAVA_CBASE_HIR_DEFINE(JumpWithValue,public ControlFlow) {
   LAVA_DISALLOW_COPY_AND_ASSIGN(JumpWithValue)
 };
 
-LAVA_CBASE_HIR_DEFINE(Return,public JumpWithValue) {
+LAVA_CBASE_HIR_DEFINE(Tag=RETURN;Name="return";Leaf=NoLeaf;Effect=NoEffect,
+    Return,public JumpWithValue) {
  public:
   inline static Return* New( Graph* , Expr* , ControlFlow* );
   Return( Graph* graph , std::uint32_t id , Expr* value , ControlFlow* region ):
@@ -52,7 +54,8 @@ LAVA_CBASE_HIR_DEFINE(Return,public JumpWithValue) {
 // this node is used during inline frame since we cannot generate return in inline
 // frame though mostly it is just a Return but don't return from the current function
 // frame.
-LAVA_CBASE_HIR_DEFINE(JumpValue,public JumpWithValue) {
+LAVA_CBASE_HIR_DEFINE(Tag=JUMP_VALUE;Name="jump_value";Leaf=NoLeaf;Effect=NoEffect,
+    JumpValue,public JumpWithValue) {
  public:
   inline static JumpValue* New( Graph* , Expr* , ControlFlow* );
 

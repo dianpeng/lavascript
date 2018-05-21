@@ -146,6 +146,16 @@ LAVA_CBASE_HIR_DEFINE(ISet,public HardBarrier) {
 //    ObjectRefGet --> get a value from reference of ObjectFind/ObjectUpdate/ObjectInsert
 //    ListRefSet   --> set a reference returned by   ListIndex/ListInsert
 //    ListRefGet   --> get a value from reference of ListIndex/ListInsert
+//
+//
+// Unlike numeric low level typed operation, the low level operation for memory/property
+// are not *unboxed* value but directly work on boxed value. So the list/object reference
+// node takes a normal boxed value and produce a reference to those nodes, and then the
+// reference manipulation node will just utilize the pointer produce by the operation above.
+//
+// There's no point to specifically generate a unboxed node here since there're no other
+// possible node can produce boxed/unboxed node regards to list/object. So there're no
+// potential optimization can be performed on top of it hence no gain.
 
 LAVA_CBASE_HIR_DEFINE(ObjectResize,public SoftBarrier) {
  public:

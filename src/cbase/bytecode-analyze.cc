@@ -236,21 +236,14 @@ void BytecodeAnalyze::BuildLoop( BytecodeIterator* itr ) {
     current_bb()->end   = itr->pc();
     current_loop()->end = itr->pc();
 
-    lava_debug(NORMAL,
-          if(itr->opcode() == BC_FEND1 || itr->opcode() == BC_FEND2 ||
-                                          itr->opcode() == BC_FEEND) {
-            itr->Move();
-            lava_verify(itr->pc() == itr->OffsetAt(offset));
-          }
-        );
-    /**
-     * If bytecode is *not* FEND1 then we need to mark induction
-     * variable as part of the phi list since it must be mutated
-     * due to the bytecode here
-     */
-    if(itr->opcode() != BC_FEND1) {
+    // If the loop opcode is BC_FEND1 or BC_FEEND, we skip the induction
+    // variable as a loop bounded Phi. BC_FEND1 means no induction variable,
+    // as with BC_FEEND it means loop induction variable is actually an
+    // iterator object.
+    if(itr->opcode() != BC_FEND1 && itr->opcode() != BC_FEEND) {
       Kill(induct);
     }
+    itr->Move();
     itr->BranchTo(offset);
   }
 }

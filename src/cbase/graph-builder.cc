@@ -95,7 +95,7 @@ class GraphBuilder {
     zone::Zone*      zone  () const    { return zone_ ;  }
     void UpdateCP   ( Checkpoint* cp ) { cp_ = cp; }
 
-    LoopEffectPhi*   AsLoopEffectPhi() { return effect()->joined_write_effect()->AsLoopEffectPhi(); }
+    LoopEffectPhi*   AsLoopEffectPhi() { return effect()->write_effect()->AsLoopEffectPhi(); }
    private:
     zone::Zone*        zone_;            // zone allocator
     ValueStack         stack_;           // register stack
@@ -321,6 +321,12 @@ class GraphBuilder {
   Checkpoint* InitCheckpoint ();
  private: // Phi
   Expr* NewPhi( Expr* , Expr* , ControlFlow* );
+ private: // Iterator
+  Expr* NewItrNew  ( Expr* , ControlFlow* , const BytecodeLocation& );
+  Expr* NewItrNext ( Expr* , ControlFlow* , const BytecodeLocation& );
+  Expr* NewItrTest ( Expr* , ControlFlow* , const BytecodeLocation& );
+  Expr* NewItrDeref( Expr* , ControlFlow* , const BytecodeLocation& );
+
  private: // Misc
   // Helper function to generate exit Phi node and also link the return and guard nodes to the
   // success and fail node of the HIR graph
@@ -337,24 +343,23 @@ class GraphBuilder {
  private: // Build bytecode
   // Just build *one* BC isntruction , this will not build certain type of BCs
   // since it is expected other routine to consume those BCs
-  StopReason BuildBytecode  ( BytecodeIterator* itr );
-  StopReason BuildBasicBlock( BytecodeIterator* itr , const std::uint32_t* end_pc = NULL );
+  StopReason BuildBytecode  ( BytecodeIterator* );
+  StopReason BuildBasicBlock( BytecodeIterator* , const std::uint32_t* end_pc = NULL );
 
   // Build branch IR graph
-  void InsertPhi( Environment* , Environment* , ControlFlow* );
-  void GeneratePhi( ValueStack* , const ValueStack& , const ValueStack& ,std::size_t ,
-                                                                         std::size_t ,
-                                                                         ControlFlow* );
-
-  StopReason BuildIf     ( BytecodeIterator* itr );
+  void InsertPhi  ( Environment* , Environment*      , ControlFlow* );
+  void GeneratePhi( ValueStack*  , const ValueStack& , const ValueStack& ,std::size_t ,
+                                                                          std::size_t ,
+                                                                          ControlFlow* );
+  StopReason BuildIf     ( BytecodeIterator* );
   // This function is invoked when the condition's boolean value is cleared, the we directly
   // do DCE on the fly without generating those branch construct at all
-  StopReason TryFoldIf   ( BytecodeIterator* itr );
+  StopReason TryFoldIf   ( BytecodeIterator* );
   StopReason BuildIfBlock( BytecodeIterator* , const std::uint32_t* );
   // Build logical IR graph
-  StopReason BuildLogic  ( BytecodeIterator* itr );
+  StopReason BuildLogic  ( BytecodeIterator* );
   // Build ternary IR graph
-  StopReason BuildTernary( BytecodeIterator* itr );
+  StopReason BuildTernary( BytecodeIterator* );
   // Build loop IR graph
   //
   // The core/tricky part of the loop IR is where to insert PHI due to we cannot see
@@ -363,22 +368,23 @@ class GraphBuilder {
   // modified inside of the loop and these variables are not local variable inside of
   // the loop. So we just insert PHI before hand and at last we patch the PHI to correct
   // its *second input operand* since the modification comes later in the loop.
-  Expr* BuildLoopEndCondition( BytecodeIterator* itr , ControlFlow* );
-  StopReason BuildLoop       ( BytecodeIterator* itr );
-  StopReason BuildLoopBody   ( BytecodeIterator* itr , ControlFlow* );
-  StopReason BuildForeverLoop( BytecodeIterator* itr );
+  Expr* BuildLoopEndCondition( BytecodeIterator* , ControlFlow* );
+
+  StopReason TryFoldLoop     ( BytecodeIterator* );
+  StopReason BuildLoop       ( BytecodeIterator* );
+  StopReason BuildLoopBody   ( BytecodeIterator* , ControlFlow* );
+  StopReason BuildForeverLoop( BytecodeIterator* );
   void GenerateLoopPhi       ();
   void PatchLoopPhi          ();
 
   // Iterate until we see FEEND/FEND1/FEND2/FEVREND
-  StopReason BuildLoopBlock  ( BytecodeIterator* itr );
+  StopReason BuildLoopBlock  ( BytecodeIterator* );
   void PatchUnconditionalJump( UnconditionalJumpList* , ControlFlow* , const BytecodeLocation& );
  private:
   // ----------------------------------------------------------------------------------
   // Inline
   // ----------------------------------------------------------------------------------
   bool IsInlineFrame() const { return func_info_.size() > 1; }
-
   // try to do an inline, if we cannot inline it, it will fallback to generate a call node.
   // otherwise, it will inline the function into the graph directly
   bool NewCall           ( BytecodeIterator* );
@@ -389,24 +395,23 @@ class GraphBuilder {
  private:
   // Zone owned by the Graph object, and it is supposed to be stay around while the
   // optimization happenened
-  zone::Zone*                zone_;
-  zone::Zone                 temp_zone_;
-  ControlFlow*               region_;
+  zone::Zone*                         zone_;
+  zone::Zone                          temp_zone_;
+  ControlFlow*                        region_;
   // Folder to perform on the fly expression optimization
-  std::unique_ptr<FolderChain> folder_chain_;
-
-  Handle<Script>             script_;
-  Graph*                     graph_;
+  std::unique_ptr<FolderChain>        folder_chain_;
+  Handle<Script>                      script_;
+  Graph*                              graph_;
   // Working set data , used when doing inline and other stuff
-  Environment*               env_;
+  Environment*                        env_;
   // Type trace for speculative operation generation
-  const RuntimeTrace&        runtime_trace_;
+  const RuntimeTrace&                 runtime_trace_;
   // Inliner , checks for inline operation
-  std::unique_ptr<Inliner>   inliner_;
+  std::unique_ptr<Inliner>            inliner_;
   // Tracked information
   zone::stl::ZoneVector<FuncInfo>     func_info_;
   zone::stl::ZoneVector<ControlFlow*> trap_list_;
- private:
+
   class OSRScope ;
   class InlineScope;
   class FuncScope;
@@ -419,6 +424,8 @@ class GraphBuilder {
   friend class LoopScope;
   friend class BackupEnvironment;
   friend class Environment;
+
+  LAVA_DISALLOW_COPY_AND_ASSIGN(GraphBuilder)
 };
 
 // --------------------------------------------------------------------------
@@ -500,7 +507,7 @@ GraphBuilder::Environment::Environment( zone::Zone* zone , GraphBuilder* gb ):
   effect_   (),
   cp_       (gb->InitCheckpoint())
 {
-  effect_.Init(gb->temp_zone(),InitBarrier::New(gb->graph()));
+  effect_.Init(InitBarrier::New(gb->graph()));
 }
 
 GraphBuilder::Environment::Environment( const Environment& env , int type ):
@@ -515,12 +522,12 @@ GraphBuilder::Environment::Environment( const Environment& env , int type ):
   WriteEffect* effect = NULL;
   if(type == LOOP_SCOPE) {
     // create a loop effect phi node for loop scope
-    effect = LoopEffectPhi::New( gb_->graph() , env.effect()->joined_write_effect() );
+    effect = LoopEffectPhi::New( gb_->graph() , env.effect()->write_effect() );
   } else {
-    effect = env.effect()->joined_write_effect();
+    effect = env.effect()->write_effect();
   }
   // initialize effect object inside of this environment
-  effect_.Init(gb_->temp_zone(),effect);
+  effect_.Init(effect);
 }
 
 GraphBuilder::Environment::Environment( const Environment& env ):
@@ -537,7 +544,7 @@ GraphBuilder::Environment::Environment( const Environment& env ):
 
 void GraphBuilder::Environment::InsertBranchStartEffect( ControlFlow* region ) {
   auto se = BranchStartEffect::New(gb_->graph());
-  effect()->root()->UpdateWriteEffect(se);
+  effect()->UpdateWriteEffect(se);
   region->AddStmt(se);
 }
 
@@ -567,7 +574,7 @@ Expr* GraphBuilder::Environment::GetUpValue( std::uint8_t index ) {
     return v;
   } else {
     auto uget = UGet::New(gb_->graph_,index,gb_->method_index());
-    effect()->root()->AddReadEffect(uget);
+    effect()->AddReadEffect(uget);
     upvalue()->at(index) = uget;
     return uget;
   }
@@ -575,7 +582,7 @@ Expr* GraphBuilder::Environment::GetUpValue( std::uint8_t index ) {
 
 void GraphBuilder::Environment::SetUpValue( std::uint8_t index , Expr* value ) {
   auto uset = USet::New(gb_->graph_,index,gb_->method_index(),value);
-  effect()->root()->UpdateWriteEffect(uset);
+  effect()->UpdateWriteEffect(uset);
   gb_->region()->AddStmt(uset);
   upvalue()->at(index) = value;
 }
@@ -587,7 +594,7 @@ Expr* GraphBuilder::Environment::GetGlobal ( const void* key , std::size_t lengt
     return itr->value;
   } else {
     auto gget = GGet::New(gb_->graph_,key_provider());
-    effect()->root()->AddReadEffect(gget);
+    effect()->AddReadEffect(gget);
     global_.push_back(GlobalVar(key,length,gget));
     return gget;
   }
@@ -597,7 +604,7 @@ void GraphBuilder::Environment::SetGlobal( const void* key , std::size_t length 
                                                              const KeyProvider& key_provider ,
                                                              Expr* value ) {
   auto gset = GSet::New(gb_->graph_,key_provider(),value);
-  effect()->root()->UpdateWriteEffect(gset);
+  effect()->UpdateWriteEffect(gset);
   gb_->region()->AddStmt(gset);
 
   auto itr = std::find(global_.begin(),global_.end(),Str(key,length));
@@ -636,9 +643,9 @@ class GraphBuilder::FuncScope {
 
 class GraphBuilder::InlineScope {
  public:
-  InlineScope( GraphBuilder* , const Handle<Prototype>& , std::size_t new_base ,
-                                                          bool        tcall ,
-                                                          ControlFlow* );
+  InlineScope( GraphBuilder* , const Handle<Prototype>& , std::size_t ,
+                                                          bool        ,
+                                                          ControlFlow*);
   ~InlineScope();
  private:
   GraphBuilder* gb_;
@@ -879,13 +886,13 @@ Expr* GraphBuilder::NewBoolean( bool value ) {
 
 IRList* GraphBuilder::NewIRList( std::size_t size ) {
   auto ret = IRList::New(graph_,size);
-  env()->effect()->root()->UpdateWriteEffect(ret);
+  env()->effect()->UpdateWriteEffect(ret);
   return ret;
 }
 
 IRObject* GraphBuilder::NewIRObject( std::size_t size ) {
   auto ret = IRObject::New(graph_,size);
-  env()->effect()->root()->UpdateWriteEffect(ret);
+  env()->effect()->UpdateWriteEffect(ret);
   return ret;
 }
 
@@ -1087,7 +1094,7 @@ Expr* GraphBuilder::NewBinaryFallback( Expr* lhs , Expr* rhs , Binary::Operator 
     return NULL;
   }
 
-  env()->effect()->root()->UpdateWriteEffect(write_effect);
+  env()->effect()->UpdateWriteEffect(write_effect);
   region()->AddStmt(write_effect);
   return write_effect;
 }
@@ -1120,6 +1127,45 @@ Expr* GraphBuilder::NewPhi( Expr* lhs , Expr* rhs , ControlFlow* region ) {
     return n;
   else
     return Phi::New(graph_,lhs,rhs,region);
+}
+
+// ========================================================================
+// Iterator
+// ========================================================================
+Expr* GraphBuilder::NewItrNew( Expr* object , ControlFlow* region , const BytecodeLocation& pc ) {
+  (void)pc;
+
+  auto inew = ItrNew::New(graph_,object);
+  region->AddStmt(inew);
+  env()->effect()->UpdateWriteEffect(inew);
+  return inew;
+}
+
+Expr* GraphBuilder::NewItrNext( Expr* object , ControlFlow* region , const BytecodeLocation& pc ) {
+  (void)pc;
+
+  auto inext = ItrNext::New(graph_,object);
+  region->AddStmt(inext);
+  env()->effect()->UpdateWriteEffect(inext);
+  return inext;
+}
+
+Expr* GraphBuilder::NewItrTest( Expr* object , ControlFlow* region , const BytecodeLocation& pc ) {
+  (void)pc;
+
+  auto itest = ItrTest::New(graph_,object);
+  region->AddStmt(itest);
+  env()->effect()->UpdateWriteEffect(itest);
+  return itest;
+}
+
+Expr* GraphBuilder::NewItrDeref( Expr* object , ControlFlow* region , const BytecodeLocation& pc ) {
+  (void)pc;
+
+  auto ideref = ItrDeref::New(graph_,object);
+  region->AddStmt(ideref);
+  env()->effect()->UpdateWriteEffect(ideref);
+  return ideref;
 }
 
 // ========================================================================
@@ -1169,7 +1215,7 @@ Expr* GraphBuilder::LowerICall( ICall* node , const BytecodeLocation& pc ) {
       }
       break;
     case INTRINSIC_CALL_ITER:
-      return ItrNew::New(graph_,node->GetArgument(0));
+      return NewItrNew(node->GetArgument(0),region(),pc);
       break;
     default: break;
   }
@@ -1185,21 +1231,21 @@ Expr* GraphBuilder::TryFoldTyppedPGet ( Expr* object , Expr* key , const Bytecod
 
   // assumption is object is typped, regardless via a GUARD or naturally typped
   // try to fold the reference lookup here
-  auto ref = folder_chain_->Fold(graph_,ObjectFindFolderData{object,key,env()->effect()->joined_write_effect()});
+  auto ref = folder_chain_->Fold(graph_,ObjectFindFolderData{object,key,env()->effect()->write_effect()});
   if(!ref) {
     // create a ObjectFind node
     auto of = ObjectFind::New(graph_,object,key,env()->cp());
-    env()->effect()->root()->AddReadEffect(of);
+    env()->effect()->AddReadEffect(of);
     // try to fold the newly created reference node
     ref = folder_chain_->Fold(graph_,ExprFolderData{of});
   }
   // try to fold the get operation
   if(auto new_ret = folder_chain_->Fold(graph_,
-        ObjectRefGetFolderData{ref,env()->effect()->joined_write_effect()}); new_ret) {
+        ObjectRefGetFolderData{ref,env()->effect()->write_effect()}); new_ret) {
     return new_ret;
   } else {
     auto ret = ObjectRefGet::New(graph_,ref);
-    env()->effect()->root()->AddReadEffect(ret);
+    env()->effect()->AddReadEffect(ret);
     return ret;
   }
 
@@ -1225,7 +1271,7 @@ Expr* GraphBuilder::NewPGetFallback( Expr* object , Expr* key , const BytecodeLo
   auto ret = PGet::New(graph_,object,key);
   auto cp = GenerateCheckpoint(bc);
   cp->AddOperand(ret);
-  env()->effect()->root()->UpdateWriteEffect(ret);
+  env()->effect()->UpdateWriteEffect(ret);
   region()->AddStmt(ret);
   return ret;
 }
@@ -1243,18 +1289,18 @@ Expr* GraphBuilder::TryFoldTyppedPSet ( Expr* object , Expr* key , Expr* value ,
   lava_debug(CRAZY,lava_verify(GetTypeInference(object) == TPKIND_OBJECT););
 
   auto ref = folder_chain_->Fold(graph_,
-      ObjectFindFolderData{object,key,env()->effect()->joined_write_effect()});
+      ObjectFindFolderData{object,key,env()->effect()->write_effect()});
   if(!ref) {
     auto of = ObjectFind::New(graph_,object,key,env()->cp());
-    env()->effect()->root()->AddReadEffect(of);
+    env()->effect()->AddReadEffect(of);
     ref = folder_chain_->Fold(graph_,ExprFolderData{of});
   }
   if(auto new_ret = folder_chain_->Fold(graph_,
-        ObjectRefSetFolderData{ref,value,env()->effect()->joined_write_effect()}); new_ret) {
+        ObjectRefSetFolderData{ref,value,env()->effect()->write_effect()}); new_ret) {
     return new_ret; // store collapsing
   } else {
     auto ret = ObjectRefSet::New(graph_,ref,value);
-    env()->effect()->root()->UpdateWriteEffect(ret);
+    env()->effect()->UpdateWriteEffect(ret);
     region()->AddStmt(ret);
     return ret;
   }
@@ -1280,7 +1326,7 @@ Expr* GraphBuilder::NewPSetFallback( Expr* object , Expr* key , Expr* value ,
   auto ret = PSet::New(graph_,object,key,value);
   auto cp = GenerateCheckpoint(bc);
   cp->AddOperand(ret);
-  env()->effect()->root()->UpdateWriteEffect(ret);
+  env()->effect()->UpdateWriteEffect(ret);
   region()->AddStmt(ret);
   return ret;
 }
@@ -1300,19 +1346,19 @@ Expr* GraphBuilder::TryFoldTyppedISet( Expr* object , Expr* index , Expr* value 
   lava_debug(CRAZY,lava_verify(GetTypeInference(object) == TPKIND_LIST););
 
   auto ref = folder_chain_->Fold(graph_,
-      ListIndexFolderData{object,index,env()->effect()->joined_write_effect()});
+      ListIndexFolderData{object,index,env()->effect()->write_effect()});
   if(!ref) {
     auto of = ListIndex::New(graph_,object,index,env()->cp());
-    env()->effect()->root()->AddReadEffect(of);
+    env()->effect()->AddReadEffect(of);
     ref = folder_chain_->Fold(graph_,ExprFolderData{of});
   }
 
   if(auto new_ret = folder_chain_->Fold(graph_,
-        ListRefSetFolderData{ref,value,env()->effect()->joined_write_effect()}); new_ret) {
+        ListRefSetFolderData{ref,value,env()->effect()->write_effect()}); new_ret) {
     return new_ret;
   } else {
     auto ret = ListRefSet::New(graph_,ref,value);
-    env()->effect()->root()->UpdateWriteEffect(ret);
+    env()->effect()->UpdateWriteEffect(ret);
     region()->AddStmt(ret);
     return ret;
   }
@@ -1336,7 +1382,7 @@ Expr* GraphBuilder::NewISetFallback( Expr* object, Expr* index, Expr* value , co
   auto ret = ISet::New(graph_,object,index,value);
   auto cp  = GenerateCheckpoint(bc);
   cp->AddOperand(ret);
-  env()->effect()->root()->UpdateWriteEffect(ret);
+  env()->effect()->UpdateWriteEffect(ret);
   region()->AddStmt(ret);
   return ret;
 }
@@ -1353,19 +1399,19 @@ Expr* GraphBuilder::TryFoldTyppedIGet( Expr* object , Expr* index , const Byteco
   (void)bc;
   lava_debug(CRAZY,lava_verify(GetTypeInference(object) == TPKIND_LIST););
   auto ref = folder_chain_->Fold(graph_,
-      ListIndexFolderData{object,index,env()->effect()->joined_write_effect()});
+      ListIndexFolderData{object,index,env()->effect()->write_effect()});
   if(!ref) {
     auto of = ListIndex::New(graph_,object,index,env()->cp());
-    env()->effect()->root()->AddReadEffect(of);
+    env()->effect()->AddReadEffect(of);
     ref = folder_chain_->Fold(graph_,ExprFolderData{of});
   }
 
   if(auto new_ret = folder_chain_->Fold(graph_,
-        ListRefGetFolderData{ref,env()->effect()->joined_write_effect()}); new_ret) {
+        ListRefGetFolderData{ref,env()->effect()->write_effect()}); new_ret) {
     return new_ret;
   } else {
     auto ret = ListRefGet::New(graph_,ref);
-    env()->effect()->root()->AddReadEffect(ret);
+    env()->effect()->AddReadEffect(ret);
     return ret;
   }
 }
@@ -1387,7 +1433,7 @@ Expr* GraphBuilder::NewIGetFallback( Expr* object, Expr* index , const BytecodeL
   auto ret = IGet::New(graph_,object,index);
   auto cp  = GenerateCheckpoint(bc);
   cp->AddOperand(ret);
-  env()->effect()->root()->UpdateWriteEffect(ret);
+  env()->effect()->UpdateWriteEffect(ret);
   region()->AddStmt(ret);
   return ret;
 }
@@ -1806,8 +1852,14 @@ void GraphBuilder::PatchLoopPhi() {
     switch(e.type) {
       case LoopInfo::VAR:
         if(phi->IsUsed()) {
-          Expr* node = StackGet(e.idx);
-          lava_debug(NORMAL,lava_verify(phi != node););
+          auto node = StackGet(e.idx);
+
+          lava_debug(NORMAL,lava_assert (phi != node,"What happened here may be the bytecode make "
+                                                     "bytecode_analyzer.cc failed. It detects a node "
+                                                     "that is modified inside of a loop but also in  "
+                                                     "its parental lexical scope. However this is not "
+                                                     "true since the variable is actually not referenced "
+                                                     "inside of the loop nest"););
           phi->AddOperand(node);
           if(auto p = folder_chain_->Fold(graph_,ExprFolderData{phi}); p) phi->Replace(p);
         } else {
@@ -1840,30 +1892,34 @@ void GraphBuilder::PatchLoopPhi() {
 // ============================================================
 Expr* GraphBuilder::BuildLoopEndCondition( BytecodeIterator* itr , ControlFlow* body ) {
   (void)body;
-  // now we should stop at the FEND1/FEND2/FEEND instruction
-  if(itr->opcode() == BC_FEND1) {
-    std::uint8_t a1,a2,a3; std::uint32_t a4;
-    itr->GetOperand(&a1,&a2,&a3,&a4);
-    return NewBinary(StackGet(a1),StackGet(a2),Binary::LT,itr->bytecode_location());
-  } else if(itr->opcode() == BC_FEND2) {
-    std::uint8_t a1,a2,a3; std::uint32_t a4;
-    itr->GetOperand(&a1,&a2,&a3,&a4);
-    lava_debug(NORMAL,lava_verify(StackGet(a1)->IsPhi()););
-    // the addition node will use the PHI node as its left hand side
-    auto addition = NewBinary(StackGet(a1),StackGet(a3), Binary::ADD, itr->bytecode_location());
-    // store the PHI node back to the slot
-    StackSet(a1,addition);
-    // construct comparison node
-    return NewBinary(StackGet(a1),StackGet(a2), Binary::LT, itr->bytecode_location());
-  } else if(itr->opcode() == BC_FEEND) {
-    std::uint8_t a1;
-    std::uint16_t pc;
-    itr->GetOperand(&a1,&pc);
-    ItrNext* comparison = ItrNext::New(graph_,StackGet(a1));
-    return comparison;
-  } else {
-    return NewBoolean(true);
+  switch(itr->opcode()) {
+    case BC_FEND1:
+      {
+        std::uint8_t a1,a2,a3; std::uint32_t a4;
+        itr->GetOperand(&a1,&a2,&a3,&a4);
+        return NewBinary(StackGet(a1),StackGet(a2),Binary::LT,itr->bytecode_location());
+      }
+    case BC_FEND2:
+      {
+        std::uint8_t a1,a2,a3; std::uint32_t a4;
+        itr->GetOperand(&a1,&a2,&a3,&a4);
+        lava_debug(NORMAL,lava_verify(StackGet(a1)->IsPhi()););
+        auto addition = NewBinary(StackGet(a1),StackGet(a3), Binary::ADD, itr->bytecode_location());
+        StackSet(a1,addition);
+        return NewBinary(StackGet(a1),StackGet(a2), Binary::LT, itr->bytecode_location());
+      }
+    case BC_FEEND:
+      {
+        std::uint8_t a1;
+        std::uint16_t pc;
+        itr->GetOperand(&a1,&pc);
+        return NewItrNext(StackGet(a1),body,itr->bytecode_location());
+      }
+    default:
+      return NewBoolean(true);
   }
+
+  lava_die(); return NULL;
 }
 
 GraphBuilder::StopReason
@@ -1933,8 +1989,7 @@ GraphBuilder::BuildLoopBody( BytecodeIterator* itr , ControlFlow* loop_header ) 
     PatchLoopPhi();
 
     // set the loop effect phi node's backward effect operand , must be after PatchLoopPhi call
-    func_info().current_loop().loop_effect_phi->SetBackwardEffect(
-        env()->effect()->joined_write_effect());
+    func_info().current_loop().loop_effect_phi->SetBackwardEffect(env()->effect()->write_effect());
 
     // break should jump here which is *after* the merge region
     brk_pc = itr->bytecode_location();
@@ -1957,36 +2012,60 @@ GraphBuilder::BuildLoopBody( BytecodeIterator* itr , ControlFlow* loop_header ) 
   return STOP_SUCCESS;
 }
 
-GraphBuilder::StopReason
-GraphBuilder::BuildLoop( BytecodeIterator* itr ) {
+GraphBuilder::StopReason GraphBuilder::TryFoldLoop( BytecodeIterator* itr ) {
+  switch(itr->opcode()) {
+    case BC_FSTART:
+      {
+        // try to check whether condition is simply a boolean constant, then
+        // we can save the efforts to craft a LoopHeader node which is useless
+        auto cond = StackGet(kAccRegisterIndex);
+        if(auto bval = false; GetBooleanValue(cond,&bval)) {
+          if(bval) {
+            // skip loop start code
+            itr->Move();
+            // build rest of the loop without using LoopHeader node
+            return BuildLoopBody(itr,region());
+          } else {
+            std::uint8_t a1; std::uint16_t a2;
+            itr->GetOperand(&a1,&a2);
+            itr->BranchTo(a2); // skip the loop body
+            return STOP_SUCCESS;
+          }
+        }
+      }
+      break;
+    case BC_FEVRSTART:
+      // forever loop construction
+      return BuildLoopBody(itr,region());
+    default:
+      break;
+  }
+  return STOP_NA;
+}
+
+GraphBuilder::StopReason GraphBuilder::BuildLoop( BytecodeIterator* itr ) {
   lava_debug(NORMAL,lava_verify(IsLoopStartBytecode(itr->opcode())););
-  LoopHeader* loop_header = LoopHeader::New(graph_,region());
-  // set the current region to be loop header
+  // try to fold the loop to simplify the graph a little bit
+  if(auto ret = TryFoldLoop(itr); ret == STOP_SUCCESS)
+    return STOP_SUCCESS;
+
+  // normal path for loop graph
+  auto loop_header = LoopHeader::New(graph_,region());
   set_region(loop_header);
-  // construct the loop's first branch. all loop here are automatically
-  // inversed
   if(itr->opcode() == BC_FSTART) {
-    std::uint8_t a1; std::uint16_t a2;
-    itr->GetOperand(&a1,&a2);
     loop_header->set_condition(StackGet(kAccRegisterIndex));
   } else if(itr->opcode() == BC_FESTART) {
     std::uint8_t a1; std::uint16_t a2;
     itr->GetOperand(&a1,&a2);
-    // create ir ItrNew which basically initialize the itr and also do
-    // a test against the iterator to see whether it is workable
-    ItrNew* inew = ItrNew::New(graph_,StackGet(a1));
+    auto inew  = NewItrNew (StackGet(a1),loop_header,itr->bytecode_location());
+    auto itest = NewItrTest(inew        ,loop_header,itr->bytecode_location());
     StackSet(a1,inew);
-    ItrTest* itest = ItrTest::New(graph_,inew);
     loop_header->set_condition(itest);
   } else {
-    lava_debug(NORMAL,lava_verify(itr->opcode() == BC_FEVRSTART););
-    /**
-     * for forever loop, we still build the structure of inverse loop, but just
-     * mark the condition to be true. later pass for eliminating branch will take
-     * care of this false inversed loop if
-     */
-    loop_header->set_condition(NewBoolean(true));
+    lava_unreachF("should not reach here, forever loop should be "
+                  "foleded before , bytecode %s",itr->opcode_name());
   }
+
   // skip the loop start bytecode
   itr->Move();
   return BuildLoopBody(itr,loop_header);
@@ -2242,7 +2321,7 @@ GraphBuilder::StopReason GraphBuilder::BuildBytecode( BytecodeIterator* itr ) {
     case BC_IDREF:
       lava_debug(NORMAL,lava_verify(func_info().HasLoop()););
       {
-        ItrDeref*  iref = ItrDeref::New(graph_,StackGet(a3));
+        auto iref       = NewItrDeref    (StackGet(a3),region(),itr->bytecode_location());
         Projection* key = Projection::New(graph_,iref,ItrDeref::PROJECTION_KEY);
         Projection* val = Projection::New(graph_,iref,ItrDeref::PROJECTION_VAL);
         StackSet(a1,key);
@@ -2378,8 +2457,7 @@ void GraphBuilder::SetupOSRLoopCondition( BytecodeIterator* itr ) {
     std::uint8_t a1;
     std::uint16_t pc;
     itr->GetOperand(&a1,&pc);
-    ItrNext* comparison = ItrNext::New(graph_,StackGet(a1));
-    StackSet(a1,comparison);
+    StackSet(a1,NewItrNext(StackGet(a1),region(),itr->bytecode_location()));
   } else {
     lava_debug(NORMAL,lava_verify(itr->opcode() == BC_FEVREND););
   }

@@ -483,7 +483,7 @@ inline ItrDeref* ItrDeref::New( Graph* graph , Expr* operand ) {
   return ret;
 }
 
-inline void Phi::set_region( ControlFlow* region ) {
+inline void PhiNode::set_region( ControlFlow* region ) {
 	lava_debug(NORMAL,lava_verify(!region_););
 	region_ = region;
 	region->AddOperand(this);
@@ -494,11 +494,6 @@ inline void Phi::RemovePhiFromRegion( Phi* phi ) {
     lava_verify(phi->region()->RemoveOperand(phi));
   }
 }
-
-inline Phi::Phi( Graph* graph , std::uint32_t id ):
-  Expr           (HIR_PHI,id,graph),
-  region_        ()
-{}
 
 inline Phi* Phi::New( Graph* graph , Expr* lhs , Expr* rhs , ControlFlow* region ) {
   auto ret = graph->zone()->New<Phi>(graph,graph->AssignID());

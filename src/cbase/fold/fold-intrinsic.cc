@@ -54,13 +54,15 @@ class IntrinsicFolder : public Folder {
 
 #define _1 Expr*
 #define _2 Expr* , Expr*
+#define _3 Expr* , Expr* , Expr*
 #define __(A,B,C) Expr* Fold##A( Graph* , _##C );
 
 LAVA_DEFINE_INTRINSIC_FOLD(__)
 
 #undef __ // __
-#undef _1 // _1
+#undef _3 // _3
 #undef _2 // _2
+#undef _1 // _1
 
 };
 
@@ -267,6 +269,7 @@ Expr* IntrinsicFolder::FoldICall( Graph* graph , ICall* node ) {
 
 #define _1        node->Operand(0)
 #define _2        node->Operand(0) , node->Operand(1)
+#define _3        node->Operand(0) , node->Operand(1) , node->Operand(2)
 #define __(A,B,C) case INTRINSIC_CALL_##B: return Fold##A( graph , _##C );
 
   switch(node->ic()) {
@@ -275,8 +278,9 @@ Expr* IntrinsicFolder::FoldICall( Graph* graph , ICall* node ) {
   }
 
 #undef __ // __
-#undef _1 // _1
+#undef _3 // _3
 #undef _2 // _2
+#undef _1 // _1
 
   lava_die(); return NULL;
 }

@@ -279,9 +279,32 @@ class GraphBuilder {
   Expr* NewBinaryFallback   ( Expr* , Expr* , Binary::Operator );
   // Ternary
   Expr* NewTernary( Expr* , Expr* , Expr* , const BytecodeLocation& );
-  // Intrinsic
+
+ private: // Intrinsic
   Expr* NewICall  ( std::uint8_t ,std::uint8_t ,std::uint8_t ,bool , const BytecodeLocation& );
+
+  // Lower intrinsic call into internal node
   Expr* LowerICall( ICall* , const BytecodeLocation& );
+
+  // Math intrinsic function lowering
+  Expr* LowerICallMin   ( ICall* , const BytecodeLocation& );
+  Expr* LowerICallMax   ( ICall* , const BytecodeLocation& );
+  Expr* LowerICallAbs   ( ICall* , const BytecodeLocation& );
+
+  // Bit operations
+  Expr* LowerICallLShift( ICall* , const BytecodeLocation& );
+  Expr* LowerICallRShift( ICall* , const BytecodeLocation& );
+  Expr* LowerICallLRo   ( ICall* , const BytecodeLocation& );
+  Expr* LowerICallRRo   ( ICall* , const BytecodeLocation& );
+  Expr* LowerICallBAnd  ( ICall* , const BytecodeLocation& );
+  Expr* LowerICallBOr   ( ICall* , const BytecodeLocation& );
+
+  Expr* LowerICallUpdate( ICall* , const BytecodeLocation& );
+  Expr* LowerICallSet   ( ICall* , const BytecodeLocation& );
+  Expr* LowerICallGet   ( ICall* , const BytecodeLocation& );
+  Expr* LowerICallPut   ( ICall* , const BytecodeLocation& );
+  Expr* LowerICallIter  ( ICall* , const BytecodeLocation& );
+
  private: // Property/Index Get/Set
   Expr* TrySpeculativePSet( Expr* , Expr* , Expr* , const BytecodeLocation& );
   Expr* TryFoldTyppedPSet ( Expr* , Expr* , Expr* , const BytecodeLocation& );
@@ -1193,32 +1216,6 @@ Expr* GraphBuilder::NewICall( std::uint8_t a1 , std::uint8_t a2 , std::uint8_t a
 }
 
 Expr* GraphBuilder::LowerICall( ICall* node , const BytecodeLocation& pc ) {
-  switch(node->ic()) {
-    case INTRINSIC_CALL_UPDATE:
-      {
-        auto k = node->GetArgument(1);
-        if(k->IsString()) {
-          return NewPSet(node->GetArgument(0),k,node->GetArgument(2),pc);
-        } else {
-          return NewISet(node->GetArgument(0),k,node->GetArgument(2),pc);
-        }
-      }
-      break;
-    case INTRINSIC_CALL_GET:
-      {
-        auto k = node->GetArgument(1);
-        if(k->IsString()) {
-          return NewPGet(node->GetArgument(0),k,pc);
-        } else {
-          return NewIGet(node->GetArgument(0),k,pc);
-        }
-      }
-      break;
-    case INTRINSIC_CALL_ITER:
-      return NewItrNew(node->GetArgument(0),region(),pc);
-      break;
-    default: break;
-  }
   return NULL;
 }
 

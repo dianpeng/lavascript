@@ -8,6 +8,35 @@ namespace {
 
 using namespace ::lavascript::interpreter;
 
+#define LAVA_DEFINE_INTRINSIC_FOLD(__)        \
+   /* arithmetic */                           \
+   __(Min,MIN,2)                              \
+   __(Max,MAX,2)                              \
+   __(Sqrt,SQRT,1)                            \
+   __(Sin,SIN,1)                              \
+   __(Cos,COS,1)                              \
+   __(Tan,TAN,1)                              \
+   __(Abs,ABS,1)                              \
+   __(Ceil,CEIL,1)                            \
+   __(Floor,FLOOR,1)                          \
+   /* bits */                                 \
+   __(LShift,LSHIFT,2)                        \
+   __(RShift,RSHIFT,2)                        \
+   __(LRo,LRO,2)                              \
+   __(RRo,RRO,2)                              \
+   __(BAnd,BAND,2)                            \
+   __(BOr ,BOR ,2)                            \
+   __(BXor,BXOR,2)                            \
+   /* conversion */                           \
+   __(Int,INT,1)                              \
+   __(Real,REAL,1)                            \
+   __(String,STRING,1)                        \
+   __(Boolean,BOOLEAN,1)                      \
+   /* misc */                                 \
+   __(Type,TYPE,1)                            \
+   __(Len,LEN,1)                              \
+   __(Empty,EMPTY,1)
+
 // Folder implementation
 class IntrinsicFolder : public Folder {
  public:
@@ -19,10 +48,24 @@ class IntrinsicFolder : public Folder {
    inline bool AsUInt8 ( Expr* , std::uint8_t* );
    inline bool AsUInt32( Expr* , std::uint32_t* );
    inline bool AsReal  ( Expr* , double* );
+
+ private:
    Expr* FoldICall     ( Graph*, ICall* );
+
+#define _1 Expr*
+#define _2 Expr* , Expr*
+#define __(A,B,C) Expr* Fold##A( Graph* , _##C );
+
+LAVA_DEFINE_INTRINSIC_FOLD(__)
+
+#undef __ // __
+#undef _1 // _1
+#undef _2 // _2
+
 };
 
 LAVA_REGISTER_FOLDER("intrinsic-folder",IntrinsicFolderFactory,IntrinsicFolder);
+
 
 bool IntrinsicFolder::CanFold( const FolderData& data ) const {
   if(data.fold_type() == FOLD_EXPR) {
@@ -64,215 +107,178 @@ inline bool IntrinsicFolder::AsReal  ( Expr* node , double* real ) {
   return false;
 }
 
-Expr* IntrinsicFolder::FoldICall( Graph* graph , ICall* node ) {
-  switch(node->ic()) {
-    case INTRINSIC_CALL_MAX:
-      {
-        double a1 ,a2;
-        if(AsReal(node->Operand(0),&a1) &&
-            AsReal(node->Operand(1),&a2)) {
-          return (Float64::New(graph,std::max(a1,a2)));
-        }
-      }
-      break;
-    case INTRINSIC_CALL_MIN:
-      {
-        double a1,a2;
-        if(AsReal(node->Operand(0),&a1) &&
-            AsReal(node->Operand(1),&a2)) {
-          return (Float64::New(graph,std::min(a1,a2)));
-        }
-      }
-      break;
-    case INTRINSIC_CALL_SQRT:
-      {
-        double a1;
-        if(AsReal(node->Operand(0),&a1)) {
-          return (Float64::New(graph,std::sqrt(a1)));
-        }
-      }
-      break;
-    case INTRINSIC_CALL_SIN:
-      {
-        double a1;
-        if(AsReal(node->Operand(0),&a1)) {
-          return (Float64::New(graph,std::sin(a1)));
-        }
-      }
-      break;
-    case INTRINSIC_CALL_COS:
-      {
-        double a1;
-        if(AsReal(node->Operand(0),&a1)) {
-          return (Float64::New(graph,std::cos(a1)));
-        }
-      }
-      break;
-    case INTRINSIC_CALL_TAN:
-      {
-        double a1;
-        if(AsReal(node->Operand(0),&a1)) {
-          return (Float64::New(graph,std::tan(a1)));
-        }
-      }
-      break;
-    case INTRINSIC_CALL_ABS:
-      {
-        double a1;
-        if(AsReal(node->Operand(0),&a1)) {
-          return (Float64::New(graph,std::abs(a1)));
-        }
-      }
-      break;
-    case INTRINSIC_CALL_CEIL:
-      {
-        double a1;
-        if(AsReal(node->Operand(0),&a1)) {
-          return (Float64::New(graph,std::ceil(a1)));
-        }
-      }
-      break;
-    case INTRINSIC_CALL_FLOOR:
-      {
-        double a1;
-        if(AsReal(node->Operand(0),&a1)) {
-          return (Float64::New(graph,std::floor(a1)));
-        }
-      }
-      break;
-    case INTRINSIC_CALL_LSHIFT:
-      {
-        std::uint32_t a1;
-        std::uint8_t  a2;
-        if(AsUInt32(node->Operand(0),&a1) &&
-            AsUInt8(node->Operand(1),&a2)) {
-          return (Float64::New(graph,static_cast<double>(a1 << a2)));
-        }
-      }
-      break;
-    case INTRINSIC_CALL_RSHIFT:
-      {
-        std::uint32_t a1;
-        std::uint8_t  a2;
-        if(AsUInt32(node->Operand(0),&a1) &&
-            AsUInt8 (node->Operand(1),&a2)) {
-          return (Float64::New(graph,static_cast<double>(a1 >> a2)));
-        }
-      }
-      break;
-    case INTRINSIC_CALL_LRO:
-      {
-        std::uint32_t a1;
-        std::uint8_t  a2;
-        if(AsUInt32(node->Operand(0),&a1) &&
-            AsUInt8 (node->Operand(1),&a2)) {
-          return (Float64::New(graph,static_cast<double>(bits::BRol(a1,a2))));
-        }
-      }
-      break;
-    case INTRINSIC_CALL_RRO:
-      {
-        std::uint32_t a1;
-        std::uint8_t  a2;
-        if(AsUInt32(node->Operand(0),&a1) &&
-            AsUInt8 (node->Operand(1),&a2)) {
-          return (Float64::New(graph,static_cast<double>(bits::BRor(a1,a2))));
-        }
-      }
-      break;
-    case INTRINSIC_CALL_BAND:
-      {
-        std::uint32_t a1;
-        std::uint32_t a2;
-        if(AsUInt32(node->Operand(0),&a1) &&
-            AsUInt32(node->Operand(1),&a2)) {
-          return (Float64::New(graph,static_cast<double>((a1 & a2))));
-        }
-      }
-      break;
-    case INTRINSIC_CALL_BOR:
-      {
-        std::uint32_t a1;
-        std::uint32_t a2;
-        if(AsUInt32(node->Operand(0),&a1) &&
-            AsUInt32(node->Operand(1),&a2)) {
-          return (Float64::New(graph,static_cast<double>(a1 | a2)));
-        }
-      }
-      break;
-    case INTRINSIC_CALL_BXOR:
-      {
-        std::uint32_t a1;
-        std::uint32_t a2;
-        if(AsUInt32(node->Operand(0),&a1) &&
-            AsUInt32(node->Operand(1),&a2)) {
-          return (Float64::New(graph,static_cast<double>(a1 ^ a2)));
-        }
-      }
-      break;
-    case INTRINSIC_CALL_INT:
-      {
-        auto n1 = node->Operand(0);
-        switch(n1->type()) {
-          case HIR_FLOAT64:
-            return Float64::New(graph, CastRealAndStoreAsReal<std::int32_t>(n1->AsFloat64()->value()));
-          case HIR_LONG_STRING: case HIR_SMALL_STRING:
-            {
-              double dv;
-              if(LexicalCast(n1->AsZoneString().data(),&dv)) {
-                return Float64::New(graph,CastRealAndStoreAsReal<std::int32_t>(dv));
-              }
-            }
-            break;
-          case HIR_BOOLEAN:
-            return Float64::New(graph,n1->AsBoolean()->value() ? 1.0 : 0.0);
-          default:
-            break;
-        }
-      }
-      break;
-    case INTRINSIC_CALL_REAL:
-      {
-        auto n1 = node->Operand(0);
-        switch(n1->type()) {
-          case HIR_FLOAT64:
-            return Float64::New(graph,n1->AsFloat64()->value());
-          case HIR_LONG_STRING: case HIR_SMALL_STRING:
-            {
-              double val;
-              if(LexicalCast(n1->AsZoneString().data(),&val)) {
-                return Float64::New(graph,val);
-              }
-            }
-            break;
-          case HIR_BOOLEAN:
-            return Float64::New(graph,n1->AsBoolean()->value() ? 1.0 : 0.0);
-          default:
-            break;
-        }
-      }
-      break;
-    case INTRINSIC_CALL_STRING:
-      {
-        auto n1 = node->Operand(0);
-        switch(n1->type()) {
-          case HIR_FLOAT64:
-            return NewStringFromReal( graph , n1->AsFloat64()->value());
-          case HIR_LONG_STRING:
-            return LString::New(graph,n1->AsLString()->value());
-          case HIR_SMALL_STRING:
-            return SString::New(graph,n1->AsSString()->value());
-          case HIR_BOOLEAN:
-            return NewStringFromBoolean(graph,n1->AsBoolean()->value());
-          default:
-            break;
-        }
-      }
-      break;
-    default:
-      break;
+// ----------------------------------------------------------------------
+// Fold
+// ----------------------------------------------------------------------
+Expr* IntrinsicFolder::FoldMin( Graph* graph , Expr* lhs , Expr* rhs ) {
+  double lv , rv;
+  if( AsReal(lhs,&lv) && AsReal(rhs,&rv) ) {
+    return Float64::New(graph,std::min(lv,rv));
   }
-  return NULL; // nothing can be done
+  return NULL;
+}
+
+Expr* IntrinsicFolder::FoldMax( Graph* graph , Expr* lhs , Expr* rhs ) {
+  double lv , rv;
+  if( AsReal(lhs,&lv) && AsReal(rhs,&rv) ) {
+    return Float64::New(graph,std::max(lv,rv));
+  }
+  return NULL;
+}
+
+Expr* IntrinsicFolder::FoldSqrt( Graph* graph , Expr* lhs ) {
+  if(double opr; AsReal(lhs,&opr)) {
+    return Float64::New(graph,std::sqrt(opr));
+  }
+  return NULL;
+}
+
+Expr* IntrinsicFolder::FoldSin( Graph* graph , Expr* lhs ) {
+  if(double opr; AsReal(lhs,&opr)) {
+    return Float64::New(graph,std::sin(opr));
+  }
+  return NULL;
+}
+
+Expr* IntrinsicFolder::FoldCos( Graph* graph , Expr* lhs ) {
+  if(double opr; AsReal(lhs,&opr)) {
+    return Float64::New(graph,std::cos(opr));
+  }
+  return NULL;
+}
+
+Expr* IntrinsicFolder::FoldTan( Graph* graph , Expr* lhs ) {
+  if(double opr; AsReal(lhs,&opr)) {
+    return Float64::New(graph,std::tan(opr));
+  }
+  return NULL;
+}
+
+Expr* IntrinsicFolder::FoldAbs( Graph* graph , Expr* lhs ) {
+  if(double opr; AsReal(lhs,&opr)) {
+    return Float64::New(graph,std::abs(opr));
+  }
+  return NULL;
+}
+
+Expr* IntrinsicFolder::FoldCeil( Graph* graph , Expr* lhs ) {
+  if(double opr; AsReal(lhs,&opr)) {
+    return Float64::New(graph,std::ceil(opr));
+  }
+  return NULL;
+}
+
+Expr* IntrinsicFolder::FoldFloor( Graph* graph , Expr* lhs ) {
+  if(double opr; AsReal(lhs,&opr)) {
+    return Float64::New(graph,std::floor(opr));
+  }
+  return NULL;
+}
+
+Expr* IntrinsicFolder::FoldLShift( Graph* graph , Expr* lhs , Expr* rhs ) {
+  std::uint32_t lv;
+  std::uint8_t  rv;
+  if(AsUInt32(lhs,&lv) && AsUInt8(rhs,&rv)) {
+    return Float64::New(graph,static_cast<double>(lv << rv));
+  }
+  return NULL;
+}
+
+Expr* IntrinsicFolder::FoldRShift( Graph* graph , Expr* lhs , Expr* rhs ) {
+  std::uint32_t lv;
+  std::uint8_t  rv;
+  if(AsUInt32(lhs,&lv) && AsUInt8(rhs,&rv)) {
+    return Float64::New(graph,static_cast<double>(lv >> rv));
+  }
+  return NULL;
+}
+
+Expr* IntrinsicFolder::FoldLRo   ( Graph* graph , Expr* lhs , Expr* rhs ) {
+  std::uint32_t lv;
+  std::uint8_t  rv;
+  if(AsUInt32(lhs,&lv) && AsUInt8(rhs,&rv)) {
+    return Float64::New(graph,static_cast<double>(bits::BRol(lv,rv)));
+  }
+  return NULL;
+}
+
+Expr* IntrinsicFolder::FoldRRo   ( Graph* graph , Expr* lhs , Expr* rhs ) {
+  std::uint32_t lv;
+  std::uint8_t  rv;
+  if(AsUInt32(lhs,&lv) && AsUInt8(rhs,&rv)) {
+    return Float64::New(graph,static_cast<double>(bits::BRor(lv,rv)));
+  }
+  return NULL;
+}
+
+Expr* IntrinsicFolder::FoldBAnd  ( Graph* graph , Expr* lhs , Expr* rhs ) {
+  std::uint32_t lv,rv;
+  if(AsUInt32(lhs,&lv) && AsUInt32(rhs,&rv)) {
+    return Float64::New(graph,static_cast<double>(lv & rv));
+  }
+  return NULL;
+}
+
+Expr* IntrinsicFolder::FoldBOr   ( Graph* graph , Expr* lhs , Expr* rhs ) {
+  std::uint32_t lv,rv;
+  if(AsUInt32(lhs,&lv) && AsUInt32(rhs,&rv)) {
+    return Float64::New(graph,static_cast<double>(lv | rv));
+  }
+  return NULL;
+}
+
+Expr* IntrinsicFolder::FoldBXor  ( Graph* graph , Expr* lhs , Expr* rhs ) {
+  std::uint32_t lv,rv;
+  if(AsUInt32(lhs,&lv) && AsUInt32(rhs,&rv)) {
+    return Float64::New(graph,static_cast<double>(lv ^ rv));
+  }
+  return NULL;
+}
+
+Expr* IntrinsicFolder::FoldInt( Graph* graph , Expr* lhs ) {
+  return NULL;
+}
+
+Expr* IntrinsicFolder::FoldReal( Graph* graph , Expr* lhs ) {
+  return NULL;
+}
+
+Expr* IntrinsicFolder::FoldString( Graph* graph , Expr* lhs ) {
+  return NULL;
+}
+
+Expr* IntrinsicFolder::FoldBoolean( Graph* graph , Expr* lhs ) {
+  return NULL;
+}
+
+Expr* IntrinsicFolder::FoldType( Graph* graph , Expr* lhs ) {
+  return NULL;
+}
+
+Expr* IntrinsicFolder::FoldLen( Graph* graph , Expr* lhs ) {
+  return NULL;
+}
+
+Expr* IntrinsicFolder::FoldEmpty( Graph* graph , Expr* lhs ) {
+  return NULL;
+}
+
+Expr* IntrinsicFolder::FoldICall( Graph* graph , ICall* node ) {
+
+#define _1        node->Operand(0)
+#define _2        node->Operand(0) , node->Operand(1)
+#define __(A,B,C) case INTRINSIC_CALL_##B: return Fold##A( graph , _##C );
+
+  switch(node->ic()) {
+    LAVA_DEFINE_INTRINSIC_FOLD(__)
+    default: return NULL;
+  }
+
+#undef __ // __
+#undef _1 // _1
+#undef _2 // _2
+
+  lava_die(); return NULL;
 }
 
 } // namespace

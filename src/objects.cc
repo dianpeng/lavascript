@@ -316,55 +316,105 @@ void Prototype::Dump( DumpWriter* writer , const std::string& source ) const {
     std::uint16_t a1_16 , a2_16;
     std::uint32_t a4;
 
+    // print out schema
+    writer->WriteL("%-10s %-10s %-4s %-4s %-4s %-4s | %s <%s,%s> %s",
+        "count",
+        "name" ,
+        "arg1" ,
+        "arg2" ,
+        "arg3" ,
+        "arg4" ,
+        "roff" ,
+        "beg"  ,
+        "end"  ,
+        "code");
+
     for( ; bi.HasNext() ; bi.Move() ) {
       const SourceCodeInfo& sci = GetSci(count);
       switch(bi.type()) {
         case interpreter::TYPE_B:
           bi.GetOperand(&a1_8,&a2_16);
-          writer->WriteL("%-10zu. %-10s %d %d  | %d <%d,%d> %s",count,bi.opcode_name(),a1_8,a2_16,
+          writer->WriteL("%-10zu. %-10s %-4d %-12d %2s %d <%d,%d> %s",
+              count,
+              bi.opcode_name(),
+              a1_8,a2_16,
+              "|",
               GetRegOffset(count),
-              sci.start, sci.end, GetSourceSnippetInOneLine(source,sci).c_str());
+              sci.start, sci.end,
+              GetSourceSnippetInOneLine(source,sci).c_str());
           break;
         case interpreter::TYPE_C:
           bi.GetOperand(&a1_16,&a2_8);
-          writer->WriteL("%-10zu. %-10s %d %d  | %d <%d,%d> %s",count,bi.opcode_name(),a1_16,a2_8,
+          writer->WriteL("%-10zu. %-10s %-4d %-12d %2s %d <%d,%d> %s",
+              count,
+              bi.opcode_name(),
+              a1_16,a2_8,
+              "|",
               GetRegOffset(count),
-              sci.start, sci.end, GetSourceSnippetInOneLine(source,sci).c_str());
+              sci.start, sci.end,
+              GetSourceSnippetInOneLine(source,sci).c_str());
           break;
         case interpreter::TYPE_D:
           bi.GetOperand(&a1_8,&a2_8,&a3_8);
-          writer->WriteL("%-10zu. %-10s %d %d %d  | %d <%d,%d> %s",count,bi.opcode_name(),a1_8,a2_8,a3_8,
+          writer->WriteL("%-10zu. %-10s %-4d %-4d %-8d %1s %d <%d,%d> %s",
+              count,
+              bi.opcode_name(),
+              a1_8,a2_8,a3_8,
+              "|",
               GetRegOffset(count),
-              sci.start, sci.end,GetSourceSnippetInOneLine(source,sci).c_str());
+              sci.start, sci.end,
+              GetSourceSnippetInOneLine(source,sci).c_str());
           break;
         case interpreter::TYPE_E:
           bi.GetOperand(&a1_8,&a2_8);
-          writer->WriteL("%-10zu. %-10s %d %d  | %d <%d,%d> %s",count,bi.opcode_name(),a1_8,a2_8,
+          writer->WriteL("%-10zu. %-10s %-4d %-12d %2s %d <%d,%d> %s",
+              count,
+              bi.opcode_name(),
+              a1_8,a2_8,
+              "|",
               GetRegOffset(count),
-              sci.start, sci.end,GetSourceSnippetInOneLine(source,sci).c_str());
+              sci.start, sci.end,
+              GetSourceSnippetInOneLine(source,sci).c_str());
           break;
         case interpreter::TYPE_F:
           bi.GetOperand(&a1_8);
-          writer->WriteL("%-10zu. %-10s %d  | %d <%d,%d> %s",count,bi.opcode_name(),a1_8,
+          writer->WriteL("%-10zu. %-10s %-16d %3s %d <%d,%d> %s",
+              count,
+              bi.opcode_name(),
+              a1_8,
+              "|",
               GetRegOffset(count),
-              sci.start, sci.end,GetSourceSnippetInOneLine(source,sci).c_str());
+              sci.start, sci.end,
+              GetSourceSnippetInOneLine(source,sci).c_str());
           break;
         case interpreter::TYPE_G:
           bi.GetOperand(&a1_16);
-          writer->WriteL("%-10zu. %-10s %d  | %d <%d,%d> %s",count,bi.opcode_name(),a1_16,
+          writer->WriteL("%-10zu. %-10s %-16d %3s %d <%d,%d> %s",
+              count,
+              bi.opcode_name(),
+              a1_16,
+              "|",
               GetRegOffset(count),
-              sci.start, sci.end,GetSourceSnippetInOneLine(source,sci).c_str());
+              sci.start, sci.end,
+              GetSourceSnippetInOneLine(source,sci).c_str());
           break;
         case interpreter::TYPE_H:
           bi.GetOperand(&a1_8,&a2_8,&a3_8,&a4);
-          writer->WriteL("%-10zu. %-10s %d %d %d %d | %d <%d,%d> %s",count,bi.opcode_name(),
+          writer->WriteL("%-10zu. %-10s %-4d %-4d %-4d %-4d| %d <%d,%d> %s",
+              count,
+              bi.opcode_name(),
               a1_8,a2_8,a3_8,a4,
               GetRegOffset(count),
-              sci.start, sci.end,GetSourceSnippetInOneLine(source,sci).c_str());
+              sci.start, sci.end,
+              GetSourceSnippetInOneLine(source,sci).c_str());
           break;
         default:
-          writer->WriteL("%-10zu. %-10s  | %d <%d,%d> %s",count,bi.opcode_name(),sci.start,sci.end,
+          writer->WriteL("%-10zu. %-10s  %19s %d <%d,%d> %s",
+              count,
+              bi.opcode_name(),
+              "|",
               GetRegOffset(count),
+              sci.start,sci.end,
               GetSourceSnippetInOneLine(source,sci).c_str());
           break;
       }

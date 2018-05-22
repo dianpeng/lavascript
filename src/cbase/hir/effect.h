@@ -30,13 +30,13 @@ struct ReadEffectEdge {
   bool IsEmpty() const { return node == NULL; }
 };
 
-LAVA_CBASE_HIR_DEFINE(EffectNode,public Expr) {
+LAVA_CBASE_HIR_DEFINE(NO_META,EffectNode,public Expr) {
  public:
   EffectNode( IRType type , std::uint32_t id , Graph* graph ): Expr(type,id,graph) {}
 };
 
 // Represents a general read which should depend on certain node's side effect.
-LAVA_CBASE_HIR_DEFINE(ReadEffect,public EffectNode) {
+LAVA_CBASE_HIR_DEFINE(NO_META,ReadEffect,public EffectNode) {
  public:
   // read effect constructor
   ReadEffect( IRType type , std::uint32_t id , Graph* graph ):
@@ -61,7 +61,7 @@ LAVA_CBASE_HIR_DEFINE(ReadEffect,public EffectNode) {
 };
 
 // Represent a general write which should bring some side effect
-LAVA_CBASE_HIR_DEFINE(WriteEffect,public EffectNode ,public SingleNodeLink<WriteEffect>) {
+LAVA_CBASE_HIR_DEFINE(NO_META,WriteEffect,public EffectNode ,public SingleNodeLink<WriteEffect>) {
  public:
   // write effect constructor
   WriteEffect( IRType type , std::uint32_t id , Graph* graph ):
@@ -111,7 +111,7 @@ LAVA_CBASE_HIR_DEFINE(WriteEffect,public EffectNode ,public SingleNodeLink<Write
 // invalid. When a barrier node is emitted it means this node is *pinned* into
 // the control flow block and cannot be moved. So these nodes are not floating
 // essentially
-LAVA_CBASE_HIR_DEFINE(EffectBarrier,public WriteEffect) {
+LAVA_CBASE_HIR_DEFINE(NO_META,EffectBarrier,public WriteEffect) {
  public:
   EffectBarrier( IRType type , std::uint32_t id , Graph* graph ):
     WriteEffect  (type,id,graph) {}
@@ -120,7 +120,7 @@ LAVA_CBASE_HIR_DEFINE(EffectBarrier,public WriteEffect) {
 // HardBarrier is a type of barrier that cannot be moved , basically no way to
 // do code motion. It is a hard barrier that prevents any operations happend
 // after hoisting and also operation happened before sinking.
-LAVA_CBASE_HIR_DEFINE(HardBarrier,public EffectBarrier) {
+LAVA_CBASE_HIR_DEFINE(NO_META,HardBarrier,public EffectBarrier) {
  public:
   HardBarrier( IRType type , std::uint32_t id , Graph* graph ):
     EffectBarrier(type,id,graph) {}
@@ -130,13 +130,13 @@ LAVA_CBASE_HIR_DEFINE(HardBarrier,public EffectBarrier) {
 // way to mark the barrier chain at certain conrol flow node, ie branch or loop
 // The operation happened after the SoftBarrier can be moved *cross* the barrier
 // node.
-LAVA_CBASE_HIR_DEFINE(SoftBarrier,public EffectBarrier) {
+LAVA_CBASE_HIR_DEFINE(NO_META,SoftBarrier,public EffectBarrier) {
  public:
   SoftBarrier( IRType type , std::uint32_t id , Graph* graph ):
     EffectBarrier(type,id,graph) {}
 };
 
-LAVA_CBASE_HIR_DEFINE(EffectPhiBase,public HardBarrier) {
+LAVA_CBASE_HIR_DEFINE(NO_META,EffectPhiBase,public HardBarrier) {
  public:
   EffectPhiBase( IRType type , std::uint32_t id , Graph* graph ) :
     HardBarrier(type,id,graph) {}

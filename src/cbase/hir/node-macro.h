@@ -7,4 +7,7 @@
 // use hand crafted type mapping and make core easier to maintain.
 #define LAVA_CBASE_HIR_DEFINE(META,NAME,...) class NAME : __VA_ARGS__
 
+// Marker to mark the define macro to be with no meta node
+#define NO_META
+
 #endif // CBASE_HIR_NODE_MACRO_H_

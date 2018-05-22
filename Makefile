@@ -15,7 +15,10 @@ RUNTIME_DEBUG     :=-D_FORTIFY_SOURCE=2 -D_GLIBCXX_ASSERTIONS
 LUA               =luajit
 TOOL              =$(PWD)/tool/
 CBASE_HIR_DIR     = src/cbase/hir
-CBASE_HIR_MAP_GEN = $(CBASE_HIR_DIR)/node-type-map.generate.h
+
+CBASE_HIR_EXPR_LIST_GEN = $(CBASE_HIR_DIR)/node-type.expr.generated.h
+CBASE_HIR_CF_LIST_GEN   = $(CBASE_HIR_DIR)/node-type.cf.generated.h
+CBASE_HIR_MAP_GEN       = $(CBASE_HIR_DIR)/node-type-map.generate.h
 
 # All interesting CXX flags needed to compile lavascript
 ## c++17 support
@@ -59,9 +62,17 @@ $(INTERP_OBJECT): $(INTERP_SOURCE)
 	$(CXX) $(CXXFLAGS) -c src/interpreter/x64-interpreter.dasc.pp.cc -o $(INTERP_OBJECT) $(LDFLAGS)
 
 $(HIR_MAP_SOURCE):
-	$(TOOL)/hir-preprocessor.py --dir $(CBASE_HIR_DIR) --output $(CBASE_HIR_MAP_GEN)
+	$(TOOL)/hir-preprocessor.py --dir $(CBASE_HIR_DIR) --type-map $(CBASE_HIR_MAP_GEN)
 
-artifact : $(INTERP_OBJECT) $(HIR_MAP_SOURCE)
+hir_node_type:
+	$(TOOL)/hir-preprocessor.py --dir $(CBASE_HIR_DIR) --xmacro $(CBASE_HIR_EXPR_LIST_GEN) \
+		--xmacro-temp '{class:<24},{Tag:<24},{Name:<24},{Leaf:<6},{Effect:<10}'              \
+		--xmacro-base Expr --xmacro-leaf --xmacro-name CBASE_HIR_EXPRESSION
+	$(TOOL)/hir-preprocessor.py --dir $(CBASE_HIR_DIR) --xmacro $(CBASE_HIR_CF_LIST_GEN)   \
+		--xmacro-temp '{class:<24},{Tag:<24},{Name:<24},{Leaf:<6},{Effect:<10}'              \
+		--xmacro-base ControlFlow --xmacro-leaf --xmacro-name CBASE_HIR_CONTROL_FLOW
+
+artifact : $(INTERP_OBJECT) $(HIR_MAP_SOURCE) hir_node_type
 .PHONY: artifact
 
 # -------------------------------------------------------------------------------
@@ -114,5 +125,7 @@ clean:
 	find src/ -type f -name *.o -exec rm {} \;
 	rm -rf $(INTERP_SOURCE)
 	rm -rf $(CBASE_HIR_MAP_GEN)
+	rm -rf $(CBASE_HIR_EXPR_LIST_GEN)
+	rm -rf $(CBASE_HIR_CF_LIST_GEN)
 	rm -rf $(TESTOBJECT)
 	rm -rf liblavascript.a

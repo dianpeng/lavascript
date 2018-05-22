@@ -44,7 +44,7 @@ LAVA_CBASE_HIR_DEFINE(Tag=BOOLEAN;Name="boolean";Leaf=Leaf;Effect=NoEffect,
   LAVA_DISALLOW_COPY_AND_ASSIGN(Boolean)
 };
 
-LAVA_CBASE_HIR_DEFINE(Tag=LSTRING;Name="lstring";Leaf=Leaf;Effect=NoEffect,
+LAVA_CBASE_HIR_DEFINE(Tag=LONG_STRING;Name="lstring";Leaf=Leaf;Effect=NoEffect,
     LString,public Expr) {
  public:
   inline static LString* New( Graph* , const LongString& );
@@ -66,7 +66,7 @@ LAVA_CBASE_HIR_DEFINE(Tag=LSTRING;Name="lstring";Leaf=Leaf;Effect=NoEffect,
   LAVA_DISALLOW_COPY_AND_ASSIGN(LString)
 };
 
-LAVA_CBASE_HIR_DEFINE(Tag=SSTRING;Name="sstring";Leaf=Leaf;Effect=NoEffect,
+LAVA_CBASE_HIR_DEFINE(Tag=SMALL_STRING;Name="sstring";Leaf=Leaf;Effect=NoEffect,
     SString,public Expr) {
  public:
   inline static SString* New( Graph* , const SSO& );

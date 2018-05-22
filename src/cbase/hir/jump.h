@@ -26,7 +26,7 @@ LAVA_CBASE_HIR_DEFINE(Tag=JUMP;Name="jump";Leaf=NoLeaf;Effect=NoEffect,
   LAVA_DISALLOW_COPY_AND_ASSIGN(Jump)
 };
 
-LAVA_CBASE_HIR_DEFINE(JumpWithValue,public ControlFlow) {
+LAVA_CBASE_HIR_DEFINE(NO_META,JumpWithValue,public ControlFlow) {
  public:
   Expr* value() const { return operand_list()->First(); }
   JumpWithValue( IRType type , Graph* graph , std::uint32_t id , Expr* value ,

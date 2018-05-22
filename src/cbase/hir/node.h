@@ -20,17 +20,10 @@ namespace hir        {
 
 enum IRType {
 #define __(A,B,...) HIR_##B,
-  /** expression related IRType **/
-  CBASE_HIR_EXPRESSION_START,
-  CBASE_HIR_EXPRESSION(__)
-  CBASE_HIR_EXPRESSION_END,
-  /** control flow related IRType **/
-  CBASE_HIR_CONTROL_FLOW_START,
-  CBASE_HIR_CONTROL_FLOW(__)
-  CBASE_HIR_CONTROL_FLOW_END
+  CBASE_HIR_LIST(__)
 #undef __ // __
+  SIZE_OF_HIR
 };
-#define SIZE_OF_HIR (CBASE_HIR_STMT_END-6)
 
 // IR classes forward declaration
 #define __(A,...) class A;

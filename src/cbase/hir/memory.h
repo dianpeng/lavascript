@@ -17,7 +17,7 @@ namespace hir        {
 // side effect which must be serialized. For each operation , we will find its memory node
 // if applicable and then all the operations will be serialized during graph building phase to
 // ensure correct program behavior
-LAVA_CBASE_HIR_DEFINE(MemoryNode,public Expr) {
+LAVA_CBASE_HIR_DEFINE(NO_META,MemoryNode,public Expr) {
  public:
   MemoryNode( IRType type , std::uint32_t id , Graph* g ): Expr(type,id,g){}
 };

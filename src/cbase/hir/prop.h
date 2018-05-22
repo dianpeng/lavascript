@@ -161,7 +161,7 @@ LAVA_CBASE_HIR_DEFINE(Tag=ISET;Name="iset";Leaf=NoLeaf;Effect=Effect,
 // possible node can produce boxed/unboxed node regards to list/object. So there're no
 // potential optimization can be performed on top of it hence no gain.
 
-LAVA_CBASE_HIR_DEFINE(ObjectResize,public SoftBarrier) {
+LAVA_CBASE_HIR_DEFINE(NO_META,ObjectResize,public SoftBarrier) {
  public:
   ObjectResize( IRType type , std::uint32_t id , Graph* graph , Expr* object , Expr* key ):
     SoftBarrier(type,id,graph)
@@ -175,7 +175,7 @@ LAVA_CBASE_HIR_DEFINE(ObjectResize,public SoftBarrier) {
   Expr* key   () const { return operand_list()->Last (); }
 };
 
-LAVA_CBASE_HIR_DEFINE(ListResize,public SoftBarrier) {
+LAVA_CBASE_HIR_DEFINE(NO_META,ListResize,public SoftBarrier) {
  public:
   ListResize( IRType type , std::uint32_t id , Graph* graph , Expr* object ,
                                                               Expr* index ,
@@ -193,7 +193,7 @@ LAVA_CBASE_HIR_DEFINE(ListResize,public SoftBarrier) {
   Checkpoint* checkpoint() const { return operand_list()->Last()->AsCheckpoint(); }
 };
 
-LAVA_CBASE_HIR_DEFINE(StaticRef,public ReadEffect) {
+LAVA_CBASE_HIR_DEFINE(NO_META,StaticRef,public ReadEffect) {
  public:
   StaticRef( IRType type , std::uint32_t id , Graph* graph ):
     ReadEffect(type,id,graph) {}
@@ -242,7 +242,7 @@ LAVA_CBASE_HIR_DEFINE(Tag=OBJECT_INSERT;Name="object_insert";Leaf=NoLeaf;Effect=
   LAVA_DISALLOW_COPY_AND_ASSIGN(ObjectInsert)
 };
 
-LAVA_CBASE_HIR_DEFINE(Tag=LIST_INDEXT;Name="list_index";Leaf=NoLeaf;Effect=Effect,
+LAVA_CBASE_HIR_DEFINE(Tag=LIST_INDEX;Name="list_index";Leaf=NoLeaf;Effect=Effect,
     ListIndex,public StaticRef) {
  public:
   static inline ListIndex* New( Graph* , Expr* , Expr* , Checkpoint* checkpoint );
@@ -321,7 +321,7 @@ class FieldRefNode {
 };
 
 
-LAVA_CBASE_HIR_DEFINE(RefGet,public ReadEffect) {
+LAVA_CBASE_HIR_DEFINE(NO_META,RefGet,public ReadEffect) {
  public:
   RefGet( IRType type , std::uint32_t id , Graph* graph , Expr* oref ):
     ReadEffect(type,id,graph)
@@ -330,7 +330,7 @@ LAVA_CBASE_HIR_DEFINE(RefGet,public ReadEffect) {
   Expr* ref() const { return operand_list()->First(); }
 };
 
-LAVA_CBASE_HIR_DEFINE(RefSet,public WriteEffect) {
+LAVA_CBASE_HIR_DEFINE(NO_META,RefSet,public WriteEffect) {
  public:
   RefSet( IRType type , std::uint32_t id , Graph* graph , Expr* oref,
                                                           Expr* value ):

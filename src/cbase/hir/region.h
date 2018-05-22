@@ -6,13 +6,14 @@ namespace lavascript {
 namespace cbase      {
 namespace hir        {
 
-LAVA_CBASE_HIR_DEFINE(Merge,public ControlFlow) {
+LAVA_CBASE_HIR_DEFINE(NO_META,Merge,public ControlFlow) {
  public:
   Merge( IRType type , std::uint32_t id , Graph* graph ):
     ControlFlow(type,id,graph) {}
 };
 
-LAVA_CBASE_HIR_DEFINE(Region,public Merge) {
+LAVA_CBASE_HIR_DEFINE(Tag=REGION;Name="region";Leaf=NoLeaf;Effect=NoEffect,
+    Region,public Merge) {
  public:
   inline static Region* New( Graph* );
   inline static Region* New( Graph* , ControlFlow* );
@@ -23,7 +24,8 @@ LAVA_CBASE_HIR_DEFINE(Region,public Merge) {
 
 // Fail node represents abnormal way to abort the execution. The most common reason
 // is because we failed at type guard or obviouse code bug.
-LAVA_CBASE_HIR_DEFINE(Fail,public Merge) {
+LAVA_CBASE_HIR_DEFINE(Tag=FAIL;Name="fail";Leaf=NoLeaf;Effect=NoEffect,
+    Fail,public Merge) {
  public:
   inline static Fail* New( Graph* );
   Fail( Graph* graph , std::uint32_t id ): Merge(HIR_FAIL,id,graph) {}
@@ -31,7 +33,8 @@ LAVA_CBASE_HIR_DEFINE(Fail,public Merge) {
   LAVA_DISALLOW_COPY_AND_ASSIGN(Fail)
 };
 
-LAVA_CBASE_HIR_DEFINE(Success,public Merge) {
+LAVA_CBASE_HIR_DEFINE(Tag=SUCCESS;Name="success";Leaf=NoLeaf;Effect=NoEffect,
+    Success,public Merge) {
  public:
   inline static Success* New( Graph* );
   Expr* return_value() const { return operand_list()->First(); }
@@ -41,7 +44,8 @@ LAVA_CBASE_HIR_DEFINE(Success,public Merge) {
 };
 
 // Special node of the graph
-LAVA_CBASE_HIR_DEFINE(Start,public ControlFlow) {
+LAVA_CBASE_HIR_DEFINE(Tag=START;Name="start";Leaf=NoLeaf;Effect=NoEffect,
+    Start,public ControlFlow) {
  public:
   inline static Start* New( Graph* );
   Start( Graph* graph , std::uint32_t id ): ControlFlow(HIR_START,id,graph) {}
@@ -49,7 +53,8 @@ LAVA_CBASE_HIR_DEFINE(Start,public ControlFlow) {
   LAVA_DISALLOW_COPY_AND_ASSIGN(Start)
 };
 
-LAVA_CBASE_HIR_DEFINE(End,public ControlFlow) {
+LAVA_CBASE_HIR_DEFINE(Tag=END;Name="end";Leaf=NoLeaf;Effect=NoEffect,
+    End,public ControlFlow) {
  public:
   inline static End* New( Graph* , Success* , Fail* );
   Success* success() const { return backward_edge()->First()->AsSuccess(); }
@@ -64,7 +69,8 @@ LAVA_CBASE_HIR_DEFINE(End,public ControlFlow) {
   LAVA_DISALLOW_COPY_AND_ASSIGN(End)
 };
 
-LAVA_CBASE_HIR_DEFINE(OSRStart,public ControlFlow) {
+LAVA_CBASE_HIR_DEFINE(Tag=OSR_START;Name="osr_start";Leaf=NoLeaf;Effect=NoEffect,
+    OSRStart,public ControlFlow) {
  public:
   inline static OSRStart* New( Graph* );
 
@@ -76,7 +82,8 @@ LAVA_CBASE_HIR_DEFINE(OSRStart,public ControlFlow) {
   LAVA_DISALLOW_COPY_AND_ASSIGN(OSRStart)
 };
 
-LAVA_CBASE_HIR_DEFINE(OSREnd,public ControlFlow) {
+LAVA_CBASE_HIR_DEFINE(Tag=OSR_END;Name="osr_end";Leaf=NoLeaf;Effect=NoEffect,
+    OSREnd,public ControlFlow) {
  public:
   inline static OSREnd* New( Graph* , Success* succ , Fail* f );
 
@@ -94,7 +101,8 @@ LAVA_CBASE_HIR_DEFINE(OSREnd,public ControlFlow) {
   LAVA_DISALLOW_COPY_AND_ASSIGN(OSREnd)
 };
 
-LAVA_CBASE_HIR_DEFINE(InlineStart,public ControlFlow) {
+LAVA_CBASE_HIR_DEFINE(Tag=INLINE_START;Name="inline_start";Leaf=NoLeaf;Effect=NoEffect,
+    InlineStart,public ControlFlow) {
  public:
   inline static InlineStart* New( Graph* , ControlFlow* );
 
@@ -106,7 +114,8 @@ LAVA_CBASE_HIR_DEFINE(InlineStart,public ControlFlow) {
   LAVA_DISALLOW_COPY_AND_ASSIGN(InlineStart)
 };
 
-LAVA_CBASE_HIR_DEFINE(InlineEnd,public ControlFlow) {
+LAVA_CBASE_HIR_DEFINE(Tag=INLINE_END;Name="inline_end";Leaf=NoLeaf;Effect=NoEffect,
+    InlineEnd,public ControlFlow) {
  public:
   inline static InlineEnd* New( Graph* , ControlFlow* );
   inline static InlineEnd* New( Graph* );

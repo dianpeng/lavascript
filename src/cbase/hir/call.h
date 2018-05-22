@@ -32,7 +32,7 @@ LAVA_CBASE_HIR_DEFINE(Tag=CALL;Name="call";Leaf=NoLeaf;Effect=Effect,
 // will lower all the intrinsic call directly into the graph instead of generating a call
 // node. it will only make sense when the graph is super blowed so we may just call an
 // external intrinsic call function
-LAVA_CBASE_HIR_DEFINE(TAG=ICALL;Name="icall";Leaf=NoLeaf;Effect=Effect,
+LAVA_CBASE_HIR_DEFINE(Tag=ICALL;Name="icall";Leaf=NoLeaf;Effect=Effect,
     ICall,public WriteEffect) {
  public:
   inline static ICall* New( Graph* , interpreter::IntrinsicCall , bool tail );

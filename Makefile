@@ -16,8 +16,8 @@ LUA               =luajit
 TOOL              =$(PWD)/tool/
 CBASE_HIR_DIR     = src/cbase/hir
 
-CBASE_HIR_EXPR_LIST_GEN = $(CBASE_HIR_DIR)/node-type.expr.generated.h
-CBASE_HIR_CF_LIST_GEN   = $(CBASE_HIR_DIR)/node-type.cf.generated.h
+CBASE_HIR_EXPR_LIST_GEN = $(CBASE_HIR_DIR)/node-type.expr.generate.h
+CBASE_HIR_CF_LIST_GEN   = $(CBASE_HIR_DIR)/node-type.cf.generate.h
 CBASE_HIR_MAP_GEN       = $(CBASE_HIR_DIR)/node-type-map.generate.h
 
 # All interesting CXX flags needed to compile lavascript

@@ -43,3 +43,4 @@ double2hex
 
 # CMake generated file
 dep/*/build/*
+*.generate.h

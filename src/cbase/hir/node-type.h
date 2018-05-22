@@ -1,8 +1,8 @@
 #ifndef CBASE_HIR_NODE_TYPE_H_
 #define CBASE_HIR_NODE_TYPE_H_
 
-#include "node-type.expr.generated.h"
-#include "node-type.cf.generated.h"
+#include "node-type.expr.generate.h"
+#include "node-type.cf.generate.h"
 
 #define CBASE_HIR_LIST(__)                                            \
   CBASE_HIR_EXPRESSION(__)                                            \

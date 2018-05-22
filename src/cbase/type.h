@@ -20,7 +20,7 @@ namespace cbase {
   __(primitive,PRIMITIVE)                               \
   __(number,NUMBER)                                     \
   __(float64,FLOAT64)                                   \
-  __(index  ,INDEX  )                                   \
+  __(int32  ,INT32)                                     \
   __(boolean,BOOLEAN)                                   \
   __(nil,NIL)                                           \
   __(reference,REFERENCE)                               \
@@ -78,6 +78,9 @@ class TPKind {
   // unknown means the type is a mixed , cannot tell what it actually is
   inline static bool IsUnknown  ( TypeKind tp ) {
     return !IsLiteral(tp) && !IsMutable(tp);
+  }
+  inline static bool IsLeaf( TypeKind tk ) const {
+    return Node(tk)->IsLeaf();
   }
  public:
   TypeKind type_kind() const { return type_kind_; }

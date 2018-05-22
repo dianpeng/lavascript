@@ -11,19 +11,21 @@ TEST              =$(shell find unittest/ -type f -name "*-test.cc")
 TESTOBJECT        =${TEST:.cc=.t}
 CXX               = g++
 #SANITIZER         =-fsanitize=address,undefined
-RUNTIME_DEBUG     :=-D_FORTIFY_SOURCE=2 -D_GLIBCXX_ASSERTIONS
+RUNTIME_DEBUG     =-D_FORTIFY_SOURCE=2 -D_GLIBCXX_ASSERTIONS
 LUA               =luajit
 TOOL              =$(PWD)/tool/
-CBASE_HIR_DIR     = src/cbase/hir
-
-CBASE_HIR_EXPR_LIST_GEN = $(CBASE_HIR_DIR)/node-type.expr.generate.h
-CBASE_HIR_CF_LIST_GEN   = $(CBASE_HIR_DIR)/node-type.cf.generate.h
-CBASE_HIR_MAP_GEN       = $(CBASE_HIR_DIR)/node-type-map.generate.h
 
 # All interesting CXX flags needed to compile lavascript
 ## c++17 support
 CXXFLAGS          += -std=c++17
 CXXFLAGS          += -Wall -Wextra -pipe
+
+
+CBASE_HIR_DIR           = src/cbase/hir
+CBASE_HIR_EXPR_LIST_GEN = $(CBASE_HIR_DIR)/node-type.expr.generate.h
+CBASE_HIR_CF_LIST_GEN   = $(CBASE_HIR_DIR)/node-type.cf.generate.h
+CBASE_HIR_MAP_GEN       = $(CBASE_HIR_DIR)/node-type-map.generate.h
+HIR_HEADER              = $(shell find src/cbase/hir -type f -name "*.h" ! -path "*.generate.h")
 # -------------------------------------------------------------------------------
 #
 # Dependency flags
@@ -61,10 +63,10 @@ $(INTERP_SOURCE): src/interpreter/x64-interpreter.dasc
 $(INTERP_OBJECT): $(INTERP_SOURCE)
 	$(CXX) $(CXXFLAGS) -c src/interpreter/x64-interpreter.dasc.pp.cc -o $(INTERP_OBJECT) $(LDFLAGS)
 
-$(HIR_MAP_SOURCE):
+$(HIR_MAP_SOURCE): $(HIR_HEADER)
 	$(TOOL)/hir-preprocessor.py --dir $(CBASE_HIR_DIR) --type-map $(CBASE_HIR_MAP_GEN)
 
-hir_node_type:
+hir_node_type: $(HIR_HEADER)
 	$(TOOL)/hir-preprocessor.py --dir $(CBASE_HIR_DIR) --xmacro $(CBASE_HIR_EXPR_LIST_GEN) \
 		--xmacro-temp '{class:<24},{Tag:<24},{Name:<24},{Leaf:<6},{Effect:<10}'              \
 		--xmacro-base Expr --xmacro-leaf --xmacro-name CBASE_HIR_EXPRESSION
@@ -73,7 +75,6 @@ hir_node_type:
 		--xmacro-base ControlFlow --xmacro-leaf --xmacro-name CBASE_HIR_CONTROL_FLOW
 
 artifact : $(INTERP_OBJECT) $(HIR_MAP_SOURCE) hir_node_type
-.PHONY: artifact
 
 # -------------------------------------------------------------------------------
 #

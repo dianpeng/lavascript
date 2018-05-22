@@ -24,6 +24,7 @@
 #include "effect.h"
 #include "guard.h"
 #include "prop.h"
+#include "arg.h"
 
 // control flow node
 #include "control-flow.h"

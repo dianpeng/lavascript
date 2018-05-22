@@ -6,46 +6,6 @@ namespace lavascript {
 namespace cbase      {
 namespace hir        {
 
-// MemoryNode
-// This node represents those nodes that is 1) mutable and 2) stay on heap or potentially
-// stay on heap.
-// 1. Arg
-// 2. IRList
-// 3. IRObject
-//
-// The above nodes are memory node since the mutation on these objects generates a observable
-// side effect which must be serialized. For each operation , we will find its memory node
-// if applicable and then all the operations will be serialized during graph building phase to
-// ensure correct program behavior
-LAVA_CBASE_HIR_DEFINE(NO_META,MemoryNode,public Expr) {
- public:
-  MemoryNode( IRType type , std::uint32_t id , Graph* g ): Expr(type,id,g){}
-};
-
-
-// --------------------------------------------------------------------------
-// Argument
-LAVA_CBASE_HIR_DEFINE(Tag=ARG;Name="arg";Leaf=Leaf;Effect=Effect,
-    Arg,public MemoryNode) {
- public:
-  inline static Arg* New( Graph* , std::uint32_t );
-  std::uint32_t index() const { return index_; }
-  Arg( Graph* graph , std::uint32_t id , std::uint32_t index ):
-    MemoryNode (HIR_ARG,id,graph),
-    index_(index)
-  {}
- public:
-  virtual std::uint64_t GVNHash() const {
-    return GVNHash1(type_name(),index());
-  }
-  virtual bool Equal( const Expr* that ) const {
-    return that->IsArg() && (that->AsArg()->index() == index());
-  }
- private:
-  std::uint32_t index_;
-  LAVA_DISALLOW_COPY_AND_ASSIGN(Arg)
-};
-
 // --------------------------------------------------------------------------
 // OSRLoad
 LAVA_CBASE_HIR_DEFINE(Tag=OSR_LOAD;Name="osr_load";Leaf=Leaf;Effect=Effect,

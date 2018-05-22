@@ -6,6 +6,29 @@ namespace lavascript {
 namespace cbase      {
 namespace hir        {
 
+// The specialized narrow integer representation. We choose int32 instead of int64 for
+// obvious reason of no need to worry about converting int32 back to float64 which cause
+// precision lost. int32 is totally contained by float64.
+LAVA_CBASE_HIR_DEFINE(Tag=INT64;Name="int32";Leaf=Leaf;Effect=NoEffect,
+    Int32,public Expr) {
+ public:
+  inline static Int32* New( Graph* , double );
+  std::int32_t       value() const { return value_; }
+
+  Int32( Graph* graph , std::uint32_t id , std::int32_t value ):
+    Expr(HIR_INT64,id,graph), value_(value) {}
+ public:
+  virtual std::uint64_t GVNHash() const {
+    return GVNHash1(type_name(),value_);
+  }
+  virtual bool Equal( const Expr* that ) const {
+    return that->IsInt32() && (that->AsInt32()->value() == value_);
+  }
+ private:
+  std::int32_t value_;
+  LAVA_DISALLOW_COPY_AND_ASSIGN(Int32)
+};
+
 LAVA_CBASE_HIR_DEFINE(Tag=FLOAT64;Name="float64";Leaf=Leaf;Effect=NoEffect,
     Float64,public Expr) {
  public:

@@ -268,6 +268,9 @@ class GraphBuilder {
   Expr* AddTypeFeedbackIfNeed( Expr* , const Value& , const BytecodeLocation& );
   // Create a guard node and linked it back to the current graph
   Guard* NewGuard            ( Test* , Checkpoint* );
+  // Check whether a node's type is the needed type
+  bool CheckType( Expr** , TypeKind     , std::size_t , const BytecodeLocation& );
+  bool CheckType( Expr** , const Value& , std::size_t , const BytecodeLocation& );
  private: // Arithmetic
   // Unary
   Expr* NewUnary            ( Expr* , Unary::Operator , const BytecodeLocation& );
@@ -307,22 +310,24 @@ class GraphBuilder {
 
  private: // Property/Index Get/Set
   Expr* TrySpeculativePSet( Expr* , Expr* , Expr* , const BytecodeLocation& );
-  Expr* TryFoldTyppedPSet ( Expr* , Expr* , Expr* , const BytecodeLocation& );
+  Expr* TryFoldTypedPSet ( Expr* , Expr* , Expr* , const BytecodeLocation& );
   Expr* NewPSetFallback   ( Expr* , Expr* , Expr* , const BytecodeLocation& );
   Expr* NewPSet           ( Expr* , Expr* , Expr* , const BytecodeLocation& );
 
   Expr* TrySpeculativePGet( Expr* , Expr* , const BytecodeLocation& );
-  Expr* TryFoldTyppedPGet ( Expr* , Expr* , const BytecodeLocation& );
+  Expr* TryFoldTypedPGet ( Expr* , Expr* , const BytecodeLocation& );
   Expr* NewPGetFallback   ( Expr* , Expr* , const BytecodeLocation& );
   Expr* NewPGet           ( Expr* , Expr* , const BytecodeLocation& );
 
+  Expr* GenerateRawIndex ( Expr* , const BytecodeLocation& );
+
   Expr* TrySpeculativeISet( Expr* , Expr* , Expr* , const BytecodeLocation& );
-  Expr* TryFoldTyppedISet ( Expr* , Expr* , Expr* , const BytecodeLocation& );
+  Expr* TryFoldTypedISet ( Expr* , Expr* , Expr* , const BytecodeLocation& );
   Expr* NewISetFallback   ( Expr* , Expr* , Expr* , const BytecodeLocation& );
   Expr* NewISet           ( Expr* , Expr* , Expr* , const BytecodeLocation& );
 
   Expr* TrySpeculativeIGet( Expr* , Expr* , const BytecodeLocation& );
-  Expr* TryFoldTyppedIGet ( Expr* , Expr* , const BytecodeLocation& );
+  Expr* TryFoldTypedIGet ( Expr* , Expr* , const BytecodeLocation& );
   Expr* NewIGetFallback   ( Expr* , Expr* , const BytecodeLocation& );
   Expr* NewIGet           ( Expr* , Expr* , const BytecodeLocation& );
 
@@ -342,8 +347,10 @@ class GraphBuilder {
   // Get a init checkpoint , checkpoint that has IRInfo points to the first of the bytecode ,
   // of the top most inlined function.
   Checkpoint* InitCheckpoint ();
+
  private: // Phi
   Expr* NewPhi( Expr* , Expr* , ControlFlow* );
+
  private: // Iterator
   Expr* NewItrNew  ( Expr* , ControlFlow* , const BytecodeLocation& );
   Expr* NewItrNext ( Expr* , ControlFlow* , const BytecodeLocation& );
@@ -935,6 +942,8 @@ Expr* GraphBuilder::AddTypeFeedbackIfNeed( Expr* node , const Value& value , con
 
 Expr* GraphBuilder::AddTypeFeedbackIfNeed( Expr* n , TypeKind tp , const BytecodeLocation& pc ) {
   (void)pc;
+  lava_debug(NORMAL,lava_verify(TPKind::IsLeaf(tp)););
+
   auto stp = GetTypeInference(n);
   if(stp != TPKIND_UNKNOWN) {
     /**
@@ -955,6 +964,33 @@ Expr* GraphBuilder::AddTypeFeedbackIfNeed( Expr* n , TypeKind tp , const Bytecod
   auto gd  = NewGuard(tt,env()->cp());
   // return the new guarded node
   return gd;
+}
+
+bool GraphBuilder::CheckType( Expr** object , TypeKind tp , std::size_t index , const BytecodeLocation& pc ) {
+  lava_debug(CRAZY,lava_verify(tp != TPKIND_UNKNOWN););
+  // 1. try static type checking
+  if(auto t = GetTypeInference(*object); t != TPKIND_UNKNOWN) {
+    auto res = false;
+    lava_verify(TPKind::Contain(tp,t,&res));
+    return res;
+  }
+
+  // 2. try type guard since we don't have a type guess
+  if(auto tt = runtime_trace_.GetTrace(pc.address()); tt) {
+    auto &v  = tt->data[index];
+    auto vt  = MapValueToTypeKind(v);
+    auto res = false;
+    lava_verify(TPKind::Contain(tp,vt,&res));
+
+    if(res) {
+      auto tt_node = TestType::New(graph_,vt,*object);
+      auto guard   = NewGuard(tt_node,env()->cp());
+      *object      = guard; // overwrite the old node with newly guarded node
+      return true;
+    }
+  }
+
+  return false;
 }
 
 // ========================================================================
@@ -1222,7 +1258,7 @@ Expr* GraphBuilder::LowerICall( ICall* node , const BytecodeLocation& pc ) {
 // ====================================================================
 // Property Get/Set
 // ====================================================================
-Expr* GraphBuilder::TryFoldTyppedPGet ( Expr* object , Expr* key , const BytecodeLocation& bc ) {
+Expr* GraphBuilder::TryFoldTypedPGet ( Expr* object , Expr* key , const BytecodeLocation& bc ) {
   (void)bc;
   lava_debug(CRAZY,lava_verify(GetTypeInference(object) == TPKIND_OBJECT););
 
@@ -1250,16 +1286,9 @@ Expr* GraphBuilder::TryFoldTyppedPGet ( Expr* object , Expr* key , const Bytecod
 }
 
 Expr* GraphBuilder::TrySpeculativePGet( Expr* object , Expr* key , const BytecodeLocation& bc ) {
-  // try to get the type of the object
-  if(auto tt = runtime_trace_.GetTrace(bc.address()); tt) {
-    if(auto &v = tt->data[1]; v.IsObject()) {
-      // the traced value shows that this instruction issues towards an object
-      // so we try to specialize towards object
-      object = AddTypeFeedbackIfNeed(object,TPKIND_OBJECT,bc);
-      return TryFoldTyppedPGet(object,key,bc);
-    }
-  } else if(auto tp = GetTypeInference(object); tp == TPKIND_OBJECT) {
-    return TryFoldTyppedPGet(object,key,bc);
+  lava_debug(NORMAL,lava_verify(key->IsString()););
+  if(CheckType(&object,TPKIND_OBJECT,1,bc)) {
+    return TryFoldTypedObject(object,key,bc);
   }
   return NULL;
 }
@@ -1280,7 +1309,7 @@ Expr* GraphBuilder::NewPGet( Expr* object , Expr* key , const BytecodeLocation& 
     return NewPGetFallback(object,key,bc);
 }
 
-Expr* GraphBuilder::TryFoldTyppedPSet ( Expr* object , Expr* key , Expr* value ,
+Expr* GraphBuilder::TryFoldTypedPSet ( Expr* object , Expr* key , Expr* value ,
                                                                    const BytecodeLocation& bc ) {
   (void)bc;
   lava_debug(CRAZY,lava_verify(GetTypeInference(object) == TPKIND_OBJECT););
@@ -1307,13 +1336,9 @@ Expr* GraphBuilder::TryFoldTyppedPSet ( Expr* object , Expr* key , Expr* value ,
 
 Expr* GraphBuilder::TrySpeculativePSet( Expr* object , Expr* key , Expr* value ,
                                                                    const BytecodeLocation& bc ) {
-  if(auto tt = runtime_trace_.GetTrace(bc.address()); tt) {
-    if(auto &v = tt->data[0]; v.IsObject()) {
-      object = AddTypeFeedbackIfNeed(object,TPKIND_OBJECT,bc);
-      return TryFoldTyppedPSet(object,key,value,bc);
-    }
-  } else if(auto tp = GetTypeInference(object); tp == TPKIND_OBJECT) {
-    return TryFoldTyppedPSet(object,key,value,bc);
+  lava_debug(NORMAL,lava_verify(key->IsString()););
+  if(CheckType(&object,TPKIND_OBJECT,0,bc)) {
+    return TryFoldTypedPSet(object,key,value,bc);
   }
   return NULL;
 }
@@ -1337,11 +1362,33 @@ Expr* GraphBuilder::NewPSet( Expr* object , Expr* key , Expr* value , const Byte
 // ====================================================================
 // Index Get/Set
 // ====================================================================
-Expr* GraphBuilder::TryFoldTyppedISet( Expr* object , Expr* index , Expr* value ,
-                                                                    const BytecodeLocation& bc ) {
+
+// This function is used to generate a raw unboxed index in int32 format. Noted, this
+// is a signed integer. This integer will be used tfor ListIndex node for indicating
+// the index of the node. And it also helps us to do double narrowing later on when
+// inside of the loop.
+Expr* GraphBuilder::GenerateRawIndex( Expr* index , const BytecodeLocation& bc ) {
+  (void)bc;
+
+  auto tp = GetTypeInference(index);
+  lava_debug(CRAZY,lava_verify(TPKind::Contain(TPKIND_NUMBER,tp)););
+  // unbox the value from number back to whatever it is
+  auto ub   = NewUnboxNode( graph_ , index , tp );
+  // cast it to the int32 value for indexing purpose
+  if(tp == TPKIND_INT32) {
+    return ub;
+  } else {
+    // later on the speculative narrowing process should fold this conversion
+    // if appropriate
+    return Float64ToInt32::New(graph_,ub);
+  }
+}
+
+Expr* GraphBuilder::TryFoldTypedISet( Expr* object , Expr* index , Expr* value ,
+                                                                   const BytecodeLocation& bc ) {
   (void)bc;
   lava_debug(CRAZY,lava_verify(GetTypeInference(object) == TPKIND_LIST););
-
+  index = GenerateRawIndex(index,bc);
   auto ref = folder_chain_->Fold(graph_,
       ListIndexFolderData{object,index,env()->effect()->write_effect()});
   if(!ref) {
@@ -1349,7 +1396,6 @@ Expr* GraphBuilder::TryFoldTyppedISet( Expr* object , Expr* index , Expr* value 
     env()->effect()->AddReadEffect(of);
     ref = folder_chain_->Fold(graph_,ExprFolderData{of});
   }
-
   if(auto new_ret = folder_chain_->Fold(graph_,
         ListRefSetFolderData{ref,value,env()->effect()->write_effect()}); new_ret) {
     return new_ret;
@@ -1363,15 +1409,12 @@ Expr* GraphBuilder::TryFoldTyppedISet( Expr* object , Expr* index , Expr* value 
 
 Expr* GraphBuilder::TrySpeculativeISet( Expr* object, Expr* index, Expr* value ,
                                                                    const BytecodeLocation& bc ) {
-  if(auto tt = runtime_trace_.GetTrace(bc.address()); tt) {
-    if(auto &v = tt->data[0]; v.IsList()) {
-      object = AddTypeFeedbackIfNeed(object,TPKIND_LIST,bc);
-      return TryFoldTyppedISet(object,index,value,bc);
+  if(CheckType(&object,TPKIND_LIST,0,bc)) {
+    if(bc.opcode() != BC_IDXSETI) {
+      if(!CheckType(&index,TPKIND_NUMBER,1,bc)) return NULL;
     }
-  } else if(auto tp = GetTypeInference(object); tp == TPKIND_LIST) {
-    return TryFoldTyppedISet(object,index,value,bc);
+    return TryFoldTypedISet(object,index,value,bc);
   }
-
   return NULL;
 }
 
@@ -1392,9 +1435,10 @@ Expr* GraphBuilder::NewISet( Expr* object, Expr* index, Expr* value, const Bytec
 }
 
 
-Expr* GraphBuilder::TryFoldTyppedIGet( Expr* object , Expr* index , const BytecodeLocation& bc ) {
+Expr* GraphBuilder::TryFoldTypedIGet( Expr* object , Expr* index , const BytecodeLocation& bc ) {
   (void)bc;
   lava_debug(CRAZY,lava_verify(GetTypeInference(object) == TPKIND_LIST););
+  index = GenerateRawIndex(index,bc);
   auto ref = folder_chain_->Fold(graph_,
       ListIndexFolderData{object,index,env()->effect()->write_effect()});
   if(!ref) {
@@ -1414,15 +1458,12 @@ Expr* GraphBuilder::TryFoldTyppedIGet( Expr* object , Expr* index , const Byteco
 }
 
 Expr* GraphBuilder::TrySpeculativeIGet( Expr* object, Expr* index, const BytecodeLocation& bc ) {
-  if(auto tt = runtime_trace_.GetTrace(bc.address()); tt) {
-    if(auto &v = tt->data[0]; v.IsList()) {
-      object = AddTypeFeedbackIfNeed(object,TPKIND_LIST,bc);
-      return TryFoldTyppedIGet(object,index,bc);
+  if(CheckType(&object,TPKIND_LIST  ,1,bc)) {
+    if(bc.opcode() != BC_IDXGETI) {
+      if(!CheckType(&index,TPKIND_NUMBER,2,bc)) return NULL;
     }
-  } else if(auto tp = GetTypeInference(object); tp == TPKIND_LIST) {
-    return TryFoldTyppedIGet(object,index,bc);
+    return TryFoldTypedIGet(object,index,bc);
   }
-
   return NULL;
 }
 

@@ -63,16 +63,8 @@ class BytecodeLocation {
 
  public:
   // Do a decoding for this *single* bytecode
-  void Decode( Bytecode* bc , std::uint32_t* a1 ,
-                              std::uint32_t* a2 ,
-                              std::uint32_t* a3 ,
-                              std::uint32_t* a4 ) const {
-    BytecodeType type;
-    std::size_t offset;
-    DecodeBytecode(ptr_.ptr(),bc,&type,a1,a2,a3,a4,&offset);
-    lava_debug(NORMAL,lava_verify(offset == (IsOneByte() ? 1:2)););
-  }
-
+  inline void     Decode( Bytecode* ,std::uint32_t* , std::uint32_t* , std::uint32_t* , std::uint32_t* ) const;
+  inline Bytecode opcode() const;
  private:
   TaggedPtr<const std::uint32_t> ptr_;
 };
@@ -161,6 +153,24 @@ class BytecodeIterator {
  * Inline Function Definitions
  *
  * -------------------------------------------*/
+// Do a decoding for this *single* bytecode
+inline void BytecodeLocation::Decode( Bytecode* bc , std::uint32_t* a1 ,
+    std::uint32_t* a2 ,
+    std::uint32_t* a3 ,
+    std::uint32_t* a4 ) const {
+  BytecodeType type;
+  std::size_t offset;
+  DecodeBytecode(ptr_.ptr(),bc,&type,a1,a2,a3,a4,&offset);
+  lava_debug(NORMAL,lava_verify(offset == (IsOneByte() ? 1:2)););
+}
+
+inline Bytecode BytecodeLocation::opcode() const {
+  Bytecode bc;
+  std::uint32_t a1,a2,a3,a4;
+  Decode(&bc,&a1,&a2,&a3,&a4);
+  return bc;
+}
+
 inline BytecodeIterator::BytecodeIterator( const std::uint32_t* code_buffer ,
                                            std::size_t size ):
   code_buffer_(code_buffer),

@@ -56,6 +56,39 @@ LAVA_CBASE_HIR_DEFINE(Tag=PHI;Name="phi";Leaf=NoLeaf;Effect=NoEffect,
   LAVA_DISALLOW_COPY_AND_ASSIGN(Phi)
 };
 
+// Loop induction variables. This node is specifically used for representing
+// a loop induction variable which is essentially just a Phi node.
+//
+// This is a normal loopiv node. We also have specialized loop iv node which
+// implicitly have type tagged to simplify type inference
+LAVA_CBASE_HIR_DEFINE(Tag=LOOP_IV;Name="loop_iv";Leaf=NoLeaf;Effect=NoEffect,
+    LoopIV, public PhiNode ) {
+ public:
+  inline static LoopIV* New( Graph* );
+  inline static LoopIV* New( Graph* , Expr* , Expr* );
+  inline static LoopIV* New( Graph* , Loop* );
+  inline static LoopIV* New( Graph* , Expr* , Expr* , Loop* );
+
+  LoopIV( Graph* graph , std::uint32_t id ): PhiNode( HIR_LOOP_IV , id, graph ) {}
+ private:
+  LAVA_DISALLOW_COPY_AND_ASSIGN(LoopIV)
+};
+
+// LoopIVInt node is a specialized loop induction variable node and it is in *UNBOXED*
+// type. It is used in the narrow phase optimization when the compiler decide it is
+// benifits or it can change the loop induction variable back into integer. After this
+// the loop induction varaible will become integer along with a box node. Then later on
+// the conversion node can do simple folding on the fly and benefits the indexing field.
+LAVA_CBASE_HIR_DEFINE(Tag=LOOP_IV_INT32;Name="loop_iv_int32";Leaf=NoLeaf;Effect=NoEffect,
+    LoopIVInt32, public PhiNode ) {
+ public:
+  inline static LoopIVInt* New( Graph* );
+  inline static LoopIVInt* New( Graph* , Expr* , Expr* );
+  inline static LoopIVInt* New( Graph* , Loop* );
+  inline static LoopIVInt* New( Graph* , Expr* , Expr* , Loop* );
+  LoopIVInt( Graph* graph , std::uint32_t id ): LoopIVInt( HIR_LOOP_IV_INT32 , id, graph ) {}
+};
+
 LAVA_CBASE_HIR_DEFINE(Tag=PROJECTION;Name="projection";Leaf=NoLeaf;Effect=NoEffect,
     Projection,public Expr) {
  public:

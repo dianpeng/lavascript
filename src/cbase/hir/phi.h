@@ -23,6 +23,12 @@ LAVA_CBASE_HIR_DEFINE(NO_META,PhiNode,public Expr) {
   bool IsIntermediateState() const { return operand_list()->size() == 1; }
   // Check if the phi node is a binary phi ,ie phi's operand list only has 2 nodes
   bool IsBinaryPhi() const { return operand_list()->size() == 2; }
+ public:
+  // Remove the phi node from its belonged region. The reason this one is just
+  // a static function is because this function *doesn't* touch its ref_list,
+  // so its ref_list will still have its belonged region's reference there and
+  // it is invalid. This function should be used under strict condition.
+  static inline void RemovePhiFromRegion( PhiNode* );
   // Bounded control flow region node.
   // Each phi node is bounded to a control flow regional node
   // and by this we can easily decide which region contributs
@@ -41,11 +47,6 @@ LAVA_CBASE_HIR_DEFINE(Tag=PHI;Name="phi";Leaf=NoLeaf;Effect=NoEffect,
   inline static Phi* New( Graph* , Expr* , Expr* );
   inline static Phi* New( Graph* , ControlFlow*  );
   inline static Phi* New( Graph* , Expr* , Expr* , ControlFlow* );
-  // Remove the phi node from its belonged region. The reason this one is just
-  // a static function is because this function *doesn't* touch its ref_list,
-  // so its ref_list will still have its belonged region's reference there and
-  // it is invalid. This function should be used under strict condition.
-  static inline void RemovePhiFromRegion( Phi* );
   // Bounded control flow region node.
   // Each phi node is bounded to a control flow regional node
   // and by this we can easily decide which region contributs
@@ -82,11 +83,12 @@ LAVA_CBASE_HIR_DEFINE(Tag=LOOP_IV;Name="loop_iv";Leaf=NoLeaf;Effect=NoEffect,
 LAVA_CBASE_HIR_DEFINE(Tag=LOOP_IV_INT32;Name="loop_iv_int32";Leaf=NoLeaf;Effect=NoEffect,
     LoopIVInt32, public PhiNode ) {
  public:
-  inline static LoopIVInt* New( Graph* );
-  inline static LoopIVInt* New( Graph* , Expr* , Expr* );
-  inline static LoopIVInt* New( Graph* , Loop* );
-  inline static LoopIVInt* New( Graph* , Expr* , Expr* , Loop* );
-  LoopIVInt( Graph* graph , std::uint32_t id ): LoopIVInt( HIR_LOOP_IV_INT32 , id, graph ) {}
+  inline static LoopIVInt32* New( Graph* );
+  inline static LoopIVInt32* New( Graph* , Expr* , Expr* );
+  inline static LoopIVInt32* New( Graph* , Loop* );
+  inline static LoopIVInt32* New( Graph* , Expr* , Expr* , Loop* );
+
+  LoopIVInt32( Graph* graph , std::uint32_t id ): PhiNode( HIR_LOOP_IV_INT32 , id, graph ) {}
 };
 
 LAVA_CBASE_HIR_DEFINE(Tag=PROJECTION;Name="projection";Leaf=NoLeaf;Effect=NoEffect,

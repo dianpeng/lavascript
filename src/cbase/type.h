@@ -79,7 +79,7 @@ class TPKind {
   inline static bool IsUnknown  ( TypeKind tp ) {
     return !IsLiteral(tp) && !IsMutable(tp);
   }
-  inline static bool IsLeaf( TypeKind tk ) const {
+  inline static bool IsLeaf( TypeKind tk ) {
     return Node(tk)->IsLeaf();
   }
  public:
@@ -155,7 +155,7 @@ inline bool TPKind::IsLiteral( TypeKind tp ) {
     case TPKIND_PRIMITIVE:
     case TPKIND_NUMBER:
     case TPKIND_FLOAT64:
-    case TPKIND_INDEX:
+    case TPKIND_INT32:
     case TPKIND_BOOLEAN:
     case TPKIND_NIL:
     case TPKIND_STRING:

@@ -106,6 +106,10 @@ inline Arg* Arg::New( Graph* graph , std::uint32_t index ) {
   return graph->zone()->New<Arg>(graph,graph->AssignID(),index);
 }
 
+inline Int32* Int32::New( Graph* graph , std::int32_t value ) {
+  return graph->zone()->New<Int32>(graph,graph->AssignID(),value);
+}
+
 inline Float64* Float64::New( Graph* graph , double value ) {
   return graph->zone()->New<Float64>(graph,graph->AssignID(),value);
 }
@@ -489,7 +493,7 @@ inline void PhiNode::set_region( ControlFlow* region ) {
 	region->AddOperand(this);
 }
 
-inline void Phi::RemovePhiFromRegion( Phi* phi ) {
+inline void PhiNode::RemovePhiFromRegion( PhiNode* phi ) {
   if(phi->region()) {
     lava_verify(phi->region()->RemoveOperand(phi));
   }
@@ -518,6 +522,54 @@ inline Phi* Phi::New( Graph* graph , Expr* lhs , Expr* rhs ) {
   phi->AddOperand(lhs);
   phi->AddOperand(rhs);
   return phi;
+}
+
+inline LoopIV* LoopIV::New( Graph* graph ) {
+  return graph->zone()->New<LoopIV>(graph,graph->AssignID());
+}
+
+inline LoopIV* LoopIV::New( Graph* graph , Expr* lhs , Expr* rhs ) {
+  auto ret = New(graph);
+  ret->AddOperand(lhs);
+  ret->AddOperand(rhs);
+  return ret;
+}
+
+inline LoopIV* LoopIV::New( Graph* graph , Loop* loop ) {
+  auto ret = New(graph);
+  ret->set_region(loop);
+  return ret;
+}
+
+inline LoopIV* LoopIV::New( Graph* graph , Expr* lhs , Expr* rhs , Loop* loop ) {
+  auto ret = New(graph,loop);
+  ret->AddOperand(lhs);
+  ret->AddOperand(rhs);
+  return ret;
+}
+
+inline LoopIVInt32* LoopIVInt32::New( Graph* graph ) {
+  return graph->zone()->New<LoopIVInt32>(graph,graph->AssignID());
+}
+
+inline LoopIVInt32* LoopIVInt32::New( Graph* graph , Expr* lhs , Expr* rhs ) {
+  auto ret = New(graph);
+  ret->AddOperand(lhs);
+  ret->AddOperand(rhs);
+  return ret;
+}
+
+inline LoopIVInt32* LoopIVInt32::New( Graph* graph , Loop* loop ) {
+  auto ret = New(graph);
+  ret->set_region(loop);
+  return ret;
+}
+
+inline LoopIVInt32* LoopIVInt32::New( Graph* graph , Expr* lhs , Expr* rhs , Loop* loop ) {
+  auto ret = New(graph,loop);
+  ret->AddOperand(lhs);
+  ret->AddOperand(rhs);
+  return ret;
 }
 
 inline void ReadEffect::SetWriteEffect( WriteEffect* node ) {
@@ -676,6 +728,10 @@ inline Box* ConvNBoolean::NewBox( Graph* graph , Expr* value ) {
   auto unbox = New(graph,value);
   auto box   = Box::New(graph,unbox,TPKIND_BOOLEAN);
   return box;
+}
+
+inline Float64ToInt32* Float64ToInt32::New( Graph* graph , Expr* value ) {
+  return graph->zone()->New<Float64ToInt32>(graph,graph->AssignID(),value);
 }
 
 inline StackSlot* StackSlot::New( Graph* graph , Expr* expr , std::uint32_t index ) {

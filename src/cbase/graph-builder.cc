@@ -135,8 +135,8 @@ class GraphBuilder {
     struct PhiVar {
       PhiVarType    type; // type of the var
       std::uint32_t idx;  // register index
-      Phi*         phi;   // phi node
-      PhiVar( PhiVarType t , std::uint32_t i , Phi* p ): type(t), idx(i), phi(p) {}
+      PhiNode*      phi;  // phi node
+      PhiVar( PhiVarType t , std::uint32_t i , PhiNode* p ): type(t), idx(i), phi(p) {}
     };
     std::vector<PhiVar> phi_list;
     // loop effect phi node , used to prevent memory operation forwarding cross loop
@@ -151,7 +151,7 @@ class GraphBuilder {
     void AddContinue( Jump* node , const std::uint32_t* target , const Environment& e ) {
       pending_continue.push_back(UnconditionalJump(node,target,e));
     }
-    void AddPhi( PhiVarType type , std::uint32_t index , Phi* phi ) {
+    void AddPhi( PhiVarType type , std::uint32_t index , PhiNode* phi ) {
       phi_list.push_back(PhiVar(type,index,phi));
     }
     LoopInfo( const BytecodeAnalyze::LoopHeaderInfo* info ):
@@ -270,7 +270,6 @@ class GraphBuilder {
   Guard* NewGuard            ( Test* , Checkpoint* );
   // Check whether a node's type is the needed type
   bool CheckType( Expr** , TypeKind     , std::size_t , const BytecodeLocation& );
-  bool CheckType( Expr** , const Value& , std::size_t , const BytecodeLocation& );
  private: // Arithmetic
   // Unary
   Expr* NewUnary            ( Expr* , Unary::Operator , const BytecodeLocation& );
@@ -404,8 +403,8 @@ class GraphBuilder {
   StopReason BuildLoop       ( BytecodeIterator* );
   StopReason BuildLoopBody   ( BytecodeIterator* , ControlFlow* );
   StopReason BuildForeverLoop( BytecodeIterator* );
-  void GenerateLoopPhi       ();
-  void PatchLoopPhi          ();
+  void GenerateLoopInductionVariable( Loop* );
+  void PatchLoopInductionVariable   ();
 
   // Iterate until we see FEEND/FEND1/FEND2/FEVREND
   StopReason BuildLoopBlock  ( BytecodeIterator* );
@@ -1125,7 +1124,8 @@ Expr* GraphBuilder::TrySpeculativeBinary( Expr* lhs , Expr* rhs , Binary::Operat
           if(auto ret = folder_chain_->Fold(graph_,BinaryFolderData{op,lhs,rhs}); ret)
             return ret;
           rhs = AddTypeFeedbackIfNeed(rhs,rhs_val,pc);
-          if(GetTypeInference(lhs) == TPKIND_BOOLEAN && GetTypeInference(rhs) == TPKIND_BOOLEAN) {
+          if(GetTypeInference(lhs) == TPKIND_BOOLEAN &&
+             GetTypeInference(rhs) == TPKIND_BOOLEAN) {
             auto l = NewUnboxNode(graph_,lhs,TPKIND_BOOLEAN);
             auto r = NewUnboxNode(graph_,rhs,TPKIND_BOOLEAN);
             return NewBoxNode<BooleanLogic>(graph_, TPKIND_BOOLEAN, l, r, op);
@@ -1288,7 +1288,7 @@ Expr* GraphBuilder::TryFoldTypedPGet ( Expr* object , Expr* key , const Bytecode
 Expr* GraphBuilder::TrySpeculativePGet( Expr* object , Expr* key , const BytecodeLocation& bc ) {
   lava_debug(NORMAL,lava_verify(key->IsString()););
   if(CheckType(&object,TPKIND_OBJECT,1,bc)) {
-    return TryFoldTypedObject(object,key,bc);
+    return TryFoldTypedPGet(object,key,bc);
   }
   return NULL;
 }
@@ -1369,18 +1369,22 @@ Expr* GraphBuilder::NewPSet( Expr* object , Expr* key , Expr* value , const Byte
 // inside of the loop.
 Expr* GraphBuilder::GenerateRawIndex( Expr* index , const BytecodeLocation& bc ) {
   (void)bc;
-
   auto tp = GetTypeInference(index);
-  lava_debug(CRAZY,lava_verify(TPKind::Contain(TPKIND_NUMBER,tp)););
+  lava_debug(CRAZY, auto ret = false;
+    lava_verify(TPKind::Contain(TPKIND_NUMBER,tp,&ret));
+    lava_verify(ret);
+  );
   // unbox the value from number back to whatever it is
   auto ub   = NewUnboxNode( graph_ , index , tp );
   // cast it to the int32 value for indexing purpose
   if(tp == TPKIND_INT32) {
     return ub;
   } else {
-    // later on the speculative narrowing process should fold this conversion
-    // if appropriate
-    return Float64ToInt32::New(graph_,ub);
+    auto idx = Float64ToInt32::New(graph_,ub);
+    if(auto folded_idx = folder_chain_->Fold(graph_,ExprFolderData{idx}); folded_idx)
+      return folded_idx;
+    else
+      return idx;
   }
 }
 
@@ -1835,7 +1839,7 @@ GraphBuilder::BuildLoopBlock( BytecodeIterator* itr ) {
 // Loop Phi
 // ===============================================================================
 
-void GraphBuilder::GenerateLoopPhi() {
+void GraphBuilder::GenerateLoopInductionVariable( Loop* loop ) {
   // 1. stacked variables
   {
     const auto len = func_info().current_loop_header()->phi.var.size();
@@ -1843,10 +1847,10 @@ void GraphBuilder::GenerateLoopPhi() {
       if(func_info().current_loop_header()->phi.var[i]) {
         Expr* old = StackGet(static_cast<std::uint32_t>(i));
         lava_debug(NORMAL,lava_verify(old););
-        Phi* phi = Phi::New(graph_,region());
-        phi->AddOperand(old);
-        StackSet(static_cast<std::uint32_t>(i),phi);
-        func_info().current_loop().AddPhi(LoopInfo::VAR,i,phi);
+        auto iv  = LoopIV::New(graph_,loop);
+        iv->AddOperand(old);
+        StackSet(static_cast<std::uint32_t>(i),iv);
+        func_info().current_loop().AddPhi(LoopInfo::VAR,i,iv);
       }
     }
   }
@@ -1884,14 +1888,13 @@ void GraphBuilder::GenerateLoopPhi() {
   }
 }
 
-void GraphBuilder::PatchLoopPhi() {
+void GraphBuilder::PatchLoopInductionVariable() {
   for( auto & e: func_info().current_loop().phi_list ) {
-    Phi*  phi  = e.phi;
+    auto phi = e.phi;
     switch(e.type) {
       case LoopInfo::VAR:
         if(phi->IsUsed()) {
           auto node = StackGet(e.idx);
-
           lava_debug(NORMAL,lava_assert (phi != node,"What happened here may be the bytecode make "
                                                      "bytecode_analyzer.cc failed. It detects a node "
                                                      "that is modified inside of a loop but also in  "
@@ -1901,7 +1904,7 @@ void GraphBuilder::PatchLoopPhi() {
           phi->AddOperand(node);
           if(auto p = folder_chain_->Fold(graph_,ExprFolderData{phi}); p) phi->Replace(p);
         } else {
-          Phi::RemovePhiFromRegion(phi);
+          PhiNode::RemovePhiFromRegion(phi);
         }
         break;
       case LoopInfo::GLOBAL:
@@ -1941,7 +1944,6 @@ Expr* GraphBuilder::BuildLoopEndCondition( BytecodeIterator* itr , ControlFlow* 
       {
         std::uint8_t a1,a2,a3; std::uint32_t a4;
         itr->GetOperand(&a1,&a2,&a3,&a4);
-        lava_debug(NORMAL,lava_verify(StackGet(a1)->IsPhi()););
         auto addition = NewBinary(StackGet(a1),StackGet(a3), Binary::ADD, itr->bytecode_location());
         StackSet(a1,addition);
         return NewBinary(StackGet(a1),StackGet(a2), Binary::LT, itr->bytecode_location());
@@ -1998,7 +2000,7 @@ GraphBuilder::BuildLoopBody( BytecodeIterator* itr , ControlFlow* loop_header ) 
     }
 
     // generate PHI node at the head of the *block*
-    GenerateLoopPhi();
+    GenerateLoopInductionVariable(body);
 
     // iterate all BC inside of the loop body
     StopReason reason = BuildLoopBlock(itr);
@@ -2024,9 +2026,10 @@ GraphBuilder::BuildLoopBody( BytecodeIterator* itr , ControlFlow* loop_header ) 
     itr->Move();
 
     // patch all the Phi node
-    PatchLoopPhi();
+    PatchLoopInductionVariable();
 
-    // set the loop effect phi node's backward effect operand , must be after PatchLoopPhi call
+    // set the loop effect phi node's backward effect operand , must be after
+    // PatchLoopInductionVariable call
     func_info().current_loop().loop_effect_phi->SetBackwardEffect(env()->effect()->write_effect());
 
     // break should jump here which is *after* the merge region

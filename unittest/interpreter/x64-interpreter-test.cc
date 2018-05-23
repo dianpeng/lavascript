@@ -571,6 +571,16 @@ TEST(Interpreter,ArrayIndexVarI) {
       var idx = 3;
       return bar[idx];
   );
+
+  NEGATIVE(
+      var bar = [1,2,3,4,5];
+      return bar[-1];
+      );
+
+  NEGATIVE(
+      var bar = [1,2,3,4,5];
+      return bar[5];
+      );
 }
 
 TEST(Intepreter,ArrayIndexSetI) {

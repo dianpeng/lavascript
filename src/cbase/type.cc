@@ -161,6 +161,8 @@ bool TPKind::HasChild( const TPKind& kind ) const {
 }
 
 bool TPKind::IsAncestor( const TPKind& kind ) const {
+  if(&kind == this) return true;
+
   for( auto & e : children_ ) {
     if( e == &kind )
     return true;

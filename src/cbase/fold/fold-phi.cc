@@ -15,7 +15,7 @@ class PhiFolder : public Folder {
   virtual Expr* Fold    ( Graph* , const FolderData& );
  private:
   Expr* Fold( Graph* , Expr* , Expr* , ControlFlow* );
-  Expr* Fold( Phi* );
+  Expr* Fold( PhiNode* );
 };
 
 LAVA_REGISTER_FOLDER("phi-folder",PhiFolderFactory,PhiFolder);
@@ -26,7 +26,7 @@ Expr* PhiFolder::Fold( Graph* graph , const FolderData& data ) {
     return Fold(graph,d.lhs,d.rhs,d.region);
   } else {
     auto d = static_cast<const ExprFolderData&>(data);
-    return Fold(d.node->As<Phi>());
+    return Fold(d.node->As<PhiNode>());
   }
 }
 
@@ -35,12 +35,12 @@ bool PhiFolder::CanFold( const FolderData& data ) const {
     return true;
   } else if(data.fold_type() == FOLD_EXPR) {
     auto d = static_cast<const ExprFolderData&>(data);
-    return d.node->IsPhi();
+    return d.node->Is<PhiNode>();
   }
   return false;
 }
 
-Expr* PhiFolder::Fold( Graph* graph , Expr* lhs , Expr* rhs , ControlFlow* region ) {
+Expr* PhiFolder::Fold( Graph* graph , Expr* lhs , Expr* rhs ,ControlFlow* region ) {
   // 1. if lhs and rhs are same, then just return lhs/rhs
   if(lhs->Equal(rhs)) {
     return lhs;
@@ -55,7 +55,7 @@ Expr* PhiFolder::Fold( Graph* graph , Expr* lhs , Expr* rhs , ControlFlow* regio
   return NULL;
 }
 
-Expr* PhiFolder::Fold( Phi* phi ) {
+Expr* PhiFolder::Fold( PhiNode* phi ) {
   if(phi->operand_list()->size() == 2) {
     auto lhs = phi->operand_list()->First();
     auto rhs = phi->operand_list()->Last();

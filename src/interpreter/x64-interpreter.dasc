@@ -868,10 +868,7 @@ enum { HC_LOOP = 0 , HC_CALL };
 const void* JITProfileStart( Runtime* runtime , int type , const std::uint32_t* pc ) {
   (void)type;
   (void)pc;
-
-  lava_debug(NORMAL,
-      lava_verify(dynamic_cast<AssemblerInterpreter*>(runtime->interp) != NULL););
-
+  lava_debug(NORMAL,lava_verify(dynamic_cast<AssemblerInterpreter*>(runtime->interp) != NULL););
   return NULL;
 }
 INTERPRETER_REGISTER_EXTERN_SYMBOL(JITProfileStart)
@@ -2871,8 +2868,6 @@ void GenBytecode( BuildContext* bctx, Bytecode bc ) {
      *   integer's mod value instead of fmod style value
      *
      * ============================================================*/
-
-
     case BC_MODVR:
       |=>bc:
       |  instr_D
@@ -3598,12 +3593,7 @@ void GenBytecode( BuildContext* bctx, Bytecode bc ) {
       |  instr_D
       |  cmp dword [STK+ARG3F*8+4], Value::FLAG_REAL
       |  jnb >1
-      |  cvtsd2si T0, qword [STK+ARG3F*8]
-      |  test T0,T0
-      |  js >1 // negative index, cannot handle
-
-      // do the indexing for list or array
-      |  mov ARG3F, T0
+      |  cvtsd2si ARG3F, qword [STK+ARG3F*8]
       |  index_list,InterpIdxOutOfBoundGet,->InterpIdxGetI
 
       // general type index
@@ -3650,11 +3640,7 @@ void GenBytecode( BuildContext* bctx, Bytecode bc ) {
       |  cmp dword [STK+ARG2F*8+4], Value::FLAG_REAL
       |  jnb >1
       // conversion
-      |  cvtsd2si T0, qword [STK+ARG2F*8]
-      |  test T0, T0
-      |  jz >1
-
-      |  mov ARG2F, T0
+      |  cvtsd2si ARG2F, qword [STK+ARG2F*8]
       |  set_list,InterpIdxOutOfBoundSet,->InterpIdxSetI
 
       |1:

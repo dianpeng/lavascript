@@ -473,7 +473,9 @@ Expr* NewUnboxNode( Graph* graph , Expr* node , TypeKind tk ) {
         lava_debug(NORMAL,lava_verify(GetTypeInference(bvalue) == tk););
         return bvalue;
       }
-
+    case HIR_FLOAT64:
+      // float64 number doesn't need box
+      return node;
     default:
       break;
   }

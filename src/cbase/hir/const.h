@@ -9,14 +9,14 @@ namespace hir        {
 // The specialized narrow integer representation. We choose int32 instead of int64 for
 // obvious reason of no need to worry about converting int32 back to float64 which cause
 // precision lost. int32 is totally contained by float64.
-LAVA_CBASE_HIR_DEFINE(Tag=INT64;Name="int32";Leaf=Leaf;Effect=NoEffect,
+LAVA_CBASE_HIR_DEFINE(Tag=INT32;Name="int32";Leaf=Leaf;Effect=NoEffect,
     Int32,public Expr) {
  public:
-  inline static Int32* New( Graph* , double );
+  inline static Int32* New( Graph* , std::int32_t );
   std::int32_t       value() const { return value_; }
 
   Int32( Graph* graph , std::uint32_t id , std::int32_t value ):
-    Expr(HIR_INT64,id,graph), value_(value) {}
+    Expr(HIR_INT32,id,graph), value_(value) {}
  public:
   virtual std::uint64_t GVNHash() const {
     return GVNHash1(type_name(),value_);

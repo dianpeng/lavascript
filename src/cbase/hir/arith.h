@@ -249,16 +249,15 @@ LAVA_CBASE_HIR_DEFINE(NO_META,SpecializeBinary,public Expr,public BinaryNode) {
   Binary::Operator op_;
 };
 
-LAVA_CBASE_HIR_DEFINE(Tag=INT64_ARITHMETIC;Name="int32_aritmetic";Leaf=NoLeaf;Effect=NoEffect,
+LAVA_CBASE_HIR_DEFINE(Tag=INT32_ARITHMETIC;Name="int32_aritmetic";Leaf=NoLeaf;Effect=NoEffect,
     Int32Arithmetic,public SpecializeBinary) {
  public:
   using Operator = Binary::Operator;
 
-  inline static Int32Add* New( Graph* , Expr* );
+  inline static Int32Arithmetic* New( Graph* , Expr* );
 
-  Int32Add( Graph* , std::uint32_t id,  Expr* lhs , Expr* rhs , Operator op ):
-    SpecializeBinary(HIR_INT64_ADD,id,graph,lhs,rhs,op) {}
-
+  Int32Arithmetic( Graph* graph , std::uint32_t id,  Expr* lhs , Expr* rhs , Operator op ):
+    SpecializeBinary(HIR_INT32_ARITHMETIC,id,graph,lhs,rhs,op) {}
  private:
   LAVA_DISALLOW_COPY_AND_ASSIGN(Int32Arithmetic)
 };

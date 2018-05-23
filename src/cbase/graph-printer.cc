@@ -134,6 +134,9 @@ void DotPrinter::RenderEdge( ControlFlow* from , ControlFlow* to ) {
 
 void DotPrinter::RenderExprOperand( const std::string& name , Expr* node ) {
   switch(node->type()) {
+    case HIR_INT32:
+      Indent(1) << name << "[label=\"i32(" << node->As<Int32>  ()->value() << ")\"]\n";
+      break;
     case HIR_FLOAT64:
       Indent(1) << name << "[label=\"f64(" << node->AsFloat64()->value() << ")\"]\n";
       break;
@@ -300,18 +303,20 @@ void DotPrinter::RenderExprEffect( const std::string& name , Expr* node ) {
 
 void DotPrinter::RenderExprBrief( const std::string& name , Expr* node ) {
   switch(node->type()) {
+    case HIR_INT32:
+      Indent(1) << name << "[label=\"i32(" << node->As<Int32>  ()->value() << ")\"]\n";
+      break;
     case HIR_FLOAT64:
-      Indent(1) << name << "[label=\"f64(" << node->AsFloat64()->value() << ")\"]\n";
+      Indent(1) << name << "[label=\"f64(" << node->As<Float64>()->value() << ")\"]\n";
       break;
     case HIR_LONG_STRING:
-      Indent(1) << name << "[label=\"str(" << node->AsLString()->value()->data() << ")\"]\n";
+      Indent(1) << name << "[label=\"str(" << node->As<LString>()->value()->data() << ")\"]\n";
       break;
     case HIR_SMALL_STRING:
-      Indent(1) << name << "[label=\"sso(" << node->AsSString()->value()->data() << ")\"]\n";
+      Indent(1) << name << "[label=\"sso(" << node->As<SString>()->value()->data() << ")\"]\n";
       break;
     case HIR_BOOLEAN:
-      Indent(1) << name << "[label=\"bool(" << (node->AsBoolean()->value() ? "true" : "false" )
-                                            << ")\"]\n";
+      Indent(1) << name << "[label=\"bool(" <<(node->As<Boolean>()->value() ? "true":"false") << ")\"]\n";
       break;
     case HIR_NIL:
       Indent(1) << name << "[label=\"nil\"]\n";

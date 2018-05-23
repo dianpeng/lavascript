@@ -309,24 +309,24 @@ class GraphBuilder {
 
  private: // Property/Index Get/Set
   Expr* TrySpeculativePSet( Expr* , Expr* , Expr* , const BytecodeLocation& );
-  Expr* TryFoldTypedPSet ( Expr* , Expr* , Expr* , const BytecodeLocation& );
+  Expr* TryFoldTypedPSet  ( Expr* , Expr* , Expr* , const BytecodeLocation& );
   Expr* NewPSetFallback   ( Expr* , Expr* , Expr* , const BytecodeLocation& );
   Expr* NewPSet           ( Expr* , Expr* , Expr* , const BytecodeLocation& );
 
   Expr* TrySpeculativePGet( Expr* , Expr* , const BytecodeLocation& );
-  Expr* TryFoldTypedPGet ( Expr* , Expr* , const BytecodeLocation& );
+  Expr* TryFoldTypedPGet  ( Expr* , Expr* , const BytecodeLocation& );
   Expr* NewPGetFallback   ( Expr* , Expr* , const BytecodeLocation& );
   Expr* NewPGet           ( Expr* , Expr* , const BytecodeLocation& );
 
-  Expr* GenerateRawIndex ( Expr* , const BytecodeLocation& );
+  Expr* GenerateRawIndex  ( Expr* , const BytecodeLocation& );
 
   Expr* TrySpeculativeISet( Expr* , Expr* , Expr* , const BytecodeLocation& );
-  Expr* TryFoldTypedISet ( Expr* , Expr* , Expr* , const BytecodeLocation& );
+  Expr* TryFoldTypedISet  ( Expr* , Expr* , Expr* , const BytecodeLocation& );
   Expr* NewISetFallback   ( Expr* , Expr* , Expr* , const BytecodeLocation& );
   Expr* NewISet           ( Expr* , Expr* , Expr* , const BytecodeLocation& );
 
   Expr* TrySpeculativeIGet( Expr* , Expr* , const BytecodeLocation& );
-  Expr* TryFoldTypedIGet ( Expr* , Expr* , const BytecodeLocation& );
+  Expr* TryFoldTypedIGet  ( Expr* , Expr* , const BytecodeLocation& );
   Expr* NewIGetFallback   ( Expr* , Expr* , const BytecodeLocation& );
   Expr* NewIGet           ( Expr* , Expr* , const BytecodeLocation& );
 
@@ -420,6 +420,11 @@ class GraphBuilder {
   bool NewCallFallback   ( BytecodeIterator* );
   bool SpeculativeInline ( const Handle<Prototype>& , BytecodeIterator* );
   bool DoInline          ( const Handle<Prototype>& , std::uint8_t , bool );
+
+ private:
+  // ----------------------------------------------------------------------------------
+  // Induction Variable Narrow
+  // ----------------------------------------------------------------------------------
 
  private:
   // Zone owned by the Graph object, and it is supposed to be stay around while the

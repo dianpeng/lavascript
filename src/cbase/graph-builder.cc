@@ -1185,7 +1185,7 @@ Expr* GraphBuilder::NewPhi( Expr* lhs , Expr* rhs , ControlFlow* region ) {
   if( auto n = folder_chain_->Fold(graph_,PhiFolderData{lhs,rhs,region}); n)
     return n;
   else
-    return Phi::New(graph_,lhs,rhs,region);
+    return Phi::New(graph_,lhs,rhs,region->As<Merge>());
 }
 
 // ========================================================================
@@ -1376,11 +1376,11 @@ Expr* GraphBuilder::GenerateRawIndex( Expr* index , const BytecodeLocation& bc )
   );
   // unbox the value from number back to whatever it is
   auto ub   = NewUnboxNode( graph_ , index , tp );
-  // cast it to the int32 value for indexing purpose
-  if(tp == TPKIND_INT32) {
+  // cast it to the int64 value for indexing purpose
+  if(tp == TPKIND_INT64) {
     return ub;
   } else {
-    auto idx = Float64ToInt32::New(graph_,ub);
+    auto idx = Float64ToInt64::New(graph_,ub);
     if(auto folded_idx = folder_chain_->Fold(graph_,ExprFolderData{idx}); folded_idx)
       return folded_idx;
     else
@@ -1554,11 +1554,13 @@ Checkpoint* GraphBuilder::InitCheckpoint() {
 // ====================================================================
 void GraphBuilder::PatchExitNode( ControlFlow* succ , ControlFlow* fail ) {
   // patch succuess node and return value
-  auto return_value = Phi::New(graph_,succ);
+  auto return_value = Phi::New(graph_,succ->As<Merge>());
   for( auto &e : func_info().return_list ) {
     return_value->AddOperand(e->value());
     succ->AddBackwardEdge(e);
   }
+  succ->AddOperand(return_value);
+
   // patch all the failed node
   for( auto &e : func_info().guard_list ) {
     fail->AddOperand(e);
@@ -1860,7 +1862,7 @@ void GraphBuilder::GenerateLoopInductionVariable( Loop* loop ) {
     for( std::size_t i = 0 ; i < len ; ++i ) {
       if(func_info().current_loop_header()->phi.uv[i]) {
         auto uget = env()->GetUpValue(static_cast<std::uint32_t>(i));
-        auto phi  = Phi::New(graph_,region());
+        auto phi  = Phi::New(graph_,loop);
         phi->AddOperand(uget);
         env()->upvalue()->at(i) = phi; // modify the old value to be new Phi node
         func_info().current_loop().AddPhi(LoopInfo::UPVALUE,i,phi);
@@ -1871,7 +1873,7 @@ void GraphBuilder::GenerateLoopInductionVariable( Loop* loop ) {
   {
     for( auto &e : func_info().current_loop_header()->phi.glb ) {
       auto gget = env()->GetGlobal(e.data,e.length,[=](){ return NewString(e); });
-      auto phi  = Phi::New(graph_,region());
+      auto phi  = Phi::New(graph_,loop);
       phi->AddOperand(gget);
       // find the exact places of the global variables in globs and then
       // insert the new phi into the places

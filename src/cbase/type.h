@@ -20,7 +20,7 @@ namespace cbase {
   __(primitive,PRIMITIVE)                               \
   __(number,NUMBER)                                     \
   __(float64,FLOAT64)                                   \
-  __(int32  ,INT32)                                     \
+  __(int64  ,INT64)                                     \
   __(boolean,BOOLEAN)                                   \
   __(nil,NIL)                                           \
   __(reference,REFERENCE)                               \
@@ -155,7 +155,7 @@ inline bool TPKind::IsLiteral( TypeKind tp ) {
     case TPKIND_PRIMITIVE:
     case TPKIND_NUMBER:
     case TPKIND_FLOAT64:
-    case TPKIND_INT32:
+    case TPKIND_INT64:
     case TPKIND_BOOLEAN:
     case TPKIND_NIL:
     case TPKIND_STRING:

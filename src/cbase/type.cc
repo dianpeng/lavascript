@@ -92,7 +92,7 @@ TPKind::TPKindBuilder::TPKindBuilder() :
       {
         auto number = Node(TPKIND_NUMBER);
         AddChildren(number,Node(TPKIND_FLOAT64));
-        AddChildren(number,Node(TPKIND_INT32  ));
+        AddChildren(number,Node(TPKIND_INT64  ));
       }
       AddChildren(primitive,Node(TPKIND_BOOLEAN));
       AddChildren(primitive,Node(TPKIND_NIL));

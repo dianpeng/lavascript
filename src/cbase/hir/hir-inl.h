@@ -108,8 +108,8 @@ inline Arg* Arg::New( Graph* graph , std::uint32_t index ) {
   return graph->zone()->New<Arg>(graph,graph->AssignID(),index);
 }
 
-inline Int32* Int32::New( Graph* graph , std::int32_t value ) {
-  return graph->zone()->New<Int32>(graph,graph->AssignID(),value);
+inline Int64* Int64::New( Graph* graph , std::int64_t value ) {
+  return graph->zone()->New<Int64>(graph,graph->AssignID(),value);
 }
 
 inline Float64* Float64::New( Graph* graph , double value ) {
@@ -489,10 +489,9 @@ inline ItrDeref* ItrDeref::New( Graph* graph , Expr* operand ) {
   return ret;
 }
 
-inline void PhiNode::set_region( ControlFlow* region ) {
+inline void PhiNode::set_region( Merge* region ) {
 	lava_debug(NORMAL,lava_verify(!region_););
 	region_ = region;
-	region->AddOperand(this);
 }
 
 inline void PhiNode::RemovePhiFromRegion( PhiNode* phi ) {
@@ -501,17 +500,22 @@ inline void PhiNode::RemovePhiFromRegion( PhiNode* phi ) {
   }
 }
 
-inline Phi* Phi::New( Graph* graph , Expr* lhs , Expr* rhs , ControlFlow* region ) {
+inline bool PhiNode::IsUsed() const {
+  if(!region()) return false;
+  return !ref_list()->empty();
+}
+
+inline Phi* Phi::New( Graph* graph , Expr* lhs , Expr* rhs , Merge* region ) {
   auto ret = graph->zone()->New<Phi>(graph,graph->AssignID());
   ret->AddOperand(lhs);
   ret->AddOperand(rhs);
-  ret->set_region(region);
+  region->AddPhiNode(ret);
   return ret;
 }
 
-inline Phi* Phi::New( Graph* graph , ControlFlow* region ) {
+inline Phi* Phi::New( Graph* graph , Merge* region ) {
   auto ret = graph->zone()->New<Phi>(graph,graph->AssignID());
-  ret->set_region(region);
+  region->AddPhiNode(ret);
   return ret;
 }
 
@@ -539,7 +543,7 @@ inline LoopIV* LoopIV::New( Graph* graph , Expr* lhs , Expr* rhs ) {
 
 inline LoopIV* LoopIV::New( Graph* graph , Loop* loop ) {
   auto ret = New(graph);
-  ret->set_region(loop);
+  loop->AddPhiNode(ret);
   return ret;
 }
 
@@ -550,24 +554,24 @@ inline LoopIV* LoopIV::New( Graph* graph , Expr* lhs , Expr* rhs , Loop* loop ) 
   return ret;
 }
 
-inline LoopIVInt32* LoopIVInt32::New( Graph* graph ) {
-  return graph->zone()->New<LoopIVInt32>(graph,graph->AssignID());
+inline LoopIVInt64* LoopIVInt64::New( Graph* graph ) {
+  return graph->zone()->New<LoopIVInt64>(graph,graph->AssignID());
 }
 
-inline LoopIVInt32* LoopIVInt32::New( Graph* graph , Expr* lhs , Expr* rhs ) {
+inline LoopIVInt64* LoopIVInt64::New( Graph* graph , Expr* lhs , Expr* rhs ) {
   auto ret = New(graph);
   ret->AddOperand(lhs);
   ret->AddOperand(rhs);
   return ret;
 }
 
-inline LoopIVInt32* LoopIVInt32::New( Graph* graph , Loop* loop ) {
+inline LoopIVInt64* LoopIVInt64::New( Graph* graph , Loop* loop ) {
   auto ret = New(graph);
-  ret->set_region(loop);
+  loop->AddPhiNode(ret);
   return ret;
 }
 
-inline LoopIVInt32* LoopIVInt32::New( Graph* graph , Expr* lhs , Expr* rhs , Loop* loop ) {
+inline LoopIVInt64* LoopIVInt64::New( Graph* graph , Expr* lhs , Expr* rhs , Loop* loop ) {
   auto ret = New(graph,loop);
   ret->AddOperand(lhs);
   ret->AddOperand(rhs);
@@ -732,12 +736,30 @@ inline Box* ConvNBoolean::NewBox( Graph* graph , Expr* value ) {
   return box;
 }
 
-inline Float64ToInt32* Float64ToInt32::New( Graph* graph , Expr* value ) {
-  return graph->zone()->New<Float64ToInt32>(graph,graph->AssignID(),value);
+inline Float64ToInt64* Float64ToInt64::New( Graph* graph , Expr* value ) {
+  return graph->zone()->New<Float64ToInt64>(graph,graph->AssignID(),value);
 }
 
 inline StackSlot* StackSlot::New( Graph* graph , Expr* expr , std::uint32_t index ) {
   return graph->zone()->New<StackSlot>(graph,graph->AssignID(),expr,index);
+}
+
+inline Merge::Merge( IRType type , std::uint32_t id , Graph* graph , ControlFlow* region ):
+  ControlFlow(type,id,graph,region),
+  phi_list_  ()
+{}
+
+inline void Merge::AddPhiNode( PhiNode* phi ) {
+  phi_list_.Add(zone(),phi);
+  phi->set_region(this);
+}
+
+inline void Merge::RemovePhi( PhiNode* phi ) {
+  lava_debug(NORMAL,lava_verify(phi->region() == this););
+  if(auto itr = phi_list_.Find(phi); itr.HasNext()) {
+    phi_list_.Remove(itr);
+    phi->ResetRegion();
+  }
 }
 
 inline Region* Region::New( Graph* graph ) {

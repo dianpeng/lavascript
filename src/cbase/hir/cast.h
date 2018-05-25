@@ -60,15 +60,15 @@ LAVA_CBASE_HIR_DEFINE(Tag=CONV_NBOOLEAN;Name="conv_nboolean";Leaf=NoLeaf;Effect=
   LAVA_DISALLOW_COPY_AND_ASSIGN(ConvNBoolean)
 };
 
-LAVA_CBASE_HIR_DEFINE(Tag=FLOAT64_TO_INT32;Name="float64_to_int32";Leaf=NoLeaf;Effect=NoEffect,
-    Float64ToInt32,public Expr) {
+LAVA_CBASE_HIR_DEFINE(Tag=FLOAT64_TO_INT64;Name="float64_to_int64";Leaf=NoLeaf;Effect=NoEffect,
+    Float64ToInt64,public Expr) {
  public:
-  inline static Float64ToInt32* New( Graph* , Expr* );
+  inline static Float64ToInt64* New( Graph* , Expr* );
 
   Expr* value() const { return operand_list()->First(); }
 
-  Float64ToInt32( Graph* graph , std::uint32_t id , Expr* value ):
-    Expr(HIR_FLOAT64_TO_INT32,id,graph)
+  Float64ToInt64( Graph* graph , std::uint32_t id , Expr* value ):
+    Expr(HIR_FLOAT64_TO_INT64,id,graph)
   {
     lava_debug(CRAZY,lava_verify(GetTypeInference(value) == TPKIND_FLOAT64););
     AddOperand(value);

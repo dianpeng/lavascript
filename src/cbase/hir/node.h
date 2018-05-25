@@ -24,49 +24,25 @@ enum IRType {
 #undef __ // __
   SIZE_OF_HIR
 };
-
-// IR classes forward declaration
-#define __(A,...) class A;
-CBASE_HIR_LIST(__)
-#undef __ // __
-
 const char* IRTypeGetName( IRType );
 
-// Forward class declaration
-#define __(A,...) class A;
-CBASE_HIR_LIST(__)
-#undef __ // __
-
-// Other none-leaf node forward declaration
+// Forward declaration
 class Graph;
 class Node;
-class Expr;
-class ControlFlow;
-class Test;
-class ReadEffect;
-class WriteEffect;
-class EffectBarrier;
-class HardBarrier;
-class SoftBarrier;
-class Binary;
-class DynamicBinary;
-class SpecializeBinary;
-class MemoryOp;
-class MemoryNode;
+#define __(A,...) class A;
+CBASE_HIR_LIST(__)
+CBASE_HIR_INTERNAL_NODE(__)
+#undef __ // __
 
 // IRType value static mapping
 template< typename T > struct HIRTypePredicate {};
 template< typename T > struct HIRTypeValue     {};
-
 #define __(A,B,...)                            \
   template<> struct HIRTypeValue<A> {          \
     static const std::size_t Value = HIR_##B;  \
   };
-
 CBASE_HIR_LIST(__)
-
 #undef __ // __
-
 
 /**
  * This is a separate information maintained for each IR node. It contains

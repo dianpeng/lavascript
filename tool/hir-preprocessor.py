@@ -467,15 +467,23 @@ class CxxXMacroGenerator:
 
 
     def _predicate_node(self,node):
+
+        if node.name == "Node":
+            ## filter out root Node is always not marked
+            return False
+
         if self.leaf and node.is_internal():
             ## we want a leaf but node is not leaf
             return False
+
         if not self.leaf and node.is_leaf():
             ## we want a internal node but data is leaf
             return False
-        if self.base is not None and node.has_base_of(self.base):
-            return True
-        return False
+
+        if self.base is not None and not node.has_base_of(self.base):
+            return False
+
+        return True
 
 
     def _visit_node(self,node):
@@ -552,13 +560,13 @@ def _xmacro(fn,model,name,temp,base,leaf):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Preinitor for cbase HIR type mapping")
-    parser.add_argument("--dir"        ,type=str,action='store'                  ,help='specify where the HIR folder is')
-    parser.add_argument("--type-map"   ,type=str,action='store'     ,default=""  ,help="node type generation"           )
-    parser.add_argument("--xmacro"     ,type=str,action='store'     ,default=""  ,help="xmacro generation"              )
-    parser.add_argument("--xmacro-temp",type=str,action='store'     ,default=""  ,help="xmacro template"                )
-    parser.add_argument("--xmacro-base",type=str,action='store'     ,default=None,help="xmacro base class"              )
-    parser.add_argument("--xmacro-leaf",         action='store_true',default=True,help="xmacro whether leaf node"       )
-    parser.add_argument("--xmacro-name",type=str,action='store'     ,default=""  ,help="xmacro name"                    )
+    parser.add_argument("--dir"        ,type=str,action='store'                   ,help='specify where the HIR folder is')
+    parser.add_argument("--type-map"   ,type=str,action='store'      ,default=""  ,help="node type generation"           )
+    parser.add_argument("--xmacro"     ,type=str,action='store'      ,default=""  ,help="xmacro generation"              )
+    parser.add_argument("--xmacro-temp",type=str,action='store'      ,default=""  ,help="xmacro template"                )
+    parser.add_argument("--xmacro-base",type=str,action='store'      ,default=""  ,help="xmacro base class"              )
+    parser.add_argument("--xmacro-leaf",         action='store_true' ,default=False,help="xmacro whether leaf node"       )
+    parser.add_argument("--xmacro-name",type=str,action='store'      ,default=""  ,help="xmacro name"                    )
 
     arg = parser.parse_args()
 

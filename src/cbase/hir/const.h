@@ -6,27 +6,27 @@ namespace lavascript {
 namespace cbase      {
 namespace hir        {
 
-// The specialized narrow integer representation. We choose int32 instead of int64 for
-// obvious reason of no need to worry about converting int32 back to float64 which cause
-// precision lost. int32 is totally contained by float64.
-LAVA_CBASE_HIR_DEFINE(Tag=INT32;Name="int32";Leaf=Leaf;Effect=NoEffect,
-    Int32,public Expr) {
+// The specialized narrow integer representation. We choose int64 since a double's
+// conversion will not overflow int64 , but this also put a constraint for us is
+// that a int64 can overflow a double number.
+LAVA_CBASE_HIR_DEFINE(Tag=INT64;Name="int64";Leaf=Leaf;Effect=NoEffect,
+    Int64,public Expr) {
  public:
-  inline static Int32* New( Graph* , std::int32_t );
-  std::int32_t       value() const { return value_; }
+  inline static Int64* New( Graph* , std::int64_t );
+  std::int64_t       value() const { return value_; }
 
-  Int32( Graph* graph , std::uint32_t id , std::int32_t value ):
-    Expr(HIR_INT32,id,graph), value_(value) {}
+  Int64( Graph* graph , std::uint32_t id , std::int64_t value ):
+    Expr(HIR_INT64,id,graph), value_(value) {}
  public:
   virtual std::uint64_t GVNHash() const {
     return GVNHash1(type_name(),value_);
   }
   virtual bool Equal( const Expr* that ) const {
-    return that->IsInt32() && (that->AsInt32()->value() == value_);
+    return that->IsInt64() && (that->AsInt64()->value() == value_);
   }
  private:
-  std::int32_t value_;
-  LAVA_DISALLOW_COPY_AND_ASSIGN(Int32)
+  std::int64_t value_;
+  LAVA_DISALLOW_COPY_AND_ASSIGN(Int64)
 };
 
 LAVA_CBASE_HIR_DEFINE(Tag=FLOAT64;Name="float64";Leaf=Leaf;Effect=NoEffect,

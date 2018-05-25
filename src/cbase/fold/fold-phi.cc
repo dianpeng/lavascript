@@ -56,10 +56,14 @@ Expr* PhiFolder::Fold( Graph* graph , Expr* lhs , Expr* rhs ,ControlFlow* region
 }
 
 Expr* PhiFolder::Fold( PhiNode* phi ) {
-  if(phi->operand_list()->size() == 2) {
-    auto lhs = phi->operand_list()->First();
-    auto rhs = phi->operand_list()->Last();
-    if(lhs->Equal(rhs)) return lhs;
+  if(!phi->operand_list()->empty()) {
+    auto first = phi->Operand(0);
+    auto itr = phi->operand_list()->GetForwardIterator(); itr.Move();
+    for( ; itr.HasNext(); itr.Move() ) {
+      auto n = itr.value();
+      if(!first->Equal(n)) return NULL;
+    }
+    return first;
   }
   return NULL;
 }

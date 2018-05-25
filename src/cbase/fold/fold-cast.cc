@@ -16,21 +16,21 @@ class CastFolder : public Folder {
 bool CastFolder::CanFold( const FolderData& data ) const {
   if(data.fold_type() == FOLD_EXPR) {
     auto d = static_cast<const ExprFolderData&>(data);
-    return d.node->Is<Float64ToInt32>();
+    return d.node->Is<Float64ToInt64>();
   }
   return false;
 }
 
 Expr* CastFolder::Fold( Graph* graph , const FolderData& data ) {
-  auto to_i32 = static_cast<const ExprFolderData&>(data).node->As<Float64ToInt32>();
+  auto to_i32 = static_cast<const ExprFolderData&>(data).node->As<Float64ToInt64>();
   auto val    = to_i32->value();
   if(val->Is<Unbox>()) {
     val = val->As<Unbox>()->value();
   }
   if(val->Is<Float64>()) {
-    std::int32_t output = 0;
+    std::int64_t output = 0;
     if(TryCastReal(val->As<Float64>()->value(),&output)) {
-      return Int32::New(graph,output);
+      return Int64::New(graph,output);
     }
   }
   return NULL;

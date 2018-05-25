@@ -10,19 +10,15 @@ namespace hir        {
 LAVA_CBASE_HIR_DEFINE(NO_META,PhiNode,public Expr) {
  public:
   // Set the bounded region, only applicable when the region is not set
-  inline void set_region( ControlFlow* );
+  inline void set_region( Merge* );
   // Get the boundede region
-  ControlFlow* region() const { return region_; }
+  Merge* region() const { return region_; }
+  // Reset the region to be NULL
+  void ResetRegion() { region_ = NULL; }
   // Check if this Phi node is not used. We cannot use HasRef function since
   // a Phi node may added to a region during setup time and there will be one
   // ref inside of the RefList. We just need to check that
-  bool IsUsed() const { return !(region() ? ref_list()->size() == 1 : (ref_list()->empty())); }
-  // Check if this Phi node is in intermediate state. A phi node will generated
-  // at the front the loop and it will only have on operand then. If phi is in
-  // this stage, then it is an intermediate state
-  bool IsIntermediateState() const { return operand_list()->size() == 1; }
-  // Check if the phi node is a binary phi ,ie phi's operand list only has 2 nodes
-  bool IsBinaryPhi() const { return operand_list()->size() == 2; }
+  inline bool IsUsed() const;
  public:
   // Remove the phi node from its belonged region. The reason this one is just
   // a static function is because this function *doesn't* touch its ref_list,
@@ -35,7 +31,7 @@ LAVA_CBASE_HIR_DEFINE(NO_META,PhiNode,public Expr) {
   // to a certain input node of Phi node
   PhiNode( IRType type , std::uint32_t id , Graph* graph ): Expr(type,id,graph) {}
  private:
-  ControlFlow* region_;
+  Merge* region_;
 };
 
 // Normal value phi node. Used in the merged region for join value produced by
@@ -45,8 +41,8 @@ LAVA_CBASE_HIR_DEFINE(Tag=PHI;Name="phi";Leaf=NoLeaf;Effect=NoEffect,
  public:
   inline static Phi* New( Graph* );
   inline static Phi* New( Graph* , Expr* , Expr* );
-  inline static Phi* New( Graph* , ControlFlow*  );
-  inline static Phi* New( Graph* , Expr* , Expr* , ControlFlow* );
+  inline static Phi* New( Graph* , Merge*  );
+  inline static Phi* New( Graph* , Expr* , Expr* , Merge* );
   // Bounded control flow region node.
   // Each phi node is bounded to a control flow regional node
   // and by this we can easily decide which region contributs
@@ -80,15 +76,15 @@ LAVA_CBASE_HIR_DEFINE(Tag=LOOP_IV;Name="loop_iv";Leaf=NoLeaf;Effect=NoEffect,
 // benifits or it can change the loop induction variable back into integer. After this
 // the loop induction varaible will become integer along with a box node. Then later on
 // the conversion node can do simple folding on the fly and benefits the indexing field.
-LAVA_CBASE_HIR_DEFINE(Tag=LOOP_IV_INT32;Name="loop_iv_int32";Leaf=NoLeaf;Effect=NoEffect,
-    LoopIVInt32, public PhiNode ) {
+LAVA_CBASE_HIR_DEFINE(Tag=LOOP_IV_INT64;Name="loop_iv_int64";Leaf=NoLeaf;Effect=NoEffect,
+    LoopIVInt64, public PhiNode ) {
  public:
-  inline static LoopIVInt32* New( Graph* );
-  inline static LoopIVInt32* New( Graph* , Expr* , Expr* );
-  inline static LoopIVInt32* New( Graph* , Loop* );
-  inline static LoopIVInt32* New( Graph* , Expr* , Expr* , Loop* );
+  inline static LoopIVInt64* New( Graph* );
+  inline static LoopIVInt64* New( Graph* , Expr* , Expr* );
+  inline static LoopIVInt64* New( Graph* , Loop* );
+  inline static LoopIVInt64* New( Graph* , Expr* , Expr* , Loop* );
 
-  LoopIVInt32( Graph* graph , std::uint32_t id ): PhiNode( HIR_LOOP_IV_INT32 , id, graph ) {}
+  LoopIVInt64( Graph* graph , std::uint32_t id ): PhiNode( HIR_LOOP_IV_INT64 , id, graph ) {}
 };
 
 LAVA_CBASE_HIR_DEFINE(Tag=PROJECTION;Name="projection";Leaf=NoLeaf;Effect=NoEffect,

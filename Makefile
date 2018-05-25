@@ -24,6 +24,7 @@ CXXFLAGS          += -Wall -Wextra -pipe
 CBASE_HIR_DIR           = src/cbase/hir
 CBASE_HIR_EXPR_LIST_GEN = $(CBASE_HIR_DIR)/node-type.expr.generate.h
 CBASE_HIR_CF_LIST_GEN   = $(CBASE_HIR_DIR)/node-type.cf.generate.h
+CBASE_HIR_INODE_LIST_GEN= $(CBASE_HIR_DIR)/node-type.inode.generate.h
 CBASE_HIR_MAP_GEN       = $(CBASE_HIR_DIR)/node-type-map.generate.h
 HIR_HEADER              = $(shell find src/cbase/hir -type f -name "*.h" ! -path "*.generate.h")
 # -------------------------------------------------------------------------------
@@ -67,12 +68,14 @@ $(HIR_MAP_SOURCE): $(HIR_HEADER)
 	$(TOOL)/hir-preprocessor.py --dir $(CBASE_HIR_DIR) --type-map $(CBASE_HIR_MAP_GEN)
 
 hir_node_type: $(HIR_HEADER)
-	$(TOOL)/hir-preprocessor.py --dir $(CBASE_HIR_DIR) --xmacro $(CBASE_HIR_EXPR_LIST_GEN) \
-		--xmacro-temp '{class:<24},{Tag:<24},{Name:<24},{Leaf:<6},{Effect:<10}'              \
+	$(TOOL)/hir-preprocessor.py --dir $(CBASE_HIR_DIR) --xmacro $(CBASE_HIR_EXPR_LIST_GEN)  \
+		--xmacro-temp '{class:<24},{Tag:<24},{Name:<24},{Leaf:<6},{Effect:<10}'               \
 		--xmacro-base Expr --xmacro-leaf --xmacro-name CBASE_HIR_EXPRESSION
-	$(TOOL)/hir-preprocessor.py --dir $(CBASE_HIR_DIR) --xmacro $(CBASE_HIR_CF_LIST_GEN)   \
-		--xmacro-temp '{class:<24},{Tag:<24},{Name:<24},{Leaf:<6},{Effect:<10}'              \
+	$(TOOL)/hir-preprocessor.py --dir $(CBASE_HIR_DIR) --xmacro $(CBASE_HIR_CF_LIST_GEN)    \
+		--xmacro-temp '{class:<24},{Tag:<24},{Name:<24},{Leaf:<6},{Effect:<10}'               \
 		--xmacro-base ControlFlow --xmacro-leaf --xmacro-name CBASE_HIR_CONTROL_FLOW
+	$(TOOL)/hir-preprocessor.py --dir $(CBASE_HIR_DIR) --xmacro $(CBASE_HIR_INODE_LIST_GEN) \
+	  --xmacro-temp '{class:<16}' --xmacro-name CBASE_HIR_INTERNAL_NODE
 
 artifact : $(INTERP_OBJECT) $(HIR_MAP_SOURCE) hir_node_type
 

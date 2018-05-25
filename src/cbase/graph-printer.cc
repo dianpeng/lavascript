@@ -116,6 +116,16 @@ void DotPrinter::RenderControlFlow( const std::string& region_name , ControlFlow
       ++count;
     }
   }
+
+  // for all phi node
+  if(region->Is<Merge>()) {
+    auto merge = region->As<Merge>();
+    lava_foreach( auto expr , merge->phi_list()->GetForwardIterator() ) {
+      auto name = GetNodeName(expr);
+      RenderExpr(name,expr);
+      Indent(1) << region_name << " -> " << name << " [color=pink style=dashed label=phi]\n";
+    }
+  }
 }
 
 void DotPrinter::RenderEdge( ControlFlow* from , ControlFlow* to ) {
@@ -134,8 +144,8 @@ void DotPrinter::RenderEdge( ControlFlow* from , ControlFlow* to ) {
 
 void DotPrinter::RenderExprOperand( const std::string& name , Expr* node ) {
   switch(node->type()) {
-    case HIR_INT32:
-      Indent(1) << name << "[label=\"i32(" << node->As<Int32>  ()->value() << ")\"]\n";
+    case HIR_INT64:
+      Indent(1) << name << "[label=\"i64(" << node->As<Int64>  ()->value() << ")\"]\n";
       break;
     case HIR_FLOAT64:
       Indent(1) << name << "[label=\"f64(" << node->AsFloat64()->value() << ")\"]\n";
@@ -303,8 +313,8 @@ void DotPrinter::RenderExprEffect( const std::string& name , Expr* node ) {
 
 void DotPrinter::RenderExprBrief( const std::string& name , Expr* node ) {
   switch(node->type()) {
-    case HIR_INT32:
-      Indent(1) << name << "[label=\"i32(" << node->As<Int32>  ()->value() << ")\"]\n";
+    case HIR_INT64:
+      Indent(1) << name << "[label=\"i32(" << node->As<Int64>  ()->value() << ")\"]\n";
       break;
     case HIR_FLOAT64:
       Indent(1) << name << "[label=\"f64(" << node->As<Float64>()->value() << ")\"]\n";

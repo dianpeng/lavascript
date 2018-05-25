@@ -8,8 +8,12 @@ namespace hir        {
 
 LAVA_CBASE_HIR_DEFINE(NO_META,Merge,public ControlFlow) {
  public:
-  Merge( IRType type , std::uint32_t id , Graph* graph ):
-    ControlFlow(type,id,graph) {}
+  inline Merge( IRType , std::uint32_t , Graph* , ControlFlow* region = NULL );
+  inline void AddPhiNode( PhiNode* phi );
+  inline void RemovePhi ( PhiNode* phi );
+  const zone::Vector<PhiNode*>* phi_list() const { return &phi_list_; }
+ private:
+  zone::Vector<PhiNode*> phi_list_;
 };
 
 LAVA_CBASE_HIR_DEFINE(Tag=REGION;Name="region";Leaf=NoLeaf;Effect=NoEffect,
@@ -115,17 +119,17 @@ LAVA_CBASE_HIR_DEFINE(Tag=INLINE_START;Name="inline_start";Leaf=NoLeaf;Effect=No
 };
 
 LAVA_CBASE_HIR_DEFINE(Tag=INLINE_END;Name="inline_end";Leaf=NoLeaf;Effect=NoEffect,
-    InlineEnd,public ControlFlow) {
+    InlineEnd,public Merge) {
  public:
   inline static InlineEnd* New( Graph* , ControlFlow* );
   inline static InlineEnd* New( Graph* );
 
   InlineEnd( Graph* graph , std::uint32_t id , ControlFlow* region ):
-    ControlFlow (HIR_INLINE_END,id,graph,region)
+    Merge(HIR_INLINE_END,id,graph,region)
   {}
 
   InlineEnd( Graph* graph , std::uint32_t id ):
-    ControlFlow (HIR_INLINE_END,id,graph)
+    Merge(HIR_INLINE_END,id,graph)
   {}
  private:
   LAVA_DISALLOW_COPY_AND_ASSIGN(InlineEnd)

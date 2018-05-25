@@ -51,7 +51,9 @@ TypeKind GetICallType( ICall* icall ) {
   }
 }
 
-// TODO:: This is buggy since Phi node can have cycle due to loop induction variable
+// The phi node that can cause a loop is all LoopIVXXX node which
+// is not a Phi node so we don't need to worry about loop but just
+// do a normal recursive visit
 TypeKind GetPhiType( Phi* node ) {
   if(node->operand_list()->size() == 0)
     return TPKIND_UNKNOWN;
@@ -80,6 +82,9 @@ TypeKind GetTypeInference( Expr* node ) {
   switch(node->type()) {
     // normal high ir node which has implicit type
     case HIR_FLOAT64:            return TPKIND_FLOAT64;
+    case HIR_INT64:              return TPKIND_INT64;
+    case HIR_LOOP_IV_INT64:      return TPKIND_INT64;
+    case HIR_FLOAT64_TO_INT64:   return TPKIND_INT64;
     case HIR_LONG_STRING:        return TPKIND_LONG_STRING;
     case HIR_SMALL_STRING:       return TPKIND_SMALL_STRING;
     case HIR_BOOLEAN:            return TPKIND_BOOLEAN;

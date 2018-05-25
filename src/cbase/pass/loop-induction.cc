@@ -9,20 +9,12 @@ namespace cbase      {
 namespace hir        {
 namespace            {
 
-// Narrow
-//
-// The narrow phase will try to narrow the type of a loop induction variable. The
-// algorithm will selectively add GUARD to certain node if it is applicable. After
-// the narrowing phase is done, the type information will be back propogated along
-// with the expression tree until it cannot reach any more. Then a forward expression
-// level optimization will be performed ,the normal folding algorithm doesn't work
-// here since they don't have Int32 type optimization.
-class Narrow {
+class LoopInductionOptimization {
  public:
-  Narrow( zone::Zone* temp );
+  LoopInductionOptimization( zone::Zone* temp );
 
   // function to perform loop induction variable narrowing
-  bool TryNarrow( LoopIV* iv );
+  bool TryLoopInductionOptimization( LoopIV* iv );
 
  private:
   // If the expression tree is nested too deep we don't narrow it
@@ -38,12 +30,12 @@ class Narrow {
   bool DecomposeLoopIV( LoopIV* , LoopIVComponent* );
 
   // do a backwards analyze to see whether it is profitable
-  bool ShouldNarrow   ( LoopIV* , const LoopIVComponent& ) ;
+  bool ShouldLoopInductionOptimization   ( LoopIV* , const LoopIVComponent& ) ;
   void PushUse        ( Expr* , zone::stl::ZoneQueue<Expr*>* );
-  void ShouldNarrowComponent( Expr* );
+  void ShouldLoopInductionOptimizationComponent( Expr* );
 
   // try to do narrowing and do backwards type propogation
-  void DoNarrow         ( LoopIV* , const LoopIVComponent& );
+  void DoLoopInductionOptimization         ( LoopIV* , const LoopIVComponent& );
   Expr* AddGuardIfNeeded( Expr* );
 
  private:
@@ -51,7 +43,7 @@ class Narrow {
   Graph*      graph_;
 };
 
-bool Narrow::DecomposeLoopIV( LoopIV* iv , LoopIVComponent* output ) {
+bool LoopInductionOptimization::DecomposeLoopIV( LoopIV* iv , LoopIVComponent* output ) {
   lava_debug(NORMAL,lava_verify(iv->operand_list()->size() == 2 && iv->IsUsed()););
   Expr* init = iv->Operand(0);
   Expr* step = NULL;
@@ -73,14 +65,14 @@ bool Narrow::DecomposeLoopIV( LoopIV* iv , LoopIVComponent* output ) {
   return true;
 }
 
-void Narrow::PushUse( Expr* node , zone::stl::ZoneQueue<Expr*>* output ) {
+void LoopInductionOptimization::PushUse( Expr* node , zone::stl::ZoneQueue<Expr*>* output ) {
   lava_foreach( auto &k , node->ref_list()->GetForwardIterator() ) {
     output->push(k.node);
   }
 }
 
-void Narrow::ShouldNarrowComponent( Expr* comp ) {
-  if(comp->Is<Float64>() && !CanNarrowReal(comp->As<Float64>()->value()))
+void LoopInductionOptimization::ShouldLoopInductionOptimizationComponent( Expr* comp ) {
+  if(comp->Is<Float64>() && !CanLoopInductionOptimizationReal(comp->As<Float64>()->value()))
     return false;
   else if(!comp->Is<Float64Arithmetic>() && !comp->Is<Arg>()) {
     if(GetTypeInference(comp) != TPKIND_INT32)
@@ -89,8 +81,8 @@ void Narrow::ShouldNarrowComponent( Expr* comp ) {
   return true;
 }
 
-bool Narrow::ShouldNarrow( LoopIV* iv , const LoopIVComponent& comp ) {
-  if(!ShouldNarrowComponent(comp.init) || !ShouldNarrowComponent(comp.step))
+bool LoopInductionOptimization::ShouldLoopInductionOptimization( LoopIV* iv , const LoopIVComponent& comp ) {
+  if(!ShouldLoopInductionOptimizationComponent(comp.init) || !ShouldLoopInductionOptimizationComponent(comp.step))
     return false;
 
   int level = 0;
@@ -112,7 +104,7 @@ bool Narrow::ShouldNarrow( LoopIV* iv , const LoopIVComponent& comp ) {
         auto sb  = node->As<SpecializeBinary>();
         auto rest= sb->lhs() == top ? sb->rhs() : sb->lhs();
         if(rest->Is<Float64>()) {
-          if(!CanNarrowReal(rest->As<Float64>()->value())) return false;
+          if(!CanLoopInductionOptimizationReal(rest->As<Float64>()->value())) return false;
         } else {
           return false;
         }
@@ -156,13 +148,13 @@ bool Narrow::ShouldNarrow( LoopIV* iv , const LoopIVComponent& comp ) {
   return level < kDeepLevel;
 }
 
-Expr* Narrow::AddGuardIfNeeded( Expr* node ) {
+Expr* LoopInductionOptimization::AddGuardIfNeeded( Expr* node ) {
   auto tp = GetTypeInference(node);
   if(tp == TPKIND_INT32) {
     return node;
   } else if(tp == TPKIND_FLOAT64) {
     std::int32_t i32;
-    lava_verify(NarrowReal(node->As<Float64>()->value(),&i32));
+    lava_verify(LoopInductionOptimizationReal(node->As<Float64>()->value(),&i32));
     return Int32::New(graph_,i32);
   } else {
     lava_die();
@@ -170,7 +162,7 @@ Expr* Narrow::AddGuardIfNeeded( Expr* node ) {
   }
 }
 
-void Narrow::DoNarrow( LoopIV* iv , const LoopIVComponent& comp ) {
+void LoopInductionOptimization::DoLoopInductionOptimization( LoopIV* iv , const LoopIVComponent& comp ) {
   // 1. guard the loopiv node
   auto init = AddGuardIfNeeded(comp.init);
   auto step = AddGuardIfNeeded(comp.step);
@@ -179,11 +171,11 @@ void Narrow::DoNarrow( LoopIV* iv , const LoopIVComponent& comp ) {
   iv->Replace(iiv);
 }
 
-bool Narrow::TryNarrow( LoopIV* iv ) {
+bool LoopInductionOptimization::TryLoopInductionOptimization( LoopIV* iv ) {
   LoopIVComponent comp;
   if(!DecomposeLoopIV(iv,&comp)) return false;
-  if(!ShouldNarrow    (iv,comp)) return false;
-  DoNarrow(iv);
+  if(!ShouldLoopInductionOptimization    (iv,comp)) return false;
+  DoLoopInductionOptimization(iv);
   return true;
 }
 

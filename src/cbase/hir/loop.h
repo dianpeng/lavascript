@@ -49,12 +49,12 @@ LAVA_CBASE_HIR_DEFINE(Tag=LOOP;Name="loop";Leaf=NoLeaf;Effect=NoEffect,
 };
 
 LAVA_CBASE_HIR_DEFINE(Tag=LOOP_EXIT;Name="loop_exit";Leaf=NoLeaf;Effect=NoEffect,
-    LoopExit,public ControlFlow) {
+    LoopExit,public Merge) {
  public:
   inline static LoopExit* New( Graph* , Expr* );
   Expr* condition() const { return operand_list()->First(); }
   LoopExit( Graph* graph , std::uint32_t id , Expr* cond ):
-    ControlFlow(HIR_LOOP_EXIT,id,graph)
+    Merge(HIR_LOOP_EXIT,id,graph)
   {
     AddOperand(cond);
   }

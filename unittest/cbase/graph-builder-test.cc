@@ -122,7 +122,7 @@ TEST(GraphBuilder,Basic) {
     var xx = [1,2,3,4];
     var idx= 1.2;
     for( var i = 0 ; x ; g ) {
-      xx[idx] = 10;
+      xx[i] = 10;
     }
 
     return ret;

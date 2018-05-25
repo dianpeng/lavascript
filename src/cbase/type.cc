@@ -88,7 +88,7 @@ TPKind::TPKindBuilder::TPKindBuilder() :
       auto primitive = Node(TPKIND_PRIMITIVE);
       AddChildren(primitive,Node(TPKIND_NUMBER));
       // number  <- float64
-      //         <- int32 
+      //         <- int32
       {
         auto number = Node(TPKIND_NUMBER);
         AddChildren(number,Node(TPKIND_FLOAT64));

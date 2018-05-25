@@ -97,9 +97,11 @@ inline void Expr::ReplaceOperand( std::size_t index , Expr* node ) {
   lava_debug(NORMAL,lava_verify(index < operand_list_.size()););
   auto itr(operand_list_.GetForwardIterator());
   lava_verify(itr.Advance(index));
-  node->AddRef(this,itr);           // add reference for the new node
-  itr.value()->RemoveRef(itr,this); // remove reference from the old value's refernece list
-  itr.set_value(node);              // update to the new value
+  if(itr.value() != node) {
+    node->AddRef(this,itr);           // add reference for the new node
+    itr.value()->RemoveRef(itr,this); // remove reference from the old value's refernece list
+    itr.set_value(node);              // update to the new value
+  }
 }
 
 inline Arg* Arg::New( Graph* graph , std::uint32_t index ) {

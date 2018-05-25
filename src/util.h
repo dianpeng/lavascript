@@ -163,6 +163,11 @@ bool NarrowReal     ( double real , T* output ) {
 }
 
 template< typename T >
+bool CanNarrowReal ( double real ) {
+  T dummy; return NarrowReal(real,&dummy);
+}
+
+template< typename T >
 bool TryCastReal( double real , T* output ) {
   double dmax = static_cast<double>(std::numeric_limits<T>::max());
   double dmin = static_cast<double>(std::numeric_limits<T>::min());

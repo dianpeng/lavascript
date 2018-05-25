@@ -38,8 +38,13 @@ LAVA_CBASE_HIR_DEFINE(Tag=LOOP;Name="loop";Leaf=NoLeaf;Effect=NoEffect,
     Loop,public Merge) {
  public:
   inline static Loop* New( Graph* );
-  Loop( Graph* graph , std::uint32_t id ): Merge(HIR_LOOP,id,graph) {}
+
+  Loop( Graph* graph , std::uint32_t id ): Merge(HIR_LOOP,id,graph),loop_exit_(NULL) {}
+
+  void      set_loop_exit( LoopExit* loop_exit ) { loop_exit_ = loop_exit; }
+  LoopExit* loop_exit    () const                { return loop_exit_; }
  private:
+  LoopExit* loop_exit_;
   LAVA_DISALLOW_COPY_AND_ASSIGN(Loop)
 };
 

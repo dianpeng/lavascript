@@ -422,11 +422,6 @@ class GraphBuilder {
   bool DoInline          ( const Handle<Prototype>& , std::uint8_t , bool );
 
  private:
-  // ----------------------------------------------------------------------------------
-  // Induction Variable Narrow
-  // ----------------------------------------------------------------------------------
-
- private:
   // Zone owned by the Graph object, and it is supposed to be stay around while the
   // optimization happenened
   zone::Zone*                         zone_;
@@ -2020,6 +2015,7 @@ GraphBuilder::BuildLoopBody( BytecodeIterator* itr , ControlFlow* loop_header ) 
 
     // set up LoopExit node
     exit = LoopExit::New(graph_,exit_cond);
+    body->set_loop_exit(exit);
 
     // connect each control flow node together
     exit->AddBackwardEdge (region());

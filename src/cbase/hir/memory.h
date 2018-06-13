@@ -70,12 +70,15 @@ LAVA_CBASE_HIR_DEFINE(Tag=OBJECT_KV;Name="object_kv";Leaf=NoLeaf;Effect=NoEffect
   inline static IRObjectKV* New( Graph* , Expr* , Expr* );
   Expr* key  () const { return operand_list()->First(); }
   Expr* value() const { return operand_list()->Last (); }
-  void set_key  ( Expr* key ) { lava_debug(NORMAL,lava_verify(key->IsString());); ReplaceOperand(0,key); }
+  void set_key  ( Expr* key ) {
+    lava_debug(NORMAL,lava_verify(key->Is<StringNode>()););
+    ReplaceOperand(0,key);
+  }
   void set_value( Expr* val ) { ReplaceOperand(1,val); }
   IRObjectKV( Graph* graph , std::uint32_t id , Expr* key , Expr* val ):
     Expr(HIR_OBJECT_KV,id,graph)
   {
-    lava_debug(NORMAL,lava_verify(key->IsString()););
+    lava_debug(NORMAL,lava_verify(key->Is<StringNode>()););
     AddOperand(key);
     AddOperand(val);
   }
@@ -90,7 +93,7 @@ LAVA_CBASE_HIR_DEFINE(Tag=OBJECT;Name="object";Leaf=NoLeaf;Effect=Effect,
  public:
   inline static IRObject* New( Graph* , std::size_t size );
   void Add( Expr* key , Expr* val ) {
-    lava_debug(NORMAL,lava_verify(key->IsString()););
+    lava_debug(NORMAL,lava_verify(key->Is<StringNode>()););
     AddOperand(IRObjectKV::New(graph(),key,val));
   }
   std::size_t Size() const { return operand_list()->size(); }

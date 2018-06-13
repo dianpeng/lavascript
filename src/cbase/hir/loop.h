@@ -62,6 +62,15 @@ LAVA_CBASE_HIR_DEFINE(Tag=LOOP_EXIT;Name="loop_exit";Leaf=NoLeaf;Effect=NoEffect
   LAVA_DISALLOW_COPY_AND_ASSIGN(LoopExit)
 };
 
+LAVA_CBASE_HIR_DEFINE(Tag=LOOP_MERGE;Name="loop_merge";Leaf=NoLeaf;Effect=NoEffect,
+    LoopMerge,public Merge) {
+ public:
+  inline static LoopMerge* New( Graph* );
+  LoopMerge( Graph* graph , std::uint32_t id ): Merge(HIR_LOOP_MERGE,id,graph) {}
+ private:
+  LAVA_DISALLOW_COPY_AND_ASSIGN(LoopMerge)
+};
+
 } // namespace hir
 } // namespace cbase
 } // namespace lavascript

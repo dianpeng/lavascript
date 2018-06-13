@@ -120,10 +120,11 @@ void DotPrinter::RenderControlFlow( const std::string& region_name , ControlFlow
   // for all phi node
   if(region->Is<Merge>()) {
     auto merge = region->As<Merge>();
-    lava_foreach( auto expr , merge->phi_list()->GetForwardIterator() ) {
+    lava_foreach( auto &n, merge->phi_list()->GetForwardIterator() ) {
+      auto expr = n.phi();
       auto name = GetNodeName(expr);
       RenderExpr(name,expr);
-      Indent(1) << region_name << " -> " << name << " [color=pink style=dashed label=phi]\n";
+      Indent(1) << region_name << " -> " << name << " [color=pink style=bold label=phi]\n";
     }
   }
 }

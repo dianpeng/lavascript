@@ -84,7 +84,7 @@ inline bool Node::IsLeaf() const {
 }
 
 inline const zone::String& Node::AsZoneString() const {
-  lava_debug(NORMAL,lava_verify(IsString()););
+  lava_debug(NORMAL,lava_verify(Is<StringNode>()););
   return IsLString() ? *AsLString()->value() : *AsSString()->value() ;
 }
 
@@ -489,18 +489,18 @@ inline ItrDeref* ItrDeref::New( Graph* graph , Expr* operand ) {
   return ret;
 }
 
-inline void PhiNode::set_region( Merge* region ) {
+inline void ValuePhi::set_region( Merge* region ) {
 	lava_debug(NORMAL,lava_verify(!region_););
 	region_ = region;
 }
 
-inline void PhiNode::RemovePhiFromRegion( PhiNode* phi ) {
+inline void ValuePhi::RemovePhiFromRegion( ValuePhi* phi ) {
   if(phi->region()) {
     lava_verify(phi->region()->RemoveOperand(phi));
   }
 }
 
-inline bool PhiNode::IsUsed() const {
+inline bool ValuePhi::IsUsed() const {
   if(!region()) return false;
   return !ref_list()->empty();
 }
@@ -509,13 +509,13 @@ inline Phi* Phi::New( Graph* graph , Expr* lhs , Expr* rhs , Merge* region ) {
   auto ret = graph->zone()->New<Phi>(graph,graph->AssignID());
   ret->AddOperand(lhs);
   ret->AddOperand(rhs);
-  region->AddPhiNode(ret);
+  region->AddPhi(PhiNode{ret});
   return ret;
 }
 
 inline Phi* Phi::New( Graph* graph , Merge* region ) {
   auto ret = graph->zone()->New<Phi>(graph,graph->AssignID());
-  region->AddPhiNode(ret);
+  region->AddPhi(PhiNode{ret});
   return ret;
 }
 
@@ -543,7 +543,7 @@ inline LoopIV* LoopIV::New( Graph* graph , Expr* lhs , Expr* rhs ) {
 
 inline LoopIV* LoopIV::New( Graph* graph , Loop* loop ) {
   auto ret = New(graph);
-  loop->AddPhiNode(ret);
+  loop->AddPhi(PhiNode{ret});
   return ret;
 }
 
@@ -567,7 +567,7 @@ inline LoopIVInt64* LoopIVInt64::New( Graph* graph , Expr* lhs , Expr* rhs ) {
 
 inline LoopIVInt64* LoopIVInt64::New( Graph* graph , Loop* loop ) {
   auto ret = New(graph);
-  loop->AddPhiNode(ret);
+  loop->AddPhi(PhiNode{ret});
   return ret;
 }
 
@@ -584,34 +584,32 @@ inline void ReadEffect::SetWriteEffect( WriteEffect* node ) {
   effect_edge_.id   = itr;
 }
 
-inline EffectPhi* EffectPhi::New( Graph* graph ) {
-  return graph->zone()->New<EffectPhi>(graph,graph->AssignID());
+inline EffectMerge* EffectMerge::New( Graph* graph ) {
+  return graph->zone()->New<EffectMerge>(graph,graph->AssignID());
 }
 
-inline EffectPhi* EffectPhi::New( Graph* graph , ControlFlow* region ) {
+inline EffectMerge* EffectMerge::New( Graph* graph , Merge* region ) {
   auto ret = New(graph);
-  region->AddOperand(ret);
-  ret->set_region(region);
+  region->AddPhi(PhiNode{ret});
   return ret;
 }
 
-inline EffectPhi* EffectPhi::New( Graph* graph , WriteEffect* lhs , WriteEffect* rhs ) {
+inline EffectMerge* EffectMerge::New( Graph* graph , WriteEffect* lhs , WriteEffect* rhs ) {
   auto ret = New(graph);
   ret->AddOperand(lhs);
   ret->AddOperand(rhs);
   return ret;
 }
 
-inline EffectPhi* EffectPhi::New( Graph* graph , WriteEffect* lhs, WriteEffect* rhs ,
-                                                                   ControlFlow* region ) {
+inline EffectMerge* EffectMerge::New( Graph* graph , WriteEffect* lhs , WriteEffect* rhs ,
+                                                                        Merge* region   ) {
   auto ret = New(graph,lhs,rhs);
-  region->AddOperand(ret);
-  ret->set_region(region);
+  region->AddPhi(PhiNode{ret});
   return ret;
 }
 
-inline LoopEffectPhi* LoopEffectPhi::New( Graph* graph , WriteEffect* lhs ) {
-  auto ret = graph->zone()->New<LoopEffectPhi>(graph,graph->AssignID());
+inline LoopEffectStart* LoopEffectStart::New( Graph* graph , WriteEffect* lhs ) {
+  auto ret = graph->zone()->New<LoopEffectStart>(graph,graph->AssignID());
   ret->AddOperand(lhs);
   return ret;
 }
@@ -744,21 +742,49 @@ inline StackSlot* StackSlot::New( Graph* graph , Expr* expr , std::uint32_t inde
   return graph->zone()->New<StackSlot>(graph,graph->AssignID(),expr,index);
 }
 
+inline void PhiNode::set_region( Merge* region ) {
+  if(phi_->Is<ValuePhi>()) {
+    phi_->As<ValuePhi>()->set_region(region);
+  } else {
+    phi_->As<EffectMergeBase>()->set_region(region);
+  }
+}
+
+inline Merge* PhiNode::region() const {
+  if(phi_->Is<ValuePhi>()) {
+    return phi_->As<ValuePhi>()->region();
+  } else {
+    return phi_->As<EffectMergeBase>()->region();
+  }
+}
+
+inline void PhiNode::ResetRegion() {
+  if(phi_->Is<ValuePhi>()) {
+    phi_->As<ValuePhi>()->ResetRegion();
+  } else {
+    phi_->As<EffectMergeBase>()->ResetRegion();
+  }
+}
+
 inline Merge::Merge( IRType type , std::uint32_t id , Graph* graph , ControlFlow* region ):
   ControlFlow(type,id,graph,region),
   phi_list_  ()
 {}
 
-inline void Merge::AddPhiNode( PhiNode* phi ) {
+inline void Merge::AddPhi( PhiNode phi ) {
   phi_list_.Add(zone(),phi);
-  phi->set_region(this);
+  phi.set_region(this);
 }
 
-inline void Merge::RemovePhi( PhiNode* phi ) {
-  lava_debug(NORMAL,lava_verify(phi->region() == this););
-  if(auto itr = phi_list_.Find(phi); itr.HasNext()) {
+inline void Merge::RemovePhi( PhiNode phi ) {
+  lava_debug(NORMAL,lava_verify(phi.region() == this););
+
+  if(auto itr = phi_list_.FindIf([=](const PhiNode& that) {
+        return that.phi()->IsIdentical(phi.phi());
+     });itr.HasNext()) {
+
     phi_list_.Remove(itr);
-    phi->ResetRegion();
+    phi.ResetRegion();
   }
 }
 
@@ -793,6 +819,10 @@ inline LoopExit* LoopExit::New( Graph* graph , Expr* condition ) {
   return graph->zone()->New<LoopExit>(graph,graph->AssignID(),condition);
 }
 
+inline LoopMerge* LoopMerge::New( Graph* graph ) {
+  return graph->zone()->New<LoopMerge>(graph,graph->AssignID());
+}
+
 inline If* If::New( Graph* graph , Expr* condition , ControlFlow* parent ) {
   return graph->zone()->New<If>(graph,graph->AssignID(),condition,parent);
 }
@@ -814,6 +844,14 @@ inline IfFalse* IfFalse::New( Graph* graph , ControlFlow* parent ) {
 
 inline IfFalse* IfFalse::New( Graph* graph ) {
   return IfFalse::New(graph,NULL);
+}
+
+inline IfMerge* IfMerge::New( Graph* graph , ControlFlow* region ) {
+  return graph->zone()->New<IfMerge>(graph,graph->AssignID(),region);
+}
+
+inline IfMerge* IfMerge::New( Graph* graph ) {
+  return New(graph,NULL);
 }
 
 inline Jump* Jump::New( Graph* graph , const std::uint32_t* pc , ControlFlow* parent ) {

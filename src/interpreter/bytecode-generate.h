@@ -196,15 +196,12 @@ class IFrameReserver {
       rarr_[i] = r;
     }
   }
-
   ~IFrameReserver() {
     for( std::int32_t i = kReserveCallStackSlot - 1; i >= 0 ; --i ) {
       ra_->Drop(rarr_[i].Get());
     }
   }
-
   operator bool () const { return failed_; }
-
  private:
   Optional<Register> rarr_[kReserveCallStackSlot];
   RegisterAllocator* ra_;

@@ -51,19 +51,19 @@ std::string GetBytecodeRepresentation( const std::uint32_t* address );
 class BytecodeLocation {
  public:
   enum {
-    ONE_BYTE = 0,
-    TWO_BYTE
+    ONE_WORD = 0,
+    TWO_WORD
   };
   BytecodeLocation( const std::uint32_t* address , int type ): ptr_(address,type) {}
   BytecodeLocation(): ptr_(NULL,0) {}
  public:
   const std::uint32_t* address() const { return ptr_.ptr(); }
-  bool IsOneByte() const { return ptr_.state() == ONE_BYTE; }
-  bool IsTwoByte() const { return ptr_.state() == TWO_BYTE; }
-
+  bool IsOneWord() const { return ptr_.state() == ONE_WORD; }
+  bool IsTwoWord() const { return ptr_.state() == TWO_WORD; }
+  // get next bytecode location
+  inline BytecodeLocation Next() const;
  public:
-  // Do a decoding for this *single* bytecode
-  inline void     Decode( Bytecode* ,std::uint32_t* , std::uint32_t* , std::uint32_t* , std::uint32_t* ) const;
+  inline void Decode( Bytecode* ,std::uint32_t* , std::uint32_t* , std::uint32_t* , std::uint32_t* ) const;
   inline Bytecode opcode() const;
  private:
   TaggedPtr<const std::uint32_t> ptr_;
@@ -77,59 +77,59 @@ class BytecodeIterator {
   inline BytecodeIterator( const std::uint32_t* , std::size_t );
 
  public:
-  bool HasNext() const { return cursor_ < size_; }
-  inline bool Move();
-
-  // Get the opcode from current cursor
-  inline Bytecode opcode() const;
-  inline const char* opcode_name() const;
-  inline BytecodeType type() const;
+  inline bool                Move   ();
+  bool                       HasNext() const { return cursor_ < size_; }
+  // get the opcode from current cursor
+  inline Bytecode             opcode() const;
+  inline const char*     opcode_name() const;
+  inline BytecodeType           type() const;
+  std::size_t                 offset() const { return offset_; }
+  const BytecodeUsage&         usage() const { return GetBytecodeUsage(opcode()); }
+  // get current code position pointer
+  const std::uint32_t*   code_buffer() const { return code_buffer_; }
+  const std::uint32_t*   end        () const { return code_buffer_ + cursor_; }
+  const std::uint32_t*   pc         () const { return code_buffer_ + cursor_; }
+  std::size_t            cursor     () const { return cursor_; }
   BytecodeLocation bytecode_location() const {
-    return BytecodeLocation( pc(),offset() == 1 ? BytecodeLocation::ONE_BYTE :
-                                                  BytecodeLocation::TWO_BYTE );
+    return BytecodeLocation( pc(),offset() == 1 ? BytecodeLocation::ONE_WORD :
+                                                  BytecodeLocation::TWO_WORD );
   }
-  std::size_t offset() const { return offset_; }
-  const BytecodeUsage& usage() const { return GetBytecodeUsage(opcode()); }
+ public:
+  // get the next program counter from bytecode stream. this operation will not
+  // change any states of |this| BytecodeIterator
+  const std::uint32_t* NextPC              () const { return pc() + offset(); }
+  BytecodeLocation     NextBytecodeLocation() const { return bytecode_location().Next(); }
+ public:
   // get operand genernally, the caller does type mappings impossible to fail.
   inline void FetchOperand( std::uint32_t*, std::uint32_t*, std::uint32_t*, std::uint32_t* );
- public:
   // get operand based on the type mappings, fail with assertion
-  inline void GetOperand( std::uint8_t* , std::uint8_t* , std::uint8_t* , std::uint32_t* );
-  inline void GetOperand( std::uint8_t* , std::uint8_t* , std::uint8_t* );
-  inline void GetOperand( std::uint8_t* , std::uint8_t* );
-  inline void GetOperand( std::uint8_t* );
-  inline void GetOperand( std::uint16_t* );
-  inline void GetOperand( std::uint16_t* , std::uint8_t* );
-  inline void GetOperand( std::uint8_t* , std::uint16_t* );
+  inline void GetOperand  ( std::uint8_t* , std::uint8_t* , std::uint8_t* , std::uint32_t* );
+  inline void GetOperand  ( std::uint8_t* , std::uint8_t* , std::uint8_t* );
+  inline void GetOperand  ( std::uint8_t* , std::uint8_t* );
+  inline void GetOperand  ( std::uint8_t* );
+  inline void GetOperand  ( std::uint16_t* );
+  inline void GetOperand  ( std::uint16_t* , std::uint8_t* );
+  inline void GetOperand  ( std::uint8_t* , std::uint16_t* );
   // get the operand based on the operand index
-  void GetOperandByIndex( int index , std::uint32_t*);
-  // Get current code position pointer
-  const std::uint32_t* code_buffer() const { return code_buffer_; }
-  const std::uint32_t* end() const { return code_buffer_ + cursor_; }
-  const std::uint32_t* pc() const { return code_buffer_ + cursor_; }
-  std::size_t cursor() const { return cursor_; }
-
+  void GetOperandByIndex  ( int index , std::uint32_t*);
+ public:
   void BranchTo( const std::uint32_t offset ) {
     cursor_ = offset;
     if(HasNext()) Decode();
   }
-
   void BranchTo( const std::uint32_t* pc ) {
     std::size_t offset = (pc - code_buffer_);
     cursor_ = offset;
     if(HasNext()) Decode();
   }
-
   const std::uint32_t* OffsetAt( std::uint32_t offset ) {
     return code_buffer_ + offset;
   }
-
  public:
   // Skip to bytecode if the input predicate returns true, otherwise stop at that
   // point. If no further bytecode can be consumed and predicate haven't failed
   // once this funtion will return false ; otherwise return true
   bool SkipTo( const std::function<bool(BytecodeIterator*)>& );
-
  private:
   void Decode() {
     DecodeBytecode(code_buffer_+cursor_,&opcode_,&type_,&a1_,&a2_,&a3_,&a4_,&offset_);
@@ -153,7 +153,7 @@ class BytecodeIterator {
  * Inline Function Definitions
  *
  * -------------------------------------------*/
-// Do a decoding for this *single* bytecode
+
 inline void BytecodeLocation::Decode( Bytecode* bc , std::uint32_t* a1 ,
     std::uint32_t* a2 ,
     std::uint32_t* a3 ,
@@ -161,7 +161,7 @@ inline void BytecodeLocation::Decode( Bytecode* bc , std::uint32_t* a1 ,
   BytecodeType type;
   std::size_t offset;
   DecodeBytecode(ptr_.ptr(),bc,&type,a1,a2,a3,a4,&offset);
-  lava_debug(NORMAL,lava_verify(offset == (IsOneByte() ? 1:2)););
+  lava_debug(NORMAL,lava_verify(offset == (IsOneWord() ? 1:2)););
 }
 
 inline Bytecode BytecodeLocation::opcode() const {
@@ -169,6 +169,16 @@ inline Bytecode BytecodeLocation::opcode() const {
   std::uint32_t a1,a2,a3,a4;
   Decode(&bc,&a1,&a2,&a3,&a4);
   return bc;
+}
+
+inline BytecodeLocation BytecodeLocation::Next() const {
+  auto npc = address() + (IsOneWord() ? 1 : 2);
+  BytecodeType  type;
+  std::size_t offset;
+  Bytecode        bc;
+  std::uint32_t   a1,a2,a3,a4;
+  DecodeBytecode(npc,&bc,&type,&a1,&a2,&a3,&a4,&offset);
+  return BytecodeLocation(npc,offset == 1 ? ONE_WORD : TWO_WORD);
 }
 
 inline BytecodeIterator::BytecodeIterator( const std::uint32_t* code_buffer ,

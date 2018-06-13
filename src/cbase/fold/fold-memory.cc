@@ -38,17 +38,17 @@ class MemoryFolder : public Folder {
 
 
   // helper function to do deep branch/split AA. The following function
-  // will try to make AA cross branch generated EffectPhi node until hit
+  // will try to make AA cross branch generated EffectMerge node until hit
   // the outer most BranchStartEffect which is just a marker node. The
   // way it works is that it tries to do AA across *all* branches' effect
   // chain and return result :
-  // 1) AA_MUST , all the branch start with the input EffectPhi has alias
+  // 1) AA_MUST , all the branch start with the input EffectMerge has alias
   //    with the input memory reference , all branch is AA_MUST.
   //    To simplify problem, AA_MUST is treated same as AA_MAY, there're
   //    no aliased nodes been recored , so no forwarding and collapsing
   //    gonna be performed
   //
-  // 2) AA_NOT  , all the branch start with the input EffectPhi doesn't
+  // 2) AA_NOT  , all the branch start with the input EffectMerge doesn't
   //    have the alias with the input memory reference, ie all branch is
   //    AA_NOT
   //
@@ -69,12 +69,12 @@ class MemoryFolder : public Folder {
   };
 
   template< typename Set, typename Get, typename T >
-  BranchAA StoreCollapseBranchAA( const FieldRefNode& , EffectPhi* );
+  BranchAA StoreCollapseBranchAA( const FieldRefNode& , EffectMerge* );
   template< typename Set, typename Get, typename T >
   BranchAA StoreCollapseSingleBranchAA( const FieldRefNode& , WriteEffect* );
 
   template< typename Set, typename T >
-  BranchAA StoreForwardBranchAA ( const FieldRefNode& , EffectPhi* );
+  BranchAA StoreForwardBranchAA ( const FieldRefNode& , EffectMerge* );
   template< typename Set, typename T >
   BranchAA StoreForwardSingleBranchAA ( const FieldRefNode& , WriteEffect* );
 
@@ -197,9 +197,9 @@ MemoryFolder::BranchAA MemoryFolder::StoreCollapseSingleBranchAA( const FieldRef
 
     // 2. now checkcurrent effect node to see whether we need to go on
     if(e->Is<HardBarrier>()) {
-      if(e->Is<EffectPhi>()) {
+      if(e->Is<EffectMerge>()) {
         // nested branches
-        return StoreCollapseBranchAA<Set,Get,T>(ref,e->As<EffectPhi>());
+        return StoreCollapseBranchAA<Set,Get,T>(ref,e->As<EffectMerge>());
       } else if(e->Is<BranchStartEffect>()) {
         return BranchAA{e->As<BranchStartEffect>()};
       }
@@ -231,7 +231,7 @@ MemoryFolder::BranchAA MemoryFolder::StoreCollapseSingleBranchAA( const FieldRef
 
 template< typename Set, typename Get , typename T >
 MemoryFolder::BranchAA MemoryFolder::StoreCollapseBranchAA( const FieldRefNode& ref ,
-                                                            EffectPhi*          phi ) {
+                                                            EffectMerge*          phi ) {
   if(phi->operand_list()->size() < 2) return BranchAA{}; // FIXME:: assert ?
   auto first = phi->Operand(0)->As<WriteEffect>();
   auto aa = StoreCollapseSingleBranchAA<Set,Get,T>(ref,first);
@@ -274,9 +274,9 @@ Expr* MemoryFolder::StoreCollapse( Expr* ref , Expr* value , WriteEffect* e ) {
 
     // 2. check the effect node's type , break when the effect is a hard barrier
     if(e->Is<HardBarrier>()) {
-      if(e->Is<EffectPhi>()) {
+      if(e->Is<EffectMerge>()) {
         // do a branch alias analyzing
-        auto res = StoreCollapseBranchAA<Set,Get,T>(FieldRefNode{ref},e->As<EffectPhi>());
+        auto res = StoreCollapseBranchAA<Set,Get,T>(FieldRefNode{ref},e->As<EffectMerge>());
         switch(res.result) {
           case AA::AA_MAY :
           case AA::AA_MUST:
@@ -323,8 +323,8 @@ MemoryFolder::BranchAA MemoryFolder::StoreForwardSingleBranchAA( const FieldRefN
   do {
     // only need to care about write effect node , no need to do read
     if(e->Is<HardBarrier>()) {
-      if(e->Is<EffectPhi>()) {
-        return StoreForwardBranchAA<Set,T>(ref,e->As<EffectPhi>());
+      if(e->Is<EffectMerge>()) {
+        return StoreForwardBranchAA<Set,T>(ref,e->As<EffectMerge>());
       } else if(e->Is<BranchStartEffect>()) {
         return BranchAA{e->As<BranchStartEffect>()}; // not aliase with each other
       }
@@ -352,7 +352,7 @@ MemoryFolder::BranchAA MemoryFolder::StoreForwardSingleBranchAA( const FieldRefN
 
 template< typename Set , typename T >
 MemoryFolder::BranchAA MemoryFolder::StoreForwardBranchAA( const FieldRefNode& ref ,
-                                                           EffectPhi*          phi ) {
+                                                           EffectMerge*          phi ) {
   if(phi->operand_list()->size() < 2) return BranchAA{}; // FIXME:: assert ?
   auto first = phi->Operand(0)->As<WriteEffect>();
   auto aa    = StoreForwardSingleBranchAA<Set,T>(ref,first);
@@ -375,8 +375,8 @@ template< typename Set , typename T >
 Expr* MemoryFolder::StoreForward( Expr* ref , WriteEffect* e ) {
   do {
     if(e->Is<HardBarrier>()) {
-      if(e->Is<EffectPhi>()) {
-        auto res = StoreForwardBranchAA<Set,T>(FieldRefNode{ref},e->As<EffectPhi>());
+      if(e->Is<EffectMerge>()) {
+        auto res = StoreForwardBranchAA<Set,T>(FieldRefNode{ref},e->As<EffectMerge>());
         switch(res.result) {
           case AA::AA_MUST:
           case AA::AA_MAY:

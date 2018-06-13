@@ -37,6 +37,11 @@ static const std::size_t kMaxLiteralSize           = 256;
 static const std::size_t kMaxUpValueSize           = 256;
 static const std::uint8_t kAccRegisterIndex        = 255;
 
+// Reserved slots/register for *holding* this IFrame structure while we are
+// in the *call*
+static const std::size_t kReserveCallStack         = 24;
+static const std::size_t kReserveCallStackSlot     =  3; // 24 / sizeof(Value)
+
 } // namespace interpreter
 
 namespace compiler {

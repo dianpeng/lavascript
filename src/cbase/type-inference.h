@@ -16,7 +16,7 @@ namespace cbase      {
 namespace hir        {
 class Expr;
 
-// Do simple type inference based on the input type
+// do simple type inference based on the input type
 TypeKind GetTypeInference( Expr* );
 
 // evaluate expr node under boolean context

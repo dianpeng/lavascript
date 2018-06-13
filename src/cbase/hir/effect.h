@@ -136,63 +136,65 @@ LAVA_CBASE_HIR_DEFINE(NO_META,SoftBarrier,public EffectBarrier) {
     EffectBarrier(type,id,graph) {}
 };
 
-LAVA_CBASE_HIR_DEFINE(NO_META,EffectPhiBase,public HardBarrier) {
+LAVA_CBASE_HIR_DEFINE(NO_META,EffectMergeBase,public HardBarrier) {
  public:
-  EffectPhiBase( IRType type , std::uint32_t id , Graph* graph ) :
+  EffectMergeBase( IRType type , std::uint32_t id , Graph* graph ) :
     HardBarrier(type,id,graph) {}
  public:
-  ControlFlow* region    ()                      const { return region_;   }
-  void         set_region( ControlFlow* region )       { region_ = region; }
+  Merge* region    ()                const { return region_;   }
+  void   set_region( Merge* region )       { region_ = region; }
+  void   ResetRegion()                     { region_ = NULL;   }
  public:
   virtual DependencyIterator GetDependencyIterator() const;
   virtual std::size_t              dependency_size() const;
  private:
-  class EffectPhiBaseDependencyIterator;
-  friend class EffectPhiBaseDependencyIterator;
+  class EffectMergeBaseDependencyIterator;
+  friend class EffectMergeBaseDependencyIterator;
 
-  ControlFlow* region_;
-  LAVA_DISALLOW_COPY_AND_ASSIGN(EffectPhiBase)
+  Merge* region_;
+  LAVA_DISALLOW_COPY_AND_ASSIGN(EffectMergeBase)
 };
 
-// EffectPhi is a phi node inserted at merge region used to fan in all the branch's
+// EffectMerge is a phi node inserted at merge region used to fan in all the branch's
 // phi node. Each branch will use a InitBarrier to separate each branch's effect
 // chain regardlessly
-LAVA_CBASE_HIR_DEFINE(Tag=EFFECT_PHI;Name="effect_phi";Leaf=NoLeaf;Effect=Effect,
-    EffectPhi,public EffectPhiBase) {
+LAVA_CBASE_HIR_DEFINE(Tag=EFFECT_MERGE;Name="effect_merge";Leaf=NoLeaf;Effect=Effect,
+    EffectMerge,public EffectMergeBase) {
  public:
-  static inline EffectPhi* New( Graph* );
-  static inline EffectPhi* New( Graph* , ControlFlow* );
-  static inline EffectPhi* New( Graph* , WriteEffect* , WriteEffect* );
-  static inline EffectPhi* New( Graph* , WriteEffect* , WriteEffect* , ControlFlow* );
+  static inline EffectMerge* New( Graph* );
+  static inline EffectMerge* New( Graph* , Merge* );
+  static inline EffectMerge* New( Graph* , WriteEffect* , WriteEffect* );
+  static inline EffectMerge* New( Graph* , WriteEffect* , WriteEffect* , Merge* );
 
-  EffectPhi( Graph* graph , std::uint32_t id ) : EffectPhiBase(HIR_EFFECT_PHI,id,graph) {}
+  EffectMerge( Graph* graph , std::uint32_t id ) : EffectMergeBase(HIR_EFFECT_MERGE,id,graph) {}
  private:
-  LAVA_DISALLOW_COPY_AND_ASSIGN(EffectPhi)
+  LAVA_DISALLOW_COPY_AND_ASSIGN(EffectMerge)
 };
 
-// LoopEffectPhi
+// LoopEffectStart
 // This phi is a special effect node that will appear at the Loop region node to mark the
 // effect chain is inside of the loop body. The node will forms a cycle like other loop
 // induction variable phi. It is mainly to prevent optimization of memory forwarding to
 // cross loop carried dependency boundary. Due to the cycle , when do analyze of aliasing
 // or previous store, one will have to visit the store happened *after the loop*. And it
 // also means the only the fly memory optimization cannot be applied to stuff in the loop
-LAVA_CBASE_HIR_DEFINE(Tag=LOOP_EFFECT_PHI;Name="loop_effect_phi";Leaf=NoLeaf;Effect=Effect,
-    LoopEffectPhi,public EffectPhiBase) {
+LAVA_CBASE_HIR_DEFINE(Tag=LOOP_EFFECT_START;Name="loop_effect_start";Leaf=NoLeaf;Effect=Effect,
+    LoopEffectStart,public EffectMergeBase) {
  public:
   // The loop effect phi node will be created right before entering into the loop, so at
   // that moment only one fallthrough branch's WriteEffect node is known. The new function
   // will take that WriteEffect as its precedence.
-  static inline LoopEffectPhi* New( Graph* , WriteEffect* );
+  static inline LoopEffectStart* New( Graph* , WriteEffect* );
  public:
-  // Set the backwards pointed effect of this LoopEffectPhi. This backward pointed effect
+  // Set the backwards pointed effect of this LoopEffectStart. This backward pointed effect
   // points from the bottom of the loop (loop exit) back to the start of the loop effect
   // phi node.
   void SetBackwardEffect( WriteEffect* effect ) { AddOperand(effect); }
-  // Constructor of the LoopEffectPhi
-  LoopEffectPhi( Graph* graph , std::uint32_t id ) : EffectPhiBase(HIR_LOOP_EFFECT_PHI,id,graph) {}
+  // Constructor of the LoopEffectStart
+  LoopEffectStart( Graph* graph , std::uint32_t id ) :
+    EffectMergeBase(HIR_LOOP_EFFECT_START,id,graph) {}
  private:
-  LAVA_DISALLOW_COPY_AND_ASSIGN(LoopEffectPhi)
+  LAVA_DISALLOW_COPY_AND_ASSIGN(LoopEffectStart)
 };
 
 // InitBarrier is an object to separate effect chain in lexical scope. It is mainly to

@@ -1,6 +1,6 @@
 #ifndef CBASE_HIR_BRANCH_H_
 #define CBASE_HIR_BRANCH_H_
-#include "control-flow.h"
+#include "region.h"
 
 namespace lavascript {
 namespace cbase      {
@@ -69,6 +69,20 @@ LAVA_CBASE_HIR_DEFINE(Tag=IF_FALSE;Name="if_false";Leaf=NoLeaf;Effect=NoEffect,
 
  private:
   LAVA_DISALLOW_COPY_AND_ASSIGN(IfFalse)
+};
+
+LAVA_CBASE_HIR_DEFINE(Tag=IF_MERGE;Name="if_merge";Leaf=NoLeaf;Effect=NoEffect,
+    IfMerge,public Merge) {
+ public:
+  inline static IfMerge* New( Graph* , ControlFlow* );
+  inline static IfMerge* New( Graph* );
+
+  IfMerge( Graph* graph , std::uint32_t id , ControlFlow* region ):
+    Merge(HIR_IF_MERGE,id,graph,region)
+  {}
+
+ private:
+  LAVA_DISALLOW_COPY_AND_ASSIGN(IfMerge)
 };
 
 } // namespace hir

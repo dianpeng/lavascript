@@ -74,11 +74,6 @@ struct IFrame {
 static_assert( std::is_standard_layout<IFrame>::value );
 static_assert( sizeof(IFrame) == 24 );
 
-// Reserved slots/register for *holding* this IFrame structure while we are
-// in the *call*
-static const std::size_t kReserveCallStack = 24;
-static const std::size_t kReserveCallStackSlot = kReserveCallStack / sizeof(Value);
-
 struct IFrameLayout {
   static const std::uint32_t kField1Offset = offsetof(IFrame,field1);
   static const std::uint32_t kField2Offset = offsetof(IFrame,field2);

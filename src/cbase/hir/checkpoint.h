@@ -44,8 +44,11 @@ LAVA_CBASE_HIR_DEFINE(Tag=CHECKPOINT;Name="checkpoint";Leaf=NoLeaf;Effect=NoEffe
     Checkpoint,public Expr) {
  public:
   inline static Checkpoint* New( Graph* , IRInfo* );
-  // add a stack traced value into checkpoint object
+
+  // add internal restore instructions
   inline void AddStackSlot( Expr* , std::uint32_t );
+  inline void AddFrameSlot( FrameSlot* );
+
   // return the ir_info object
   IRInfo* ir_info() const { return ir_info_; }
 
@@ -73,6 +76,49 @@ LAVA_CBASE_HIR_DEFINE(Tag=STACK_SLOT;Name="stack_slot";Leaf=NoLeaf;Effect=NoEffe
  private:
   std::uint32_t index_;
   LAVA_DISALLOW_COPY_AND_ASSIGN(StackSlot)
+};
+
+// Used to restore call stack because of the inline
+LAVA_CBASE_HIR_DEFINE(Tag=FRAME_SLOT;Name="frame_slot";Leaf=NoLeaf;Effect=NoEffect,
+    FrameSlot,public Expr) {
+ public:
+  inline FrameSlot* New( Graph* , std::uint32_t  , /* index */
+                                  std::uint32_t* , /* pc    */
+                                  std::uint8_t   , /* narg  */
+                                  std::uint16_t  , /* base  */
+                                  void*          , /* cls_or_ext */
+                                  bool             /* tcall */ );
+  std::uint32_t index() const { return index_; }
+  std::uint32_t*   pc() const { return pc_;    }
+  std::uint8_t   narg() const { return narg_;  }
+  std::uint16_t  base() const { return base_;  }
+  void*    cls_or_ext() const { return cls_or_ext_; }
+  // flags
+  bool          tcall() const { return tcall_; }
+ public:
+  FrameSlot( Graph* graph , std::uint32_t id , std::uint32_t index ,
+                                               std::uint32_t*   pc ,
+                                               std::uint8_t   narg ,
+                                               std::uint16_t  base ,
+                                               void*    cls_or_ext ,
+                                               bool           tcall ):
+    Expr       (HIR_FRAME_SLOT,id,graph),
+    index_     (index),
+    pc_        (pc)   ,
+    narg_      (narg) ,
+    base_      (base) ,
+    cls_or_ext_(cls_or_ext),
+    tcall_     (tcall)
+  {}
+ private:
+  std::uint32_t index_; // starting from which slots
+  std::uint32_t*   pc_; // return address
+  std::uint8_t   narg_; // number of arguments
+  std::uint16_t  base_; // base index
+  void*    cls_or_ext_; // closure or extension
+  bool          tcall_; // whether it is tail call
+
+  LAVA_DISALLOW_COPY_AND_ASSIGN(FrameSlot)
 };
 
 } // namespace hir

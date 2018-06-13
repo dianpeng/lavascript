@@ -7,6 +7,8 @@
 #include <utility>
 #include <algorithm>
 
+// TODO:: Use Tarjan / Lengauer algorithm ?
+
 namespace lavascript {
 namespace cbase      {
 namespace hir        {

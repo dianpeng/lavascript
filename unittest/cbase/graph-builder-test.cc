@@ -11,6 +11,7 @@
 #include <src/cbase/dominators.h>
 #include <src/cbase/graph-builder.h>
 #include <src/cbase/bytecode-analyze.h>
+#include <src/cbase/loop-analyze.h>
 
 #include <src/cbase/graph-printer.h>
 
@@ -86,6 +87,13 @@ bool CheckGraph( const char* source ) {
     Dominators dom(&stack_zone,graph);
     std::cerr<< dom.PrintToDotFormat() << std::endl;
   }
+
+  // generate loop analyze information
+  {
+    zone::StackZone<10240> stack_zone;
+    LoopAnalyze la(&stack_zone,graph);
+    la.Dump(&dw);
+  }
   return true;
 }
 
@@ -119,13 +127,9 @@ bool CheckGraphOSR( const char* source , std::size_t offset ) {
 
 TEST(GraphBuilder,Basic) {
   CASE(
-    var xx = [1,2,3,4];
-    var idx= 1.2;
-    for( var i = 0 ; x ; g ) {
-      xx[i] = 10;
-    }
-
-    return ret;
+      for( var i = 0 ; 100 ; 1 ) {
+      if(i < a) break;
+      }
   );
 }
 

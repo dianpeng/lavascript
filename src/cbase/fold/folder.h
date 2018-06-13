@@ -157,7 +157,6 @@ struct ExprFolderData : public FolderData {
   ExprFolderData( Expr* n ): FolderData(FOLD_EXPR), node(n) {}
 };
 
-
 class Folder {
  public:
   // Use to predicate whether this folder can work with this folder request
@@ -168,6 +167,18 @@ class Folder {
   virtual Expr* Fold    ( Graph* , const FolderData& ) = 0;
   // dtor
   virtual ~Folder() {}
+};
+
+// Main interface for performing the folding algorithm for simplifying expression
+class FolderChain {
+ public:
+  FolderChain( zone::Zone* );
+
+  // main entry for performing the folding algorithm
+  Expr* Fold( Graph* , const FolderData& );
+ private:
+  zone::Zone* zone_;
+  std::vector<std::unique_ptr<Folder>> chain_;
 };
 
 // Factory that is used to create concrete folder. Use it with the register
@@ -210,19 +221,6 @@ class FolderFactory {
     }                                                                                \
   };                                                                                 \
   static FAC##Registry k##FAC##StaticRegistry
-
-// Main interface for performing the folding algorithm for simplifying expression
-class FolderChain {
- public:
-  FolderChain( zone::Zone* );
-
-  // main entry for performing the folding algorithm
-  Expr* Fold( Graph* , const FolderData& );
- private:
-  zone::Zone* zone_;
-  std::vector<std::unique_ptr<Folder>> chain_;
-};
-
 
 } // namespace hir
 } // namespace cbase

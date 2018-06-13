@@ -127,20 +127,6 @@ Expr* ArithFolder::Fold( Graph* graph , Unary::Operator op , Expr* expr ) {
 }
 
 Expr* ArithFolder::Float64Reassociate( Graph* graph , Binary::Operator op , Expr* lhs , Expr* rhs ) {
-  /**
-   * Due to the fact that our operands are both floating point number, not too much
-   * operation can be safely done.
-   *
-   * The following are safe :
-   *
-   * 1. -a + b    => b - a
-   * 2.  a + (-b) => a - b
-   * 3. -a - b    => -b- a
-   * 4.  a - (-b) => a + b
-   * 5.  a / 1    => a
-   * 6.  a / -1   => -a
-   * 7. -a * -b   => a * b
-   */
   if(IsUnaryMinus(lhs) && op == Binary::ADD) {
     // 1. (-a) + b  => b - a
     auto l = NewUnboxNode(graph,rhs                      ,TPKIND_FLOAT64);
@@ -174,9 +160,12 @@ Expr* ArithFolder::Float64Reassociate( Graph* graph , Binary::Operator op , Expr
     auto l = NewUnboxNode(graph,lhs->AsUnary()->operand(),TPKIND_FLOAT64);
     auto r = NewUnboxNode(graph,rhs->AsUnary()->operand(),TPKIND_FLOAT64);
     return NewBoxNode<Float64Arithmetic>(graph,TPKIND_FLOAT64,l,r,Binary::MUL);
-  } else {
-    return NULL;
+  } else if(lhs->Equal(rhs)) {
+    // 8. a - a => 0
+    return Float64::New(graph,0);
   }
+
+  return NULL;
 }
 
 Expr* ArithFolder::SimplifyLogicAnd( Graph* graph , TypeKind lhs_type , TypeKind rhs_type ,
@@ -256,10 +245,10 @@ Expr* ArithFolder::MatchBinaryPattern( Graph* graph , Binary::Operator op , Expr
   // This function try to capture certain types of binary operation and lower
   // them into internal graph node
   if(op == Binary::EQ || op == Binary::NE) {
-    if((lhs->IsICall() && rhs->IsString()) || (rhs->IsICall() && lhs->IsString())) {
+    if((lhs->IsICall() && rhs->Is<StringNode>()) || (rhs->IsICall() && lhs->Is<StringNode>())) {
       // convert : type(var) == "type-name" ==> TestType node
       auto icall = lhs->IsICall() ? lhs->AsICall()      : rhs->AsICall();
-      auto type  = lhs->IsString()? lhs->AsZoneString() : rhs->AsZoneString();
+      auto type  = lhs->Is<StringNode>()? lhs->AsZoneString() : rhs->AsZoneString();
 
       if(type == "real") {
         return TestType::New(graph,TPKIND_FLOAT64  ,icall->GetArgument(0));
@@ -310,7 +299,7 @@ Expr* ArithFolder::Fold( Graph* graph , Binary::Operator op , Expr* lhs , Expr* 
       case Binary::OR:  return Float64::New(graph,lval);
       default: lava_die(); return NULL;
     }
-  } else if(lhs->IsString() && rhs->IsString()) {
+  } else if(lhs->Is<StringNode>() && rhs->Is<StringNode>()) {
     const zone::String* lstr = lhs->IsSString() ? lhs->AsSString()->value() : lhs->AsLString()->value() ;
     const zone::String* rstr = rhs->IsSString() ? rhs->AsSString()->value() : rhs->AsLString()->value() ;
     switch(op) {

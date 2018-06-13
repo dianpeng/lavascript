@@ -7,15 +7,15 @@ namespace hir        {
 int AA::Query( const FieldRefNode& lnode , const FieldRefNode& rnode ) {
   if(lnode.node()->IsIdentical(rnode.node())) return AA_MUST;
   {
-    if((lnode.IsListRef  () && !rnode.IsListRef()) ||
+    if((lnode.IsListRef  () && !rnode.IsListRef  ()) ||
        (lnode.IsObjectRef() && !rnode.IsObjectRef()))
       return AA_NOT; // not same reference
 
     if(lnode.object()->Equal(rnode.object())) {
       if(lnode.comp()->Equal(rnode.comp())) return AA_MUST;
 
-      if((lnode.comp()->IsFloat64() && rnode.comp()->IsFloat64()) ||
-         (lnode.comp()->IsString () && rnode.comp()->IsString ())) {
+      if((lnode.comp()->Is<Float64>()    && rnode.comp()->Is<Float64>   ()) ||
+         (lnode.comp()->Is<StringNode>() && rnode.comp()->Is<StringNode>())) {
         return AA_NOT;
       }
     } else {

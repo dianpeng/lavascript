@@ -21,7 +21,7 @@ class AA : public AllStatic {
  public:
   enum { AA_NOT , AA_MAY , AA_MUST };
 
-  // Query alias information against 2 field reference node. Assuming
+  // Query alias information against 2 field reference node
   static int Query( const FieldRefNode& , const FieldRefNode& );
 
   // Query a memory with type Object represented by Expr* node against

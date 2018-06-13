@@ -15,7 +15,7 @@ class PhiFolder : public Folder {
   virtual Expr* Fold    ( Graph* , const FolderData& );
  private:
   Expr* Fold( Graph* , Expr* , Expr* , ControlFlow* );
-  Expr* Fold( PhiNode* );
+  Expr* Fold( ValuePhi* );
 };
 
 LAVA_REGISTER_FOLDER("phi-folder",PhiFolderFactory,PhiFolder);
@@ -26,7 +26,7 @@ Expr* PhiFolder::Fold( Graph* graph , const FolderData& data ) {
     return Fold(graph,d.lhs,d.rhs,d.region);
   } else {
     auto d = static_cast<const ExprFolderData&>(data);
-    return Fold(d.node->As<PhiNode>());
+    return Fold(d.node->As<ValuePhi>());
   }
 }
 
@@ -35,7 +35,7 @@ bool PhiFolder::CanFold( const FolderData& data ) const {
     return true;
   } else if(data.fold_type() == FOLD_EXPR) {
     auto d = static_cast<const ExprFolderData&>(data);
-    return d.node->Is<PhiNode>();
+    return d.node->Is<ValuePhi>();
   }
   return false;
 }
@@ -55,7 +55,7 @@ Expr* PhiFolder::Fold( Graph* graph , Expr* lhs , Expr* rhs ,ControlFlow* region
   return NULL;
 }
 
-Expr* PhiFolder::Fold( PhiNode* phi ) {
+Expr* PhiFolder::Fold( ValuePhi* phi ) {
   if(!phi->operand_list()->empty()) {
     auto first = phi->Operand(0);
     auto itr = phi->operand_list()->GetForwardIterator(); itr.Move();

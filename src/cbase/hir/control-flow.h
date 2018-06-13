@@ -119,7 +119,7 @@ LAVA_CBASE_HIR_DEFINE(NO_META,ControlFlow,public Node) {
     auto itr = backward_edge_.PushBack(zone(),cf);
     cf->AddRef(this,itr);
   }
-  void AddForwardEdgeImpl( ControlFlow* cf ) {
+  void AddForwardEdgeImpl  ( ControlFlow* cf ) {
     auto itr = forward_edge_.PushBack(zone(),cf);
     cf->AddRef(this,itr);
   }

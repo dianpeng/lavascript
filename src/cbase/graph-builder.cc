@@ -95,7 +95,7 @@ class GraphBuilder {
     zone::Zone*      zone  () const    { return zone_ ;  }
     void UpdateCP   ( Checkpoint* cp ) { cp_ = cp; }
 
-    LoopEffectPhi*   AsLoopEffectPhi() { return effect()->write_effect()->AsLoopEffectPhi(); }
+    LoopEffectStart*   AsLoopEffectStart() { return effect()->write_effect()->As<LoopEffectStart>(); }
    private:
     zone::Zone*        zone_;            // zone allocator
     ValueStack         stack_;           // register stack
@@ -135,13 +135,13 @@ class GraphBuilder {
     struct PhiVar {
       PhiVarType    type; // type of the var
       std::uint32_t idx;  // register index
-      PhiNode*      phi;  // phi node
-      PhiVar( PhiVarType t , std::uint32_t i , PhiNode* p ): type(t), idx(i), phi(p) {}
+      ValuePhi*     phi;  // phi node
+      PhiVar( PhiVarType t , std::uint32_t i , ValuePhi* p ): type(t), idx(i), phi(p) {}
     };
     std::vector<PhiVar> phi_list;
     // loop effect phi node , used to prevent memory operation forwarding cross loop
     // carry dependency boundary
-    LoopEffectPhi* loop_effect_phi;
+    LoopEffectStart* loop_effect_phi;
    public:
     bool HasParentLoop() const { return loop_header_info->prev != NULL; }
     bool HasJump() const { return !pending_break.empty() || !pending_continue.empty(); }
@@ -151,7 +151,7 @@ class GraphBuilder {
     void AddContinue( Jump* node , const std::uint32_t* target , const Environment& e ) {
       pending_continue.push_back(UnconditionalJump(node,target,e));
     }
-    void AddPhi( PhiVarType type , std::uint32_t index , PhiNode* phi ) {
+    void AddPhi( PhiVarType type , std::uint32_t index , ValuePhi* phi ) {
       phi_list.push_back(PhiVar(type,index,phi));
     }
     LoopInfo( const BytecodeAnalyze::LoopHeaderInfo* info ):
@@ -176,11 +176,13 @@ class GraphBuilder {
     std::vector<Guard*>         guard_list ;
     BytecodeAnalyze             bc_analyze;
     const std::uint32_t*        osr_start;
+    const std::uint32_t*        return_addr;
     std::uint8_t                max_local_var_size;
     bool                        tcall;     // whether it is a tail call
 
    public:
-    inline FuncInfo( const Handle<Prototype>& , ControlFlow* , std::uint32_t        , bool tcall = false );
+    inline FuncInfo( const Handle<Prototype>& , ControlFlow* , std::uint32_t , const std::uint32_t* ,
+                                                                               bool tcall = false );
     inline FuncInfo( const Handle<Prototype>& , ControlFlow* , const std::uint32_t* , bool tcall = false );
     inline FuncInfo( FuncInfo&& );
 
@@ -399,7 +401,6 @@ class GraphBuilder {
   // its *second input operand* since the modification comes later in the loop.
   Expr* BuildLoopEndCondition( BytecodeIterator* , ControlFlow* );
 
-  StopReason TryFoldLoop     ( BytecodeIterator* );
   StopReason BuildLoop       ( BytecodeIterator* );
   StopReason BuildLoopBody   ( BytecodeIterator* , ControlFlow* );
   StopReason BuildForeverLoop( BytecodeIterator* );
@@ -419,7 +420,7 @@ class GraphBuilder {
   bool NewCall           ( BytecodeIterator* );
   bool NewCallFallback   ( BytecodeIterator* );
   bool SpeculativeInline ( const Handle<Prototype>& , BytecodeIterator* );
-  bool DoInline          ( const Handle<Prototype>& , std::uint8_t , bool );
+  bool DoInline          ( const Handle<Prototype>& , std::uint8_t , bool , const std::uint32_t* );
 
  private:
   // Zone owned by the Graph object, and it is supposed to be stay around while the
@@ -462,9 +463,11 @@ class GraphBuilder {
 // Inline
 //
 // --------------------------------------------------------------------------
-inline GraphBuilder::FuncInfo::FuncInfo( const Handle<Prototype>& proto , ControlFlow* start_region ,
-                                                                          std::uint32_t b ,
-                                                                          bool tcall ):
+inline GraphBuilder::FuncInfo::FuncInfo( const Handle<Prototype>& proto ,
+                                         ControlFlow*             start_region ,
+                                         std::uint32_t            b ,
+                                         const std::uint32_t*     raddr ,
+                                         bool                     tcall ):
   prototype         (proto),
   region            (start_region),
   base              (b),
@@ -473,13 +476,15 @@ inline GraphBuilder::FuncInfo::FuncInfo( const Handle<Prototype>& proto , Contro
   guard_list        (),
   bc_analyze        (proto),
   osr_start         (NULL),
+  return_addr       (raddr),
   max_local_var_size(proto->max_local_var_size()),
   tcall             (tcall)
 {}
 
-inline GraphBuilder::FuncInfo::FuncInfo( const Handle<Prototype>& proto , ControlFlow* start_region ,
-                                                                          const std::uint32_t* ostart ,
-                                                                          bool tcall ):
+inline GraphBuilder::FuncInfo::FuncInfo( const Handle<Prototype>& proto ,
+                                         ControlFlow*             start_region ,
+                                         const std::uint32_t*     ostart ,
+                                         bool                     tcall ):
   prototype         (proto),
   region            (start_region),
   base              (0),
@@ -488,6 +493,7 @@ inline GraphBuilder::FuncInfo::FuncInfo( const Handle<Prototype>& proto , Contro
   guard_list        (),
   bc_analyze        (proto),
   osr_start         (ostart),
+  return_addr       (NULL),
   max_local_var_size(proto->max_local_var_size()),
   tcall             (tcall)
 {}
@@ -501,6 +507,7 @@ inline GraphBuilder::FuncInfo::FuncInfo( FuncInfo&& that ):
   guard_list        (std::move(that.guard_list)),
   bc_analyze        (std::move(that.bc_analyze)),
   osr_start         (that.osr_start),
+  return_addr       (that.return_addr),
   max_local_var_size(that.max_local_var_size),
   tcall             (that.tcall)
 {}
@@ -551,7 +558,7 @@ GraphBuilder::Environment::Environment( const Environment& env , int type ):
   WriteEffect* effect = NULL;
   if(type == LOOP_SCOPE) {
     // create a loop effect phi node for loop scope
-    effect = LoopEffectPhi::New( gb_->graph() , env.effect()->write_effect() );
+    effect = LoopEffectStart::New( gb_->graph() , env.effect()->write_effect() );
   } else {
     effect = env.effect()->write_effect();
   }
@@ -672,9 +679,10 @@ class GraphBuilder::FuncScope {
 
 class GraphBuilder::InlineScope {
  public:
-  InlineScope( GraphBuilder* , const Handle<Prototype>& , std::size_t ,
-                                                          bool        ,
-                                                          ControlFlow*);
+  InlineScope( GraphBuilder* , const Handle<Prototype>& , std::size_t           ,
+                                                          bool                  ,
+                                                          ControlFlow*          ,
+                                                          const std::uint32_t*  );
   ~InlineScope();
  private:
   GraphBuilder* gb_;
@@ -745,15 +753,16 @@ GraphBuilder::FuncScope::FuncScope( GraphBuilder* gb , const Handle<Prototype>& 
   gb->env()->PopulateArgument(gb->func_info());
 }
 
-GraphBuilder::InlineScope::InlineScope( GraphBuilder* gb , const Handle<Prototype>& proto,
-                                                           std::size_t new_base ,
-                                                           bool tcall,
-                                                           ControlFlow* region ):
-  gb_(gb)
-{
-  gb->func_info_.push_back(FuncInfo(proto,region,new_base,tcall));
-  gb->env()->EnterFunctionScope(gb->func_info());   // prepare all the context object
-  // TODO:: generate checkpoint for newly created function
+GraphBuilder::InlineScope::InlineScope( GraphBuilder*            gb,
+                                        const Handle<Prototype>& proto,
+                                        std::size_t              new_base ,
+                                        bool                     tcall,
+                                        ControlFlow*             region,
+                                        const std::uint32_t*     raddr ):
+  gb_(gb) {
+
+  gb->func_info_.push_back(FuncInfo(proto,region,new_base,raddr,tcall));
+  gb->env()->EnterFunctionScope(gb->func_info());
 }
 
 GraphBuilder::InlineScope::~InlineScope() {
@@ -764,13 +773,14 @@ GraphBuilder::InlineScope::~InlineScope() {
 // ===============================================================================
 // Inline
 // ===============================================================================
-bool GraphBuilder::DoInline( const Handle<Prototype>& proto , std::uint8_t base ,
-                                                              bool tcall ) {
+bool GraphBuilder::DoInline( const Handle<Prototype>& proto , std::uint8_t         base ,
+                                                              bool                 tcall,
+                                                              const std::uint32_t* raddr ) {
   Expr* ret    = NULL;
   auto new_itr = proto->GetBytecodeIterator();
   {
     // setup inline function lexical scope
-    InlineScope scope(this,proto,func_info().base + base ,tcall,region());
+    InlineScope scope(this,proto,func_info().base + base ,tcall,region(),raddr);
     // create the inline start node to mark the Graph
     auto istart = InlineStart::New(graph_,region());
     set_region(istart);
@@ -828,7 +838,7 @@ bool GraphBuilder::SpeculativeInline( const Handle<Prototype>& proto , BytecodeI
   }
 
   // start the inline
-  return DoInline(proto,base,tcall);
+  return DoInline(proto,base,tcall,itr->NextPC());
 }
 
 bool GraphBuilder::NewCall( BytecodeIterator* itr ) {
@@ -837,12 +847,12 @@ bool GraphBuilder::NewCall( BytecodeIterator* itr ) {
   std::uint8_t func,base,arg;
   itr->GetOperand(&func,&base,&arg);
   auto f = StackGet(func);
-  if(f->IsClosure()) {
+  if(f->Is<Closure>()) {
     // okay this object/expression node is an closure node, then we could just
     // use this to do static inline without needing to know the type trace and
     // this is most useful since it helps do inline locally.
     auto proto = script_->GetFunction(f->AsClosure()->ref()).prototype;
-    return DoInline(proto,base,itr->opcode() == BC_TCALL);
+    return DoInline(proto,base,itr->opcode() == BC_TCALL,itr->NextPC());
   } else {
     // this is the general case inline when we don't know the type of our function.
     // it mostly happened at cross file/module function inline
@@ -1286,7 +1296,7 @@ Expr* GraphBuilder::TryFoldTypedPGet ( Expr* object , Expr* key , const Bytecode
 }
 
 Expr* GraphBuilder::TrySpeculativePGet( Expr* object , Expr* key , const BytecodeLocation& bc ) {
-  lava_debug(NORMAL,lava_verify(key->IsString()););
+  lava_debug(NORMAL,lava_verify(key->Is<StringNode>()););
   if(CheckType(&object,TPKIND_OBJECT,1,bc)) {
     return TryFoldTypedPGet(object,key,bc);
   }
@@ -1336,7 +1346,7 @@ Expr* GraphBuilder::TryFoldTypedPSet ( Expr* object , Expr* key , Expr* value ,
 
 Expr* GraphBuilder::TrySpeculativePSet( Expr* object , Expr* key , Expr* value ,
                                                                    const BytecodeLocation& bc ) {
-  lava_debug(NORMAL,lava_verify(key->IsString()););
+  lava_debug(NORMAL,lava_verify(key->Is<StringNode>()););
   if(CheckType(&object,TPKIND_OBJECT,0,bc)) {
     return TryFoldTypedPSet(object,key,value,bc);
   }
@@ -1553,13 +1563,9 @@ Checkpoint* GraphBuilder::InitCheckpoint() {
 // Misc
 // ====================================================================
 void GraphBuilder::PatchExitNode( ControlFlow* succ , ControlFlow* fail ) {
-  // patch succuess node and return value
-  auto return_value = Phi::New(graph_,succ->As<Merge>());
   for( auto &e : func_info().return_list ) {
-    return_value->AddOperand(e->value());
     succ->AddBackwardEdge(e);
   }
-  succ->AddOperand(return_value);
 
   // patch all the failed node
   for( auto &e : func_info().guard_list ) {
@@ -1586,12 +1592,12 @@ void GraphBuilder::GeneratePhi( ValueStack* dest , const ValueStack& lhs , const
 // key function to merge the effect and value from 2 environments. called at every region merge
 void GraphBuilder::InsertPhi( Environment* lhs , Environment* rhs , ControlFlow* region ) {
   // 1. generate merge for both region's root effect group
-  Effect::Merge(*lhs->effect(),*rhs->effect(),env()->effect(),graph_,region);
+  Effect::MergeEffect(*lhs->effect(),*rhs->effect(),env()->effect(),graph_,region->As<Merge>());
   // 2. generate phi for all the stack value
-  GeneratePhi(vstk() ,*lhs->stack()  ,*rhs->stack()  ,func_info().base ,
-      func_info().prototype->max_local_var_size(), region);
+  GeneratePhi(vstk(),*lhs->stack(),*rhs->stack(),func_info().base,
+      func_info().prototype->max_local_var_size(),region);
   // 3. generate phi for all the upvalue
-  GeneratePhi(upval(),*lhs->upvalue(),*rhs->upvalue(),0                , kMaxUpValueSize , region);
+  GeneratePhi(upval(),*lhs->upvalue(),*rhs->upvalue(),0, kMaxUpValueSize , region);
   // 4. generate phi for all the global values
   {
     Environment::GlobalMap temp(temp_zone()); temp.reserve( lhs->global()->size() );
@@ -1614,7 +1620,6 @@ void GraphBuilder::InsertPhi( Environment* lhs , Environment* rhs , ControlFlow*
     // for other globals that appear in rhs , we don't do anything for the new global
     // variable array, then all of them becomes unclear state again and require a
     // GGet node generated whenever a query/lookup for those global variable comes.
-
     // use the new global list
     env()->set_global(std::move(temp));
   }
@@ -1757,7 +1762,7 @@ GraphBuilder::BuildIf( BytecodeIterator* itr ) {
   IfTrue*  true_region  = IfTrue::New(graph_,if_region);
   ControlFlow* lhs      = NULL;
   ControlFlow* rhs      = NULL;
-  Region*  merge        = Region::New(graph_);
+  IfMerge* merge        = IfMerge::New(graph_);
   if_region->set_merge(merge);
 
   // duplicate an environment for branching into the if_true branch
@@ -1906,7 +1911,7 @@ void GraphBuilder::PatchLoopInductionVariable() {
           phi->AddOperand(node);
           if(auto p = folder_chain_->Fold(graph_,ExprFolderData{phi}); p) phi->Replace(p);
         } else {
-          PhiNode::RemovePhiFromRegion(phi);
+          ValuePhi::RemovePhiFromRegion(phi);
         }
         break;
       case LoopInfo::GLOBAL:
@@ -1968,11 +1973,11 @@ GraphBuilder::StopReason
 GraphBuilder::BuildLoopBody( BytecodeIterator* itr , ControlFlow* loop_header ) {
   Loop*       body        = NULL;
   LoopExit*   exit        = NULL;
-  Region*     after       = Region::New(graph_);
+  auto        after       = LoopMerge::New(graph_);
   Environment loop_env   (*env(),Environment::LOOP_SCOPE);
 
-  if(loop_header->IsLoopHeader()) {
-    loop_header->AsLoopHeader()->set_merge(after);
+  if(loop_header->Is<LoopHeader>()) {
+    loop_header->As<LoopHeader>()->set_merge(after);
     // Only link the if_false edge back to loop header when it is actually a
     // loop header type. During OSR compilation , since we don't have a real
     // loop header , so we don't need to link it back
@@ -1992,12 +1997,12 @@ GraphBuilder::BuildLoopBody( BytecodeIterator* itr , ControlFlow* loop_header ) 
 
     // set it as the current region node
     set_region(body);
-    auto loop_effect_phi = env()->AsLoopEffectPhi();
+    auto loop_effect_phi = env()->AsLoopEffectStart();
 
     // patch the loop effect phi with correct region node
     {
       loop_effect_phi->set_region(body);
-      body->AddOperand(loop_effect_phi);
+      body->AddPhi(PhiNode{loop_effect_phi});
       func_info().current_loop().loop_effect_phi = loop_effect_phi;
     }
 
@@ -2050,49 +2055,15 @@ GraphBuilder::BuildLoopBody( BytecodeIterator* itr , ControlFlow* loop_header ) 
   }
   // set the current region as merged region
   set_region(after);
+
   // merge the loop header
-  InsertPhi(env(),&loop_env,after);
+  if(loop_header->Is<LoopHeader>()) InsertPhi(env(),&loop_env,after);
 
   return STOP_SUCCESS;
 }
 
-GraphBuilder::StopReason GraphBuilder::TryFoldLoop( BytecodeIterator* itr ) {
-  switch(itr->opcode()) {
-    case BC_FSTART:
-      {
-        // try to check whether condition is simply a boolean constant, then
-        // we can save the efforts to craft a LoopHeader node which is useless
-        auto cond = StackGet(kAccRegisterIndex);
-        if(auto bval = false; GetBooleanValue(cond,&bval)) {
-          if(bval) {
-            // skip loop start code
-            itr->Move();
-            // build rest of the loop without using LoopHeader node
-            return BuildLoopBody(itr,region());
-          } else {
-            std::uint8_t a1; std::uint16_t a2;
-            itr->GetOperand(&a1,&a2);
-            itr->BranchTo(a2); // skip the loop body
-            return STOP_SUCCESS;
-          }
-        }
-      }
-      break;
-    case BC_FEVRSTART:
-      // forever loop construction
-      return BuildLoopBody(itr,region());
-    default:
-      break;
-  }
-  return STOP_NA;
-}
-
 GraphBuilder::StopReason GraphBuilder::BuildLoop( BytecodeIterator* itr ) {
   lava_debug(NORMAL,lava_verify(IsLoopStartBytecode(itr->opcode())););
-  // try to fold the loop to simplify the graph a little bit
-  if(auto ret = TryFoldLoop(itr); ret == STOP_SUCCESS)
-    return STOP_SUCCESS;
-
   // normal path for loop graph
   auto loop_header = LoopHeader::New(graph_,region());
   set_region(loop_header);

@@ -67,16 +67,21 @@ LAVA_CBASE_HIR_DEFINE(Tag=BOOLEAN;Name="boolean";Leaf=Leaf;Effect=NoEffect,
   LAVA_DISALLOW_COPY_AND_ASSIGN(Boolean)
 };
 
+LAVA_CBASE_HIR_DEFINE(NO_META,StringNode,public Expr) {
+ public:
+  StringNode( IRType type , std::uint32_t id , Graph* graph ): Expr(type,id,graph) {}
+};
+
 LAVA_CBASE_HIR_DEFINE(Tag=LONG_STRING;Name="lstring";Leaf=Leaf;Effect=NoEffect,
-    LString,public Expr) {
+    LString,public StringNode) {
  public:
   inline static LString* New( Graph* , const LongString& );
   inline static LString* New( Graph* , const char* );
   inline static LString* New( Graph* , const zone::String* );
   const zone::String* value() const { return value_; }
   LString( Graph* graph , std::uint32_t id , const zone::String* value ):
-    Expr  (HIR_LONG_STRING,id,graph),
-    value_(value)
+    StringNode(HIR_LONG_STRING,id,graph),
+    value_    (value)
   {}
   virtual std::uint64_t GVNHash() const {
     return GVNHash1(type_name(),reinterpret_cast<std::uint64_t>(value_));
@@ -90,15 +95,15 @@ LAVA_CBASE_HIR_DEFINE(Tag=LONG_STRING;Name="lstring";Leaf=Leaf;Effect=NoEffect,
 };
 
 LAVA_CBASE_HIR_DEFINE(Tag=SMALL_STRING;Name="sstring";Leaf=Leaf;Effect=NoEffect,
-    SString,public Expr) {
+    SString,public StringNode) {
  public:
   inline static SString* New( Graph* , const SSO& );
   inline static SString* New( Graph* , const char* );
   inline static SString* New( Graph* , const zone::String* );
   const zone::String* value() const { return value_; }
   SString( Graph* graph , std::uint32_t id , const zone::String* value ):
-    Expr (HIR_SMALL_STRING,id,graph),
-    value_(value)
+    StringNode(HIR_SMALL_STRING,id,graph),
+    value_    (value)
   {}
   virtual std::uint64_t GVNHash() const {
     return GVNHash1(type_name(),reinterpret_cast<std::uint64_t>(value_));

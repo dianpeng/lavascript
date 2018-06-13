@@ -154,9 +154,9 @@ EffectBarrier* WriteEffect::NextBarrier() const {
   return e->As<EffectBarrier>();
 }
 
-class EffectPhiBase::EffectPhiBaseDependencyIterator {
+class EffectMergeBase::EffectMergeBaseDependencyIterator {
  public:
-  EffectPhiBaseDependencyIterator( const EffectPhiBase* node ):
+  EffectMergeBaseDependencyIterator( const EffectMergeBase* node ):
     itr1_(node->operand_list()->GetForwardIterator()),
     itr2_()
   {
@@ -196,11 +196,11 @@ class EffectPhiBase::EffectPhiBaseDependencyIterator {
   mutable ReadEffectListIterator itr2_;
 };
 
-Expr::DependencyIterator EffectPhiBase::GetDependencyIterator() const {
-	return DependencyIterator(EffectPhiBaseDependencyIterator(this));
+Expr::DependencyIterator EffectMergeBase::GetDependencyIterator() const {
+	return DependencyIterator(EffectMergeBaseDependencyIterator(this));
 }
 
-std::size_t EffectPhiBase::dependency_size() const {
+std::size_t EffectMergeBase::dependency_size() const {
 	std::size_t ret = 0;
 	lava_foreach( auto k , operand_list()->GetForwardIterator() ) {
 		auto we = k->As<WriteEffect>();
@@ -231,11 +231,11 @@ bool IRList::Store( Expr* index , Expr* value ) {
 }
 
 Expr* IRObject::Load( Expr* key ) const {
-  if(key->IsString()) {
+  if(key->Is<StringNode>()) {
     auto &str = key->AsZoneString();
     lava_foreach( auto &k , operand_list()->GetForwardIterator() ) {
       auto kv = k->As<IRObjectKV>();
-      if(kv->key()->IsString() && kv->key()->AsZoneString() == str) {
+      if(kv->key()->Is<StringNode>() && kv->key()->AsZoneString() == str) {
         return kv->value();
       }
     }
@@ -244,11 +244,11 @@ Expr* IRObject::Load( Expr* key ) const {
 }
 
 bool IRObject::Store( Expr* key , Expr* value ) {
-  if(key->IsString()) {
+  if(key->Is<StringNode>()) {
     auto &str = key->AsZoneString();
     lava_foreach( auto &k , operand_list()->GetForwardIterator() ) {
       auto kv = k->As<IRObjectKV>();
-      if(kv->key()->IsString() && kv->key()->AsZoneString() == str) {
+      if(kv->key()->Is<StringNode>() && kv->key()->AsZoneString() == str) {
         kv->ReplaceOperand(1,value);
         return true;
       }

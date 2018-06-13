@@ -6,22 +6,39 @@ namespace lavascript {
 namespace cbase      {
 namespace hir        {
 
+// wraper object for phi node to work around the multiple inheritance pitfall
+class PhiNode {
+ public:
+  PhiNode( Expr* phi ): phi_(phi) {
+    lava_debug(NORMAL,lava_verify(phi->Is<ValuePhi>() || phi->Is<EffectMergeBase>()););
+  }
+
+  inline void set_region ( Merge* );
+  inline Merge*    region() const;
+  inline void ResetRegion();
+  Expr* phi              () const { return phi_;                        }
+  bool  IsValuePhi       () const { return phi_->Is<ValuePhi>();        }
+  bool  IsEffectMergeBase() const { return phi_->Is<EffectMergeBase>(); }
+ private:
+  Expr* phi_;
+};
+
 LAVA_CBASE_HIR_DEFINE(NO_META,Merge,public ControlFlow) {
  public:
   inline Merge( IRType , std::uint32_t , Graph* , ControlFlow* region = NULL );
-  inline void AddPhiNode( PhiNode* phi );
-  inline void RemovePhi ( PhiNode* phi );
-  const zone::Vector<PhiNode*>* phi_list() const { return &phi_list_; }
+  inline void AddPhi   ( PhiNode );
+  inline void RemovePhi( PhiNode );
+  const zone::Vector<PhiNode>* phi_list() const { return &phi_list_; }
  private:
-  zone::Vector<PhiNode*> phi_list_;
+  zone::Vector<PhiNode> phi_list_;
 };
 
 LAVA_CBASE_HIR_DEFINE(Tag=REGION;Name="region";Leaf=NoLeaf;Effect=NoEffect,
-    Region,public Merge) {
+    Region,public ControlFlow) {
  public:
   inline static Region* New( Graph* );
   inline static Region* New( Graph* , ControlFlow* );
-  Region( Graph* graph , std::uint32_t id ): Merge(HIR_REGION,id,graph) {}
+  Region( Graph* graph , std::uint32_t id ): ControlFlow(HIR_REGION,id,graph) {}
  private:
   LAVA_DISALLOW_COPY_AND_ASSIGN(Region)
 };

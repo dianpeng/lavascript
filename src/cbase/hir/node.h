@@ -140,7 +140,6 @@ class Node : public zone::ZoneObject {
   CBASE_HIR_LIST(__)
 #undef __ // __
 
-  bool                       IsString     () const { return IsSString() || IsLString(); }
   inline const zone::String& AsZoneString () const;
   inline bool                IsLeaf       () const;
   bool                       IsNoneLeaf   () const { return !IsLeaf(); }

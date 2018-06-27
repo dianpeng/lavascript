@@ -75,6 +75,10 @@ LAVA_CBASE_HIR_DEFINE(Tag=FLOAT64_TO_INT64;Name="float64_to_int64";Leaf=NoLeaf;E
   }
 };
 
+LAVA_CBASE_HIR_DEFINE(Tag=INT64_TO_FLOAT64;Name="int64_to_float64";Leaf=NoLeaf;Effect=NoEffect,
+    Int64ToFloat64,public Expr) {
+};
+
 
 } // namespace hir
 } // namespace cbase

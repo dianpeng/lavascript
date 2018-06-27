@@ -69,6 +69,8 @@ class TPKind {
   inline static bool ToBoolean( TypeKind , bool* );
   // check whether this TypeKind is a string type or not
   inline static bool IsString( TypeKind tp );
+  // check whether this TypeKind is a number type
+  inline static bool IsNumber( TypeKind tp );
   // type is primitive , primitive type doesn't have side effect they
   // are immutable essentially. String is Primitive type since it doesn't
   // have side effect
@@ -132,6 +134,17 @@ inline bool TPKind::IsString( TypeKind tp ) {
     case TPKIND_STRING:
     case TPKIND_LONG_STRING:
     case TPKIND_SMALL_STRING:
+      return true;
+    default:
+      return false;
+  }
+}
+
+inline bool TPKind::IsNumber( TypeKind tp ) {
+  switch(tp) {
+    case TPKIND_NUMBER:
+    case TPKIND_INT64:
+    case TPKIND_FLOAT64:
       return true;
     default:
       return false;

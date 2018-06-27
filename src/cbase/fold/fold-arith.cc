@@ -412,6 +412,11 @@ Expr* FoldTernary( Graph* graph , Expr* cond , Expr* lhs , Expr* rhs ) {
   return folder.Fold(graph,TernaryFolderData{cond,lhs,rhs});
 }
 
+Expr* FoldUnary  ( Graph* graph , Unary::Operator op , Expr* opr ) {
+  ArithFolder folder(NULL);
+  return folder.Fold(graph,UnaryFolderData{op,opr});
+}
+
 } // namespace hir
 } // namespace cbase
 } // namespace lavascript

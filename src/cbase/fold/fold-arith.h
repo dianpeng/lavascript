@@ -15,6 +15,7 @@ class Folder;
 // user should use FoldChain as interface to use fully fold optimization pipeline
 Expr* FoldBinary   ( Graph* , Binary::Operator, Expr* , Expr* );
 Expr* FoldTernary  ( Graph* , Expr* , Expr* , Expr* );
+Expr* FoldUnary    ( Graph* , Unary::Operator , Expr* );
 
 } // namespace hir
 } // namespace cbase

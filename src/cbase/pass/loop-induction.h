@@ -6,11 +6,8 @@ namespace lavascript {
 namespace cbase      {
 namespace hir        {
 
-// LoopInduction pass for loop induction variable. During graph construction
-// phase all the loop induction variable are marked with special node
-// called LoopIV. This phase will implement a backwards propogation
-// algorithm to specialize LoopIV with certain type when it is applicable.
 
+// This pass does typping the loop induction variable with selective type coearsion
 class LoopInduction : public HIRPass {
  public:
   virtual bool Perform( hir::Graph* , Flag );

@@ -90,6 +90,10 @@ LAVA_CBASE_HIR_DEFINE(Tag=LOOP_IV_INT64;Name="loop_iv_int64";Leaf=NoLeaf;Effect=
   LoopIVInt64( Graph* graph , std::uint32_t id ): ValuePhi( HIR_LOOP_IV_INT64 , id, graph ) {}
 };
 
+LAVA_CBASE_HIR_DEFINE(Tag=LOOP_IV_FLOAT64;Name="loop_iv_float64";Leaf=NoLeaf;Effect=NoEffect,
+    LoopIVFloat64, public ValuePhi ) {
+};
+
 LAVA_CBASE_HIR_DEFINE(Tag=PROJECTION;Name="projection";Leaf=NoLeaf;Effect=NoEffect,
     Projection,public Expr) {
  public:

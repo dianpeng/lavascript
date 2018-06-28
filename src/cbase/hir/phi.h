@@ -86,12 +86,21 @@ LAVA_CBASE_HIR_DEFINE(Tag=LOOP_IV_INT64;Name="loop_iv_int64";Leaf=NoLeaf;Effect=
   inline static LoopIVInt64* New( Graph* , Expr* , Expr* );
   inline static LoopIVInt64* New( Graph* , Loop* );
   inline static LoopIVInt64* New( Graph* , Expr* , Expr* , Loop* );
-
   LoopIVInt64( Graph* graph , std::uint32_t id ): ValuePhi( HIR_LOOP_IV_INT64 , id, graph ) {}
+  private:
+   LAVA_DISALLOW_COPY_AND_ASSIGN(LoopIVInt64)
 };
 
 LAVA_CBASE_HIR_DEFINE(Tag=LOOP_IV_FLOAT64;Name="loop_iv_float64";Leaf=NoLeaf;Effect=NoEffect,
     LoopIVFloat64, public ValuePhi ) {
+  public:
+   inline static LoopIVFloat64* New( Graph* );
+   inline static LoopIVFloat64* New( Graph* , Expr* , Expr* );
+   inline static LoopIVFloat64* New( Graph* , Loop* );
+   inline static LoopIVFloat64* New( Graph* , Expr* , Expr* , Loop* );
+   LoopIVFloat64( Graph* graph , std::uint32_t id ) : ValuePhi(HIR_LOOP_IV_FLOAT64, id, graph ) {}
+  private:
+   LAVA_DISALLOW_COPY_AND_ASSIGN(LoopIVFloat64)
 };
 
 LAVA_CBASE_HIR_DEFINE(Tag=PROJECTION;Name="projection";Leaf=NoLeaf;Effect=NoEffect,

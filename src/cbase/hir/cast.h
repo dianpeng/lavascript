@@ -77,6 +77,17 @@ LAVA_CBASE_HIR_DEFINE(Tag=FLOAT64_TO_INT64;Name="float64_to_int64";Leaf=NoLeaf;E
 
 LAVA_CBASE_HIR_DEFINE(Tag=INT64_TO_FLOAT64;Name="int64_to_float64";Leaf=NoLeaf;Effect=NoEffect,
     Int64ToFloat64,public Expr) {
+ public:
+  inline static Int64ToFloat64* New( Graph* , Expr* );
+
+  Expr* value() const { return operand_list()->First(); }
+
+  Int64ToFloat64( Graph* graph , std::uint32_t id , Expr* value ):
+    Expr(HIR_INT64_TO_FLOAT64,id,graph)
+  {
+    lava_debug(CRAZY,lava_verify(GetTypeInference(value) == TPKIND_INT64););
+    AddOperand(value);
+  }
 };
 
 

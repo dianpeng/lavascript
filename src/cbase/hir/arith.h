@@ -254,7 +254,7 @@ LAVA_CBASE_HIR_DEFINE(Tag=INT64_ARITHMETIC;Name="int64_aritmetic";Leaf=NoLeaf;Ef
  public:
   using Operator = Binary::Operator;
 
-  inline static Int64Arithmetic* New( Graph* , Expr* );
+  inline static Int64Arithmetic* New( Graph* , Expr* , Expr* , Operator );
 
   Int64Arithmetic( Graph* graph , std::uint32_t id,  Expr* lhs , Expr* rhs , Operator op ):
     SpecializeBinary(HIR_INT64_ARITHMETIC,id,graph,lhs,rhs,op) {}
@@ -311,6 +311,21 @@ LAVA_CBASE_HIR_DEFINE(Tag=FLOAT64_COMPARE;Name="float64_compare";Leaf=NoLeaf;Eff
 
  private:
   LAVA_DISALLOW_COPY_AND_ASSIGN(Float64Compare)
+};
+
+LAVA_CBASE_HIR_DEFINE(Tag=INT64_COMPARE;Name="int64_compare";Leaf=NoLeaf;Effect=NoEffect,
+    Int64Compare,public SpecializeBinary) {
+ public:
+  using Operator = Binary::Operator;
+  inline static Int64Compare* New( Graph* , Expr* , Expr* , Operator );
+
+  Int64Compare( Graph* graph , std::uint32_t id , Expr* lhs , Expr* rhs , Operator op ):
+    SpecializeBinary(HIR_INT64_COMPARE,id,graph,lhs,rhs,op)
+  {
+    lava_debug(NORMAL,lava_verify(Binary::IsComparisonOperator(op)););
+  }
+ private:
+  LAVA_DISALLOW_COPY_AND_ASSIGN(Int64Compare)
 };
 
 LAVA_CBASE_HIR_DEFINE(Tag=STRING_COMPARE;Name="string_compare";Leaf=NoLeaf;Effect=NoEffect,

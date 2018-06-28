@@ -578,6 +578,30 @@ inline LoopIVInt64* LoopIVInt64::New( Graph* graph , Expr* lhs , Expr* rhs , Loo
   return ret;
 }
 
+inline LoopIVFloat64* LoopIVFloat64::New( Graph* graph ) {
+  return graph->zone()->New<LoopIVFloat64>(graph,graph->AssignID());
+}
+
+inline LoopIVFloat64* LoopIVFloat64::New( Graph* graph , Loop* loop ) {
+  auto ret = New(graph);
+  loop->AddPhi(ret);
+  return ret;
+}
+
+inline LoopIVFloat64* LoopIVFloat64::New( Graph* graph , Expr* lhs , Expr* rhs ) {
+  auto ret = New(graph);
+  ret->AddOperand(lhs);
+  ret->AddOperand(rhs);
+  return ret;
+}
+
+inline LoopIVFloat64* LoopIVFloat64::New( Graph* graph , Expr* lhs , Expr* rhs , Loop* loop ) {
+  auto ret = New(graph,loop);
+  ret->AddOperand(lhs);
+  ret->AddOperand(rhs);
+  return ret;
+}
+
 inline void ReadEffect::SetWriteEffect( WriteEffect* node ) {
   auto itr = node->AddReadEffect(this);
   effect_edge_.node = node;
@@ -678,12 +702,20 @@ inline Float64Arithmetic* Float64Arithmetic::New( Graph* graph , Expr* lhs , Exp
   return graph->zone()->New<Float64Arithmetic>(graph,graph->AssignID(),lhs,rhs,op);
 }
 
+inline Int64Arithmetic* Int64Arithmetic::New( Graph* graph , Expr* lhs , Expr* rhs , Operator op ) {
+  return graph->zone()->New<Int64Arithmetic>(graph,graph->AssignID(),lhs,rhs,op);
+}
+
 inline Float64Bitwise* Float64Bitwise::New( Graph* graph , Expr* lhs , Expr* rhs , Operator op ) {
   return graph->zone()->New<Float64Bitwise>(graph,graph->AssignID(),lhs,rhs,op);
 }
 
 inline Float64Compare* Float64Compare::New( Graph* graph , Expr* lhs , Expr* rhs , Operator op ) {
   return graph->zone()->New<Float64Compare>(graph,graph->AssignID(),lhs,rhs,op);
+}
+
+inline Int64Compare* Int64Compare::New( Graph* graph , Expr* lhs , Expr* rhs , Operator op ) {
+  return graph->zone()->New<Int64Compare>(graph,graph->AssignID(),lhs,rhs,op);
 }
 
 inline BooleanNot* BooleanNot::New( Graph* graph , Expr* opr ) {
@@ -736,6 +768,10 @@ inline Box* ConvNBoolean::NewBox( Graph* graph , Expr* value ) {
 
 inline Float64ToInt64* Float64ToInt64::New( Graph* graph , Expr* value ) {
   return graph->zone()->New<Float64ToInt64>(graph,graph->AssignID(),value);
+}
+
+inline Int64ToFloat64* Int64ToFloat64::New( Graph* graph , Expr* value ) {
+  return graph->zone()->New<Int64ToFloat64>(graph,graph->AssignID(),value);
 }
 
 inline StackSlot* StackSlot::New( Graph* graph , Expr* expr , std::uint32_t index ) {

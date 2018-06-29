@@ -812,6 +812,16 @@ inline void Merge::AddPhi( PhiNode phi ) {
   phi.set_region(this);
 }
 
+inline bool Merge::ReplacePhi( PhiNode target , PhiNode nnode ) {
+  if(auto itr = phi_list_.FindIf([=](const PhiNode& that) {
+        return that.phi() == target.phi();
+     }); itr.HasNext()) {
+    itr.set_value(nnode);
+    return true;
+  }
+  return false;
+}
+
 inline void Merge::RemovePhi( PhiNode phi ) {
   lava_debug(NORMAL,lava_verify(phi.region() == this););
 

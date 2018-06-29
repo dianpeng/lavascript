@@ -1,4 +1,5 @@
 #include "loop-induction.h"
+#include "src/util.h"
 #include "src/cbase/loop-analyze.h"
 #include "src/cbase/hir.h"
 #include "src/zone/stl.h"
@@ -37,6 +38,7 @@ namespace            {
 
 class LoopIVTyper {
  public:
+  LoopIVTyper( Graph* graph ) : graph_(graph) , temp_zone_() {}
   void Run();
 
  private:
@@ -52,6 +54,10 @@ class LoopIVTyper {
   bool TypeArithmetic( Arithmetic* );
   bool TypeCompare   ( Compare* );
   bool TypeLogical   ( Logical* );
+
+ private: // Helper functions for back propogation of type
+  void Enqueue( zone::stl::ZoneVector<bool>* ,
+                zone::stl::ZoneQueue<Expr*>* , Expr* );
 
  private:
   Graph* graph_;
@@ -103,6 +109,18 @@ bool LoopIVTyper::GetLinearLoopIVComponent( LoopIV* node , Expr** start , Expr**
   return false;
 }
 
+void LoopIVTyper::Enqueue( zone::stl::ZoneVector<bool>* visited ,
+                           zone::stl::ZoneQueue<Expr*>* queue   , Expr* root ) {
+  // walk through the use-def chain to go all the nodes that are using this node
+  lava_foreach( auto &r , root->ref_list()->GetForwardIterator() ) {
+    auto e = r.node;
+    if(visited->at(e->id())) {
+      continue;
+    }
+    queue->push(e->As<Expr>());
+  }
+}
+
 void LoopIVTyper::TypeLoopIV( LoopAnalyze::LoopNode* loop_node , LoopIV* iv ) {
   ValuePhi* new_iv;
   // 1. get the loop_iv component out and see whether we can do typping for it
@@ -130,10 +148,13 @@ void LoopIVTyper::TypeLoopIV( LoopAnalyze::LoopNode* loop_node , LoopIV* iv ) {
     new_iv = NULL;
 
     if(start_type == end_type && start_type == TPKIND_INT64) {
-      new_iv = LoopIVInt64::New  (graph_,start,end,loop_node->loop_body());
+      new_iv = LoopIVInt64::New  (graph_,start,end);
     } else {
-      new_iv = LoopIVFloat64::New(graph_,start,end,loop_node->loop_body());
+      new_iv = LoopIVFloat64::New(graph_,start,end);
     }
+
+    // replace the old loop induction variable from the loop body with the new iv
+    loop_node->loop_body()->ReplacePhi( PhiNode{iv} , PhiNode{new_iv} );
 
     // the iv is replaced with the new_node
     iv->Replace(new_iv);
@@ -144,28 +165,30 @@ void LoopIVTyper::TypeLoopIV( LoopAnalyze::LoopNode* loop_node , LoopIV* iv ) {
     zone::stl::ZoneVector<bool> visited(&temp_zone_);
     zone::stl::ZoneQueue <Expr*> queue (&temp_zone_);
     visited.resize(graph_->MaxID());
-    queue.push(new_iv);
+
+    // enqueue the first/root node
+    visited[new_iv->id()] = true;
+    Enqueue(&visited,&queue,new_iv);
 
     while(!queue.empty()) {
       auto top = queue.front();
       queue.pop();
-      if(visited[top->id()])
-        continue;
+
       // mark it as visited
       visited[top->id()] = true;
 
       switch(top->type()) {
         case HIR_UNARY:
-          if(TypeUnary(top->As<Unary>())) queue.push(top);
+          if(TypeUnary(top->As<Unary>())) Enqueue(&visited,&queue,top);
           break;
         case HIR_ARITHMETIC:
-          if(TypeArithmetic(top->As<Arithmetic>())) queue.push(top);
+          if(TypeArithmetic(top->As<Arithmetic>())) Enqueue(&visited,&queue,top);
           break;
         case HIR_COMPARE:
-          if(TypeCompare(top->As<Compare>())) queue.push(top);
+          if(TypeCompare(top->As<Compare>())) Enqueue(&visited,&queue,top);
           break;
         case HIR_LOGICAL:
-          if(TypeLogical(top->As<Logical>())) queue.push(top);
+          if(TypeLogical(top->As<Logical>())) Enqueue(&visited,&queue,top);
           break;
         default:
           break;
@@ -323,6 +346,16 @@ bool LoopIVTyper::TypeLogical( Logical* node ) {
 }
 
 } // namespace
+
+bool LoopInduction::Perform( Graph* graph , Flag flag ) {
+  (void)flag;
+
+  // do the loop induction variable typping and backwards propogation
+  LoopIVTyper typer(graph);
+  typer.Run();
+  return true;
+}
+
 } // namespace hir
 } // namespace cbase
 } // namespace lavascript

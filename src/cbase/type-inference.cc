@@ -82,9 +82,13 @@ TypeKind GetTypeInference( Expr* node ) {
   switch(node->type()) {
     // normal high ir node which has implicit type
     case HIR_FLOAT64:            return TPKIND_FLOAT64;
+    case HIR_LOOP_IV_FLOAT64:    return TPKIND_FLOAT64;
+    case HIR_INT64_TO_FLOAT64:   return TPKIND_FLOAT64;
+
     case HIR_INT64:              return TPKIND_INT64;
     case HIR_LOOP_IV_INT64:      return TPKIND_INT64;
     case HIR_FLOAT64_TO_INT64:   return TPKIND_INT64;
+
     case HIR_LONG_STRING:        return TPKIND_LONG_STRING;
     case HIR_SMALL_STRING:       return TPKIND_SMALL_STRING;
     case HIR_BOOLEAN:            return TPKIND_BOOLEAN;

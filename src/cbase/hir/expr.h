@@ -85,7 +85,7 @@ LAVA_CBASE_HIR_DEFINE(NO_META,Expr,public Node) {
     Node            (type,id,graph),
     operand_list_   (),
     ref_list_       (),
-    stmt_            ()
+    stmt_           ()
   {}
  private:
   OperandList        operand_list_;

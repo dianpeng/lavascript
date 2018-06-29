@@ -26,8 +26,9 @@ class PhiNode {
 LAVA_CBASE_HIR_DEFINE(NO_META,Merge,public ControlFlow) {
  public:
   inline Merge( IRType , std::uint32_t , Graph* , ControlFlow* region = NULL );
-  inline void AddPhi   ( PhiNode );
-  inline void RemovePhi( PhiNode );
+  inline bool ReplacePhi( PhiNode , PhiNode );
+  inline void AddPhi    ( PhiNode );
+  inline void RemovePhi ( PhiNode );
   const zone::Vector<PhiNode>* phi_list() const { return &phi_list_; }
  private:
   zone::Vector<PhiNode> phi_list_;

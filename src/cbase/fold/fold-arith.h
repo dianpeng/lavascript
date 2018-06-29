@@ -2,12 +2,9 @@
 #define CBASE_FOLD_ARITH_H_
 #include "src/cbase/hir.h"
 
-#include <functional>
-#include <memory>
-
 namespace lavascript {
-namespace cbase {
-namespace hir {
+namespace cbase      {
+namespace hir        {
 
 class Folder;
 

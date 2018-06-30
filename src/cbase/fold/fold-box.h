@@ -11,6 +11,10 @@ class Expr;
 class Box;
 class Unbox;
 
+// Fold w.r.t Box/Unbox node
+Expr* FoldBoxNode  ( Expr* , TypeKind );
+Expr* FoldUnboxNode( Expr* , TypeKind );
+
 // Create a box node based on the input node. This function will take care of the
 // folding process. Basically it only creates the box node when it needs to; otherwise
 // it just returns the old node since it is already in boxed status

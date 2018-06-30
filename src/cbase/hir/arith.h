@@ -79,7 +79,7 @@ class BinaryNode {
 
 // DynamicBinary represents a dynamic dispatched binary operation node. This node generates
 // a effect barrier and also generates a checkpoint because of the side effect
-LAVA_CBASE_HIR_DEFINE(NO_META,DynamicBinary,public HardBarrier,public BinaryNode) {
+LAVA_CBASE_HIR_DEFINE(HIR_INTERNAL,DynamicBinary,public HardBarrier,public BinaryNode) {
  public:
   using Operator = Binary::Operator;
 
@@ -226,7 +226,7 @@ LAVA_CBASE_HIR_DEFINE(Tag=BOOLEAN_NOT;Name="boolean_not";Leaf=NoLeaf;Effect=NoEf
 // SpecializeBinary represents all binary operation that is specialized
 // with type information builtin. These nodes take into unboxed value and
 // generate unboxed value
-LAVA_CBASE_HIR_DEFINE(NO_META,SpecializeBinary,public Expr,public BinaryNode) {
+LAVA_CBASE_HIR_DEFINE(HIR_INTERNAL,SpecializeBinary,public Expr,public BinaryNode) {
  public:
   using Operator = Binary::Operator;
   SpecializeBinary( IRType type , std::uint32_t id , Graph* graph , Expr* lhs ,

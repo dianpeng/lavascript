@@ -254,7 +254,7 @@ class HIRModel:
         ## if it doesn't then just treat it as normal old style
         ## definition , avoiding the need of writing a empty comma
         if tokenizer.next() == Tokenizer.TK_SYMBOL:
-            if tokenizer.symbol == "NO_META":
+            if tokenizer.symbol == "HIR_INTERNAL":
                 if tokenizer.next() == Tokenizer.TK_COMMA:
                     return ret
 

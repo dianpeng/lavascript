@@ -7,7 +7,7 @@ namespace cbase      {
 namespace hir        {
 
 // Phi node
-LAVA_CBASE_HIR_DEFINE(NO_META,ValuePhi,public Expr) {
+LAVA_CBASE_HIR_DEFINE(HIR_INTERNAL,ValuePhi,public Expr) {
  public:
   // Set the bounded region, only applicable when the region is not set
   inline void set_region( Merge* );

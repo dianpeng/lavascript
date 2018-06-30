@@ -9,7 +9,7 @@ namespace hir        {
 /* -------------------------------------------------------
  * Testing node , used with Guard node or If node
  * ------------------------------------------------------*/
-LAVA_CBASE_HIR_DEFINE(NO_META,Test,public Expr) {
+LAVA_CBASE_HIR_DEFINE(HIR_INTERNAL,Test,public Expr) {
  public:
   // return the object this test node test against with
   virtual Expr* object() const = 0;

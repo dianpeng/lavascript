@@ -1,11 +1,13 @@
 #ifndef CBASE_FOLD_BOX_H_
 #define CBASE_FOLD_BOX_H_
+#include "src/cbase/type.h"
 
 namespace lavascript {
 namespace cbase      {
 namespace hir        {
 
 class Graph;
+class Expr;
 class Box;
 class Unbox;
 

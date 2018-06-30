@@ -23,7 +23,7 @@ class PhiNode {
   Expr* phi_;
 };
 
-LAVA_CBASE_HIR_DEFINE(NO_META,Merge,public ControlFlow) {
+LAVA_CBASE_HIR_DEFINE(HIR_INTERNAL,Merge,public ControlFlow) {
  public:
   inline Merge( IRType , std::uint32_t , Graph* , ControlFlow* region = NULL );
   inline bool ReplacePhi( PhiNode , PhiNode );

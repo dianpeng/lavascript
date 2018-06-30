@@ -67,7 +67,7 @@ LAVA_CBASE_HIR_DEFINE(Tag=BOOLEAN;Name="boolean";Leaf=Leaf;Effect=NoEffect,
   LAVA_DISALLOW_COPY_AND_ASSIGN(Boolean)
 };
 
-LAVA_CBASE_HIR_DEFINE(NO_META,StringNode,public Expr) {
+LAVA_CBASE_HIR_DEFINE(HIR_INTERNAL,StringNode,public Expr) {
  public:
   StringNode( IRType type , std::uint32_t id , Graph* graph ): Expr(type,id,graph) {}
 };

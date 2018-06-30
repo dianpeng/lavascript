@@ -12,7 +12,7 @@ namespace hir        {
 // Expr:
 //   This node is the mother all other expression node and its solo
 //   goal is to expose def-use and use-def chain into different types
-LAVA_CBASE_HIR_DEFINE(NO_META,Expr,public Node) {
+LAVA_CBASE_HIR_DEFINE(HIR_INTERNAL,Expr,public Node) {
  public:
   bool  IsStmt            ()                   const  { return stmt_.HasRef(); }
   void  set_stmt_edge     ( const StmtEdge& st )      { stmt_= st; }

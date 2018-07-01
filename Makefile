@@ -69,10 +69,12 @@ $(HIR_MAP_SOURCE): $(HIR_HEADER)
 
 hir_node_type: $(HIR_HEADER)
 	$(TOOL)/hir-preprocessor.py --dir $(CBASE_HIR_DIR) --xmacro $(CBASE_HIR_EXPR_LIST_GEN)  \
-		--xmacro-temp '{class:<24},{Tag:<24},{Name:<24},{Leaf:<6},{Effect:<10}'               \
+		--xmacro-meta 'Box:Box'                                                               \
+		--xmacro-temp '{class:<24},{Tag:<24},{Name:<24},{Leaf:<6},{Box:<5}'                   \
 		--xmacro-base Expr --xmacro-leaf --xmacro-name CBASE_HIR_EXPRESSION
 	$(TOOL)/hir-preprocessor.py --dir $(CBASE_HIR_DIR) --xmacro $(CBASE_HIR_CF_LIST_GEN)    \
-		--xmacro-temp '{class:<24},{Tag:<24},{Name:<24},{Leaf:<6},{Effect:<10}'               \
+		--xmacro-meta 'Box:NA'                                                                \
+		--xmacro-temp '{class:<24},{Tag:<24},{Name:<24},{Leaf:<6},{Box:<5}'                   \
 		--xmacro-base ControlFlow --xmacro-leaf --xmacro-name CBASE_HIR_CONTROL_FLOW
 	$(TOOL)/hir-preprocessor.py --dir $(CBASE_HIR_DIR) --xmacro $(CBASE_HIR_INODE_LIST_GEN) \
 	  --xmacro-temp '{class:<16}' --xmacro-name CBASE_HIR_INTERNAL_NODE

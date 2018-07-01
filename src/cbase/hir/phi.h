@@ -39,7 +39,7 @@ LAVA_CBASE_HIR_DEFINE(HIR_INTERNAL,ValuePhi,public Expr) {
 
 // Normal value phi node. Used in the merged region for join value produced by
 // different branch in control flow graph.
-LAVA_CBASE_HIR_DEFINE(Tag=PHI;Name="phi";Leaf=NoLeaf;Effect=NoEffect,
+LAVA_CBASE_HIR_DEFINE(Tag=PHI;Name="phi";Leaf=NoLeaf,
     Phi,public ValuePhi) {
  public:
   inline static Phi* New( Graph* );
@@ -61,7 +61,7 @@ LAVA_CBASE_HIR_DEFINE(Tag=PHI;Name="phi";Leaf=NoLeaf;Effect=NoEffect,
 //
 // This is a normal loopiv node. We also have specialized loop iv node which
 // implicitly have type tagged to simplify type inference
-LAVA_CBASE_HIR_DEFINE(Tag=LOOP_IV;Name="loop_iv";Leaf=NoLeaf;Effect=NoEffect,
+LAVA_CBASE_HIR_DEFINE(Tag=LOOP_IV;Name="loop_iv";Leaf=NoLeaf,
     LoopIV, public ValuePhi ) {
  public:
   inline static LoopIV* New( Graph* );
@@ -75,11 +75,9 @@ LAVA_CBASE_HIR_DEFINE(Tag=LOOP_IV;Name="loop_iv";Leaf=NoLeaf;Effect=NoEffect,
 };
 
 // LoopIVInt node is a specialized loop induction variable node and it is in *UNBOXED*
-// type. It is used in the narrow phase optimization when the compiler decide it is
-// benifits or it can change the loop induction variable back into integer. After this
-// the loop induction varaible will become integer along with a box node. Then later on
-// the conversion node can do simple folding on the fly and benefits the indexing field.
-LAVA_CBASE_HIR_DEFINE(Tag=LOOP_IV_INT64;Name="loop_iv_int64";Leaf=NoLeaf;Effect=NoEffect,
+// type. This node will only be generated during the loop induction phase. And again,
+// this node is *UNBOXED*. The boxed value simply cannot have a integer type internally
+LAVA_CBASE_HIR_DEFINE(Tag=LOOP_IV_INT64;Name="loop_iv_int64";Leaf=NoLeaf;Box=Unbox,
     LoopIVInt64, public ValuePhi ) {
  public:
   inline static LoopIVInt64* New( Graph* );
@@ -91,7 +89,9 @@ LAVA_CBASE_HIR_DEFINE(Tag=LOOP_IV_INT64;Name="loop_iv_int64";Leaf=NoLeaf;Effect=
    LAVA_DISALLOW_COPY_AND_ASSIGN(LoopIVInt64)
 };
 
-LAVA_CBASE_HIR_DEFINE(Tag=LOOP_IV_FLOAT64;Name="loop_iv_float64";Leaf=NoLeaf;Effect=NoEffect,
+// This is the typped the LoopIV node. It is specialized with float64 type and it is in
+// *BOXED* type.
+LAVA_CBASE_HIR_DEFINE(Tag=LOOP_IV_FLOAT64;Name="loop_iv_float64";Leaf=NoLeaf,
     LoopIVFloat64, public ValuePhi ) {
   public:
    inline static LoopIVFloat64* New( Graph* );
@@ -103,7 +103,7 @@ LAVA_CBASE_HIR_DEFINE(Tag=LOOP_IV_FLOAT64;Name="loop_iv_float64";Leaf=NoLeaf;Eff
    LAVA_DISALLOW_COPY_AND_ASSIGN(LoopIVFloat64)
 };
 
-LAVA_CBASE_HIR_DEFINE(Tag=PROJECTION;Name="projection";Leaf=NoLeaf;Effect=NoEffect,
+LAVA_CBASE_HIR_DEFINE(Tag=PROJECTION;Name="projection";Leaf=NoLeaf,
     Projection,public Expr) {
  public:
   inline static Projection* New( Graph* , Expr* , std::uint32_t index );

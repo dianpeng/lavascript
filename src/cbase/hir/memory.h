@@ -8,7 +8,7 @@ namespace hir        {
 
 // --------------------------------------------------------------------------
 // OSRLoad
-LAVA_CBASE_HIR_DEFINE(Tag=OSR_LOAD;Name="osr_load";Leaf=Leaf;Effect=Effect,
+LAVA_CBASE_HIR_DEFINE(Tag=OSR_LOAD;Name="osr_load";Leaf=Leaf,
     OSRLoad,public Expr) {
  public:
   inline static OSRLoad* New( Graph* , std::uint32_t );
@@ -44,7 +44,7 @@ class ComponentBase {
 
 // --------------------------------------------------------------------------
 // IRList
-LAVA_CBASE_HIR_DEFINE(Tag=LIST;Name="list";Leaf=NoLeaf;Effect=Effect,
+LAVA_CBASE_HIR_DEFINE(Tag=LIST;Name="list";Leaf=NoLeaf,
     IRList,public WriteEffect,public ComponentBase) {
  public:
   inline static IRList* New( Graph* , std::size_t size );
@@ -64,7 +64,7 @@ LAVA_CBASE_HIR_DEFINE(Tag=LIST;Name="list";Leaf=NoLeaf;Effect=Effect,
 
 // --------------------------------------------------------------------------
 // IRObjectKV
-LAVA_CBASE_HIR_DEFINE(Tag=OBJECT_KV;Name="object_kv";Leaf=NoLeaf;Effect=NoEffect,
+LAVA_CBASE_HIR_DEFINE(Tag=OBJECT_KV;Name="object_kv";Leaf=NoLeaf,
     IRObjectKV,public Expr) {
  public:
   inline static IRObjectKV* New( Graph* , Expr* , Expr* );
@@ -88,7 +88,7 @@ LAVA_CBASE_HIR_DEFINE(Tag=OBJECT_KV;Name="object_kv";Leaf=NoLeaf;Effect=NoEffect
 
 // --------------------------------------------------------------------------
 // IRObject
-LAVA_CBASE_HIR_DEFINE(Tag=OBJECT;Name="object";Leaf=NoLeaf;Effect=Effect,
+LAVA_CBASE_HIR_DEFINE(Tag=OBJECT;Name="object";Leaf=NoLeaf,
     IRObject,public WriteEffect,public ComponentBase) {
  public:
   inline static IRObject* New( Graph* , std::size_t size );

@@ -34,7 +34,7 @@ LAVA_CBASE_HIR_DEFINE(HIR_INTERNAL,Merge,public ControlFlow) {
   zone::Vector<PhiNode> phi_list_;
 };
 
-LAVA_CBASE_HIR_DEFINE(Tag=REGION;Name="region";Leaf=NoLeaf;Effect=NoEffect,
+LAVA_CBASE_HIR_DEFINE(Tag=REGION;Name="region";Leaf=NoLeaf,
     Region,public ControlFlow) {
  public:
   inline static Region* New( Graph* );
@@ -46,7 +46,7 @@ LAVA_CBASE_HIR_DEFINE(Tag=REGION;Name="region";Leaf=NoLeaf;Effect=NoEffect,
 
 // Fail node represents abnormal way to abort the execution. The most common reason
 // is because we failed at type guard or obviouse code bug.
-LAVA_CBASE_HIR_DEFINE(Tag=FAIL;Name="fail";Leaf=NoLeaf;Effect=NoEffect,
+LAVA_CBASE_HIR_DEFINE(Tag=FAIL;Name="fail";Leaf=NoLeaf,
     Fail,public Merge) {
  public:
   inline static Fail* New( Graph* );
@@ -55,7 +55,7 @@ LAVA_CBASE_HIR_DEFINE(Tag=FAIL;Name="fail";Leaf=NoLeaf;Effect=NoEffect,
   LAVA_DISALLOW_COPY_AND_ASSIGN(Fail)
 };
 
-LAVA_CBASE_HIR_DEFINE(Tag=SUCCESS;Name="success";Leaf=NoLeaf;Effect=NoEffect,
+LAVA_CBASE_HIR_DEFINE(Tag=SUCCESS;Name="success";Leaf=NoLeaf,
     Success,public Merge) {
  public:
   inline static Success* New( Graph* );
@@ -66,7 +66,7 @@ LAVA_CBASE_HIR_DEFINE(Tag=SUCCESS;Name="success";Leaf=NoLeaf;Effect=NoEffect,
 };
 
 // Special node of the graph
-LAVA_CBASE_HIR_DEFINE(Tag=START;Name="start";Leaf=NoLeaf;Effect=NoEffect,
+LAVA_CBASE_HIR_DEFINE(Tag=START;Name="start";Leaf=NoLeaf,
     Start,public ControlFlow) {
  public:
   inline static Start* New( Graph* );
@@ -75,7 +75,7 @@ LAVA_CBASE_HIR_DEFINE(Tag=START;Name="start";Leaf=NoLeaf;Effect=NoEffect,
   LAVA_DISALLOW_COPY_AND_ASSIGN(Start)
 };
 
-LAVA_CBASE_HIR_DEFINE(Tag=END;Name="end";Leaf=NoLeaf;Effect=NoEffect,
+LAVA_CBASE_HIR_DEFINE(Tag=END;Name="end";Leaf=NoLeaf,
     End,public ControlFlow) {
  public:
   inline static End* New( Graph* , Success* , Fail* );
@@ -91,7 +91,7 @@ LAVA_CBASE_HIR_DEFINE(Tag=END;Name="end";Leaf=NoLeaf;Effect=NoEffect,
   LAVA_DISALLOW_COPY_AND_ASSIGN(End)
 };
 
-LAVA_CBASE_HIR_DEFINE(Tag=OSR_START;Name="osr_start";Leaf=NoLeaf;Effect=NoEffect,
+LAVA_CBASE_HIR_DEFINE(Tag=OSR_START;Name="osr_start";Leaf=NoLeaf,
     OSRStart,public ControlFlow) {
  public:
   inline static OSRStart* New( Graph* );
@@ -104,7 +104,7 @@ LAVA_CBASE_HIR_DEFINE(Tag=OSR_START;Name="osr_start";Leaf=NoLeaf;Effect=NoEffect
   LAVA_DISALLOW_COPY_AND_ASSIGN(OSRStart)
 };
 
-LAVA_CBASE_HIR_DEFINE(Tag=OSR_END;Name="osr_end";Leaf=NoLeaf;Effect=NoEffect,
+LAVA_CBASE_HIR_DEFINE(Tag=OSR_END;Name="osr_end";Leaf=NoLeaf,
     OSREnd,public ControlFlow) {
  public:
   inline static OSREnd* New( Graph* , Success* succ , Fail* f );
@@ -123,7 +123,7 @@ LAVA_CBASE_HIR_DEFINE(Tag=OSR_END;Name="osr_end";Leaf=NoLeaf;Effect=NoEffect,
   LAVA_DISALLOW_COPY_AND_ASSIGN(OSREnd)
 };
 
-LAVA_CBASE_HIR_DEFINE(Tag=INLINE_START;Name="inline_start";Leaf=NoLeaf;Effect=NoEffect,
+LAVA_CBASE_HIR_DEFINE(Tag=INLINE_START;Name="inline_start";Leaf=NoLeaf,
     InlineStart,public ControlFlow) {
  public:
   inline static InlineStart* New( Graph* , ControlFlow* );
@@ -136,7 +136,7 @@ LAVA_CBASE_HIR_DEFINE(Tag=INLINE_START;Name="inline_start";Leaf=NoLeaf;Effect=No
   LAVA_DISALLOW_COPY_AND_ASSIGN(InlineStart)
 };
 
-LAVA_CBASE_HIR_DEFINE(Tag=INLINE_END;Name="inline_end";Leaf=NoLeaf;Effect=NoEffect,
+LAVA_CBASE_HIR_DEFINE(Tag=INLINE_END;Name="inline_end";Leaf=NoLeaf,
     InlineEnd,public Merge) {
  public:
   inline static InlineEnd* New( Graph* , ControlFlow* );

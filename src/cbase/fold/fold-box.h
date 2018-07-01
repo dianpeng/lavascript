@@ -15,15 +15,18 @@ class Unbox;
 Expr* FoldBoxNode  ( Expr* , TypeKind );
 Expr* FoldUnboxNode( Expr* , TypeKind );
 
-// Create a box node based on the input node. This function will take care of the
-// folding process. Basically it only creates the box node when it needs to; otherwise
-// it just returns the old node since it is already in boxed status
+// Create a box node based on the input node. This function
+// will take care of the folding process. Basically it only
+// creates the box node when it needs to; otherwise it just
+// returns the old node since it is already in boxed status
 Expr* NewBoxNode  ( Graph* , Expr* , TypeKind );
 
 
-// Create a unbox node based on the input node. This function will take care of the
-// fold process. Basically it only creates the unbox node when it needs to; otherwise
-// it just returns a the old node since it is in the unboxed status.
+// Create a unbox node based on the input node.
+// This function will take care of the fold process.
+// Basically it only creates the unbox node when
+// it needs to; otherwise it just returns a the old
+// node since it is in the unboxed status.
 Expr* NewUnboxNode( Graph* , Expr* , TypeKind );
 
 

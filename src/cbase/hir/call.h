@@ -9,7 +9,7 @@ namespace hir        {
 
 // A call node. Calls into an external functions.It is type of a WriteEffect and also it will
 // definitely change the effect chain in the scope
-LAVA_CBASE_HIR_DEFINE(Tag=CALL;Name="call";Leaf=NoLeaf;Effect=Effect,
+LAVA_CBASE_HIR_DEFINE(Tag=CALL;Name="call";Leaf=NoLeaf,
     Call,public WriteEffect) {
  public:
   inline static Call* New( Graph* graph , Expr* , std::uint8_t , std::uint8_t , bool );
@@ -32,7 +32,7 @@ LAVA_CBASE_HIR_DEFINE(Tag=CALL;Name="call";Leaf=NoLeaf;Effect=Effect,
 // will lower all the intrinsic call directly into the graph instead of generating a call
 // node. it will only make sense when the graph is super blowed so we may just call an
 // external intrinsic call function
-LAVA_CBASE_HIR_DEFINE(Tag=ICALL;Name="icall";Leaf=NoLeaf;Effect=Effect,
+LAVA_CBASE_HIR_DEFINE(Tag=ICALL;Name="icall";Leaf=NoLeaf,
     ICall,public WriteEffect) {
  public:
   inline static ICall* New( Graph* , interpreter::IntrinsicCall , bool tail );

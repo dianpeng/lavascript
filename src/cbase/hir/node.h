@@ -18,17 +18,18 @@ namespace lavascript {
 namespace cbase      {
 namespace hir        {
 
+class Graph;
+class Node;
+
 enum IRType {
 #define __(A,B,...) HIR_##B,
   CBASE_HIR_LIST(__)
 #undef __ // __
   SIZE_OF_HIR
 };
+
 const char* IRTypeGetName( IRType );
 
-// Forward declaration
-class Graph;
-class Node;
 #define __(A,...) class A;
 CBASE_HIR_LIST(__)
 CBASE_HIR_INTERNAL_NODE(__)
@@ -43,6 +44,22 @@ template< typename T > struct HIRTypeValue     {};
   };
 CBASE_HIR_LIST(__)
 #undef __ // __
+
+// Box/Unbox mapping
+template< typename T > struct HIRTypeBox{};
+
+enum HIRBoxStatus {
+  HIR_BOX_NA    = -1,
+  HIR_BOX_Unbox = 0,
+  HIR_BOX_Box   = 1
+};
+
+#define __(A,B,C,D,E)                         \
+  template<> struct HIRTypeBox<A> {           \
+    static const int Value = HIR_BOX_##E;    \
+  };
+CBASE_HIR_LIST(__)
+#undef __
 
 /**
  * This is a separate information maintained for each IR node. It contains

@@ -18,7 +18,7 @@ namespace hir        {
 // 2) Unconditional jump
 // -----------------------------------------------------------------------
 
-LAVA_CBASE_HIR_DEFINE(Tag=IF;Name="if";Leaf=NoLeaf;Effect=NoEffect,
+LAVA_CBASE_HIR_DEFINE(Tag=IF;Name="if";Leaf=NoLeaf,
     If,public ControlFlow) {
  public:
   inline static If* New( Graph* , Expr* , ControlFlow* );
@@ -39,7 +39,7 @@ LAVA_CBASE_HIR_DEFINE(Tag=IF;Name="if";Leaf=NoLeaf;Effect=NoEffect,
   LAVA_DISALLOW_COPY_AND_ASSIGN(If)
 };
 
-LAVA_CBASE_HIR_DEFINE(Tag=IF_TRUE;Name="if_true";Leaf=NoLeaf;Effect=NoEffect,
+LAVA_CBASE_HIR_DEFINE(Tag=IF_TRUE;Name="if_true";Leaf=NoLeaf,
     IfTrue,public ControlFlow) {
  public:
   static const std::size_t kIndex = 1;
@@ -55,7 +55,7 @@ LAVA_CBASE_HIR_DEFINE(Tag=IF_TRUE;Name="if_true";Leaf=NoLeaf;Effect=NoEffect,
   LAVA_DISALLOW_COPY_AND_ASSIGN(IfTrue)
 };
 
-LAVA_CBASE_HIR_DEFINE(Tag=IF_FALSE;Name="if_false";Leaf=NoLeaf;Effect=NoEffect,
+LAVA_CBASE_HIR_DEFINE(Tag=IF_FALSE;Name="if_false";Leaf=NoLeaf,
     IfFalse,public ControlFlow) {
  public:
   static const std::size_t kIndex = 0;
@@ -71,7 +71,7 @@ LAVA_CBASE_HIR_DEFINE(Tag=IF_FALSE;Name="if_false";Leaf=NoLeaf;Effect=NoEffect,
   LAVA_DISALLOW_COPY_AND_ASSIGN(IfFalse)
 };
 
-LAVA_CBASE_HIR_DEFINE(Tag=IF_MERGE;Name="if_merge";Leaf=NoLeaf;Effect=NoEffect,
+LAVA_CBASE_HIR_DEFINE(Tag=IF_MERGE;Name="if_merge";Leaf=NoLeaf,
     IfMerge,public Merge) {
  public:
   inline static IfMerge* New( Graph* , ControlFlow* );

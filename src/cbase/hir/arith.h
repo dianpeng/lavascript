@@ -16,7 +16,7 @@ namespace hir        {
 // the binary node is even a side effect node and it will generate
 // a checkpoint/framestate.
 // ----------------------------------------------------------------
-LAVA_CBASE_HIR_DEFINE(Tag=UNARY;Name="unary";Leaf=NoLeaf;Effect=NoEffect,
+LAVA_CBASE_HIR_DEFINE(Tag=UNARY;Name="unary";Leaf=NoLeaf,
     Unary,public Expr) {
  public:
   enum Operator { MINUS, NOT };
@@ -99,7 +99,7 @@ LAVA_CBASE_HIR_DEFINE(HIR_INTERNAL,DynamicBinary,public HardBarrier,public Binar
   Binary::Operator op_;
 };
 
-LAVA_CBASE_HIR_DEFINE(Tag=ARITHMETIC;Name="arithmetic";Leaf=NoLeaf;Effect=Effect,
+LAVA_CBASE_HIR_DEFINE(Tag=ARITHMETIC;Name="arithmetic";Leaf=NoLeaf,
     Arithmetic,public DynamicBinary) {
  public:
   static inline Arithmetic* New( Graph* , Expr* , Expr* , Binary::Operator );
@@ -111,7 +111,7 @@ LAVA_CBASE_HIR_DEFINE(Tag=ARITHMETIC;Name="arithmetic";Leaf=NoLeaf;Effect=Effect
   }
 };
 
-LAVA_CBASE_HIR_DEFINE(Tag=COMPARE;Name="compare";Leaf=NoLeaf;Effect=Effect,
+LAVA_CBASE_HIR_DEFINE(Tag=COMPARE;Name="compare";Leaf=NoLeaf,
     Compare,public DynamicBinary) {
  public:
   static inline Compare* New( Graph* , Expr* , Expr* , Binary::Operator );
@@ -125,7 +125,7 @@ LAVA_CBASE_HIR_DEFINE(Tag=COMPARE;Name="compare";Leaf=NoLeaf;Effect=Effect,
 
 // This is a binary node but it is not a dynamic dispatched node so not inherit from the
 // the dynamic binary node. logical node is a normal node which will not do dynamic dispatch
-LAVA_CBASE_HIR_DEFINE(Tag=LOGICAL;Name="logical";Leaf=NoLeaf;Effect=NoEffect,
+LAVA_CBASE_HIR_DEFINE(Tag=LOGICAL;Name="logical";Leaf=NoLeaf,
     Logical,public Expr,public BinaryNode) {
  public:
   using Operator = Binary::Operator;
@@ -148,7 +148,7 @@ LAVA_CBASE_HIR_DEFINE(Tag=LOGICAL;Name="logical";Leaf=NoLeaf;Effect=NoEffect,
   Binary::Operator op_;
 };
 
-LAVA_CBASE_HIR_DEFINE(Tag=TERNARY;Name="ternary";Leaf=NoLeaf;Effect=NoEffect,
+LAVA_CBASE_HIR_DEFINE(Tag=TERNARY;Name="ternary";Leaf=NoLeaf,
     Ternary,public Expr) {
  public:
   inline static Ternary* New( Graph* , Expr* , Expr* , Expr* );
@@ -170,7 +170,7 @@ LAVA_CBASE_HIR_DEFINE(Tag=TERNARY;Name="ternary";Leaf=NoLeaf;Effect=NoEffect,
 /* -------------------------------------------------------
  * Low level operations
  * ------------------------------------------------------*/
-LAVA_CBASE_HIR_DEFINE(Tag=FLOAT64_NEGATE;Name="float64_negate";Leaf=NoLeaf;Effect=NoEffect,
+LAVA_CBASE_HIR_DEFINE(Tag=FLOAT64_NEGATE;Name="float64_negate";Leaf=NoLeaf;Box=Unbox,
     Float64Negate,public Expr) {
  public:
   inline static Float64Negate* New( Graph* , Expr* );
@@ -197,7 +197,7 @@ LAVA_CBASE_HIR_DEFINE(Tag=FLOAT64_NEGATE;Name="float64_negate";Leaf=NoLeaf;Effec
 
 // Specialized logic operator, its lhs is type fixed by boolean. ie, we are
 // sure its lhs operand outputs boolean in an unboxed format.
-LAVA_CBASE_HIR_DEFINE(Tag=BOOLEAN_NOT;Name="boolean_not";Leaf=NoLeaf;Effect=NoEffect,
+LAVA_CBASE_HIR_DEFINE(Tag=BOOLEAN_NOT;Name="boolean_not";Leaf=NoLeaf;Box=Unbox,
     BooleanNot,public Expr) {
  public:
   inline static BooleanNot* New( Graph* , Expr* );
@@ -249,7 +249,7 @@ LAVA_CBASE_HIR_DEFINE(HIR_INTERNAL,SpecializeBinary,public Expr,public BinaryNod
   Binary::Operator op_;
 };
 
-LAVA_CBASE_HIR_DEFINE(Tag=INT64_ARITHMETIC;Name="int64_aritmetic";Leaf=NoLeaf;Effect=NoEffect,
+LAVA_CBASE_HIR_DEFINE(Tag=INT64_ARITHMETIC;Name="int64_aritmetic";Leaf=NoLeaf;Box=Unbox,
     Int64Arithmetic,public SpecializeBinary) {
  public:
   using Operator = Binary::Operator;
@@ -262,7 +262,7 @@ LAVA_CBASE_HIR_DEFINE(Tag=INT64_ARITHMETIC;Name="int64_aritmetic";Leaf=NoLeaf;Ef
   LAVA_DISALLOW_COPY_AND_ASSIGN(Int64Arithmetic)
 };
 
-LAVA_CBASE_HIR_DEFINE(Tag=FLOAT64_ARITHMETIC;Name="float64_arithmetic";Leaf=NoLeaf;Effect=NoEffect,
+LAVA_CBASE_HIR_DEFINE(Tag=FLOAT64_ARITHMETIC;Name="float64_arithmetic";Leaf=NoLeaf;Box=Unbox,
     Float64Arithmetic,public SpecializeBinary) {
  public:
   using Operator = Binary::Operator;
@@ -279,7 +279,7 @@ LAVA_CBASE_HIR_DEFINE(Tag=FLOAT64_ARITHMETIC;Name="float64_arithmetic";Leaf=NoLe
   LAVA_DISALLOW_COPY_AND_ASSIGN(Float64Arithmetic)
 };
 
-LAVA_CBASE_HIR_DEFINE(Tag=FLOAT64_BITWISE;Name="float64_bitwise";Leaf=NoLeaf;Effect=NoEffect,
+LAVA_CBASE_HIR_DEFINE(Tag=FLOAT64_BITWISE;Name="float64_bitwise";Leaf=NoLeaf;Box=Unbox,
     Float64Bitwise,public SpecializeBinary) {
  public:
   using Operator = Binary::Operator;
@@ -296,7 +296,7 @@ LAVA_CBASE_HIR_DEFINE(Tag=FLOAT64_BITWISE;Name="float64_bitwise";Leaf=NoLeaf;Eff
   LAVA_DISALLOW_COPY_AND_ASSIGN(Float64Bitwise)
 };
 
-LAVA_CBASE_HIR_DEFINE(Tag=FLOAT64_COMPARE;Name="float64_compare";Leaf=NoLeaf;Effect=NoEffect,
+LAVA_CBASE_HIR_DEFINE(Tag=FLOAT64_COMPARE;Name="float64_compare";Leaf=NoLeaf;Box=Unbox,
     Float64Compare,public SpecializeBinary) {
  public:
   using Operator = Binary::Operator;
@@ -313,7 +313,7 @@ LAVA_CBASE_HIR_DEFINE(Tag=FLOAT64_COMPARE;Name="float64_compare";Leaf=NoLeaf;Eff
   LAVA_DISALLOW_COPY_AND_ASSIGN(Float64Compare)
 };
 
-LAVA_CBASE_HIR_DEFINE(Tag=INT64_COMPARE;Name="int64_compare";Leaf=NoLeaf;Effect=NoEffect,
+LAVA_CBASE_HIR_DEFINE(Tag=INT64_COMPARE;Name="int64_compare";Leaf=NoLeaf;Box=Unbox,
     Int64Compare,public SpecializeBinary) {
  public:
   using Operator = Binary::Operator;
@@ -328,7 +328,7 @@ LAVA_CBASE_HIR_DEFINE(Tag=INT64_COMPARE;Name="int64_compare";Leaf=NoLeaf;Effect=
   LAVA_DISALLOW_COPY_AND_ASSIGN(Int64Compare)
 };
 
-LAVA_CBASE_HIR_DEFINE(Tag=STRING_COMPARE;Name="string_compare";Leaf=NoLeaf;Effect=NoEffect,
+LAVA_CBASE_HIR_DEFINE(Tag=STRING_COMPARE;Name="string_compare";Leaf=NoLeaf;Box=Unbox,
     StringCompare,public SpecializeBinary) {
  public:
   using Operator = Binary::Operator;
@@ -342,7 +342,7 @@ LAVA_CBASE_HIR_DEFINE(Tag=STRING_COMPARE;Name="string_compare";Leaf=NoLeaf;Effec
   LAVA_DISALLOW_COPY_AND_ASSIGN(StringCompare);
 };
 
-LAVA_CBASE_HIR_DEFINE(Tag=SSTRING_EQ;Name="sstring_eq";Leaf=NoLeaf;Effect=NoEffect,
+LAVA_CBASE_HIR_DEFINE(Tag=SSTRING_EQ;Name="sstring_eq";Leaf=NoLeaf;Box=Unbox,
     SStringEq,public SpecializeBinary) {
  public:
   inline static SStringEq* New( Graph* , Expr* , Expr* );
@@ -354,7 +354,7 @@ LAVA_CBASE_HIR_DEFINE(Tag=SSTRING_EQ;Name="sstring_eq";Leaf=NoLeaf;Effect=NoEffe
   LAVA_DISALLOW_COPY_AND_ASSIGN(SStringEq)
 };
 
-LAVA_CBASE_HIR_DEFINE(Tag=SSTRING_NE;Name="sstring_ne";Leaf=NoLeaf;Effect=NoEffect,
+LAVA_CBASE_HIR_DEFINE(Tag=SSTRING_NE;Name="sstring_ne";Leaf=NoLeaf;Box=Unbox,
     SStringNe,public SpecializeBinary) {
  public:
   inline static SStringNe* New( Graph* , Expr* , Expr* );
@@ -366,7 +366,7 @@ LAVA_CBASE_HIR_DEFINE(Tag=SSTRING_NE;Name="sstring_ne";Leaf=NoLeaf;Effect=NoEffe
   LAVA_DISALLOW_COPY_AND_ASSIGN(SStringNe)
 };
 
-LAVA_CBASE_HIR_DEFINE(Tag=BOOLEAN_LOGIC;Name="boolean_logic";Leaf=NoLeaf;Effect=NoEffect,
+LAVA_CBASE_HIR_DEFINE(Tag=BOOLEAN_LOGIC;Name="boolean_logic";Leaf=NoLeaf;Box=Unbox,
     BooleanLogic,public SpecializeBinary) {
  public:
    inline static BooleanLogic* New( Graph* , Expr* , Expr* , Operator op );

@@ -9,7 +9,7 @@ namespace hir        {
 // ----------------------------------------------------------------
 // Closure
 // ----------------------------------------------------------------
-LAVA_CBASE_HIR_DEFINE(Tag=CLOSURE;Name="closure";Leaf=Leaf;Effect=NoEffect,
+LAVA_CBASE_HIR_DEFINE(Tag=CLOSURE;Name="closure";Leaf=Leaf,
     Closure,public Expr) {
  public:
   static inline Closure* New( Graph* , std::uint32_t ref );
@@ -25,7 +25,7 @@ LAVA_CBASE_HIR_DEFINE(Tag=CLOSURE;Name="closure";Leaf=Leaf;Effect=NoEffect,
   LAVA_DISALLOW_COPY_AND_ASSIGN(Closure);
 };
 
-LAVA_CBASE_HIR_DEFINE(Tag=INIT_CLS;Name="init_cls";Leaf=NoLeaf;Effect=Effect,
+LAVA_CBASE_HIR_DEFINE(Tag=INIT_CLS;Name="init_cls";Leaf=NoLeaf,
     InitCls,public Expr) {
  public:
   inline static InitCls* New( Graph* , Expr* );

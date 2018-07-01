@@ -40,7 +40,7 @@ namespace hir        {
 //    Checkpoint , it just means when node bailout, it uses this Checkpoint to reconstruct
 //    interpreter states/frame. But this is not dependent.
 //
-LAVA_CBASE_HIR_DEFINE(Tag=CHECKPOINT;Name="checkpoint";Leaf=NoLeaf;Effect=NoEffect,
+LAVA_CBASE_HIR_DEFINE(Tag=CHECKPOINT;Name="checkpoint";Leaf=NoLeaf,
     Checkpoint,public Expr) {
  public:
   inline static Checkpoint* New( Graph* , IRInfo* );
@@ -61,7 +61,7 @@ LAVA_CBASE_HIR_DEFINE(Tag=CHECKPOINT;Name="checkpoint";Leaf=NoLeaf;Effect=NoEffe
   LAVA_DISALLOW_COPY_AND_ASSIGN(Checkpoint)
 };
 
-LAVA_CBASE_HIR_DEFINE(Tag=STACK_SLOT;Name="stack_slot";Leaf=NoLeaf;Effect=NoEffect,
+LAVA_CBASE_HIR_DEFINE(Tag=STACK_SLOT;Name="stack_slot";Leaf=NoLeaf,
     StackSlot,public Expr) {
  public:
   inline static StackSlot* New( Graph* , Expr* , std::uint32_t );
@@ -79,7 +79,7 @@ LAVA_CBASE_HIR_DEFINE(Tag=STACK_SLOT;Name="stack_slot";Leaf=NoLeaf;Effect=NoEffe
 };
 
 // Used to restore call stack because of the inline
-LAVA_CBASE_HIR_DEFINE(Tag=FRAME_SLOT;Name="frame_slot";Leaf=NoLeaf;Effect=NoEffect,
+LAVA_CBASE_HIR_DEFINE(Tag=FRAME_SLOT;Name="frame_slot";Leaf=NoLeaf,
     FrameSlot,public Expr) {
  public:
   inline FrameSlot* New( Graph* , std::uint32_t  , /* index */

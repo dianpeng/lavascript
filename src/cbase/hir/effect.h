@@ -158,7 +158,7 @@ LAVA_CBASE_HIR_DEFINE(HIR_INTERNAL,EffectMergeBase,public HardBarrier) {
 // EffectMerge is a phi node inserted at merge region used to fan in all the branch's
 // phi node. Each branch will use a InitBarrier to separate each branch's effect
 // chain regardlessly
-LAVA_CBASE_HIR_DEFINE(Tag=EFFECT_MERGE;Name="effect_merge";Leaf=NoLeaf;Effect=Effect,
+LAVA_CBASE_HIR_DEFINE(Tag=EFFECT_MERGE;Name="effect_merge";Leaf=NoLeaf,
     EffectMerge,public EffectMergeBase) {
  public:
   static inline EffectMerge* New( Graph* );
@@ -178,7 +178,7 @@ LAVA_CBASE_HIR_DEFINE(Tag=EFFECT_MERGE;Name="effect_merge";Leaf=NoLeaf;Effect=Ef
 // cross loop carried dependency boundary. Due to the cycle , when do analyze of aliasing
 // or previous store, one will have to visit the store happened *after the loop*. And it
 // also means the only the fly memory optimization cannot be applied to stuff in the loop
-LAVA_CBASE_HIR_DEFINE(Tag=LOOP_EFFECT_START;Name="loop_effect_start";Leaf=NoLeaf;Effect=Effect,
+LAVA_CBASE_HIR_DEFINE(Tag=LOOP_EFFECT_START;Name="loop_effect_start";Leaf=NoLeaf,
     LoopEffectStart,public EffectMergeBase) {
  public:
   // The loop effect phi node will be created right before entering into the loop, so at
@@ -199,7 +199,7 @@ LAVA_CBASE_HIR_DEFINE(Tag=LOOP_EFFECT_START;Name="loop_effect_start";Leaf=NoLeaf
 
 // InitBarrier is an object to separate effect chain in lexical scope. It is mainly to
 // use mark the start of the effect chain
-LAVA_CBASE_HIR_DEFINE(Tag=INIT_BARRIER;Name="init_barrier";Leaf=NoLeaf;Effect=Effect,
+LAVA_CBASE_HIR_DEFINE(Tag=INIT_BARRIER;Name="init_barrier";Leaf=NoLeaf,
     InitBarrier,public HardBarrier) {
  public:
   static inline InitBarrier* New( Graph* );
@@ -210,7 +210,7 @@ LAVA_CBASE_HIR_DEFINE(Tag=INIT_BARRIER;Name="init_barrier";Leaf=NoLeaf;Effect=Ef
 
 // BranchStartEffect is an object to be used to *mark* the control flow. It doesn't have any
 // actual barrier impact but just to mark the separation of control flow region, ie *If* node.
-LAVA_CBASE_HIR_DEFINE(Tag=BRANCH_START_EFFECT;Name="branch_start_effect";Leaf=NoLeaf;Effect=Effect,
+LAVA_CBASE_HIR_DEFINE(Tag=BRANCH_START_EFFECT;Name="branch_start_effect";Leaf=NoLeaf,
     BranchStartEffect,public HardBarrier) {
  public:
   static inline BranchStartEffect* New( Graph* );
@@ -222,7 +222,7 @@ LAVA_CBASE_HIR_DEFINE(Tag=BRANCH_START_EFFECT;Name="branch_start_effect";Leaf=No
   LAVA_DISALLOW_COPY_AND_ASSIGN(BranchStartEffect)
 };
 
-LAVA_CBASE_HIR_DEFINE(Tag=EMPTY_WRITE_EFFECT;Name="empty_write_effect";Leaf=NoLeaf;Effect=Effect,
+LAVA_CBASE_HIR_DEFINE(Tag=EMPTY_WRITE_EFFECT;Name="empty_write_effect";Leaf=NoLeaf,
     EmptyWriteEffect,public WriteEffect) {
  public:
   static inline EmptyWriteEffect* New( Graph* );

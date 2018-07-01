@@ -14,6 +14,19 @@ const char* IRTypeGetName( IRType type ) {
 #undef __ // __
 }
 
+bool Expr::IsUnboxNode() const {
+#define __(A,B,C,D,E) case HIR_##B: return HIR_BOX_##E == HIR_BOX_Box;
+  switch(type()) {
+    CBASE_HIR_LIST(__)
+    default: lava_die(); return false;
+  }
+#undef __ // __
+}
+
+bool Expr::IsBoxNode() const {
+  return !IsUnboxNode();
+}
+
 void Expr::Replace( Expr* another ) {
   if(IsIdentical(another)) return;
   // 1. patch all the reference of |this| point to another node

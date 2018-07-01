@@ -14,9 +14,11 @@ namespace hir        {
 //   goal is to expose def-use and use-def chain into different types
 LAVA_CBASE_HIR_DEFINE(HIR_INTERNAL,Expr,public Node) {
  public:
-  bool  IsStmt            ()                   const  { return stmt_.HasRef(); }
-  void  set_stmt_edge     ( const StmtEdge& st )      { stmt_= st; }
+  bool  IsStmt             ()                   const { return stmt_.HasRef(); }
+  void  set_stmt_edge      ( const StmtEdge& st )     { stmt_= st; }
   const StmtEdge& stmt_edge()                   const { return stmt_; }
+  bool  IsUnboxNode        () const;
+  bool  IsBoxNode          () const;
  public:
   // Replace *this* node with the input expression node. This replace
   // will modify all reference to |this| with reference to input node.
@@ -72,7 +74,9 @@ LAVA_CBASE_HIR_DEFINE(HIR_INTERNAL,Expr,public Node) {
   typedef PolyIterator<Expr*> DependencyIterator;
 
   // get dependency iteration iterator
-  virtual DependencyIterator GetDependencyIterator() const { return DependencyIterator(); }
+  virtual DependencyIterator GetDependencyIterator() const {
+    return DependencyIterator();
+  }
 
   // get the dependnecy size
   virtual std::size_t dependency_size() const { return 0; }

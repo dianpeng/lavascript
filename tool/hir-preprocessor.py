@@ -210,8 +210,9 @@ class Writer:
         self.put_line()
 
 class HIRModel:
-    def __init__(self):
+    def __init__(self,meta):
         self.all_list = dict()
+        self.meta     = meta
 
     def _sanity_check(self,src,pos):
         """ sanity check of marker to see whether it is embedded inside of
@@ -290,7 +291,13 @@ class HIRModel:
                 if tk == Tokenizer.TK_COMMA:
                     break
 
-        return ret
+        # merge the ret with existed value
+        temp = self.meta.copy()
+
+        for k in ret:
+            temp[k] = ret[k]
+
+        return temp
 
     def _parse(self,src,start):
         tokenizer = Tokenizer(src,start)
@@ -507,8 +514,8 @@ class CxxXMacroGenerator:
         self.writer.put_line("") # put an empty line
 
 
-def _build_model(folder):
-    prop = HIRModel()
+def _build_model(folder,meta):
+    prop = HIRModel(meta)
 
     itr = next(os.walk(folder))
     root= itr[0]
@@ -558,6 +565,16 @@ def _xmacro(fn,model,name,temp,base,leaf):
 
         CxxXMacroGenerator(name,temp,writer,model,base,leaf).generate()
 
+def _build_map(xx):
+    ret = dict()
+    for x in xx:
+        idx = x.find(":")
+        if idx == -1:
+            return None
+        else:
+            ret[x[:idx]] = x[idx+1:]
+    return ret
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Preinitor for cbase HIR type mapping")
     parser.add_argument("--dir"        ,type=str,action='store'                   ,help='specify where the HIR folder is')
@@ -565,8 +582,9 @@ if __name__ == "__main__":
     parser.add_argument("--xmacro"     ,type=str,action='store'      ,default=""  ,help="xmacro generation"              )
     parser.add_argument("--xmacro-temp",type=str,action='store'      ,default=""  ,help="xmacro template"                )
     parser.add_argument("--xmacro-base",type=str,action='store'      ,default=""  ,help="xmacro base class"              )
-    parser.add_argument("--xmacro-leaf",         action='store_true' ,default=False,help="xmacro whether leaf node"       )
+    parser.add_argument("--xmacro-leaf",         action='store_true' ,default=False,help="xmacro whether leaf node"      )
     parser.add_argument("--xmacro-name",type=str,action='store'      ,default=""  ,help="xmacro name"                    )
+    parser.add_argument("--xmacro-meta",                              nargs="*"   ,help="specify default as key:valye"   )
 
     arg = parser.parse_args()
 
@@ -577,7 +595,11 @@ if __name__ == "__main__":
     if arg.dir is None:
         bitch_and_die()
 
-    model = _build_model(arg.dir)
+    meta  = _build_map([] if arg.xmacro_meta is None else arg.xmacro_meta)
+    if meta is None:
+        bitch_and_die()
+
+    model = _build_model(arg.dir,meta)
 
     if arg.type_map is not "":
         _type_map(model,arg.type_map)

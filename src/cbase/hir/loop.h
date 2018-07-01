@@ -12,7 +12,7 @@ namespace hir        {
 // Loop related blocks
 //
 // --------------------------------------------------------------------------
-LAVA_CBASE_HIR_DEFINE(Tag=LOOP_HEADER;Name="loop_header";Leaf=NoLeaf;Effect=NoEffect,
+LAVA_CBASE_HIR_DEFINE(Tag=LOOP_HEADER;Name="loop_header";Leaf=NoLeaf,
     LoopHeader,public ControlFlow) {
  public:
   inline static LoopHeader* New( Graph* , ControlFlow* );
@@ -34,7 +34,7 @@ LAVA_CBASE_HIR_DEFINE(Tag=LOOP_HEADER;Name="loop_header";Leaf=NoLeaf;Effect=NoEf
   LAVA_DISALLOW_COPY_AND_ASSIGN(LoopHeader);
 };
 
-LAVA_CBASE_HIR_DEFINE(Tag=LOOP;Name="loop";Leaf=NoLeaf;Effect=NoEffect,
+LAVA_CBASE_HIR_DEFINE(Tag=LOOP;Name="loop";Leaf=NoLeaf,
     Loop,public Merge) {
  public:
   inline static Loop* New( Graph* );
@@ -48,7 +48,7 @@ LAVA_CBASE_HIR_DEFINE(Tag=LOOP;Name="loop";Leaf=NoLeaf;Effect=NoEffect,
   LAVA_DISALLOW_COPY_AND_ASSIGN(Loop)
 };
 
-LAVA_CBASE_HIR_DEFINE(Tag=LOOP_EXIT;Name="loop_exit";Leaf=NoLeaf;Effect=NoEffect,
+LAVA_CBASE_HIR_DEFINE(Tag=LOOP_EXIT;Name="loop_exit";Leaf=NoLeaf,
     LoopExit,public Merge) {
  public:
   inline static LoopExit* New( Graph* , Expr* );
@@ -62,7 +62,7 @@ LAVA_CBASE_HIR_DEFINE(Tag=LOOP_EXIT;Name="loop_exit";Leaf=NoLeaf;Effect=NoEffect
   LAVA_DISALLOW_COPY_AND_ASSIGN(LoopExit)
 };
 
-LAVA_CBASE_HIR_DEFINE(Tag=LOOP_MERGE;Name="loop_merge";Leaf=NoLeaf;Effect=NoEffect,
+LAVA_CBASE_HIR_DEFINE(Tag=LOOP_MERGE;Name="loop_merge";Leaf=NoLeaf,
     LoopMerge,public Merge) {
  public:
   inline static LoopMerge* New( Graph* );

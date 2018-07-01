@@ -9,7 +9,7 @@ namespace hir        {
 // -------------------------------------------------------------------------
 // Iterator node (side effect)
 // -------------------------------------------------------------------------
-LAVA_CBASE_HIR_DEFINE(Tag=ITR_NEW;Name="itr_new";Leaf=NoLeaf;Effect=Effect,
+LAVA_CBASE_HIR_DEFINE(Tag=ITR_NEW;Name="itr_new";Leaf=NoLeaf,
     ItrNew,public HardBarrier) {
  public:
   inline static ItrNew* New( Graph* , Expr* );
@@ -24,7 +24,7 @@ LAVA_CBASE_HIR_DEFINE(Tag=ITR_NEW;Name="itr_new";Leaf=NoLeaf;Effect=Effect,
   LAVA_DISALLOW_COPY_AND_ASSIGN(ItrNew)
 };
 
-LAVA_CBASE_HIR_DEFINE(Tag=ITR_NEXT;Name="itr_next";Leaf=NoLeaf;Effect=Effect,
+LAVA_CBASE_HIR_DEFINE(Tag=ITR_NEXT;Name="itr_next";Leaf=NoLeaf,
     ItrNext,public HardBarrier) {
  public:
   inline static ItrNext* New( Graph* , Expr* );
@@ -39,7 +39,7 @@ LAVA_CBASE_HIR_DEFINE(Tag=ITR_NEXT;Name="itr_next";Leaf=NoLeaf;Effect=Effect,
   LAVA_DISALLOW_COPY_AND_ASSIGN(ItrNext)
 };
 
-LAVA_CBASE_HIR_DEFINE(Tag=ITR_TEST;Name="itr_test";Leaf=NoLeaf;Effect=Effect,
+LAVA_CBASE_HIR_DEFINE(Tag=ITR_TEST;Name="itr_test";Leaf=NoLeaf,
     ItrTest,public HardBarrier) {
  public:
   inline static ItrTest* New( Graph* , Expr* );
@@ -54,7 +54,7 @@ LAVA_CBASE_HIR_DEFINE(Tag=ITR_TEST;Name="itr_test";Leaf=NoLeaf;Effect=Effect,
   LAVA_DISALLOW_COPY_AND_ASSIGN(ItrTest)
 };
 
-LAVA_CBASE_HIR_DEFINE(Tag=ITR_DEREF;Name="itr_deref";Leaf=NoLeaf;Effect=Effect,
+LAVA_CBASE_HIR_DEFINE(Tag=ITR_DEREF;Name="itr_deref";Leaf=NoLeaf,
     ItrDeref,public HardBarrier) {
  public:
   enum {

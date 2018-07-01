@@ -7,8 +7,7 @@ namespace cbase      {
 namespace hir        {
 
 // Argument
-LAVA_CBASE_HIR_DEFINE(Tag=ARG;Name="arg";Leaf=Leaf;Effect=Effect,
-    Arg,public Expr) {
+LAVA_CBASE_HIR_DEFINE(Tag=ARG;Name="arg";Leaf=Leaf,Arg,public Expr) {
  public:
   inline static Arg* New( Graph* , std::uint32_t );
   std::uint32_t index() const { return index_; }

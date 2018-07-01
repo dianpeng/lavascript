@@ -9,7 +9,7 @@ namespace hir        {
 // -------------------------------------------------------------------------
 //  Box/Unbox
 // -------------------------------------------------------------------------
-LAVA_CBASE_HIR_DEFINE(Tag=BOX;Name="box";Leaf=NoLeaf;Effect=NoEffect,
+LAVA_CBASE_HIR_DEFINE(Tag=BOX;Name="box";Leaf=NoLeaf,
     Box,public Expr) {
  public:
   inline static Box* New( Graph* , Expr* , TypeKind );
@@ -40,7 +40,7 @@ LAVA_CBASE_HIR_DEFINE(Tag=BOX;Name="box";Leaf=NoLeaf;Effect=NoEffect,
   LAVA_DISALLOW_COPY_AND_ASSIGN(Box)
 };
 
-LAVA_CBASE_HIR_DEFINE(Tag=UNBOX;Name="unbox";Leaf=NoLeaf;Effect=NoEffect,
+LAVA_CBASE_HIR_DEFINE(Tag=UNBOX;Name="unbox";Leaf=NoLeaf;Box=Unbox,
     Unbox,public Expr) {
  public:
   inline static Unbox* New( Graph* , Expr* , TypeKind );

@@ -21,7 +21,7 @@ namespace hir        {
  *    SSE. The input and output to this operation are always unboxed value.
  */
 
-LAVA_CBASE_HIR_DEFINE(Tag=CONV_BOOLEAN;Name="conv_boolean";Leaf=NoLeaf;Effect=Effect,
+LAVA_CBASE_HIR_DEFINE(Tag=CONV_BOOLEAN;Name="conv_boolean";Leaf=NoLeaf,
     ConvBoolean,public Expr) {
  public:
   // New a normal conv boolean operation, takes a boxed input and produce a unboxed
@@ -44,7 +44,7 @@ LAVA_CBASE_HIR_DEFINE(Tag=CONV_BOOLEAN;Name="conv_boolean";Leaf=NoLeaf;Effect=Ef
 
 // convert a boxed expression into a negative boolean. Basically if the input evaluates
 // to be true , then this node return false in unbox version ; otherwise it returns true.
-LAVA_CBASE_HIR_DEFINE(Tag=CONV_NBOOLEAN;Name="conv_nboolean";Leaf=NoLeaf;Effect=Effect,
+LAVA_CBASE_HIR_DEFINE(Tag=CONV_NBOOLEAN;Name="conv_nboolean";Leaf=NoLeaf,
     ConvNBoolean,public Expr) {
  public:
   inline static ConvNBoolean* New   ( Graph* , Expr* );
@@ -60,7 +60,7 @@ LAVA_CBASE_HIR_DEFINE(Tag=CONV_NBOOLEAN;Name="conv_nboolean";Leaf=NoLeaf;Effect=
   LAVA_DISALLOW_COPY_AND_ASSIGN(ConvNBoolean)
 };
 
-LAVA_CBASE_HIR_DEFINE(Tag=FLOAT64_TO_INT64;Name="float64_to_int64";Leaf=NoLeaf;Effect=NoEffect,
+LAVA_CBASE_HIR_DEFINE(Tag=FLOAT64_TO_INT64;Name="float64_to_int64";Leaf=NoLeaf;Box=Unbox,
     Float64ToInt64,public Expr) {
  public:
   inline static Float64ToInt64* New( Graph* , Expr* );
@@ -75,7 +75,7 @@ LAVA_CBASE_HIR_DEFINE(Tag=FLOAT64_TO_INT64;Name="float64_to_int64";Leaf=NoLeaf;E
   }
 };
 
-LAVA_CBASE_HIR_DEFINE(Tag=INT64_TO_FLOAT64;Name="int64_to_float64";Leaf=NoLeaf;Effect=NoEffect,
+LAVA_CBASE_HIR_DEFINE(Tag=INT64_TO_FLOAT64;Name="int64_to_float64";Leaf=NoLeaf;Box=Unbox,
     Int64ToFloat64,public Expr) {
  public:
   inline static Int64ToFloat64* New( Graph* , Expr* );

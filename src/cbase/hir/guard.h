@@ -17,7 +17,7 @@ LAVA_CBASE_HIR_DEFINE(HIR_INTERNAL,Test,public Expr) {
   Test( IRType type , std::uint32_t id , Graph* g ): Expr(type,id,g) {}
 };
 
-LAVA_CBASE_HIR_DEFINE(Tag=TEST_TYPE;Name="test_type";Leaf=NoLeaf;Effect=NoEffect,
+LAVA_CBASE_HIR_DEFINE(Tag=TEST_TYPE;Name="test_type";Leaf=NoLeaf,
     TestType,public Test) {
  public:
   inline static TestType* New( Graph* , TypeKind , Expr* );
@@ -50,7 +50,7 @@ LAVA_CBASE_HIR_DEFINE(Tag=TEST_TYPE;Name="test_type";Leaf=NoLeaf;Effect=NoEffect
 // -----------------------------------------------------
 // Guard
 // -----------------------------------------------------
-LAVA_CBASE_HIR_DEFINE(Tag=GUARD;Name="guard";Leaf=NoLeaf;Effect=NoEffect,
+LAVA_CBASE_HIR_DEFINE(Tag=GUARD;Name="guard";Leaf=NoLeaf,
     Guard,public Expr) {
  public:
   inline static Guard* New( Graph* , Test* , Checkpoint* );

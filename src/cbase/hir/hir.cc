@@ -15,7 +15,9 @@ const char* IRTypeGetName( IRType type ) {
 }
 
 bool Expr::IsUnboxNode() const {
-#define __(A,B,C,D,E) case HIR_##B: return HIR_BOX_##E == HIR_BOX_Box;
+#define __(A,B,C,D,E) case HIR_##B: \
+  return HIR_BOX_##E == HIR_BOX_Unbox || HIR_BOX_##E == HIR_BOX_Both;
+
   switch(type()) {
     CBASE_HIR_LIST(__)
     default: lava_die(); return false;
@@ -24,7 +26,13 @@ bool Expr::IsUnboxNode() const {
 }
 
 bool Expr::IsBoxNode() const {
-  return !IsUnboxNode();
+#define __(A,B,C,D,E) case HIR_##B: \
+  return HIR_BOX_##E == HIR_BOX_Box || HIR_BOX_##E == HIR_BOX_Both;
+  switch(type()) {
+    CBASE_HIR_LIST(__)
+    default: lava_die(); return false;
+  }
+#undef __ // __
 }
 
 void Expr::Replace( Expr* another ) {
@@ -65,6 +73,71 @@ void Expr::ClearOperand() {
   operand_list_.Clear();
 }
 
+// Replace operations for EffectRead/EffectWrite --------------------------
+void ReadEffect::Replace( Expr* node ) {
+  // replace a node with this |read effect| node. It depends on the type of
+  // the replacement. You will not replace a read with higher order node, so
+  // the basic idead is always lowering. A read that depends on effect can only
+  // be replaced by a node that is 1) no effect or 2) read effect node. Other
+  // nodes are not allowed to be replaced or should not be generated in general.
+  lava_debug(NORMAL,lava_verify(node->Is<ReadEffect>() || !node->Is<EffectNode>()););
+
+  // 1. remove itself from the dependency chain
+  if(effect_edge_.node) {
+    effect_edge_.node->RemoveReadEffect(&effect_edge_);
+  }
+
+  // 2. just do the replacement as with normal replace
+  Expr::Replace(node);
+}
+
+void WriteEffect::Replace( Expr* node ) {
+  // to replace a write effect node, one can replace it with lower none side
+  // effect node.
+  lava_debug(NORMAL,lava_verify(!node->Is<EffectNode>()););
+
+  // 1. put all the read happened after |this| node to the node
+  //    that's Next to it.
+  auto next_write = NextWrite();
+  {
+    lava_foreach( auto &k , read_effect_.GetForwardIterator() ) {
+      auto itr = next_write->read_effect_.PushBack(zone(),k);
+      k->set_effect_edge( itr , next_write );
+    }
+
+    // now remove  |this| from the dependency chain
+    RemoveLink();
+  }
+
+  // 2. Do the normal replacement of the expression node
+  {
+    // 2.1 iterate against all the *ref_list* and patch each ref pointed to
+    //     the new replacement. There's one exception, that is if the ref
+    //     node is a EffectMergeBase node, then you have to write it to next
+    //     node of |this|
+    lava_foreach( auto &k , ref_list()->GetForwardIterator() ) {
+      if(k.node->Is<EffectMergeBase>()) {
+        next_write->AddRef(k.node,k.id);
+        k.id.set_value(next_write);
+      } else {
+        node->AddRef(k.node,k.id);
+        k.id.set_value(node);
+      }
+    }
+
+    // 2.2 move the statement if needed
+    if(IsStmt()) {
+      auto region = stmt_.region;
+      region->RemoveStmt(stmt_);
+      region->AddStmt   (node);
+      stmt_.region = NULL;
+    }
+
+    // 2.3 clear all the existed operands
+    ClearOperand();
+  }
+}
+
 std::uint64_t SpecializeBinary::GVNHash () const {
   return GVNHash3(type_name(),op(),lhs()->GVNHash(),rhs()->GVNHash());
 }
@@ -79,7 +152,7 @@ bool SpecializeBinary::Equal( const Expr* that ) const {
 
 Checkpoint* ReadEffect::GetCheckpoint() const {
   lava_foreach( auto k , GetDependencyIterator() ) {
-    if(k->IsCheckpoint()) return k->AsCheckpoint();
+    if(k->Is<Checkpoint>()) return k->As<Checkpoint>();
   }
   return NULL;
 }
@@ -458,42 +531,6 @@ bool ControlFlowEdgeIterator::Move() {
     results_.pop_front();
     return true;
   }
-}
-
-Expr* NewUnboxNode( Graph* graph , Expr* node , TypeKind tk ) {
-  // we can only unbox a node when we know the type
-  lava_debug(NORMAL,lava_verify(tk != TPKIND_UNKNOWN && tk == GetTypeInference(node)););
-  // 1. check if the node is already unboxed , if so just return the node itself
-  switch(node->type()) {
-    case HIR_UNBOX:
-      lava_debug(NORMAL,lava_verify(node->AsUnbox()->type_kind() == tk););
-      return node;
-    case HIR_FLOAT64_NEGATE:
-    case HIR_FLOAT64_ARITHMETIC:
-    case HIR_FLOAT64_BITWISE:
-      lava_debug(NORMAL,lava_verify(tk == TPKIND_FLOAT64););
-      return node;
-    case HIR_FLOAT64_COMPARE:
-    case HIR_STRING_COMPARE:
-    case HIR_SSTRING_EQ:
-    case HIR_SSTRING_NE:
-      lava_debug(NORMAL,lava_verify(tk == TPKIND_BOOLEAN););
-      return node;
-    case HIR_BOX:
-      {
-        // if a node is just boxed, then we can just remove the previous box
-        auto bvalue = node->AsBox()->value();
-        lava_debug(NORMAL,lava_verify(GetTypeInference(bvalue) == tk););
-        return bvalue;
-      }
-    case HIR_FLOAT64:
-      // float64 number doesn't need box
-      return node;
-    default:
-      break;
-  }
-  // 2. do a real unbox here
-  return Unbox::New(graph,node,tk);
 }
 
 } // namespace hir

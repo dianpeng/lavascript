@@ -12,8 +12,8 @@ class Box;
 class Unbox;
 
 // Fold w.r.t Box/Unbox node
-Expr* FoldBoxNode  ( Expr* , TypeKind );
-Expr* FoldUnboxNode( Expr* , TypeKind );
+Expr* FoldBox  ( Expr* , TypeKind );
+Expr* FoldUnbox( Expr* , TypeKind );
 
 // Create a box node based on the input node. This function
 // will take care of the folding process. Basically it only
@@ -32,7 +32,7 @@ Expr* NewUnboxNode( Graph* , Expr* , TypeKind );
 
 // This template function create a node and then box it based on the type.
 template< typename T , typename ...ARGS >
-inline Box* NewBoxNode( Graph* graph , TypeKind tk , ARGS ...args ) {
+inline Expr* NewBoxNode( Graph* graph , TypeKind tk , ARGS ...args ) {
   auto n = T::New(graph,args...);
   return NewBoxNode(graph,n,tk);
 }

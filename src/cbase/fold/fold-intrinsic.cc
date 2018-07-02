@@ -84,26 +84,26 @@ Expr* IntrinsicFolder::Fold( Graph* graph , const FolderData& data ) {
 }
 
 inline bool IntrinsicFolder::AsUInt8( Expr* node , std::uint8_t* value ) {
-  if(node->IsFloat64()) {
+  if(node->Is<Float64>()) {
     // we don't care about the shifting overflow, the underly ISA
     // only allows a 8bit register serve as how many bits shifted.
-    *value = static_cast<std::uint8_t>(node->AsFloat64()->value());
+    *value = static_cast<std::uint8_t>(node->As<Float64>()->value());
     return true;
   }
   return false;
 }
 
 inline bool IntrinsicFolder::AsUInt32( Expr* node , std::uint32_t* value ) {
-  if(node->IsFloat64()) {
-    *value = static_cast<std::uint32_t>(node->AsFloat64()->value());
+  if(node->Is<Float64>()) {
+    *value = static_cast<std::uint32_t>(node->As<Float64>()->value());
     return true;
   }
   return false;
 }
 
 inline bool IntrinsicFolder::AsReal  ( Expr* node , double* real ) {
-  if(node->IsFloat64()) {
-    *real = node->AsFloat64()->value();
+  if(node->Is<Float64>()) {
+    *real = node->As<Float64>()->value();
     return true;
   }
   return false;

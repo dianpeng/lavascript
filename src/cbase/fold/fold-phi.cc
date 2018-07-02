@@ -45,8 +45,8 @@ Expr* PhiFolder::Fold( Graph* graph , Expr* lhs , Expr* rhs ,ControlFlow* region
   if(lhs->Equal(rhs)) {
     return lhs;
   }
-  if(region->IsIf()) {
-    auto inode = region->AsIf();
+  if(region->Is<If>()) {
+    auto inode = region->As<If>();
     // 2. try to fold it as a ternary if the cond is side effect free
     auto cond = inode->condition(); // get the condition
     auto    n = FoldTernary(graph,cond,lhs,rhs);

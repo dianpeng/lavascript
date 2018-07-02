@@ -10,7 +10,7 @@ namespace detail {
 inline bool VisitExprNode( Expr* node , ExprVisitor* visitor ) {
   lava_debug(NORMAL,lava_verify(node->Is<Expr>()););
 
-#define __(A,B,C,D,...) case HIR_##B: return visitor->Visit##A(node->As##A());
+#define __(A,B,C,D,...) case HIR_##B: return visitor->Visit##A(node->As<A>());
   switch(node->type()) {
     CBASE_HIR_EXPRESSION(__)
     default: lava_die(); return false;
@@ -21,7 +21,7 @@ inline bool VisitExprNode( Expr* node , ExprVisitor* visitor ) {
 inline bool VisitControlFlowNode( ControlFlow* node , ControlFlowVisitor* visitor ) {
   lava_debug(NORMAL,lava_verify(node->Is<ControlFlow>()););
 
-#define __(A,B,C,D,...) case HIR_##B: return visitor->Visit##A(node->As##A());
+#define __(A,B,C,D,...) case HIR_##B: return visitor->Visit##A(node->As<A>());
   switch(node->type()) {
     CBASE_HIR_CONTROL_FLOW(__)
     default: lava_die(); return false;

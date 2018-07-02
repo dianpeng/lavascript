@@ -20,7 +20,7 @@ LAVA_CBASE_HIR_DEFINE(Tag=ARG;Name="arg";Leaf=Leaf,Arg,public Expr) {
     return GVNHash1(type_name(),index());
   }
   virtual bool Equal( const Expr* that ) const {
-    return that->IsArg() && (that->AsArg()->index() == index());
+    return that->Is<Arg>() && (that->As<Arg>()->index() == index());
   }
  private:
   std::uint32_t index_;

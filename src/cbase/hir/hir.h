@@ -65,7 +65,7 @@ class Graph {
   // check whether the graph is OSR construction graph
   bool IsOSR() const {
     lava_debug(NORMAL,lava_verify(start_););
-    return start_->IsOSRStart();
+    return start_->Is<OSRStart>();
   }
   // Get all control flow nodes
   template< typename T > void GetControlFlowNode( zone::Zone* , T* ) const;
@@ -339,18 +339,6 @@ inline Expr* NewString           ( Graph* , const char* );
 inline Expr* NewString           ( Graph* , const zone::String* );
 inline Expr* NewStringFromBoolean( Graph* , bool );
 inline Expr* NewStringFromReal   ( Graph* , double );
-
-// ---------------------------------------------------------------------
-// Helper functions for creation of node
-// ---------------------------------------------------------------------
-template< typename T , typename ...ARGS >
-inline Box* NewBoxNode( Graph* graph , TypeKind tk , ARGS ...args ) {
-  auto n = T::New(graph,args...);
-  return Box::New(graph,n,tk);
-}
-
-// Create a unbox value from a node that has type inference.
-Expr* NewUnboxNode( Graph* , Expr* node , TypeKind tk );
 
 } // namespace hir
 } // namespace cbase

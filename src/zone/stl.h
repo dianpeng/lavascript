@@ -195,6 +195,28 @@ class ZoneMultimap
             Compare(), ZoneAllocator<std::pair<const K, V>>(zone)) {}
 };
 
+// Node marker
+class NodeMarker : protected ZoneVector<bool> {
+  typedef ZoneVector<bool> Base;
+ public:
+  explicit NodeMarker(Zone* zone): Base(zone) {}
+
+  using Base::size;
+  using Base::resize;
+  using Base::reserve;
+  using Base::empty;
+
+  bool Get( std::size_t index ) {
+    if(size() < index) Base::resize(index+1);
+    return false;
+  }
+
+  void Set( std::size_t index , bool value ) {
+    if(size() < index) resize(index+1);
+    Base::operator[](index) = value;
+  }
+};
+
 // Compatible bitset
 typedef ZoneVector<bool> BitSet;
 

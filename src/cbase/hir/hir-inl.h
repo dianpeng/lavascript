@@ -36,21 +36,6 @@ std::uint64_t GVNHash4( T* ptr , const V1& v1 , const V2& v2 , const V3& v3 , co
   return Hasher::HashCombine64(GVNHash3(ptr,v1,v2,v3),uv4);
 }
 
-
-#define __(A,B,...)                           \
-  inline A* Node::As##A() {                   \
-    lava_debug(NORMAL,lava_verify(Is##A());); \
-    return static_cast<A*>(this);             \
-  }                                           \
-  inline const A* Node::As##A() const {       \
-    lava_debug(NORMAL,lava_verify(Is##A());); \
-    return static_cast<const A*>(this);       \
-  }
-
-CBASE_HIR_LIST(__)
-
-#undef __ // __
-
 inline zone::Zone* Node::zone() const {
   return graph_->zone();
 }
@@ -85,7 +70,7 @@ inline bool Node::IsLeaf() const {
 
 inline const zone::String& Node::AsZoneString() const {
   lava_debug(NORMAL,lava_verify(Is<StringNode>()););
-  return IsLString() ? *AsLString()->value() : *AsSString()->value() ;
+  return Is<LString>() ? *As<LString>()->value() : *As<SString>()->value() ;
 }
 
 inline void Expr::AddOperand( Expr* node ) {
@@ -874,7 +859,7 @@ inline If* If::New( Graph* graph , Expr* condition , ControlFlow* parent ) {
 }
 inline IfTrue* IfTrue::New( Graph* graph , ControlFlow* parent ) {
   lava_debug(NORMAL,lava_verify(
-        parent->IsIf() && parent->forward_edge()->size() == 1););
+        parent->Is<If>() && parent->forward_edge()->size() == 1););
   return graph->zone()->New<IfTrue>(graph,graph->AssignID(),parent);
 }
 
@@ -884,7 +869,7 @@ inline IfTrue* IfTrue::New( Graph* graph ) {
 
 inline IfFalse* IfFalse::New( Graph* graph , ControlFlow* parent ) {
   lava_debug(NORMAL,lava_verify(
-        parent->IsIf() && parent->forward_edge()->size() == 0););
+        parent->Is<If>() && parent->forward_edge()->size() == 0););
   return graph->zone()->New<IfFalse>(graph,graph->AssignID(),parent);
 }
 

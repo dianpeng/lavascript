@@ -127,9 +127,9 @@ void MultiPredicate::DoConstruct  ( Predicate* range , Expr* node , Expr* v , bo
   switch(node->type()) {
     case HIR_FLOAT64_COMPARE:
       {
-        auto fcomp = node->AsFloat64Compare();
-        auto var   = fcomp->lhs()->IsFloat64() ? fcomp->rhs() : fcomp->lhs() ;
-        auto cst   = fcomp->lhs()->IsFloat64() ? fcomp->lhs() : fcomp->rhs() ;
+        auto fcomp = node->As<Float64Compare>();
+        auto var   = fcomp->lhs()->Is<Float64>() ? fcomp->rhs() : fcomp->lhs() ;
+        auto cst   = fcomp->lhs()->Is<Float64>() ? fcomp->lhs() : fcomp->rhs() ;
         lava_debug(NORMAL,lava_verify(var == v);lava_verify(range->type() == FLOAT64_PREDICATE););
         if(is_union) range->Union    ( fcomp->op() , cst );
         else         range->Intersect( fcomp->op() , cst );
@@ -137,7 +137,7 @@ void MultiPredicate::DoConstruct  ( Predicate* range , Expr* node , Expr* v , bo
       break;
     case HIR_BOOLEAN_LOGIC:
       {
-        auto bl    = node->AsBooleanLogic();
+        auto bl    = node->As<BooleanLogic>();
         auto temp  = NewPredicate(type_,NULL);
         DoConstruct(temp,bl->lhs(),v,true);
         DoConstruct(temp,bl->rhs(),v,bl->op() == Binary::OR);
@@ -154,13 +154,13 @@ void MultiPredicate::DoConstruct  ( Predicate* range , Expr* node , Expr* v , bo
         lava_debug(NORMAL,
             lava_verify(range->type() == BOOLEAN_PREDICATE);
             auto n = node;
-            if(node->IsBooleanNot()) {
-              n = node->AsBooleanNot()->operand();
+            if(node->Is<BooleanNot>()) {
+              n = node->As<BooleanNot>()->operand();
             }
             lava_verify(n == node);
         );
 
-        auto is_not = node->IsBooleanNot();
+        auto is_not = node->Is<BooleanNot>();
         if(is_union) range->Union    ( is_not ? Binary::NE : Binary::EQ , &kTrueNode );
         else         range->Intersect( is_not ? Binary::NE : Binary::EQ , &kTrueNode );
       }
@@ -211,8 +211,8 @@ class ConditionGroup {
   bool Validate    ( Expr* );
   bool SetCondition( Expr* , Expr* , PredicateType );
   bool CheckIfConstantBooleanCondition( Expr* );
-  bool IsBooleanTrue ( Expr* n ) { return n->IsBoolean() ? n->AsBoolean()->value() : false; }
-  bool IsBooleanFalse( Expr* n ) { return n->IsBoolean() ? !n->AsBoolean()->value() : false; }
+  bool IsBooleanTrue ( Expr* n ) { return n->Is<Boolean>() ? n->As<Boolean>()->value() : false; }
+  bool IsBooleanFalse( Expr* n ) { return n->Is<Boolean>() ? !n->As<Boolean>()->value() : false; }
   /** ------------------------------------------
    * Simplification
    * ------------------------------------------*/
@@ -282,8 +282,8 @@ bool ConditionGroup::SetCondition( Expr* cond , Expr* var , PredicateType t ) {
  *  Expression Simplification
  *  ----------------------------------------------------------------------*/
 Expr* ConditionGroup::SimplifyF64Compare( Float64Compare* fcomp ) {
-  auto var   = fcomp->lhs()->IsFloat64() ? fcomp->rhs() : fcomp->lhs();
-  auto cst   = fcomp->lhs()->IsFloat64() ? fcomp->lhs() : fcomp->rhs();
+  auto var   = fcomp->lhs()->Is<Float64>() ? fcomp->rhs() : fcomp->lhs();
+  auto cst   = fcomp->lhs()->Is<Float64>() ? fcomp->lhs() : fcomp->rhs();
   lava_debug(NORMAL,lava_verify(var == variable_););
   auto rng   = prev_->range()->LookUp(var); // get the value range
   return rng ? DeduceTo(fcomp,rng->Infer(fcomp->op(),cst)) : NULL;
@@ -314,16 +314,16 @@ Expr* ConditionGroup::SimplifyBoolean( Expr* node ) {
   lava_debug(NORMAL,
     lava_verify(type_ == BOOLEAN_PREDICATE);
     auto v = node;
-    if(v->IsBooleanNot()) {
-      v = v->AsBooleanNot()->operand();
+    if(v->Is<BooleanNot>()) {
+      v = v->As<BooleanNot>()->operand();
     }
     lava_verify(v == variable_);
   );
 
   auto n      = node;
   bool is_not = false;
-  if(n->IsBooleanNot()) {
-    n = n->AsBooleanNot()->operand();
+  if(n->Is<BooleanNot>()) {
+    n = n->As<BooleanNot>()->operand();
     is_not = true;
   }
   auto rng = prev_->range()->LookUp(n);
@@ -333,11 +333,11 @@ Expr* ConditionGroup::SimplifyBoolean( Expr* node ) {
 Expr* ConditionGroup::Simplify( Expr* node ) {
   switch(node->type()) {
     case HIR_FLOAT64_COMPARE:
-      return SimplifyF64Compare(node->AsFloat64Compare());
+      return SimplifyF64Compare(node->As<Float64Compare>());
     case HIR_BOOLEAN_LOGIC:
-      return SimplifyBooleanLogic(node->AsBooleanLogic());
+      return SimplifyBooleanLogic(node->As<BooleanLogic>());
     case HIR_TEST_TYPE:
-      return SimplifyTestType(node->AsTestType());
+      return SimplifyTestType(node->As<TestType>());
     default:
       return SimplifyBoolean(node);
   }
@@ -395,9 +395,9 @@ bool Infer::Perform( Graph* graph , HIRPass::Flag flag ) {
   // traversal the control flow graph via RPO order
   for( ControlFlowRPOIterator itr(&zone,*graph) ; itr.HasNext() ; itr.Move() ) {
     auto cf   = itr.value();
-    if(cf->IsIf() || cf->IsLoopHeader()) {
+    if(cf->Is<If>() || cf->Is<LoopHeader>()) {
       auto idom           = dom.GetImmDominator(cf);
-      auto cond           = cf->IsIf() ? cf->AsIf()->condition() : cf->AsLoopHeader()->condition();
+      auto cond           = cf->Is<If>() ? cf->As<If>()->condition() : cf->As<LoopHeader>()->condition();
       ConditionGroup* pcg = NULL;
       bool is_first       = false;
       if(idom) {

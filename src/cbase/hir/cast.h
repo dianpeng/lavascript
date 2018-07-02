@@ -60,7 +60,7 @@ LAVA_CBASE_HIR_DEFINE(Tag=CONV_NBOOLEAN;Name="conv_nboolean";Leaf=NoLeaf,
   LAVA_DISALLOW_COPY_AND_ASSIGN(ConvNBoolean)
 };
 
-LAVA_CBASE_HIR_DEFINE(Tag=FLOAT64_TO_INT64;Name="float64_to_int64";Leaf=NoLeaf;Box=Unbox,
+LAVA_CBASE_HIR_DEFINE(Tag=FLOAT64_TO_INT64;Name="float64_to_int64";Leaf=NoLeaf;Box=Both,
     Float64ToInt64,public Expr) {
  public:
   inline static Float64ToInt64* New( Graph* , Expr* );
@@ -75,7 +75,7 @@ LAVA_CBASE_HIR_DEFINE(Tag=FLOAT64_TO_INT64;Name="float64_to_int64";Leaf=NoLeaf;B
   }
 };
 
-LAVA_CBASE_HIR_DEFINE(Tag=INT64_TO_FLOAT64;Name="int64_to_float64";Leaf=NoLeaf;Box=Unbox,
+LAVA_CBASE_HIR_DEFINE(Tag=INT64_TO_FLOAT64;Name="int64_to_float64";Leaf=NoLeaf;Box=Both,
     Int64ToFloat64,public Expr) {
  public:
   inline static Int64ToFloat64* New( Graph* , Expr* );

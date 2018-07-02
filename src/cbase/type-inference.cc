@@ -98,17 +98,17 @@ TypeKind GetTypeInference( Expr* node ) {
     case HIR_ITR_NEW:            return TPKIND_ITERATOR;
     case HIR_ITR_TEST:           return TPKIND_BOOLEAN ;
     // phi
-    case HIR_PHI:                return GetPhiType(node->AsPhi());
+    case HIR_PHI:                return GetPhiType(node->As<Phi>());
     // guard
     case HIR_GUARD:
       {
-        auto guard = node->AsGuard();
+        auto guard = node->As<Guard>();
         auto test  = guard->test  ();
-        return test->IsTestType() ? test->AsTestType()->type_kind() : TPKIND_UNKNOWN;
+        return test->Is<TestType>() ? test->As<TestType>()->type_kind() : TPKIND_UNKNOWN;
       }
     // box/unbox node
-    case HIR_UNBOX:              return node->AsUnbox()->type_kind();
-    case HIR_BOX:                return node->AsBox()->type_kind();
+    case HIR_UNBOX:              return node->As<Unbox>()->type_kind();
+    case HIR_BOX:                return node->As<Box>()->type_kind();
     // lower HIR type translation
     case HIR_FLOAT64_NEGATE:     return TPKIND_FLOAT64;
     case HIR_FLOAT64_ARITHMETIC: return TPKIND_FLOAT64;
@@ -118,7 +118,7 @@ TypeKind GetTypeInference( Expr* node ) {
     case HIR_SSTRING_NE:         return TPKIND_BOOLEAN;
     case HIR_BOOLEAN_LOGIC:      return TPKIND_BOOLEAN;
     case HIR_BOOLEAN_NOT:        return TPKIND_BOOLEAN;
-    case HIR_ICALL:              return GetICallType(node->AsICall());
+    case HIR_ICALL:              return GetICallType(node->As<ICall>());
     // closure
     case HIR_CLOSURE:            return TPKIND_CLOSURE;
     default:                     return TPKIND_UNKNOWN;

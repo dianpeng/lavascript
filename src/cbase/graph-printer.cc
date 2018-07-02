@@ -70,9 +70,9 @@ void DotPrinter::RenderCheckpoint ( const std::string& cp_name ,
   Indent(1) << cp_name << "[shape=diamond style=bold color=pink label=\"" << cp_name <<"\"]\n";
 
   lava_foreach( auto n , checkpoint->operand_list()->GetForwardIterator() ) {
-    lava_debug(NORMAL,lava_verify(n->IsStackSlot()););
+    lava_debug(NORMAL,lava_verify(n->Is<StackSlot>()););
     {
-      auto ss        = n->AsStackSlot();
+      auto ss        = n->As<StackSlot>();
       auto ss_name   = GetNodeName(ss);
 
       Indent(1) << ss_name << "[shape=doublecircle style=bold color=cyan label=\"stack_slot("
@@ -149,16 +149,16 @@ void DotPrinter::RenderExprOperand( const std::string& name , Expr* node ) {
       Indent(1) << name << "[label=\"i64(" << node->As<Int64>  ()->value() << ")\"]\n";
       break;
     case HIR_FLOAT64:
-      Indent(1) << name << "[label=\"f64(" << node->AsFloat64()->value() << ")\"]\n";
+      Indent(1) << name << "[label=\"f64(" << node->As<Float64>()->value() << ")\"]\n";
       break;
     case HIR_LONG_STRING:
-      Indent(1) << name << "[label=\"str(" << node->AsLString()->value()->data() << ")\"]\n";
+      Indent(1) << name << "[label=\"str(" << node->As<LString>()->value()->data() << ")\"]\n";
       break;
     case HIR_SMALL_STRING:
-      Indent(1) << name << "[label=\"sso(" << node->AsSString()->value()->data() << ")\"]\n";
+      Indent(1) << name << "[label=\"sso(" << node->As<SString>()->value()->data() << ")\"]\n";
       break;
     case HIR_BOOLEAN:
-      Indent(1) << name << "[label=\"bool(" << (node->AsBoolean()->value() ? "true" : "false" )
+      Indent(1) << name << "[label=\"bool(" << (node->As<Boolean>()->value() ? "true" : "false" )
                                             << ")\"]\n";
       break;
     case HIR_NIL:
@@ -200,7 +200,7 @@ void DotPrinter::RenderExprOperand( const std::string& name , Expr* node ) {
       break;
     case HIR_TERNARY:
       {
-        auto tern = node->AsTernary();
+        auto tern = node->As<Ternary>();
         auto cond_name = GetNodeName(tern->condition());
         auto lhs_name  = GetNodeName(tern->lhs());
         auto rhs_name  = GetNodeName(tern->rhs());
@@ -215,11 +215,11 @@ void DotPrinter::RenderExprOperand( const std::string& name , Expr* node ) {
       }
       break;
     case HIR_UGET:
-      Indent(1) << name << "[label=\"uget(" << (std::uint32_t)node->AsUGet()->index() << ")\"]\n";
+      Indent(1) << name << "[label=\"uget(" << (std::uint32_t)node->As<UGet>()->index() << ")\"]\n";
       break;
     case HIR_USET:
       {
-        auto uset = node->AsUSet();
+        auto uset = node->As<USet>();
         auto opr_name = GetNodeName(uset->value());
         RenderExpr(opr_name,uset->value());
         Indent(1) << name << "[label=\"uset(" << (std::uint32_t)uset->index() << ")\"]\n";
@@ -227,12 +227,12 @@ void DotPrinter::RenderExprOperand( const std::string& name , Expr* node ) {
       }
       break;
     case HIR_PROJECTION:
-      Indent(1) << name << "[label=\"projection(" << node->AsProjection()->index() <<")]\n";
+      Indent(1) << name << "[label=\"projection(" << node->As<Projection>()->index() <<")]\n";
       break;
     /** test **/
     case HIR_TEST_TYPE:
       {
-        auto tt = node->AsTestType();
+        auto tt = node->As<TestType>();
         Indent(1) << name << "[label=\"test-type(" << tt->type_kind_name() << ")\"]\n";
         auto obj = tt->object();
         auto obj_name = GetNodeName(obj);
@@ -244,7 +244,7 @@ void DotPrinter::RenderExprOperand( const std::string& name , Expr* node ) {
 
     case HIR_BOX:
       {
-        auto box = node->AsBox();
+        auto box = node->As<Box>();
         Indent(1) << name << "[label=\"box(" << GetTypeKindName(box->type_kind()) << ")\"]\n";
         auto obj = box->value();
         auto obj_name = GetNodeName(obj);
@@ -255,7 +255,7 @@ void DotPrinter::RenderExprOperand( const std::string& name , Expr* node ) {
       break;
     case HIR_UNBOX:
       {
-        auto unbox = node->AsUnbox();
+        auto unbox = node->As<Unbox>();
         Indent(1) << name << "[label=\"unbox(" << GetTypeKindName(unbox->type_kind()) << ")\"]\n";
         auto obj = unbox->value();
         auto obj_name = GetNodeName(obj);
@@ -268,7 +268,7 @@ void DotPrinter::RenderExprOperand( const std::string& name , Expr* node ) {
     /** function call and icall **/
     case HIR_ICALL:
       {
-        auto ic = node->AsICall();
+        auto ic = node->As<ICall>();
         Indent(1) << name << "[label=\"icall(" << (ic->tail_call() ? "tail" : "normal")
                                                <<','
                                                << interpreter::GetIntrinsicCallName(ic->ic())
@@ -284,12 +284,12 @@ void DotPrinter::RenderExprOperand( const std::string& name , Expr* node ) {
       break;
     case HIR_OSR_LOAD:
       {
-        auto osr_load = node->AsOSRLoad();
+        auto osr_load = node->As<OSRLoad>();
         Indent(1) << name << "[label=\"osr_load(" << osr_load->index() << ")\"]\n";
       }
       break;
     case HIR_CHECKPOINT:
-      return RenderCheckpoint(name,node->AsCheckpoint());
+      return RenderCheckpoint(name,node->As<Checkpoint>());
     default:
       {
         Indent(1) << name << "[label=\"" << node->type_name() << "\"]\n";

@@ -54,6 +54,10 @@ LAVA_CBASE_HIR_DEFINE(HIR_INTERNAL,ReadEffect,public EffectNode) {
   const ReadEffectEdge& effect_edge () const { return effect_edge_; }
   WriteEffect*          write_effect() const { return effect_edge_.node; }
   inline void SetWriteEffect( WriteEffect* );
+ public:
+  // Replace operations
+  virtual void Replace( Expr* );
+
  private:
   ReadEffectEdge effect_edge_;               // record the read effect and write effect relationship
   class ReadEffectDependencyIterator;
@@ -61,12 +65,12 @@ LAVA_CBASE_HIR_DEFINE(HIR_INTERNAL,ReadEffect,public EffectNode) {
 };
 
 // Represent a general write which should bring some side effect
-LAVA_CBASE_HIR_DEFINE(HIR_INTERNAL,WriteEffect,public EffectNode ,public SingleNodeLink<WriteEffect>) {
+LAVA_CBASE_HIR_DEFINE(HIR_INTERNAL,WriteEffect,public EffectNode ,public DoubleLinkNode<WriteEffect>) {
  public:
   // write effect constructor
   WriteEffect( IRType type , std::uint32_t id , Graph* graph ):
     EffectNode                 (type,id,graph),
-    SingleNodeLink<WriteEffect>(),
+    DoubleLinkNode<WriteEffect>(),
     read_effect_               ()
   {}
 
@@ -82,6 +86,13 @@ LAVA_CBASE_HIR_DEFINE(HIR_INTERNAL,WriteEffect,public EffectNode ,public SingleN
     lava_debug(NORMAL,lava_verify(ret););
     return ret;
   }
+
+  WriteEffect*   PrevWrite() const {
+    auto ret = PrevLink();
+    lava_debug(NORMAL,lava_verify(ret););
+    return ret;
+  }
+
   // return barrier that is closest to |this| node. If |this| node is a barrier,
   // then just return |this|
   EffectBarrier* FirstBarrier() const;
@@ -99,6 +110,16 @@ LAVA_CBASE_HIR_DEFINE(HIR_INTERNAL,WriteEffect,public EffectNode ,public SingleN
 
   // get the read effect list , ie all the read happened after this write effect
   const ReadEffectList* read_effect() const { return &read_effect_; }
+
+  void RemoveReadEffect( ReadEffectEdge* edge ) {
+    lava_debug(NORMAL,lava_verify(edge->node == this););
+    read_effect_.Remove(edge->id);
+    edge->node = NULL;
+  }
+
+ public:
+  virtual void Replace( Expr* );
+
  private:
   ReadEffectList read_effect_;    // all read effect that read |this| write effect
   class WriteEffectDependencyIterator;

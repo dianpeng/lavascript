@@ -51,12 +51,13 @@ template< typename T > struct HIRTypeBox{};
 enum HIRBoxStatus {
   HIR_BOX_NA    = -1,
   HIR_BOX_Unbox = 0,
-  HIR_BOX_Box   = 1
+  HIR_BOX_Box   = 1,
+  HIR_BOX_Both  = 2
 };
 
 #define __(A,B,C,D,E)                         \
   template<> struct HIRTypeBox<A> {           \
-    static const int Value = HIR_BOX_##E;    \
+    static const int Value = HIR_BOX_##E;     \
   };
 CBASE_HIR_LIST(__)
 #undef __
@@ -148,14 +149,6 @@ class Node : public zone::ZoneObject {
   template< typename T > bool            Is() const;
   template< typename T > inline       T* As();
   template< typename T > inline const T* As() const;
-
-#define __(A,B,...) bool Is##A() const { return Is<A>(); }
-  CBASE_HIR_LIST(__)
-#undef __ // __
-
-#define __(A,B,...) inline A* As##A(); inline const A* As##A() const;
-  CBASE_HIR_LIST(__)
-#undef __ // __
 
   inline const zone::String& AsZoneString () const;
   inline bool                IsLeaf       () const;

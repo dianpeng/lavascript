@@ -321,15 +321,40 @@ class Optional {
 };
 
 template< typename T >
-class SingleNodeLink {
+class SingleLinkNode {
  protected:
-  SingleNodeLink() : next_(NULL) {}
+  SingleLinkNode() : next_(NULL) {}
   // get the pointer points to next object in chain
   T* NextLink() const { return next_; }
   // add a link *before* the input that node
   void AddLink( T* that ) { next_ = that; }
  private:
   T* next_;
+};
+
+template< typename T >
+class DoubleLinkNode {
+ protected:
+  DoubleLinkNode() : next_(NULL), prev_(NULL) {}
+  // get the pointer points to the next object in chain
+  T* NextLink() const { return next_; }
+  T* PrevLink() const { return prev_; }
+
+  // add a link *before* the input that node
+  void AddLink( T* that ) {
+    next_ = that;
+    if(that) that->prev_ = static_cast<T*>(this);
+  }
+
+  // remove this node from the linked list
+  void RemoveLink() {
+    if(prev_) prev_->next_ = next_;
+    if(next_) next_->prev_ = prev_;
+  }
+
+ private:
+  T* next_;
+  T* prev_;
 };
 
 // ----------------------------------------------------------------------

@@ -39,10 +39,10 @@ ControlFlowKit& ControlFlowKit::DoEnd() {
     phi->AddOperand(k->value());
   }
 
-  if(start_->IsStart() && end_->IsEnd()) {
-    graph_->Initialize(start_->AsStart(),end_->AsEnd());
-  } else if(start_->IsOSRStart() && end_->IsOSREnd()) {
-    graph_->Initialize(start_->AsOSRStart(),end_->AsOSREnd());
+  if(start_->Is<Start>() && end_->Is<End>()) {
+    graph_->Initialize(start_->As<Start>(),end_->As<End>());
+  } else if(start_->Is<OSRStart>() && end_->Is<OSREnd>()) {
+    graph_->Initialize(start_->As<OSRStart>(),end_->As<OSREnd>());
   } else {
     lava_die();
   }

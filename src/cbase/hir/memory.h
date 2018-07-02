@@ -18,7 +18,7 @@ LAVA_CBASE_HIR_DEFINE(Tag=OSR_LOAD;Name="osr_load";Leaf=Leaf,
     return GVNHash1(type_name(),index());
   }
   virtual bool Equal( const Expr* that ) const {
-    return that->IsOSRLoad() && (that->AsOSRLoad()->index() == index());
+    return that->Is<OSRLoad>() && (that->As<OSRLoad>()->index() == index());
   }
   OSRLoad( Graph* graph , std::uint32_t id , std::uint32_t index ):
     Expr  ( HIR_OSR_LOAD , id , graph ),

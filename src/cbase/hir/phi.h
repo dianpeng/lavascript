@@ -91,7 +91,7 @@ LAVA_CBASE_HIR_DEFINE(Tag=LOOP_IV_INT64;Name="loop_iv_int64";Leaf=NoLeaf;Box=Unb
 
 // This is the typped the LoopIV node. It is specialized with float64 type and it is in
 // *BOXED* type.
-LAVA_CBASE_HIR_DEFINE(Tag=LOOP_IV_FLOAT64;Name="loop_iv_float64";Leaf=NoLeaf,
+LAVA_CBASE_HIR_DEFINE(Tag=LOOP_IV_FLOAT64;Name="loop_iv_float64";Leaf=NoLeaf;Box=Both,
     LoopIVFloat64, public ValuePhi ) {
   public:
    inline static LoopIVFloat64* New( Graph* );
@@ -121,7 +121,7 @@ LAVA_CBASE_HIR_DEFINE(Tag=PROJECTION;Name="projection";Leaf=NoLeaf,
     return GVNHash1(type_name(),index());
   }
   virtual bool Equal( const Expr* that ) const {
-    return that->IsProjection() && (that->AsProjection()->index() == index());
+    return that->Is<Projection>() && (that->As<Projection>()->index() == index());
   }
  private:
   std::uint32_t index_;

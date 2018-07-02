@@ -13,7 +13,7 @@ LAVA_CBASE_HIR_DEFINE(Tag=TRAP;Name="trap";Leaf=NoLeaf,
  public:
   inline static Trap* New( Graph* , Checkpoint* , ControlFlow* );
 
-  Checkpoint* checkpoint() const { return operand_list()->First()->AsCheckpoint(); }
+  Checkpoint* checkpoint() const { return operand_list()->First()->As<Checkpoint>(); }
 
   Trap( Graph* graph , std::uint32_t id , Checkpoint* cp , ControlFlow* region ):
     ControlFlow(HIR_TRAP,id,graph,region)
@@ -31,7 +31,7 @@ LAVA_CBASE_HIR_DEFINE(Tag=COND_TRAP;Name="cond_trap";Leaf=NoLeaf,
   inline static CondTrap* New( Graph* , Test* , Checkpoint* , ControlFlow* );
 
   Test*             test() const { return operand_list()->First()->As<Test>();      }
-  Checkpoint* checkpoint() const { return operand_list()->Last()->AsCheckpoint(); }
+  Checkpoint* checkpoint() const { return operand_list()->Last()->As<Checkpoint>(); }
 
   CondTrap( Graph* graph , std::uint32_t id , Test* test , Checkpoint* cp , ControlFlow* region ):
     ControlFlow(HIR_COND_TRAP,id,graph,region)

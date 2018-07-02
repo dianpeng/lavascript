@@ -190,7 +190,7 @@ LAVA_CBASE_HIR_DEFINE(HIR_INTERNAL,ListResize,public SoftBarrier) {
 
   Expr*           object() const { return operand_list()->First();  }
   Expr*           index () const { return Operand(1); }
-  Checkpoint* checkpoint() const { return operand_list()->Last()->AsCheckpoint(); }
+  Checkpoint* checkpoint() const { return operand_list()->Last()->As<Checkpoint>(); }
 };
 
 LAVA_CBASE_HIR_DEFINE(HIR_INTERNAL,StaticRef,public ReadEffect) {
@@ -216,7 +216,7 @@ LAVA_CBASE_HIR_DEFINE(Tag=OBJECT_FIND;Name="object_find";Leaf=NoLeaf,
 
   Expr*           object() const { return operand_list()->First(); }
   Expr*           key   () const { return Operand(1);}
-  Checkpoint* checkpoint() const { return operand_list()->Last()->AsCheckpoint(); }
+  Checkpoint* checkpoint() const { return operand_list()->Last()->As<Checkpoint>(); }
 
  private:
   LAVA_DISALLOW_COPY_AND_ASSIGN(ObjectFind)
@@ -258,7 +258,7 @@ LAVA_CBASE_HIR_DEFINE(Tag=LIST_INDEX;Name="list_index";Leaf=NoLeaf,
 
   Expr*           object() const { return operand_list()->First(); }
   Expr*           index () const { return Operand(1); }
-  Checkpoint* checkpoint() const { return operand_list()->Last()->AsCheckpoint(); }
+  Checkpoint* checkpoint() const { return operand_list()->Last()->As<Checkpoint>(); }
  private:
   LAVA_DISALLOW_COPY_AND_ASSIGN(ListIndex)
 };
@@ -352,9 +352,9 @@ LAVA_CBASE_HIR_DEFINE(Tag=OBJECT_REF_GET;Name="object_ref_get";Leaf=NoLeaf,
   ObjectRefGet( Graph* graph , std::uint32_t id , Expr* oref ):
     RefGet(HIR_OBJECT_REF_GET,id,graph,oref)
   {
-    lava_debug(NORMAL,lava_verify( oref->IsObjectFind()   ||
-                                   oref->IsObjectUpdate() ||
-                                   oref->IsObjectInsert() ););
+    lava_debug(NORMAL,lava_verify( oref->Is<ObjectFind>()   ||
+                                   oref->Is<ObjectUpdate>() ||
+                                   oref->Is<ObjectInsert>() ););
   }
 
  private:
@@ -369,9 +369,9 @@ LAVA_CBASE_HIR_DEFINE(Tag=OBJECT_REF_SET;Name="object_ref_set";Leaf=NoLeaf,
   ObjectRefSet( Graph* graph , std::uint32_t id , Expr* oref , Expr* value ):
     RefSet(HIR_OBJECT_REF_SET,id,graph,oref,value)
   {
-    lava_debug(NORMAL,lava_verify( oref->IsObjectFind()   ||
-                                   oref->IsObjectUpdate() ||
-                                   oref->IsObjectInsert() ););
+    lava_debug(NORMAL,lava_verify( oref->Is<ObjectFind>()   ||
+                                   oref->Is<ObjectUpdate>() ||
+                                   oref->Is<ObjectInsert>() ););
   }
  private:
   LAVA_DISALLOW_COPY_AND_ASSIGN(ObjectRefSet)
@@ -385,8 +385,8 @@ LAVA_CBASE_HIR_DEFINE(Tag=LIST_REF_GET;Name="list_ref_get";Leaf=NoLeaf,
   ListRefGet( Graph* graph , std::uint32_t id , Expr* lref ):
     RefGet(HIR_LIST_REF_GET,id,graph,lref)
   {
-    lava_debug(NORMAL,lava_verify( lref->IsListIndex() ||
-                                   lref->IsListInsert() ););
+    lava_debug(NORMAL,lava_verify( lref->Is<ListIndex>() ||
+                                   lref->Is<ListInsert>() ););
   }
 
  private:
@@ -401,8 +401,8 @@ LAVA_CBASE_HIR_DEFINE(Tag=LIST_REF_SET;Name="list_ref_set";Leaf=NoLeaf,
   ListRefSet( Graph* graph , std::uint32_t id , Expr* lref , Expr* value ):
     RefSet(HIR_LIST_REF_SET,id,graph,lref,value)
   {
-    lava_debug(NORMAL,lava_verify( lref->IsListIndex()  ||
-                                   lref->IsListInsert() ););
+    lava_debug(NORMAL,lava_verify( lref->Is<ListIndex>()  ||
+                                   lref->Is<ListInsert>() ););
   }
 
  private:

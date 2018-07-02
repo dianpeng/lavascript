@@ -170,7 +170,7 @@ LAVA_CBASE_HIR_DEFINE(Tag=TERNARY;Name="ternary";Leaf=NoLeaf,
 /* -------------------------------------------------------
  * Low level operations
  * ------------------------------------------------------*/
-LAVA_CBASE_HIR_DEFINE(Tag=FLOAT64_NEGATE;Name="float64_negate";Leaf=NoLeaf;Box=Unbox,
+LAVA_CBASE_HIR_DEFINE(Tag=FLOAT64_NEGATE;Name="float64_negate";Leaf=NoLeaf;Box=Both,
     Float64Negate,public Expr) {
  public:
   inline static Float64Negate* New( Graph* , Expr* );
@@ -185,8 +185,8 @@ LAVA_CBASE_HIR_DEFINE(Tag=FLOAT64_NEGATE;Name="float64_negate";Leaf=NoLeaf;Box=U
     return GVNHash1(type_name(),operand()->GVNHash());
   }
   virtual bool Equal( const Expr* that ) const {
-    if(that->IsFloat64Negate()) {
-      auto that_negate = that->AsFloat64Negate();
+    if(that->Is<Float64Negate>()) {
+      auto that_negate = that->As<Float64Negate>();
       return operand()->Equal(that_negate->operand());
     }
     return false;
@@ -213,8 +213,8 @@ LAVA_CBASE_HIR_DEFINE(Tag=BOOLEAN_NOT;Name="boolean_not";Leaf=NoLeaf;Box=Unbox,
     return GVNHash1(type_name(),operand()->GVNHash());
   }
   virtual bool Equal( const Expr* that ) const {
-    if(that->IsBooleanNot()) {
-      auto that_negate = that->AsBooleanNot();
+    if(that->Is<BooleanNot>()) {
+      auto that_negate = that->As<BooleanNot>();
       return operand()->Equal(that_negate->operand());
     }
     return false;
@@ -262,7 +262,7 @@ LAVA_CBASE_HIR_DEFINE(Tag=INT64_ARITHMETIC;Name="int64_aritmetic";Leaf=NoLeaf;Bo
   LAVA_DISALLOW_COPY_AND_ASSIGN(Int64Arithmetic)
 };
 
-LAVA_CBASE_HIR_DEFINE(Tag=FLOAT64_ARITHMETIC;Name="float64_arithmetic";Leaf=NoLeaf;Box=Unbox,
+LAVA_CBASE_HIR_DEFINE(Tag=FLOAT64_ARITHMETIC;Name="float64_arithmetic";Leaf=NoLeaf;Box=Both,
     Float64Arithmetic,public SpecializeBinary) {
  public:
   using Operator = Binary::Operator;
@@ -279,7 +279,7 @@ LAVA_CBASE_HIR_DEFINE(Tag=FLOAT64_ARITHMETIC;Name="float64_arithmetic";Leaf=NoLe
   LAVA_DISALLOW_COPY_AND_ASSIGN(Float64Arithmetic)
 };
 
-LAVA_CBASE_HIR_DEFINE(Tag=FLOAT64_BITWISE;Name="float64_bitwise";Leaf=NoLeaf;Box=Unbox,
+LAVA_CBASE_HIR_DEFINE(Tag=FLOAT64_BITWISE;Name="float64_bitwise";Leaf=NoLeaf;Box=Both,
     Float64Bitwise,public SpecializeBinary) {
  public:
   using Operator = Binary::Operator;

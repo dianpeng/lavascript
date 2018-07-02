@@ -36,8 +36,8 @@ LAVA_CBASE_HIR_DEFINE(Tag=TEST_TYPE;Name="test_type";Leaf=NoLeaf,
     return GVNHash2(type_name(),type_kind(),object()->GVNHash());
   }
   virtual bool Equal( const Expr* that ) const {
-    if(that->IsTestType()) {
-      auto n = that->AsTestType();
+    if(that->Is<TestType>()) {
+      auto n = that->As<TestType>();
       return type_kind() == n->type_kind() && object()->Equal(n->object());
     }
     return false;
@@ -56,7 +56,7 @@ LAVA_CBASE_HIR_DEFINE(Tag=GUARD;Name="guard";Leaf=NoLeaf,
   inline static Guard* New( Graph* , Test* , Checkpoint* );
   Test*             test() const { return operand_list()->First()->As<Test>(); }
   Expr*           object() const { return test()->object(); }
-  Checkpoint* checkpoint() const { return operand_list()->Last()->AsCheckpoint(); }
+  Checkpoint* checkpoint() const { return operand_list()->Last()->As<Checkpoint>(); }
 
   Guard( Graph* graph , std::uint32_t id , Test* test , Checkpoint* cp ):
     Expr(HIR_GUARD,id,graph)
@@ -74,8 +74,8 @@ LAVA_CBASE_HIR_DEFINE(Tag=GUARD;Name="guard";Leaf=NoLeaf,
     return GVNHash1(type_name(),test()->GVNHash());
   }
   virtual bool Equal( const Expr* that ) const {
-    if(that->IsGuard()) {
-      auto n = that->AsGuard();
+    if(that->Is<Guard>()) {
+      auto n = that->As<Guard>();
       return test()->Equal(n->test());
     }
     return false;

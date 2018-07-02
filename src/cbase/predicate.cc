@@ -51,20 +51,20 @@ bool Classifier::Check( Expr* node ) {
   switch(node->type()) {
     case HIR_BOOLEAN_LOGIC:
       {
-        auto l = node->AsBooleanLogic();
+        auto l = node->As<BooleanLogic>();
         return DoCheck(l->lhs(),l->rhs());
       }
     case HIR_FLOAT64_COMPARE:
       {
         if(!CheckType(FLOAT64_PREDICATE)) return false;
-        auto fcomp = node->AsFloat64Compare();
+        auto fcomp = node->As<Float64Compare>();
         auto lhs   = fcomp->lhs();
         auto rhs   = fcomp->rhs();
         // check if lhs and rhs are format that can be handled
-        if(lhs->IsFloat64()) {
-          lava_debug(NORMAL,lava_verify(!rhs->IsFloat64()););
+        if(lhs->Is<Float64>()) {
+          lava_debug(NORMAL,lava_verify(!rhs->Is<Float64>()););
           return CheckVar(rhs);
-        } else if(rhs->IsFloat64()) {
+        } else if(rhs->Is<Float64>()) {
           return CheckVar(lhs);
         }
       }
@@ -72,7 +72,7 @@ bool Classifier::Check( Expr* node ) {
     case HIR_TEST_TYPE:
       {
         if(!CheckType(TYPE_PREDICATE)) return false;
-        auto tt = node->AsTestType();
+        auto tt = node->As<TestType>();
         auto n  = tt->object();
         return CheckVar(n);
       }
@@ -80,7 +80,7 @@ bool Classifier::Check( Expr* node ) {
     default:
       {
         if(!CheckType(BOOLEAN_PREDICATE)) return false;
-        auto n = node->IsBooleanNot() ? node->AsBooleanNot()->operand() : node ;
+        auto n = node->Is<BooleanNot>() ? node->As<BooleanNot>()->operand() : node ;
         return CheckVar(n);
       }
       break;
@@ -294,8 +294,8 @@ Float64Predicate::Range Float64Predicate::NewRange( Binary::Operator op , double
 }
 
 void Float64Predicate::Union( Binary::Operator op , Expr* value ) {
-  lava_debug(NORMAL,lava_verify(value->IsFloat64()););
-  Union(op,value->AsFloat64()->value());
+  lava_debug(NORMAL,lava_verify(value->Is<Float64>()););
+  Union(op,value->As<Float64>()->value());
 }
 
 void Float64Predicate::UnionRange( const Range& range ) {
@@ -363,8 +363,8 @@ void Float64Predicate::Union( const Predicate& range ) {
 }
 
 void Float64Predicate::Intersect( Binary::Operator op , Expr* value ) {
-  lava_debug(NORMAL,lava_verify(value->IsFloat64()););
-  Intersect(op,value->AsFloat64()->value());
+  lava_debug(NORMAL,lava_verify(value->Is<Float64>()););
+  Intersect(op,value->As<Float64>()->value());
 }
 
 void Float64Predicate::IntersectRange( const Range& range ) {
@@ -487,8 +487,8 @@ int Float64Predicate::Infer( Binary::Operator op , double value ) const {
 }
 
 int Float64Predicate::Infer( Binary::Operator op , Expr* value ) const {
-  if(value->IsFloat64()) {
-    return Infer(op,value->AsFloat64()->value());
+  if(value->Is<Float64>()) {
+    return Infer(op,value->As<Float64>()->value());
   }
   return Predicate::UNKNOWN;
 }
@@ -661,8 +661,8 @@ void BooleanPredicate::Union( Binary::Operator op , bool value ) {
 }
 
 void BooleanPredicate::Union( Binary::Operator op , Expr* value ) {
-  lava_debug(NORMAL,lava_verify(value->IsBoolean()););
-  Union(op,value->AsBoolean()->value());
+  lava_debug(NORMAL,lava_verify(value->Is<Boolean>()););
+  Union(op,value->As<Boolean>()->value());
 }
 
 void BooleanPredicate::Intersect( bool value ) {
@@ -684,8 +684,8 @@ void BooleanPredicate::Intersect( Binary::Operator op , bool value ) {
 }
 
 void BooleanPredicate::Intersect( Binary::Operator op , Expr* value ) {
-  lava_debug(NORMAL,lava_verify(value->IsBoolean()););
-  Intersect(op,value->AsBoolean()->value());
+  lava_debug(NORMAL,lava_verify(value->Is<Boolean>()););
+  Intersect(op,value->As<Boolean>()->value());
 }
 
 void BooleanPredicate::Intersect( const Predicate& range ) {
@@ -733,8 +733,8 @@ int BooleanPredicate::Infer( const Predicate& range ) const {
 }
 
 int BooleanPredicate::Infer( Binary::Operator op , Expr* value ) const {
-  if(value->IsBoolean()) {
-    return Infer(op,value->AsBoolean()->value());
+  if(value->Is<Boolean>()) {
+    return Infer(op,value->As<Boolean>()->value());
   }
   return Predicate::UNKNOWN;
 }
@@ -777,8 +777,8 @@ void TypePredicate::Union( TypeKind tp ) {
 
 void TypePredicate::Union( Binary::Operator op , Expr* node ) {
   (void)op;
-  lava_debug(NORMAL,lava_verify(node->IsTestType()););
-  auto tt = node->AsTestType();
+  lava_debug(NORMAL,lava_verify(node->Is<TestType>()););
+  auto tt = node->As<TestType>();
   Union(tt->type_kind());
 }
 
@@ -798,8 +798,8 @@ void TypePredicate::Intersect( TypeKind tp ) {
 
 void TypePredicate::Intersect( Binary::Operator op , Expr* node ) {
   (void)op;
-  lava_debug(NORMAL,lava_verify(node->IsTestType()););
-  auto tt = node->AsTestType();
+  lava_debug(NORMAL,lava_verify(node->Is<TestType>()););
+  auto tt = node->As<TestType>();
   Intersect(tt->type_kind());
 }
 
@@ -811,8 +811,8 @@ void TypePredicate::Intersect( const Predicate& range ) {
 
 int TypePredicate::Infer( Binary::Operator op , Expr* node ) const {
   (void)op;
-  lava_debug(NORMAL,lava_verify(node->IsTestType()););
-  auto tt = node->AsTestType();
+  lava_debug(NORMAL,lava_verify(node->Is<TestType>()););
+  auto tt = node->As<TestType>();
   return set_.Find(tt->type_kind()).HasNext() ? Predicate::ALWAYS_TRUE :
                                                 Predicate::ALWAYS_FALSE;
 }

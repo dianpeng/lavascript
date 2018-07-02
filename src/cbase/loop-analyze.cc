@@ -115,6 +115,33 @@ bool LoopAnalyze::LoopNodeROIterator::Move() {
   return false;
 }
 
+LoopAnalyze::LoopNodeRDIterator::LoopNodeRDIterator( LoopAnalyze::LoopNode* start ,
+                                                     const LoopAnalyze*        la ):
+  q_   (la->zone()),
+  la_  (la),
+  next_(NULL)
+{
+  for(auto &k : start->children() )
+    q_.push(k);
+  next_ = start;
+}
+
+bool LoopAnalyze::LoopNodeRDIterator::Move() {
+  while(!q_.empty()) {
+    auto &top = q_.front();
+    q_.pop();
+    // push all the children into the queue
+    for( auto &k : top->children() ) {
+      q_.push(k);
+    }
+    next_ = top;
+    return true;
+  }
+
+  next_ = NULL;
+  return false;
+}
+
 LoopAnalyze::LoopAnalyze( zone::Zone* zone , const Graph& graph ):
   zone_        (zone),
   parent_list_ (zone),

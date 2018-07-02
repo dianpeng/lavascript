@@ -96,6 +96,7 @@ bool CheckGraph( const char* source ) {
 TEST(GraphBuilder,Basic) {
   CASE(
       for( var i = 0 ; 100 ; 1 ) {
+        if(a % i == 0) break;
       }
   );
 }

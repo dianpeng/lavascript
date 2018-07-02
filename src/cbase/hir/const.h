@@ -9,7 +9,7 @@ namespace hir        {
 // The specialized narrow integer representation. We choose int64 since a double's
 // conversion will not overflow int64 , but this also put a constraint for us is
 // that a int64 can overflow a double number.
-LAVA_CBASE_HIR_DEFINE(Tag=INT64;Name="int64";Leaf=Leaf,
+LAVA_CBASE_HIR_DEFINE(Tag=INT64;Name="int64";Leaf=Leaf;Box=Unbox,
     Int64,public Expr) {
  public:
   inline static Int64* New( Graph* , std::int64_t );
@@ -22,14 +22,14 @@ LAVA_CBASE_HIR_DEFINE(Tag=INT64;Name="int64";Leaf=Leaf,
     return GVNHash1(type_name(),value_);
   }
   virtual bool Equal( const Expr* that ) const {
-    return that->IsInt64() && (that->AsInt64()->value() == value_);
+    return that->Is<Int64>() && (that->As<Int64>()->value() == value_);
   }
  private:
   std::int64_t value_;
   LAVA_DISALLOW_COPY_AND_ASSIGN(Int64)
 };
 
-LAVA_CBASE_HIR_DEFINE(Tag=FLOAT64;Name="float64";Leaf=Leaf,
+LAVA_CBASE_HIR_DEFINE(Tag=FLOAT64;Name="float64";Leaf=Leaf;Box=Both,
     Float64,public Expr) {
  public:
   inline static Float64* New( Graph* , double );
@@ -40,7 +40,7 @@ LAVA_CBASE_HIR_DEFINE(Tag=FLOAT64;Name="float64";Leaf=Leaf,
     return GVNHash1(type_name(),value_);
   }
   virtual bool Equal( const Expr* that ) const {
-    return that->IsFloat64() && (that->AsFloat64()->value() == value_);
+    return that->Is<Float64>() && (that->As<Float64>()->value() == value_);
   }
  private:
   double value_;
@@ -60,7 +60,7 @@ LAVA_CBASE_HIR_DEFINE(Tag=BOOLEAN;Name="boolean";Leaf=Leaf,
     return GVNHash1(type_name(),value_ ? 1 : 0);
   }
   virtual bool Equal( const Expr* that ) const {
-    return that->IsBoolean() && (that->AsBoolean()->value() == value_);
+    return that->Is<Boolean>() && (that->As<Boolean>()->value() == value_);
   }
  private:
   bool value_;
@@ -87,7 +87,7 @@ LAVA_CBASE_HIR_DEFINE(Tag=LONG_STRING;Name="lstring";Leaf=Leaf,
     return GVNHash1(type_name(),reinterpret_cast<std::uint64_t>(value_));
   }
   virtual bool Equal( const Expr* that ) const {
-    return that->IsLString() && (*(that->AsLString()->value()) == *value_);
+    return that->Is<LString>() && (*(that->As<LString>()->value()) == *value_);
   }
  private:
   const zone::String* value_;
@@ -109,7 +109,7 @@ LAVA_CBASE_HIR_DEFINE(Tag=SMALL_STRING;Name="sstring";Leaf=Leaf,
     return GVNHash1(type_name(),reinterpret_cast<std::uint64_t>(value_));
   }
   virtual bool Equal( const Expr* that ) const {
-    return that->IsSString() && (*(that->AsSString()->value()) == *value_);
+    return that->Is<SString>() && (*(that->As<SString>()->value()) == *value_);
   }
  private:
   const zone::String* value_;
@@ -125,7 +125,7 @@ LAVA_CBASE_HIR_DEFINE(Tag=NIL;Name="nil";Leaf=Leaf,
     return GVNHash0(type_name());
   }
   virtual bool Equal( const Expr* that ) const {
-    return that->IsNil();
+    return that->Is<Nil>();
   }
  private:
   LAVA_DISALLOW_COPY_AND_ASSIGN(Nil)

@@ -28,8 +28,8 @@ LAVA_CBASE_HIR_DEFINE(Tag=BOX;Name="box";Leaf=NoLeaf,
   }
 
   virtual bool Equal( const Expr* that ) const {
-    if(that->IsBox()) {
-      auto that_box = that->AsBox();
+    if(that->Is<Box>()) {
+      auto that_box = that->As<Box>();
       return value()->Equal(that_box->value());
     }
     return false;
@@ -57,8 +57,8 @@ LAVA_CBASE_HIR_DEFINE(Tag=UNBOX;Name="unbox";Leaf=NoLeaf;Box=Unbox,
     return GVNHash1(type_name(),value()->GVNHash());
   }
   virtual bool Equal( const Expr* that ) const {
-    if(that->IsUnbox()) {
-      auto that_unbox = that->AsUnbox();
+    if(that->Is<Unbox>()) {
+      auto that_unbox = that->As<Unbox>();
       return value()->Equal(that_unbox->value());
     }
     return false;

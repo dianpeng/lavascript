@@ -79,8 +79,8 @@ LAVA_CBASE_HIR_DEFINE(Tag=END;Name="end";Leaf=NoLeaf,
     End,public ControlFlow) {
  public:
   inline static End* New( Graph* , Success* , Fail* );
-  Success* success() const { return backward_edge()->First()->AsSuccess(); }
-  Fail*    fail()    const { return backward_edge()->Last ()->AsFail   (); }
+  Success* success() const { return backward_edge()->First()->As<Success>(); }
+  Fail*    fail()    const { return backward_edge()->Last ()->As<Fail>   (); }
   End( Graph* graph , std::uint32_t id , Success* s , Fail* f ):
     ControlFlow(HIR_END,id,graph)
   {
@@ -109,8 +109,8 @@ LAVA_CBASE_HIR_DEFINE(Tag=OSR_END;Name="osr_end";Leaf=NoLeaf,
  public:
   inline static OSREnd* New( Graph* , Success* succ , Fail* f );
 
-  Success* success() const { return backward_edge()->First()->AsSuccess(); }
-  Fail*    fail   () const { return backward_edge()->Last()->AsFail(); }
+  Success* success() const { return backward_edge()->First()->As<Success>(); }
+  Fail*    fail   () const { return backward_edge()->Last()->As<Fail>(); }
 
   OSREnd( Graph* graph , std::uint32_t id , Success* succ , Fail* f ):
     ControlFlow(HIR_OSR_END,id,graph)

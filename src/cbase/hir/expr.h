@@ -91,7 +91,8 @@ LAVA_CBASE_HIR_DEFINE(HIR_INTERNAL,Expr,public Node) {
     ref_list_       (),
     stmt_           ()
   {}
- private:
+
+ protected:
   OperandList        operand_list_;
   OperandRefList     ref_list_;
   StmtEdge           stmt_;

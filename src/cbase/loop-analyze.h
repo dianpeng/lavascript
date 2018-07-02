@@ -97,12 +97,25 @@ class LoopAnalyze {
     LoopNode* value() const { return next_; }
    private:
     LoopNode*  MoveNode( LoopNode* );
-   private:
     struct Record { LoopNode* node; std::size_t pos; Record(LoopNode* n):node(n),pos(0){} };
 
     zone::stl::ZoneStack<Record> stk_;
     const LoopAnalyze*           la_;
     LoopNode*                    next_;
+  };
+
+  // LoopNode's recursive descent iterator. It will visit outer most first and then
+  // directly immediate children node and then recursively visit inner nodes.
+  class LoopNodeRDIterator {
+   public:
+    LoopNodeRDIterator( LoopNode* , const LoopAnalyze* );
+    bool       Move();
+    bool    HasNext() const { return next_ != NULL; }
+    LoopNode* value() const { return next_; }
+   private:
+    zone::stl::ZoneQueue<LoopNode*> q_;
+    const LoopAnalyze*              la_;
+    LoopNode*                       next_;
   };
 
  public:

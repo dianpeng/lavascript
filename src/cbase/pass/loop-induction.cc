@@ -5,6 +5,7 @@
 #include "src/zone/stl.h"
 #include "src/zone/zone.h"
 
+#include "src/cbase/fold/fold-box.h"
 #include "src/cbase/fold/fold-arith.h"
 
 
@@ -38,30 +39,40 @@ namespace            {
 
 class LoopIVTyper {
  public:
-  LoopIVTyper( Graph* graph ) : graph_(graph) , temp_zone_() {}
+  LoopIVTyper( Graph* graph ) :
+    graph_(graph) ,
+    temp_zone_() ,
+    visited_(&temp_zone_),
+    loop_node_(NULL) {
+    visited_.resize(graph->MaxID());
+  }
+
   void Run();
 
  private:
   void RunInner  ( LoopAnalyze* , LoopAnalyze::LoopNode* );
-  void RunLoop   ( LoopAnalyze::LoopNode* );
-  void TypeLoopIV( LoopAnalyze::LoopNode* , LoopIV* );
+  void RunLoop   ();
 
   // get a loop induction variable's start and end
   bool GetLinearLoopIVComponent( LoopIV* , Expr** , Expr** );
 
   // typper for propogating type back
-  bool TypeUnary     ( Unary* );
-  bool TypeArithmetic( Arithmetic* );
-  bool TypeCompare   ( Compare* );
-  bool TypeLogical   ( Logical* );
+  Expr* TypeLoopIV    ( LoopIV* );
+  Expr* TypeUnary     ( Unary* );
+  Expr* TypeArithmetic( Arithmetic* );
+  Expr* TypeCompare   ( Compare* );
+  Expr* TypeLogical   ( Logical* );
+  Expr* TypeBox       ( Box* );
+  Expr* TypeUnbox     ( Unbox* );
 
  private: // Helper functions for back propogation of type
-  void Enqueue( zone::stl::ZoneVector<bool>* ,
-                zone::stl::ZoneQueue<Expr*>* , Expr* );
+  void Enqueue( zone::stl::NodeMarker* , zone::stl::ZoneQueue<Expr*>* , Expr* );
 
  private:
-  Graph* graph_;
-  zone::Zone temp_zone_;
+  Graph*                 graph_;
+  zone::Zone             temp_zone_;
+  zone::stl::NodeMarker  visited_;
+  LoopAnalyze::LoopNode* loop_node_;
 };
 
 void LoopIVTyper::Run() {
@@ -75,18 +86,24 @@ void LoopIVTyper::Run() {
 void LoopIVTyper::RunInner( LoopAnalyze* la , LoopAnalyze::LoopNode* node ) {
   // this node should be the start of the loop nested cluster, we use a RPO iterator
   // which guarantees us to iterte the inner most loop first and then outer one
-  lava_foreach( auto n ,LoopAnalyze::LoopNodeROIterator(node,la) ) {
-    RunLoop(n);
+  lava_foreach( auto n ,LoopAnalyze::LoopNodeRDIterator(node,la) ) {
+    loop_node_ = n;
+    RunLoop();
   }
 }
 
-void LoopIVTyper::RunLoop( LoopAnalyze::LoopNode* node ) {
-  auto body = node->loop_body(); // this node has all the Phi nodes which has LoopIV nodes
-  lava_foreach( auto phi , body->phi_list()->GetForwardIterator() ) {
-    if(phi.phi()->Is<LoopIV>()) {
-      TypeLoopIV(node,phi.phi()->As<LoopIV>());
+void LoopIVTyper::RunLoop() {
+  auto body = loop_node_->loop_body(); // this node has all the Phi nodes which has LoopIV nodes
+
+  bool has_change;
+  do {
+    lava_foreach( auto phi , body->phi_list()->GetForwardIterator() ) {
+      has_change = false;
+      if(!visited_.Get(phi.phi()->id()) && phi.phi()->Is<LoopIV>()) {
+        has_change = TypeLoopIV(phi.phi()->As<LoopIV>()) != NULL;
+      }
     }
-  }
+  } while(has_change);
 }
 
 // This is the simplest forms of LoopIV , we only recognize this loop induction variable
@@ -109,29 +126,37 @@ bool LoopIVTyper::GetLinearLoopIVComponent( LoopIV* node , Expr** start , Expr**
   return false;
 }
 
-void LoopIVTyper::Enqueue( zone::stl::ZoneVector<bool>* visited ,
-                           zone::stl::ZoneQueue<Expr*>* queue   , Expr* root ) {
+void LoopIVTyper::Enqueue( zone::stl::NodeMarker*       marker  ,
+                           zone::stl::ZoneQueue<Expr*>* queue   ,
+                           Expr* root ) {
   // walk through the use-def chain to go all the nodes that are using this node
   lava_foreach( auto &r , root->ref_list()->GetForwardIterator() ) {
     auto e = r.node;
-    if(visited->at(e->id())) {
+    if(marker->Get(e->id())) {
       continue;
     }
-    queue->push(e->As<Expr>());
+    if(e->Is<Expr>()) {
+      queue->push(e->As<Expr>());
+    }
   }
 }
 
-void LoopIVTyper::TypeLoopIV( LoopAnalyze::LoopNode* loop_node , LoopIV* iv ) {
+Expr* LoopIVTyper::TypeLoopIV( LoopIV* iv ) {
   ValuePhi* new_iv;
+
   // 1. get the loop_iv component out and see whether we can do typping for it
   {
     Expr* start , *end;
     TypeKind start_type , end_type;
 
-    if(!GetLinearLoopIVComponent(iv,&start,&end)) return;
+    if(!GetLinearLoopIVComponent(iv,&start,&end)) {
+      // don't visit it again since this loop iv is not even a linear induction variable
+      visited_.Set(iv->id(),true);
+      return NULL;
+    }
     // try to get the type of start
     if(start_type = GetTypeInference(start); !TPKind::IsNumber(start_type))
-      return;
+      return NULL;
 
     // now we are sure the lhs is a number at least , then move on to check
     // the rhs type by checking the component that is not the loop induction
@@ -139,9 +164,8 @@ void LoopIVTyper::TypeLoopIV( LoopAnalyze::LoopNode* loop_node , LoopIV* iv ) {
     auto target = end->As<Arithmetic>()->rhs()->IsIdentical(iv) ?
                   end->As<Arithmetic>()->lhs() : end->As<Arithmetic>()->rhs();
 
-    if(end_type = GetTypeInference(target); !TPKind::IsNumber(end_type)) {
-      return;
-    }
+    if(end_type = GetTypeInference(target); !TPKind::IsNumber(end_type))
+      return NULL;
 
     // now decide which type should we use here, whether we should use specialized
     // LoopIVInt64 or just normal LoopIVFloat64.
@@ -154,7 +178,7 @@ void LoopIVTyper::TypeLoopIV( LoopAnalyze::LoopNode* loop_node , LoopIV* iv ) {
     }
 
     // replace the old loop induction variable from the loop body with the new iv
-    loop_node->loop_body()->ReplacePhi( PhiNode{iv} , PhiNode{new_iv} );
+    loop_node_->loop_body()->ReplacePhi( PhiNode{iv} , PhiNode{new_iv} );
 
     // the iv is replaced with the new_node
     iv->Replace(new_iv);
@@ -162,47 +186,62 @@ void LoopIVTyper::TypeLoopIV( LoopAnalyze::LoopNode* loop_node , LoopIV* iv ) {
 
   // 2. When we reach here we could start to do the back propogation of typping
   {
-    zone::stl::ZoneVector<bool> visited(&temp_zone_);
-    zone::stl::ZoneQueue <Expr*> queue (&temp_zone_);
-    visited.resize(graph_->MaxID());
+    zone::stl::ZoneQueue<Expr*> queue  (&temp_zone_);
+    zone::stl::NodeMarker       marker (&temp_zone_);
+    marker.resize(graph_->MaxID());
 
     // enqueue the first/root node
-    visited[new_iv->id()] = true;
-    Enqueue(&visited,&queue,new_iv);
+    marker.Set(new_iv->id(),true);
+    Enqueue(&marker,&queue,new_iv);
 
     while(!queue.empty()) {
       auto top = queue.front();
       queue.pop();
 
       // mark it as visited
-      visited[top->id()] = true;
+      visited_.Set(top->id(),true);
 
       switch(top->type()) {
         case HIR_UNARY:
-          if(TypeUnary(top->As<Unary>())) Enqueue(&visited,&queue,top);
+          if(auto nn = TypeUnary(top->As<Unary>()); nn)
+            Enqueue(&marker,&queue,nn);
           break;
         case HIR_ARITHMETIC:
-          if(TypeArithmetic(top->As<Arithmetic>())) Enqueue(&visited,&queue,top);
+          if(auto nn = TypeArithmetic(top->As<Arithmetic>());nn)
+            Enqueue(&marker,&queue,nn);
           break;
         case HIR_COMPARE:
-          if(TypeCompare(top->As<Compare>())) Enqueue(&visited,&queue,top);
+          if(auto nn = TypeCompare(top->As<Compare>());nn)
+            Enqueue(&marker,&queue,nn);
           break;
         case HIR_LOGICAL:
-          if(TypeLogical(top->As<Logical>())) Enqueue(&visited,&queue,top);
+          if(auto nn = TypeLogical(top->As<Logical>());nn)
+            Enqueue(&marker,&queue,nn);
+          break;
+        case HIR_BOX:
+          if(auto nn = TypeBox(top->As<Box>()); nn)
+            Enqueue(&marker,&queue,nn);
+          break;
+        case HIR_UNBOX:
+          if(auto nn = TypeUnbox(top->As<Unbox>()); nn)
+            Enqueue(&marker,&queue,nn);
           break;
         default:
           break;
       }
     }
   }
+
+  visited_.Set(new_iv->id(),true);
+  return new_iv;
 }
 
-bool LoopIVTyper::TypeUnary( Unary* node ) {
+Expr* LoopIVTyper::TypeUnary( Unary* node ) {
   auto opr = node->operand();
   // 1. try to fold it at first
   if(auto nnode = FoldUnary(graph_,node->op(),opr); nnode) {
     node->Replace(nnode);
-    return true;
+    return nnode;
   }
 
   // 2. try to specialize the type
@@ -211,23 +250,23 @@ bool LoopIVTyper::TypeUnary( Unary* node ) {
       auto new_opr  = NewUnboxNode(graph_,opr,TPKIND_FLOAT64);
       auto new_node = NewBoxNode<Float64Negate>(graph_,TPKIND_FLOAT64,new_opr);
       node->Replace(new_node);
-      return true;
+      return new_node;
     } else if(t == TPKIND_INT64 && node->op() == Unary::MINUS) {
       // cast int64 to float64 in an unboxed version
       auto to_f64   = Int64ToFloat64::New(graph_,NewUnboxNode(graph_,opr,TPKIND_INT64));
       auto new_node = NewBoxNode<Float64Negate>(graph_,TPKIND_FLOAT64,to_f64);
       node->Replace(new_node);
-      return true;
+      return new_node;
     }
   }
-  return false;
+  return NULL;
 }
 
-bool LoopIVTyper::TypeArithmetic( Arithmetic* node ) {
+Expr* LoopIVTyper::TypeArithmetic( Arithmetic* node ) {
   // 1. try to fold the binary at first
   if(auto nnode = FoldBinary(graph_,node->op(),node->lhs(),node->rhs()); nnode) {
     node->Replace(nnode);
-    return true;
+    return nnode;
   }
 
   // 2. try to specialize the type at least
@@ -235,10 +274,10 @@ bool LoopIVTyper::TypeArithmetic( Arithmetic* node ) {
   TypeKind rhs_type;
 
   if(lhs_type = GetTypeInference(node->lhs()); !TPKind::IsNumber(lhs_type)) {
-    return false;
+    return NULL;
   }
   if(rhs_type = GetTypeInference(node->rhs()); !TPKind::IsNumber(rhs_type)) {
-    return false;
+    return NULL;
   }
 
   // now we know both lhs/rhs are number at least
@@ -247,13 +286,13 @@ bool LoopIVTyper::TypeArithmetic( Arithmetic* node ) {
     auto rnode = NewUnboxNode(graph_,node->rhs(),TPKIND_FLOAT64);
     auto nnode = NewBoxNode<Float64Arithmetic>(graph_,TPKIND_FLOAT64,lnode,rnode,node->op());
     node->Replace(nnode);
-    return true;
+    return nnode;
   } else if(lhs_type == rhs_type && lhs_type == TPKIND_INT64) {
     auto lnode = NewUnboxNode(graph_,node->lhs(),TPKIND_INT64);
     auto rnode = NewUnboxNode(graph_,node->rhs(),TPKIND_INT64);
     auto nnode = NewBoxNode<Int64Arithmetic> (graph_,TPKIND_INT64,lnode,rnode,node->op());
     node->Replace(nnode);
-    return true;
+    return nnode;
   } else {
     auto lnode = node->lhs();
     auto rnode = node->rhs();
@@ -272,17 +311,17 @@ bool LoopIVTyper::TypeArithmetic( Arithmetic* node ) {
 
     auto nnode = NewBoxNode<Float64Arithmetic>(graph_,TPKIND_INT64,lnode,rnode,node->op());
     node->Replace(nnode);
-    return true;
+    return nnode;
   }
 
-  return false;
+  return NULL;
 }
 
-bool LoopIVTyper::TypeCompare( Compare* node ) {
+Expr* LoopIVTyper::TypeCompare( Compare* node ) {
   // 1. try to fold the comparison directly it may not work obviously
   if(auto nnode = FoldBinary(graph_,node->op(),node->lhs(),node->rhs());nnode) {
     node->Replace(nnode);
-    return true;
+    return nnode;
   }
 
   // 2. try to specialize the type at least
@@ -292,11 +331,11 @@ bool LoopIVTyper::TypeCompare( Compare* node ) {
   // the possible specialization we can take is float64_compare and string_compare
 
   if(lhs_type = GetTypeInference(node->lhs()); !TPKind::IsNumber(lhs_type)) {
-    return false;
+    return NULL;
   }
 
   if(rhs_type = GetTypeInference(node->rhs()); !TPKind::IsNumber(rhs_type)) {
-    return false;
+    return NULL;
   }
 
   // both are number types
@@ -304,16 +343,16 @@ bool LoopIVTyper::TypeCompare( Compare* node ) {
     // float64 both
     auto lnode = NewUnboxNode(graph_,node->lhs(),TPKIND_FLOAT64);
     auto rnode = NewUnboxNode(graph_,node->rhs(),TPKIND_FLOAT64);
-    auto nnode = NewBoxNode<Float64Compare>(graph_,TPKIND_FLOAT64,lnode,rnode,node->op());
+    auto nnode = NewBoxNode<Float64Compare>(graph_,TPKIND_BOOLEAN,lnode,rnode,node->op());
     node->Replace(nnode);
-    return true;
+    return nnode;
   } else if(lhs_type == TPKIND_INT64 && rhs_type == TPKIND_INT64) {
     // int64 both
     auto lnode = NewUnboxNode(graph_,node->lhs(),TPKIND_INT64);
     auto rnode = NewUnboxNode(graph_,node->rhs(),TPKIND_INT64);
-    auto nnode = NewBoxNode<Int64Compare>(graph_,TPKIND_INT64,lnode,rnode,node->op());
+    auto nnode = NewBoxNode<Int64Compare>(graph_,TPKIND_BOOLEAN,lnode,rnode,node->op());
     node->Replace(nnode);
-    return true;
+    return nnode;
   } else {
     auto lnode = node->lhs();
     auto rnode = node->rhs();
@@ -329,20 +368,36 @@ bool LoopIVTyper::TypeCompare( Compare* node ) {
       lnode    = NewUnboxNode(graph_,lnode,TPKIND_FLOAT64);
     }
 
-    auto nnode = NewBoxNode<Float64Compare>(graph_,TPKIND_FLOAT64,lnode,rnode,node->op());
+    auto nnode = NewBoxNode<Float64Compare>(graph_,TPKIND_BOOLEAN,lnode,rnode,node->op());
     node->Replace(nnode);
-    return true;
+    return nnode;
   }
 
-  return false;
+  return NULL;
 }
 
-bool LoopIVTyper::TypeLogical( Logical* node ) {
+Expr* LoopIVTyper::TypeLogical( Logical* node ) {
   if(auto nnode = FoldBinary(graph_,node->op(),node->lhs(),node->rhs()); nnode) {
     node->Replace(nnode);
-    return true;
+    return nnode;
   }
-  return false;
+  return NULL;
+}
+
+Expr* LoopIVTyper::TypeBox( Box* node ) {
+  if(auto nnode = FoldBox(node->value(),node->type_kind()); nnode) {
+    node->Replace(nnode);
+    return nnode;
+  }
+  return NULL;
+}
+
+Expr* LoopIVTyper::TypeUnbox( Unbox* node ) {
+  if(auto nnode = FoldUnbox(node->value(),node->type_kind()); nnode) {
+    node->Replace(nnode);
+    return nnode;
+  }
+  return NULL;
 }
 
 } // namespace

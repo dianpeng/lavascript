@@ -5,6 +5,7 @@
 #include "type-inference.h"
 
 #include "fold/folder.h"
+#include "fold/fold-box.h"
 
 #include "src/util.h"
 #include "src/objects.h"
@@ -851,7 +852,7 @@ bool GraphBuilder::NewCall( BytecodeIterator* itr ) {
     // okay this object/expression node is an closure node, then we could just
     // use this to do static inline without needing to know the type trace and
     // this is most useful since it helps do inline locally.
-    auto proto = script_->GetFunction(f->AsClosure()->ref()).prototype;
+    auto proto = script_->GetFunction(f->As<Closure>()->ref()).prototype;
     return DoInline(proto,base,itr->opcode() == BC_TCALL,itr->NextPC());
   } else {
     // this is the general case inline when we don't know the type of our function.
@@ -2240,7 +2241,7 @@ GraphBuilder::StopReason GraphBuilder::BuildBytecode( BytecodeIterator* itr ) {
       break;
     case BC_ADDLIST:
       {
-        IRList* l = StackGet(a1)->AsIRList();
+        IRList* l = StackGet(a1)->As<IRList>();
         for( std::size_t i = 0 ; i < a3 ; ++i ) {
           l->Add(StackGet(a2+i));
         }
@@ -2262,7 +2263,7 @@ GraphBuilder::StopReason GraphBuilder::BuildBytecode( BytecodeIterator* itr ) {
       break;
     case BC_ADDOBJ:
       {
-        IRObject* obj = StackGet(a1)->AsIRObject();
+        IRObject* obj = StackGet(a1)->As<IRObject>();
         obj->Add(StackGet(a2),StackGet(a3));
       }
       break;

@@ -63,6 +63,11 @@ Currently GC is *not* implemented , the code doesn't work right now. The plannin
 generational GC. It will be added once I finish the compiler. Though compiler definitly takes care of the stack/register
 mapping to allow GC enter and also safepoint.
 
+## Status
+Currently, if you check out the repo , you are able to run some tests they are just adhoc tests for me to work on it.
+The compiler will be able to generate a IR graph that is in dot format. So graphviz will visaulize it for you. Other
+than that, you can checkout the code in folder unittest to see what is current status.
+
 # Notes
 Since I don't have too much spare time to work on it, I will just try my best to spend cycle on it. Plus it is a learning
 process instead of trying to achieve something that is useful. So in general the idea implemented inside of it is either

@@ -1,4 +1,4 @@
-#Lavascript
+# Lavascript
 
 This project is a self project that aims to learn and research JIT compilation techinique and compiler knowledge w.r.t
 weak type language. The lavascript is a small light weight script that looks like javascript but really assemble Lua.

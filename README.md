@@ -33,10 +33,21 @@ The interpreter is *mostly* done with exception of:
 
 Currently I am working on the method JIT called cbase. The method JIT is a normal method JIT which is designed to do
 
-### machine independent
 1) OSR
 2) normal method entry
 
+The triggering of method JIT is via 1) loop's jump back bytecode 2) call bytecode. It uses a similar way that LuaJIT
+does for recording the statistics. However,since I don't have inline cache right now, so the type is collected via a
+extra recording run after the JIT is triggered. It is obviously not ideal , but it is simple to write. I may add a
+inline cache afterwards since the runtime information collection parts currently is really painful. To compensate that
+we may not have enough good runtime information, the compiler tends to generate a lot dynamic dispatch code to avoid
+too much deoptimization.
+
+The deoptimization is only generated when the bytecode has runtime information. If bytecode doesn't have runtime
+information it will not be deoptimized but instead it will just have a dynamic dispatch code stub which is not
+performant.
+
+### machine independent
 It features a sea-of-nodes style IR, and the following optimization will be or have been implemented:
 
 1) expression level optimization , like constant folding, strength reduction, reassociation, algebra/phi simplification

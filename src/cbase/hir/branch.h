@@ -47,6 +47,11 @@ LAVA_CBASE_HIR_DEFINE(Tag=IF_TRUE;Name="if_true";Leaf=NoLeaf,
   inline static IfTrue* New( Graph* , ControlFlow* );
   inline static IfTrue* New( Graph* );
 
+  void set_branch_start_effect( BranchStartEffect* n ) { AddOperand(n); }
+  BranchStartEffect* branch_start_effect() const       {
+    return operand_list()->First()->As<BranchStartEffect>();
+  }
+
   IfTrue( Graph* graph , std::uint32_t id , ControlFlow* region ):
     ControlFlow(HIR_IF_TRUE,id,graph,region)
   {}
@@ -63,6 +68,11 @@ LAVA_CBASE_HIR_DEFINE(Tag=IF_FALSE;Name="if_false";Leaf=NoLeaf,
   inline static IfFalse* New( Graph* , ControlFlow* );
   inline static IfFalse* New( Graph* );
 
+  void set_branch_start_effect( BranchStartEffect* n ) { AddOperand(n); }
+  BranchStartEffect* branch_start_effect() const       {
+    return operand_list()->First()->As<BranchStartEffect>();
+  }
+
   IfFalse( Graph* graph , std::uint32_t id , ControlFlow* region ):
     ControlFlow(HIR_IF_FALSE,id,graph,region)
   {}
@@ -72,13 +82,13 @@ LAVA_CBASE_HIR_DEFINE(Tag=IF_FALSE;Name="if_false";Leaf=NoLeaf,
 };
 
 LAVA_CBASE_HIR_DEFINE(Tag=IF_MERGE;Name="if_merge";Leaf=NoLeaf,
-    IfMerge,public Merge) {
+    IfMerge,public EffectMergeRegion) {
  public:
   inline static IfMerge* New( Graph* , ControlFlow* );
   inline static IfMerge* New( Graph* );
 
   IfMerge( Graph* graph , std::uint32_t id , ControlFlow* region ):
-    Merge(HIR_IF_MERGE,id,graph,region)
+    EffectMergeRegion(HIR_IF_MERGE,id,graph,region)
   {}
 
  private:

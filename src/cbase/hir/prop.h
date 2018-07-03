@@ -143,6 +143,7 @@ LAVA_CBASE_HIR_DEFINE(Tag=ISET;Name="iset";Leaf=NoLeaf,
 //    ObjectInsert --> insert a object's reference with a given key , cannot fail
 //    ListIndex    --> lookup a list element reference with given key
 //    ListInsert   --> insert an element into a list
+//    ListPush     --> push an element into the back of a list
 //
 // 2) pointer set/get, basically used to set a value into a specific reference.
 //
@@ -161,10 +162,13 @@ LAVA_CBASE_HIR_DEFINE(Tag=ISET;Name="iset";Leaf=NoLeaf,
 // possible node can produce boxed/unboxed node regards to list/object. So there're no
 // potential optimization can be performed on top of it hence no gain.
 
-LAVA_CBASE_HIR_DEFINE(HIR_INTERNAL,ObjectResize,public SoftBarrier) {
+LAVA_CBASE_HIR_DEFINE(HIR_INTERNAL,ObjectResize,public SoftBarrier,public CheckpointNode) {
  public:
-  ObjectResize( IRType type , std::uint32_t id , Graph* graph , Expr* object , Expr* key ):
-    SoftBarrier(type,id,graph)
+  ObjectResize( IRType type , std::uint32_t id , Graph* graph , Expr* object ,
+                                                                Expr* key    ,
+                                                                Checkpoint* cp ):
+    SoftBarrier   (type,id,graph),
+    CheckpointNode(cp)
   {
     lava_debug(NORMAL,lava_verify(GetTypeInference(object) == TPKIND_OBJECT););
     AddOperand(object);
@@ -175,22 +179,21 @@ LAVA_CBASE_HIR_DEFINE(HIR_INTERNAL,ObjectResize,public SoftBarrier) {
   Expr* key   () const { return operand_list()->Last (); }
 };
 
-LAVA_CBASE_HIR_DEFINE(HIR_INTERNAL,ListResize,public SoftBarrier) {
+LAVA_CBASE_HIR_DEFINE(HIR_INTERNAL,ListResize,public SoftBarrier,public CheckpointNode) {
  public:
   ListResize( IRType type , std::uint32_t id , Graph* graph , Expr* object ,
                                                               Expr* index ,
                                                               Checkpoint* cp ):
-    SoftBarrier(type,id,graph)
+    SoftBarrier   (type,id,graph),
+    CheckpointNode(cp)
   {
     lava_debug(NORMAL,lava_verify( GetTypeInference(object) == TPKIND_LIST ););
     AddOperand(object);
     AddOperand(index);
-    AddOperand(cp);
   }
 
   Expr*           object() const { return operand_list()->First();  }
   Expr*           index () const { return Operand(1); }
-  Checkpoint* checkpoint() const { return operand_list()->Last()->As<Checkpoint>(); }
 };
 
 LAVA_CBASE_HIR_DEFINE(HIR_INTERNAL,StaticRef,public ReadEffect) {
@@ -203,21 +206,18 @@ LAVA_CBASE_HIR_DEFINE(HIR_INTERNAL,StaticRef,public ReadEffect) {
 LAVA_CBASE_HIR_DEFINE(Tag=OBJECT_FIND;Name="object_find";Leaf=NoLeaf,
     ObjectFind,public StaticRef) {
  public:
-  static inline ObjectFind* New( Graph* , Expr* , Expr* , Checkpoint* );
+  static inline ObjectFind* New( Graph* , Expr* , Expr* );
 
-  ObjectFind( Graph* graph , std::uint32_t id , Expr* object , Expr* key , Checkpoint* cp ):
+  ObjectFind( Graph* graph , std::uint32_t id , Expr* object , Expr* key ):
     StaticRef(HIR_OBJECT_FIND,id,graph)
   {
     lava_debug(NORMAL,lava_verify(GetTypeInference(object) == TPKIND_OBJECT););
     AddOperand(object);
     AddOperand(key);
-    AddOperand(cp);
   }
 
   Expr*           object() const { return operand_list()->First(); }
   Expr*           key   () const { return Operand(1);}
-  Checkpoint* checkpoint() const { return operand_list()->Last()->As<Checkpoint>(); }
-
  private:
   LAVA_DISALLOW_COPY_AND_ASSIGN(ObjectFind)
 };
@@ -225,9 +225,11 @@ LAVA_CBASE_HIR_DEFINE(Tag=OBJECT_FIND;Name="object_find";Leaf=NoLeaf,
 LAVA_CBASE_HIR_DEFINE(Tag=OBJECT_UPDATE;Name="object_update";Leaf=NoLeaf,
     ObjectUpdate,public ObjectResize) {
  public:
-  static inline ObjectUpdate* New( Graph* , Expr* , Expr* );
-  ObjectUpdate( Graph* graph , std::uint32_t id , Expr* object , Expr* key ):
-    ObjectResize(HIR_OBJECT_UPDATE,id,graph,object,key) {}
+  static inline ObjectUpdate* New( Graph* , Expr* , Expr* , Checkpoint* cp );
+
+  ObjectUpdate( Graph* graph , std::uint32_t id , Expr* object , Expr* key ,
+                                                                 Checkpoint* cp ):
+    ObjectResize(HIR_OBJECT_UPDATE,id,graph,object,key,cp) {}
  private:
   LAVA_DISALLOW_COPY_AND_ASSIGN(ObjectUpdate)
 };
@@ -235,9 +237,9 @@ LAVA_CBASE_HIR_DEFINE(Tag=OBJECT_UPDATE;Name="object_update";Leaf=NoLeaf,
 LAVA_CBASE_HIR_DEFINE(Tag=OBJECT_INSERT;Name="object_insert";Leaf=NoLeaf,
     ObjectInsert,public ObjectResize) {
  public:
-  static inline ObjectInsert* New( Graph* , Expr* , Expr*  );
-  ObjectInsert( Graph* graph , std::uint32_t id , Expr* object , Expr* key ):
-    ObjectResize(HIR_OBJECT_INSERT,id,graph,object,key) {}
+  static inline ObjectInsert* New( Graph* , Expr* , Expr*  , Checkpoint* cp );
+  ObjectInsert( Graph* graph , std::uint32_t id , Expr* object , Expr* key , Checkpoint* cp ):
+    ObjectResize(HIR_OBJECT_INSERT,id,graph,object,key,cp) {}
  private:
   LAVA_DISALLOW_COPY_AND_ASSIGN(ObjectInsert)
 };
@@ -245,20 +247,18 @@ LAVA_CBASE_HIR_DEFINE(Tag=OBJECT_INSERT;Name="object_insert";Leaf=NoLeaf,
 LAVA_CBASE_HIR_DEFINE(Tag=LIST_INDEX;Name="list_index";Leaf=NoLeaf,
     ListIndex,public StaticRef) {
  public:
-  static inline ListIndex* New( Graph* , Expr* , Expr* , Checkpoint* checkpoint );
+  static inline ListIndex* New( Graph* , Expr* , Expr* );
 
-  ListIndex( Graph* graph , std::uint32_t id , Expr* object , Expr* index , Checkpoint* checkpoint ):
+  ListIndex( Graph* graph , std::uint32_t id , Expr* object , Expr* index ):
     StaticRef(HIR_LIST_INDEX,id,graph)
   {
     lava_debug(NORMAL,lava_verify( GetTypeInference(object) == TPKIND_LIST ););
     AddOperand(object);
     AddOperand(index);
-    AddOperand(checkpoint);
   }
 
   Expr*           object() const { return operand_list()->First(); }
   Expr*           index () const { return Operand(1); }
-  Checkpoint* checkpoint() const { return operand_list()->Last()->As<Checkpoint>(); }
  private:
   LAVA_DISALLOW_COPY_AND_ASSIGN(ListIndex)
 };
@@ -266,8 +266,9 @@ LAVA_CBASE_HIR_DEFINE(Tag=LIST_INDEX;Name="list_index";Leaf=NoLeaf,
 LAVA_CBASE_HIR_DEFINE(Tag=LIST_INSERT;Name="list_insert";Leaf=NoLeaf,
     ListInsert,public ListResize) {
  public:
-  static inline ListInsert* New( Graph* , Expr* , Expr* , Checkpoint* );
-  ListInsert( Graph* graph , std::uint32_t id , Expr* object , Expr* index , Checkpoint* cp ):
+  static inline ListInsert* New( Graph* , Expr* , Expr* , Checkpoint* cp );
+  ListInsert( Graph* graph , std::uint32_t id , Expr* object , Expr* index ,
+                                                               Checkpoint* cp ):
     ListResize(HIR_LIST_INSERT,id,graph,object,index,cp) {}
  private:
   LAVA_DISALLOW_COPY_AND_ASSIGN(ListInsert)
@@ -281,12 +282,12 @@ LAVA_CBASE_HIR_DEFINE(Tag=LIST_INSERT;Name="list_insert";Leaf=NoLeaf,
 //
 // 1) ListInsert
 // 2) ListIndex
-// 3) ObjectFind
-// 4) ObjectInsert
-// 5) ObjectUpdate
+// 3) ListPush
+// 4) ObjectFind
+// 5) ObjectInsert
+// 6) ObjectUpdate
 //
-//
-// The above 5 nodes actually represents a pointer/reference points to
+// The above 6 nodes actually represents a pointer/reference points to
 // a specific filed/element inside of an object/list. We cannot use normal
 // way to categorize them due to ListInsert/ObjectInsert/ObjectUpdate are
 // destructive operation with *Resize* operation needed, our HIR doesn't

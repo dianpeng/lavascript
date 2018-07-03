@@ -14,9 +14,6 @@ namespace hir        {
 //   goal is to expose def-use and use-def chain into different types
 LAVA_CBASE_HIR_DEFINE(HIR_INTERNAL,Expr,public Node) {
  public:
-  bool  IsStmt             ()                   const { return stmt_.HasRef(); }
-  void  set_stmt_edge      ( const StmtEdge& st )     { stmt_= st; }
-  const StmtEdge& stmt_edge()                   const { return stmt_; }
   bool  IsUnboxNode        () const;
   bool  IsBoxNode          () const;
  public:
@@ -39,8 +36,6 @@ LAVA_CBASE_HIR_DEFINE(HIR_INTERNAL,Expr,public Node) {
   // of time operand_list will return at most 3 operands except for call
   // function
   const OperandList* operand_list() const { return &operand_list_; }
-  // Helper accessor
-  Expr* Operand( std::size_t index ) const { return operand_list_.Index(index); }
   // This function will add the input node into this node's operand list and
   // it will take care of the input node's ref list as well
   inline void AddOperand( Expr* node );
@@ -48,6 +43,10 @@ LAVA_CBASE_HIR_DEFINE(HIR_INTERNAL,Expr,public Node) {
   inline void ReplaceOperand( std::size_t , Expr* );
   // Clear all the operand inside of this node's operand list
   void ClearOperand();
+  // Helper accessor
+  Expr*       Operand( std::size_t index ) const { return operand_list_.Index(index); }
+  std::size_t OperandSize()                const { return operand_list_.size(); }
+  bool        OperandEmpty()               const { return operand_list_.empty(); }
  public:
   // This list returns a list of Ref object which allow user to
   //   1) get a list of expression that uses this expression, ie who uses me
@@ -88,14 +87,12 @@ LAVA_CBASE_HIR_DEFINE(HIR_INTERNAL,Expr,public Node) {
   Expr( IRType type , std::uint32_t id , Graph* graph ):
     Node            (type,id,graph),
     operand_list_   (),
-    ref_list_       (),
-    stmt_           ()
+    ref_list_       ()
   {}
 
  protected:
   OperandList        operand_list_;
   OperandRefList     ref_list_;
-  StmtEdge           stmt_;
 };
 
 } // namespace hir

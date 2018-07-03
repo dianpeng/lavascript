@@ -365,20 +365,20 @@ inline ISet* ISet::New( Graph* graph , Expr* obj , Expr* key , Expr* val ) {
   return graph->zone()->New<ISet>(graph,graph->AssignID(),obj,key,val);
 }
 
-inline ObjectFind* ObjectFind::New( Graph* graph , Expr* obj , Expr* key , Checkpoint* cp ) {
-  return graph->zone()->New<ObjectFind>(graph,graph->AssignID(),obj,key,cp);
+inline ObjectFind* ObjectFind::New( Graph* graph , Expr* obj , Expr* key ) {
+  return graph->zone()->New<ObjectFind>(graph,graph->AssignID(),obj,key);
 }
 
-inline ObjectInsert* ObjectInsert::New( Graph* graph , Expr* obj , Expr* key ) {
-  return graph->zone()->New<ObjectInsert>(graph,graph->AssignID(),obj,key);
+inline ObjectInsert* ObjectInsert::New( Graph* graph , Expr* obj , Expr* key , Checkpoint* cp ) {
+  return graph->zone()->New<ObjectInsert>(graph,graph->AssignID(),obj,key,cp);
 }
 
-inline ObjectUpdate* ObjectUpdate::New( Graph* graph , Expr* object , Expr* key ) {
-  return graph->zone()->New<ObjectUpdate>(graph,graph->AssignID(),object,key);
+inline ObjectUpdate* ObjectUpdate::New( Graph* graph , Expr* object , Expr* key , Checkpoint* cp ) {
+  return graph->zone()->New<ObjectUpdate>(graph,graph->AssignID(),object,key,cp);
 }
 
-inline ListIndex* ListIndex::New( Graph* graph , Expr* obj , Expr* index , Checkpoint* cp ) {
-  return graph->zone()->New<ListIndex>(graph,graph->AssignID(),obj,index,cp);
+inline ListIndex* ListIndex::New( Graph* graph , Expr* obj , Expr* index ) {
+  return graph->zone()->New<ListIndex>(graph,graph->AssignID(),obj,index);
 }
 
 inline ListInsert* ListInsert::New( Graph* graph , Expr* obj , Expr* index , Checkpoint* cp ) {
@@ -474,18 +474,18 @@ inline ItrDeref* ItrDeref::New( Graph* graph , Expr* operand ) {
   return ret;
 }
 
-inline void ValuePhi::set_region( Merge* region ) {
+inline void PhiBase::set_region( Merge* region ) {
 	lava_debug(NORMAL,lava_verify(!region_););
 	region_ = region;
 }
 
-inline void ValuePhi::RemovePhiFromRegion( ValuePhi* phi ) {
+inline void PhiBase::RemovePhiFromRegion( PhiBase* phi ) {
   if(phi->region()) {
     lava_verify(phi->region()->RemoveOperand(phi));
   }
 }
 
-inline bool ValuePhi::IsUsed() const {
+inline bool PhiBase::IsUsed() const {
   if(!region()) return false;
   return !ref_list()->empty();
 }
@@ -494,13 +494,13 @@ inline Phi* Phi::New( Graph* graph , Expr* lhs , Expr* rhs , Merge* region ) {
   auto ret = graph->zone()->New<Phi>(graph,graph->AssignID());
   ret->AddOperand(lhs);
   ret->AddOperand(rhs);
-  region->AddPhi(PhiNode{ret});
+  region->AddPhi(ret);
   return ret;
 }
 
 inline Phi* Phi::New( Graph* graph , Merge* region ) {
   auto ret = graph->zone()->New<Phi>(graph,graph->AssignID());
-  region->AddPhi(PhiNode{ret});
+  region->AddPhi(ret);
   return ret;
 }
 
@@ -528,7 +528,7 @@ inline LoopIV* LoopIV::New( Graph* graph , Expr* lhs , Expr* rhs ) {
 
 inline LoopIV* LoopIV::New( Graph* graph , Loop* loop ) {
   auto ret = New(graph);
-  loop->AddPhi(PhiNode{ret});
+  loop->AddPhi(ret);
   return ret;
 }
 
@@ -552,7 +552,7 @@ inline LoopIVInt64* LoopIVInt64::New( Graph* graph , Expr* lhs , Expr* rhs ) {
 
 inline LoopIVInt64* LoopIVInt64::New( Graph* graph , Loop* loop ) {
   auto ret = New(graph);
-  loop->AddPhi(PhiNode{ret});
+  loop->AddPhi(ret);
   return ret;
 }
 
@@ -597,29 +597,16 @@ inline EffectMerge* EffectMerge::New( Graph* graph ) {
   return graph->zone()->New<EffectMerge>(graph,graph->AssignID());
 }
 
-inline EffectMerge* EffectMerge::New( Graph* graph , Merge* region ) {
-  auto ret = New(graph);
-  region->AddPhi(PhiNode{ret});
-  return ret;
-}
-
 inline EffectMerge* EffectMerge::New( Graph* graph , WriteEffect* lhs , WriteEffect* rhs ) {
   auto ret = New(graph);
-  ret->AddOperand(lhs);
-  ret->AddOperand(rhs);
-  return ret;
-}
-
-inline EffectMerge* EffectMerge::New( Graph* graph , WriteEffect* lhs , WriteEffect* rhs ,
-                                                                        Merge* region   ) {
-  auto ret = New(graph,lhs,rhs);
-  region->AddPhi(PhiNode{ret});
+  ret->set_lhs_effect(lhs);
+  ret->set_rhs_effect(rhs);
   return ret;
 }
 
 inline LoopEffectStart* LoopEffectStart::New( Graph* graph , WriteEffect* lhs ) {
   auto ret = graph->zone()->New<LoopEffectStart>(graph,graph->AssignID());
-  ret->AddOperand(lhs);
+  ret->set_lhs_effect(lhs);
   return ret;
 }
 
@@ -671,8 +658,8 @@ inline void Checkpoint::AddStackSlot( Expr* val , std::uint32_t index ) {
   AddOperand(StackSlot::New(graph(),val,index));
 }
 
-inline Guard* Guard::New( Graph* graph , Test* test , Checkpoint* cp ) {
-  return graph->zone()->New<Guard>(graph,graph->AssignID(),test,cp);
+inline Guard* Guard::New( Graph* graph , Test* test ) {
+  return graph->zone()->New<Guard>(graph,graph->AssignID(),test);
 }
 
 inline TestType* TestType::New( Graph* graph , TypeKind tc , Expr* object ) {
@@ -763,59 +750,65 @@ inline StackSlot* StackSlot::New( Graph* graph , Expr* expr , std::uint32_t inde
   return graph->zone()->New<StackSlot>(graph,graph->AssignID(),expr,index);
 }
 
-inline void PhiNode::set_region( Merge* region ) {
-  if(phi_->Is<ValuePhi>()) {
-    phi_->As<ValuePhi>()->set_region(region);
-  } else {
-    phi_->As<EffectMergeBase>()->set_region(region);
-  }
-}
-
-inline Merge* PhiNode::region() const {
-  if(phi_->Is<ValuePhi>()) {
-    return phi_->As<ValuePhi>()->region();
-  } else {
-    return phi_->As<EffectMergeBase>()->region();
-  }
-}
-
-inline void PhiNode::ResetRegion() {
-  if(phi_->Is<ValuePhi>()) {
-    phi_->As<ValuePhi>()->ResetRegion();
-  } else {
-    phi_->As<EffectMergeBase>()->ResetRegion();
-  }
-}
-
 inline Merge::Merge( IRType type , std::uint32_t id , Graph* graph , ControlFlow* region ):
   ControlFlow(type,id,graph,region),
   phi_list_  ()
 {}
 
-inline void Merge::AddPhi( PhiNode phi ) {
+inline void Merge::AddPhi( PhiBase* phi ) {
   phi_list_.Add(zone(),phi);
-  phi.set_region(this);
+  phi->set_region(this);
 }
 
-inline bool Merge::ReplacePhi( PhiNode target , PhiNode nnode ) {
-  if(auto itr = phi_list_.FindIf([=](const PhiNode& that) {
-        return that.phi() == target.phi();
+inline bool Merge::ReplacePhi( PhiBase* target , PhiBase* nnode ) {
+  if(auto itr = phi_list_.FindIf([=](PhiBase* that) {
+        return that->IsIdentical(target);
      }); itr.HasNext()) {
     itr.set_value(nnode);
+    nnode->set_region(this);
     return true;
   }
   return false;
 }
 
-inline void Merge::RemovePhi( PhiNode phi ) {
-  lava_debug(NORMAL,lava_verify(phi.region() == this););
+inline void Merge::RemovePhi( PhiBase* phi ) {
+  lava_debug(NORMAL,lava_verify(phi->region() == this););
 
-  if(auto itr = phi_list_.FindIf([=](const PhiNode& that) {
-        return that.phi()->IsIdentical(phi.phi());
-     });itr.HasNext()) {
+  if(auto itr = phi_list_.FindIf(
+        [=](PhiBase* that) { return that->IsIdentical(phi); });itr.HasNext()) {
 
     phi_list_.Remove(itr);
-    phi.ResetRegion();
+    phi->ResetRegion();
+  }
+}
+
+inline EffectMergeRegion::EffectMergeRegion( IRType type , std::uint32_t id , Graph* graph ,
+                                                                              ControlFlow* region ):
+  Merge(type,id,graph,region),
+  effect_merge_list_()
+{}
+
+inline bool EffectMergeRegion::ReplaceEffectMerge( EffectMergeBase* target ,
+                                                   EffectMergeBase* nnode ) {
+  if(auto itr = effect_merge_list_.FindIf(
+        [=](EffectMergeBase* that) { return that->IsIdentical(target); }); itr.HasNext()) {
+    itr.set_value(nnode);
+    nnode->set_region(this);
+    return true;
+  }
+  return false;
+}
+
+inline void EffectMergeRegion::AddEffectMerge( EffectMergeBase* node ) {
+  effect_merge_list_.Add(zone(),node);
+  node->set_region(this);
+}
+
+inline void EffectMergeRegion::RemoveEffectMerge( EffectMergeBase* node ) {
+  if(auto itr = effect_merge_list_.FindIf(
+        [=](EffectMergeBase* that) { return that->IsIdentical(node); }); itr.HasNext()) {
+    effect_merge_list_.Remove(itr);
+    node->ResetRegion();
   }
 }
 
@@ -923,16 +916,16 @@ inline CondTrap* CondTrap::New( Graph* graph , Test* test , Checkpoint* cp ,
   return graph->zone()->New<CondTrap>(graph,graph->AssignID(),test,cp,region);
 }
 
-inline Start* Start::New( Graph* graph ) {
-  return graph->zone()->New<Start>(graph,graph->AssignID());
+inline Start* Start::New( Graph* graph , Checkpoint* cp , InitBarrier* ib ) {
+  return graph->zone()->New<Start>(graph,graph->AssignID(),cp,ib);
 }
 
 inline End* End::New( Graph* graph , Success* s , Fail* f ) {
   return graph->zone()->New<End>(graph,graph->AssignID(),s,f);
 }
 
-inline OSRStart* OSRStart::New( Graph* graph ) {
-  return graph->zone()->New<OSRStart>(graph,graph->AssignID());
+inline OSRStart* OSRStart::New( Graph* graph , Checkpoint* cp , InitBarrier* ib ) {
+  return graph->zone()->New<OSRStart>(graph,graph->AssignID(),cp,ib);
 }
 
 inline OSREnd* OSREnd::New( Graph* graph , Success* s , Fail* f ) {

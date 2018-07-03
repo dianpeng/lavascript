@@ -8,6 +8,7 @@ namespace cbase      {
 namespace hir        {
 
 class EffectBarrier;
+class EffectMergeRegion;
 
 /**
  * Effect -----------------------------------------------------------
@@ -42,12 +43,11 @@ LAVA_CBASE_HIR_DEFINE(HIR_INTERNAL,ReadEffect,public EffectNode) {
   ReadEffect( IRType type , std::uint32_t id , Graph* graph ):
     EffectNode(type,id,graph) , effect_edge_() {}
 
-  // get attached write effect generated Checkpoint node
-  Checkpoint* GetCheckpoint() const;
  public: // dependency implementation
   virtual DependencyIterator GetDependencyIterator() const;
+
   // only one dependency
-  virtual std::size_t dependency_size() const { return effect_edge_.IsEmpty() ? 0 : 1; }
+  virtual std::size_t dependency_size() const { return 1; }
 
   void  set_effect_edge( const ReadEffectListIterator& itr , WriteEffect* node )
   { effect_edge_.id = itr; effect_edge_.node = node; }
@@ -76,11 +76,20 @@ LAVA_CBASE_HIR_DEFINE(HIR_INTERNAL,WriteEffect,public EffectNode ,public DoubleL
 
   virtual DependencyIterator GetDependencyIterator() const;
   virtual std::size_t              dependency_size() const {
-    return NextLink() ? NextLink()->read_effect_.size() : 0;
+    if(NextLink()) {
+      auto sz = NextLink()->read_effect_.size();
+      return sz ? sz : 1;
+    } else {
+      return 0;
+    }
   }
  public:
+
   // return the next write effect node ,if a effect phi node is met then it returns NULL
   // since user should not use NextWrite to examine the next barrier node
+  //
+  // Notes: NextWrite returns a write that happened *before* this write. The effect chain
+  //        is linked reversely
   WriteEffect*   NextWrite() const {
     auto ret = NextLink();
     lava_debug(NORMAL,lava_verify(ret););
@@ -160,19 +169,24 @@ LAVA_CBASE_HIR_DEFINE(HIR_INTERNAL,SoftBarrier,public EffectBarrier) {
 LAVA_CBASE_HIR_DEFINE(HIR_INTERNAL,EffectMergeBase,public HardBarrier) {
  public:
   EffectMergeBase( IRType type , std::uint32_t id , Graph* graph ) :
-    HardBarrier(type,id,graph) {}
+    HardBarrier(type,id,graph) , region_(NULL) {}
  public:
-  Merge* region    ()                const { return region_;   }
-  void   set_region( Merge* region )       { region_ = region; }
-  void   ResetRegion()                     { region_ = NULL;   }
+  EffectMergeRegion* region    ()                       const { return region_;   }
+  void               set_region( EffectMergeRegion* region )  { region_ = region; }
+  void               ResetRegion()                            { region_ = NULL;   }
+
+  void set_lhs_effect( WriteEffect* effect ) { AddOperand(effect); }
+  void set_rhs_effect( WriteEffect* effect ) { AddOperand(effect); }
+
+  WriteEffect* lhs_effect() const { return Operand(0)->As<WriteEffect>(); }
+  WriteEffect* rhs_effect() const { return Operand(1)->As<WriteEffect>(); }
  public:
   virtual DependencyIterator GetDependencyIterator() const;
   virtual std::size_t              dependency_size() const;
  private:
   class EffectMergeBaseDependencyIterator;
   friend class EffectMergeBaseDependencyIterator;
-
-  Merge* region_;
+  EffectMergeRegion* region_;
   LAVA_DISALLOW_COPY_AND_ASSIGN(EffectMergeBase)
 };
 
@@ -183,9 +197,7 @@ LAVA_CBASE_HIR_DEFINE(Tag=EFFECT_MERGE;Name="effect_merge";Leaf=NoLeaf,
     EffectMerge,public EffectMergeBase) {
  public:
   static inline EffectMerge* New( Graph* );
-  static inline EffectMerge* New( Graph* , Merge* );
   static inline EffectMerge* New( Graph* , WriteEffect* , WriteEffect* );
-  static inline EffectMerge* New( Graph* , WriteEffect* , WriteEffect* , Merge* );
 
   EffectMerge( Graph* graph , std::uint32_t id ) : EffectMergeBase(HIR_EFFECT_MERGE,id,graph) {}
  private:
@@ -210,7 +222,7 @@ LAVA_CBASE_HIR_DEFINE(Tag=LOOP_EFFECT_START;Name="loop_effect_start";Leaf=NoLeaf
   // Set the backwards pointed effect of this LoopEffectStart. This backward pointed effect
   // points from the bottom of the loop (loop exit) back to the start of the loop effect
   // phi node.
-  void SetBackwardEffect( WriteEffect* effect ) { AddOperand(effect); }
+  void SetBackwardEffect( WriteEffect* effect ) { set_rhs_effect(effect); }
   // Constructor of the LoopEffectStart
   LoopEffectStart( Graph* graph , std::uint32_t id ) :
     EffectMergeBase(HIR_LOOP_EFFECT_START,id,graph) {}

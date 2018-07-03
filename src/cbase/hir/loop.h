@@ -35,26 +35,30 @@ LAVA_CBASE_HIR_DEFINE(Tag=LOOP_HEADER;Name="loop_header";Leaf=NoLeaf,
 };
 
 LAVA_CBASE_HIR_DEFINE(Tag=LOOP;Name="loop";Leaf=NoLeaf,
-    Loop,public Merge) {
+    Loop,public EffectMergeRegion) {
  public:
   inline static Loop* New( Graph* );
 
-  Loop( Graph* graph , std::uint32_t id ): Merge(HIR_LOOP,id,graph),loop_exit_(NULL) {}
+  Loop( Graph* graph , std::uint32_t id ):
+    EffectMergeRegion(HIR_LOOP,id,graph),loop_exit_(NULL) {}
 
-  void      set_loop_exit( LoopExit* loop_exit ) { loop_exit_ = loop_exit; }
-  LoopExit* loop_exit    () const                { return loop_exit_; }
+  void set_loop_effect_start( LoopEffectStart* n ) { AddEffectMerge(n); }
+  LoopEffectStart* set_loop_effect_start() const   { return effect_merge_list()->First()->As<LoopEffectStart>(); }
+
+  void      set_loop_exit( LoopExit* loop_exit )   { loop_exit_ = loop_exit; }
+  LoopExit* loop_exit    () const                  { return loop_exit_; }
  private:
   LoopExit* loop_exit_;
   LAVA_DISALLOW_COPY_AND_ASSIGN(Loop)
 };
 
 LAVA_CBASE_HIR_DEFINE(Tag=LOOP_EXIT;Name="loop_exit";Leaf=NoLeaf,
-    LoopExit,public Merge) {
+    LoopExit,public EffectMergeRegion) {
  public:
   inline static LoopExit* New( Graph* , Expr* );
   Expr* condition() const { return operand_list()->First(); }
   LoopExit( Graph* graph , std::uint32_t id , Expr* cond ):
-    Merge(HIR_LOOP_EXIT,id,graph)
+    EffectMergeRegion(HIR_LOOP_EXIT,id,graph)
   {
     AddOperand(cond);
   }
@@ -63,10 +67,11 @@ LAVA_CBASE_HIR_DEFINE(Tag=LOOP_EXIT;Name="loop_exit";Leaf=NoLeaf,
 };
 
 LAVA_CBASE_HIR_DEFINE(Tag=LOOP_MERGE;Name="loop_merge";Leaf=NoLeaf,
-    LoopMerge,public Merge) {
+    LoopMerge,public EffectMergeRegion) {
  public:
   inline static LoopMerge* New( Graph* );
-  LoopMerge( Graph* graph , std::uint32_t id ): Merge(HIR_LOOP_MERGE,id,graph) {}
+  LoopMerge( Graph* graph , std::uint32_t id ):
+    EffectMergeRegion(HIR_LOOP_MERGE,id,graph) {}
  private:
   LAVA_DISALLOW_COPY_AND_ASSIGN(LoopMerge)
 };

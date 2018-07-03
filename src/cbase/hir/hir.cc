@@ -37,19 +37,10 @@ bool Expr::IsBoxNode() const {
 
 void Expr::Replace( Expr* another ) {
   if(IsIdentical(another)) return;
-  // 1. patch all the reference of |this| point to another node
   lava_foreach( auto &v , ref_list()->GetForwardIterator() ) {
     v.id.set_value(another);
   }
   another->ref_list_.Merge(&ref_list_);
-  // 2. modify *this* if the node is a pin
-  if(IsStmt()) {
-    auto region = stmt_.region;
-    region->RemoveStmt(stmt_);
-    region->AddStmt(another);
-    stmt_.region = NULL;
-  }
-  // 3. clear all the operands since this node is dead
   ClearOperand();
 }
 
@@ -125,15 +116,7 @@ void WriteEffect::Replace( Expr* node ) {
       }
     }
 
-    // 2.2 move the statement if needed
-    if(IsStmt()) {
-      auto region = stmt_.region;
-      region->RemoveStmt(stmt_);
-      region->AddStmt   (node);
-      stmt_.region = NULL;
-    }
-
-    // 2.3 clear all the existed operands
+    // 2.2 clear all the existed operands
     ClearOperand();
   }
 }
@@ -148,13 +131,6 @@ bool SpecializeBinary::Equal( const Expr* that ) const {
     return op() == n->op() && lhs()->Equal(n->lhs()) && rhs()->Equal(n->rhs());
   }
   return false;
-}
-
-Checkpoint* ReadEffect::GetCheckpoint() const {
-  lava_foreach( auto k , GetDependencyIterator() ) {
-    if(k->Is<Checkpoint>()) return k->As<Checkpoint>();
-  }
-  return NULL;
 }
 
 class ReadEffect::ReadEffectDependencyIterator {
@@ -243,43 +219,71 @@ EffectBarrier* WriteEffect::NextBarrier() const {
 class EffectMergeBase::EffectMergeBaseDependencyIterator {
  public:
   EffectMergeBaseDependencyIterator( const EffectMergeBase* node ):
-    itr1_(node->operand_list()->GetForwardIterator()),
-    itr2_()
+    state_(),
+    merge_(node),
+    itr_  ()
   {
-    if(itr1_.HasNext()) {
-      auto node = itr1_.value()->As<WriteEffect>();
-      itr2_     = node->read_effect()->GetForwardIterator();
+    auto w = node->lhs_effect();
+    if(w->read_effect()->empty()) {
+      state_ = LHSW;
+    } else {
+      state_ = LHS;
+      itr_   = w->read_effect()->GetForwardIterator();
     }
   }
-  bool HasNext() const { return itr1_.HasNext(); }
+  bool HasNext() const { return state_ != DONE; }
+
   bool Move   () const {
     lava_debug(NORMAL,lava_verify(HasNext()););
-    if(itr2_.HasNext() || !itr2_.Move()) {
-      if(!itr1_.Move()) return false;
-      auto node = itr1_.value()->As<WriteEffect>();
-      itr2_ = node->read_effect()->GetForwardIterator();
+    switch(state_) {
+      case LHS :
+        if(itr_.Move()) return true;
+        // fallthrough
+      case LHSW:
+        {
+          auto w = merge_->rhs_effect();
+          if(w->read_effect()->empty()) {
+            state_ = RHSW;
+          } else {
+            state_ = RHS;
+            itr_   = w->read_effect()->GetForwardIterator();
+          }
+        }
+        break;
+      case RHS :
+        if(itr_.Move()) return true;
+        // fallthrough
+      case RHSW:
+        state_ = DONE;
+        break;
+      default:
+        break;
     }
-    return true;
+
+    return false;
   }
+
   Expr* value() {
-    auto node = itr1_.value()->As<WriteEffect>();
-    if(node->read_effect()->empty()) {
-      return node;
-    } else {
-      return itr2_.value();
+    switch(state_) {
+      case RHS :
+      case LHS : return itr_.value();
+      case LHSW: return merge_->lhs_effect();
+      case RHSW: return merge_->rhs_effect();
+      default:   break;
     }
+
+    lava_die();
+    return NULL;
   }
+
   Expr* value() const {
-    auto node = itr1_.value()->As<WriteEffect>();
-    if(node->read_effect()->empty()) {
-      return node;
-    } else {
-      return itr2_.value();
-    }
+    return const_cast<EffectMergeBaseDependencyIterator*>(this)->value();
   }
  private:
-  const OperandIterator    itr1_;
-  mutable ReadEffectListIterator itr2_;
+  enum { LHSW , LHS, RHSW, RHS , DONE };
+  mutable int state_;
+  const EffectMergeBase* merge_;
+  mutable ReadEffectListIterator itr_;
 };
 
 Expr::DependencyIterator EffectMergeBase::GetDependencyIterator() const {
@@ -287,12 +291,13 @@ Expr::DependencyIterator EffectMergeBase::GetDependencyIterator() const {
 }
 
 std::size_t EffectMergeBase::dependency_size() const {
-	std::size_t ret = 0;
-	lava_foreach( auto k , operand_list()->GetForwardIterator() ) {
-		auto we = k->As<WriteEffect>();
-		ret += we->read_effect()->size();
-	}
-	return ret;
+  auto l = lhs_effect();
+  auto lsz = l->read_effect()->empty() ? 1 : l->read_effect()->size();
+
+  auto r = rhs_effect();
+  auto rsz = r->read_effect()->empty() ? 1 : r->read_effect()->size();
+
+  return lsz + rsz;
 }
 
 Expr* IRList::Load( Expr* index ) const {
@@ -412,12 +417,6 @@ void ControlFlow::ClearForwardEdge() {
     itr.value()->RemoveBackwardEdgeOnly(this);
   }
   forward_edge_.Clear();
-}
-
-void ControlFlow::MoveStmt( ControlFlow* cf ) {
-  lava_foreach( auto &v , cf->stmt_list()->GetForwardIterator() ) {
-    AddStmt(v);
-  }
 }
 
 void ControlFlow::ClearOperand() {

@@ -53,23 +53,16 @@ LAVA_CBASE_HIR_DEFINE(Tag=TEST_TYPE;Name="test_type";Leaf=NoLeaf,
 LAVA_CBASE_HIR_DEFINE(Tag=GUARD;Name="guard";Leaf=NoLeaf,
     Guard,public Expr) {
  public:
-  inline static Guard* New( Graph* , Test* , Checkpoint* );
+  inline static Guard* New( Graph* , Test* );
   Test*             test() const { return operand_list()->First()->As<Test>(); }
   Expr*           object() const { return test()->object(); }
-  Checkpoint* checkpoint() const { return operand_list()->Last()->As<Checkpoint>(); }
 
-  Guard( Graph* graph , std::uint32_t id , Test* test , Checkpoint* cp ):
+  Guard( Graph* graph , std::uint32_t id , Test* test ):
     Expr(HIR_GUARD,id,graph)
   {
     AddOperand(test);
-    AddOperand(cp);
   }
  public:
-  // Checkpoint doesn't participate in GVN hash function. Checkpoint doesn't mean
-  // anything since it is not neither a operand used by node , ie data dependent ,
-  // nor a side effect can be observed , ie effect dependent. It just means when
-  // this node bailout, it uses this Checkpoint as a way to reconstruct interpreter's
-  // state.
   virtual std::uint64_t GVNHash() const {
     return GVNHash1(type_name(),test()->GVNHash());
   }

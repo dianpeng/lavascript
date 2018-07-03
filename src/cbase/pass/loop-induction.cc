@@ -5,6 +5,8 @@
 #include "src/zone/stl.h"
 #include "src/zone/zone.h"
 
+#include "src/cbase/fold/fold-cast.h"
+#include "src/cbase/fold/fold-memory.h"
 #include "src/cbase/fold/fold-box.h"
 #include "src/cbase/fold/fold-arith.h"
 
@@ -40,10 +42,12 @@ namespace            {
 class LoopIVTyper {
  public:
   LoopIVTyper( Graph* graph ) :
-    graph_(graph) ,
-    temp_zone_() ,
-    visited_(&temp_zone_),
-    loop_node_(NULL) {
+    graph_        (graph) ,
+    temp_zone_    () ,
+    visited_      (&temp_zone_),
+    loop_node_    (NULL),
+    memory_folder_(&temp_zone_)
+  {
     visited_.resize(graph->MaxID());
   }
 
@@ -52,7 +56,6 @@ class LoopIVTyper {
  private:
   void RunInner  ( LoopAnalyze* , LoopAnalyze::LoopNode* );
   void RunLoop   ();
-
   // get a loop induction variable's start and end
   bool GetLinearLoopIVComponent( LoopIV* , Expr** , Expr** );
 
@@ -65,6 +68,18 @@ class LoopIVTyper {
   Expr* TypeBox       ( Box* );
   Expr* TypeUnbox     ( Unbox* );
 
+  // typper for propogating the type information back to index
+  // getting and setting node. this may turn index getting and
+  // index setting nodes into its simplified version and also
+  // lead to new value numbering optimization opportunity
+  Expr* TypeIGet      ( IGet* );
+  Expr* TypeISet      ( ISet* );
+
+  // convert a number node into a raw index node. basically perform
+  // float64 --> int64 conversion
+  Expr* ToIndex       ( Expr* , TypeKind );
+  bool  CheckList     ( Expr** );
+
  private: // Helper functions for back propogation of type
   void Enqueue( zone::stl::NodeMarker* , zone::stl::ZoneQueue<Expr*>* , Expr* );
 
@@ -73,6 +88,7 @@ class LoopIVTyper {
   zone::Zone             temp_zone_;
   zone::stl::NodeMarker  visited_;
   LoopAnalyze::LoopNode* loop_node_;
+  MemoryFolder           memory_folder_;
 };
 
 void LoopIVTyper::Run() {
@@ -99,8 +115,8 @@ void LoopIVTyper::RunLoop() {
   do {
     lava_foreach( auto phi , body->phi_list()->GetForwardIterator() ) {
       has_change = false;
-      if(!visited_.Get(phi.phi()->id()) && phi.phi()->Is<LoopIV>()) {
-        has_change = TypeLoopIV(phi.phi()->As<LoopIV>()) != NULL;
+      if(!visited_.Get(phi->id()) && phi->Is<LoopIV>()) {
+        has_change = TypeLoopIV(phi->As<LoopIV>()) != NULL;
       }
     }
   } while(has_change);
@@ -142,7 +158,7 @@ void LoopIVTyper::Enqueue( zone::stl::NodeMarker*       marker  ,
 }
 
 Expr* LoopIVTyper::TypeLoopIV( LoopIV* iv ) {
-  ValuePhi* new_iv;
+  PhiBase* new_iv;
 
   // 1. get the loop_iv component out and see whether we can do typping for it
   {
@@ -178,7 +194,7 @@ Expr* LoopIVTyper::TypeLoopIV( LoopIV* iv ) {
     }
 
     // replace the old loop induction variable from the loop body with the new iv
-    loop_node_->loop_body()->ReplacePhi( PhiNode{iv} , PhiNode{new_iv} );
+    loop_node_->loop_body()->ReplacePhi( iv , new_iv );
 
     // the iv is replaced with the new_node
     iv->Replace(new_iv);
@@ -186,8 +202,8 @@ Expr* LoopIVTyper::TypeLoopIV( LoopIV* iv ) {
 
   // 2. When we reach here we could start to do the back propogation of typping
   {
-    zone::stl::ZoneQueue<Expr*> queue  (&temp_zone_);
-    zone::stl::NodeMarker       marker (&temp_zone_);
+    zone::stl::ZoneQueue<Expr*> queue (&temp_zone_);
+    zone::stl::NodeMarker       marker(&temp_zone_);
     marker.resize(graph_->MaxID());
 
     // enqueue the first/root node
@@ -397,6 +413,35 @@ Expr* LoopIVTyper::TypeUnbox( Unbox* node ) {
     node->Replace(nnode);
     return nnode;
   }
+  return NULL;
+}
+
+Expr* LoopIVTyper::ToIndex( Expr* node , TypeKind tk ) {
+  lava_debug(NORMAL,lava_verify(tk == TPKIND_INT64 || tk == TPKIND_FLOAT64););
+  if(tk == TPKIND_FLOAT64) {
+    // don't need to unbox since it is float64 which is boxed and unboxed
+    auto i64 = Float64ToInt64::New(graph_,node);
+    return i64;
+  } else {
+    // it is a int64 type, which doesn't have a box version , just directly
+    // return the node which represents the unboxed value
+    return node;
+  }
+}
+
+bool LoopIVTyper::CheckList( Expr** node ) {
+  // TODO:: when we refactory the checkpoint generation, modify this to utilize
+  //        runtime feedback to do speculative type assertation
+  if(auto t = GetTypeInference(*node); t != TPKIND_LIST)
+    return false;
+  return true;
+}
+
+Expr* LoopIVTyper::TypeIGet( IGet* node ) {
+  return NULL;
+}
+
+Expr* LoopIVTyper::TypeISet( ISet* node ) {
   return NULL;
 }
 

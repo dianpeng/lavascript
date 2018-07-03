@@ -30,7 +30,7 @@ class Effect {
   // Return the write effect currently this effect object tracked
   WriteEffect* write_effect() const { return write_effect_; }
   // merge the input 2 effect object into another effect object, the input and output can be the same
-  static void MergeEffect( const Effect& , const Effect& , Effect* , Graph*  , Merge* );
+  static void MergeEffect( const Effect& , const Effect& , Effect* , Graph*  , EffectMergeRegion* );
  private:
   WriteEffect* write_effect_;
 

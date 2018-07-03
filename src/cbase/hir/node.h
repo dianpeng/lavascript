@@ -84,26 +84,6 @@ class IRInfo {
   std::uint32_t method_;              // Index for method information
 };
 
-// ----------------------------------------------------------------------------
-// Stmt list
-//
-// Bunch of statements that are not used by any expression but have observable
-// effects. Example like : foo() , a free function call
-typedef zone::List<Expr*> StmtList;
-typedef StmtList::ForwardIterator StmtIterator;
-
-// This structure is held by *all* the expression. If the region field is not
-// NULL then it means this expression has side effect and it is bounded at
-// certain control flow region
-struct StmtEdge {
-  ControlFlow* region;
-  StmtIterator iterator;
-  bool HasRef() const { return region != NULL; }
-
-  StmtEdge( ControlFlow* r , const StmtIterator& itr ): region(r), iterator(itr) {}
-  StmtEdge(): region(NULL), iterator() {}
-};
-
 // Reference
 template< typename ITR >
 struct Ref {
@@ -161,6 +141,16 @@ class Node : public zone::ZoneObject {
   Graph*        graph_;
 
   LAVA_DISALLOW_COPY_AND_ASSIGN(Node)
+};
+
+// Base for declaring node that can generate checkpoint for the function state
+class CheckpointNode {
+ public:
+  Checkpoint* checkpoint() const { return cp_; }
+ protected:
+  CheckpointNode( Checkpoint* cp ) : cp_(cp) {}
+ private:
+  Checkpoint* cp_;
 };
 
 // helper functions for implementing GVN hash table

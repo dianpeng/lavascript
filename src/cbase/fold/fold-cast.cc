@@ -39,6 +39,12 @@ Expr* CastFolder::Fold( Graph* graph , const FolderData& data ) {
 LAVA_REGISTER_FOLDER("cast-folder",CastFolderFactory,CastFolder);
 
 } // namespace
+
+Expr* FoldCast( Graph* graph , Expr* node ) {
+  CastFolder folder(NULL);
+  return folder.Fold(graph,ExprFolderData{node});
+}
+
 } // namespace hir
 } // namespace cbase
 } // namespace lavascript

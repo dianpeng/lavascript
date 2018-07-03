@@ -99,6 +99,7 @@ void DotPrinter::RenderControlFlow( const std::string& region_name , ControlFlow
   {
     auto count = 0;
     lava_foreach( auto node , region->operand_list()->GetForwardIterator() ) {
+      if(node->Is<Checkpoint>() && !opt_.checkpoint) continue;
       auto name = GetNodeName(node);
       RenderExpr(name,node);
       Indent(1) << region_name << " -> " << name << "[color=black style=bold label=" << count << "]\n";
@@ -106,25 +107,23 @@ void DotPrinter::RenderControlFlow( const std::string& region_name , ControlFlow
     }
   }
 
-  // for all statement node
-  {
-    auto count = 0;
-    lava_foreach( auto expr , region->stmt_list()->GetForwardIterator() ) {
-      auto name = GetNodeName(expr);
-      RenderExpr(name,expr);
-      Indent(1) << region_name << " -> " << name << "[color=purple style=dashed label=" << count << "]\n";
-      ++count;
-    }
-  }
-
   // for all phi node
   if(region->Is<Merge>()) {
     auto merge = region->As<Merge>();
-    lava_foreach( auto &n, merge->phi_list()->GetForwardIterator() ) {
-      auto expr = n.phi();
+    lava_foreach( auto &expr, merge->phi_list()->GetForwardIterator() ) {
       auto name = GetNodeName(expr);
       RenderExpr(name,expr);
       Indent(1) << region_name << " -> " << name << " [color=pink style=bold label=phi]\n";
+    }
+  }
+
+  // for all effect merge
+  if(region->Is<EffectMergeRegion>()) {
+    auto emerge = region->As<EffectMergeRegion>();
+    lava_foreach( auto &expr, emerge->effect_merge_list()->GetForwardIterator() ) {
+      auto name = GetNodeName(expr);
+      RenderExpr(name,expr);
+      Indent(1) << region_name << " -> " << name << " [color=gold style=bold label=eff]\n";
     }
   }
 }
@@ -308,7 +307,11 @@ void DotPrinter::RenderExprOperand( const std::string& name , Expr* node ) {
 void DotPrinter::RenderExprEffect( const std::string& name , Expr* node ) {
   // effect list node
   lava_foreach( auto n , node->GetDependencyIterator() ) {
-    Indent(1) << name << " -> " << GetNodeName(n) << "[ style=bold color=green ]\n";
+    auto nname = GetNodeName(n);
+    if(!existed_[n->id()]) {
+      RenderExpr(nname,n);
+    }
+    Indent(1) << name << " -> " << nname << "[ style=bold color=green ]\n";
   }
 }
 
@@ -341,12 +344,14 @@ void DotPrinter::RenderExprBrief( const std::string& name , Expr* node ) {
 void DotPrinter::RenderExpr( const std::string& name , Expr* node ) {
   if(existed_[node->id()]) return;
   existed_[node->id()] = true;
+
   if(node->Is<EffectNode>()) {
     Indent(1) << name << "[style=bold color=purple]\n";
   }
 
   if(opt_.ShouldRenderOperand()) RenderExprOperand(name,node);
   else                           RenderExprBrief  (name,node);
+
   if(opt_.ShouldRenderEffect ()) RenderExprEffect (name,node);
 }
 

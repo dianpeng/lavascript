@@ -136,8 +136,8 @@ class GraphBuilder {
     struct PhiVar {
       PhiVarType    type; // type of the var
       std::uint32_t idx;  // register index
-      ValuePhi*     phi;  // phi node
-      PhiVar( PhiVarType t , std::uint32_t i , ValuePhi* p ): type(t), idx(i), phi(p) {}
+      PhiBase*     phi;  // phi node
+      PhiVar( PhiVarType t , std::uint32_t i , PhiBase* p ): type(t), idx(i), phi(p) {}
     };
     std::vector<PhiVar> phi_list;
     // loop effect phi node , used to prevent memory operation forwarding cross loop
@@ -152,7 +152,7 @@ class GraphBuilder {
     void AddContinue( Jump* node , const std::uint32_t* target , const Environment& e ) {
       pending_continue.push_back(UnconditionalJump(node,target,e));
     }
-    void AddPhi( PhiVarType type , std::uint32_t index , ValuePhi* phi ) {
+    void AddPhi( PhiVarType type , std::uint32_t index , PhiBase* phi ) {
       phi_list.push_back(PhiVar(type,index,phi));
     }
     LoopInfo( const BytecodeAnalyze::LoopHeaderInfo* info ):
@@ -270,7 +270,7 @@ class GraphBuilder {
   Expr* AddTypeFeedbackIfNeed( Expr* , TypeKind     , const BytecodeLocation& );
   Expr* AddTypeFeedbackIfNeed( Expr* , const Value& , const BytecodeLocation& );
   // Create a guard node and linked it back to the current graph
-  Guard* NewGuard            ( Test* , Checkpoint* );
+  Guard* NewGuard            ( Test* );
   // Check whether a node's type is the needed type
   bool CheckType( Expr** , TypeKind     , std::size_t , const BytecodeLocation& );
  private: // Arithmetic
@@ -354,10 +354,10 @@ class GraphBuilder {
   Expr* NewPhi( Expr* , Expr* , ControlFlow* );
 
  private: // Iterator
-  Expr* NewItrNew  ( Expr* , ControlFlow* , const BytecodeLocation& );
-  Expr* NewItrNext ( Expr* , ControlFlow* , const BytecodeLocation& );
-  Expr* NewItrTest ( Expr* , ControlFlow* , const BytecodeLocation& );
-  Expr* NewItrDeref( Expr* , ControlFlow* , const BytecodeLocation& );
+  Expr* NewItrNew  ( Expr* , const BytecodeLocation& );
+  Expr* NewItrNext ( Expr* , const BytecodeLocation& );
+  Expr* NewItrTest ( Expr* , const BytecodeLocation& );
+  Expr* NewItrDeref( Expr* , const BytecodeLocation& );
 
  private: // Misc
   // Helper function to generate exit Phi node and also link the return and guard nodes to the
@@ -384,9 +384,6 @@ class GraphBuilder {
                                                                           std::size_t ,
                                                                           ControlFlow* );
   StopReason BuildIf     ( BytecodeIterator* );
-  // This function is invoked when the condition's boolean value is cleared, the we directly
-  // do DCE on the fly without generating those branch construct at all
-  StopReason TryFoldIf   ( BytecodeIterator* );
   StopReason BuildIfBlock( BytecodeIterator* , const std::uint32_t* );
   // Build logical IR graph
   StopReason BuildLogic  ( BytecodeIterator* );
@@ -437,11 +434,17 @@ class GraphBuilder {
   Environment*                        env_;
   // Type trace for speculative operation generation
   const RuntimeTrace&                 runtime_trace_;
+
   // Inliner , checks for inline operation
   std::unique_ptr<Inliner>            inliner_;
+
   // Tracked information
   zone::stl::ZoneVector<FuncInfo>     func_info_;
   zone::stl::ZoneVector<ControlFlow*> trap_list_;
+
+  // init barrier and checkpoint
+  Checkpoint*    init_checkpoint_;
+  InitBarrier*   init_barrier_;
 
   class OSRScope ;
   class InlineScope;
@@ -524,7 +527,9 @@ inline GraphBuilder::GraphBuilder( const Handle<Script>& script , const RuntimeT
   // TODO:: change inliner to runtime construction based on configuration
   inliner_          (new StaticInliner()),
   func_info_        (&temp_zone_),
-  trap_list_        (&temp_zone_)
+  trap_list_        (&temp_zone_),
+  init_checkpoint_  (NULL),
+  init_barrier_     (NULL)
 {
   folder_chain_ = std::make_unique<FolderChain>(&temp_zone_);
 }
@@ -544,7 +549,12 @@ GraphBuilder::Environment::Environment( zone::Zone* zone , GraphBuilder* gb ):
   effect_   (),
   cp_       (gb->InitCheckpoint())
 {
-  effect_.Init(InitBarrier::New(gb->graph()));
+  auto ib = InitBarrier::New(gb->graph());
+  effect_.Init(ib);
+  lava_debug(NORMAL,lava_verify(!gb->init_barrier_ && !gb->init_checkpoint_););
+
+  gb->init_barrier_    = ib;
+  gb->init_checkpoint_ = cp_;
 }
 
 GraphBuilder::Environment::Environment( const Environment& env , int type ):
@@ -582,7 +592,13 @@ GraphBuilder::Environment::Environment( const Environment& env ):
 void GraphBuilder::Environment::InsertBranchStartEffect( ControlFlow* region ) {
   auto se = BranchStartEffect::New(gb_->graph());
   effect()->UpdateWriteEffect(se);
-  region->AddStmt(se);
+
+  lava_debug(NORMAL,lava_verify(region->Is<IfTrue>() || region->Is<IfFalse>()););
+  if(region->Is<IfTrue>()) {
+    region->As<IfTrue>()->set_branch_start_effect(se);
+  } else {
+    region->As<IfFalse>()->set_branch_start_effect(se);
+  }
 }
 
 void GraphBuilder::Environment::EnterFunctionScope( const FuncInfo& func ) {
@@ -620,7 +636,6 @@ Expr* GraphBuilder::Environment::GetUpValue( std::uint8_t index ) {
 void GraphBuilder::Environment::SetUpValue( std::uint8_t index , Expr* value ) {
   auto uset = USet::New(gb_->graph_,index,gb_->method_index(),value);
   effect()->UpdateWriteEffect(uset);
-  gb_->region()->AddStmt(uset);
   upvalue()->at(index) = value;
 }
 
@@ -642,7 +657,6 @@ void GraphBuilder::Environment::SetGlobal( const void* key , std::size_t length 
                                                              Expr* value ) {
   auto gset = GSet::New(gb_->graph_,key_provider(),value);
   effect()->UpdateWriteEffect(gset);
-  gb_->region()->AddStmt(gset);
 
   auto itr = std::find(global_.begin(),global_.end(),Str(key,length));
   if(itr == global_.end()) {
@@ -937,9 +951,9 @@ IRObject* GraphBuilder::NewIRObject( std::size_t size ) {
 }
 
 // Type Guard ---------------------------------------------------------------------
-Guard* GraphBuilder::NewGuard( Test* test , Checkpoint* cp ) {
+Guard* GraphBuilder::NewGuard( Test* test ) {
   // create a new guard
-  auto guard = Guard::New(graph_,test,cp);
+  auto guard = Guard::New(graph_,test);
   // add this guard back to the guard_list , later on we can patch the guard
   func_info().guard_list.push_back(guard);
   // return the newly created region node
@@ -971,7 +985,7 @@ Expr* GraphBuilder::AddTypeFeedbackIfNeed( Expr* n , TypeKind tp , const Bytecod
   // generate type test node
   auto tt  = TestType::New(graph_,tp,n);
   // generate guard node
-  auto gd  = NewGuard(tt,env()->cp());
+  auto gd  = NewGuard(tt);
   // return the new guarded node
   return gd;
 }
@@ -994,7 +1008,7 @@ bool GraphBuilder::CheckType( Expr** object , TypeKind tp , std::size_t index , 
 
     if(res) {
       auto tt_node = TestType::New(graph_,vt,*object);
-      auto guard   = NewGuard(tt_node,env()->cp());
+      auto guard   = NewGuard(tt_node);
       *object      = guard; // overwrite the old node with newly guarded node
       return true;
     }
@@ -1165,7 +1179,6 @@ Expr* GraphBuilder::NewBinaryFallback( Expr* lhs , Expr* rhs , Binary::Operator 
   }
 
   env()->effect()->UpdateWriteEffect(write_effect);
-  region()->AddStmt(write_effect);
   return write_effect;
 }
 
@@ -1202,38 +1215,34 @@ Expr* GraphBuilder::NewPhi( Expr* lhs , Expr* rhs , ControlFlow* region ) {
 // ========================================================================
 // Iterator
 // ========================================================================
-Expr* GraphBuilder::NewItrNew( Expr* object , ControlFlow* region , const BytecodeLocation& pc ) {
+Expr* GraphBuilder::NewItrNew( Expr* object , const BytecodeLocation& pc ) {
   (void)pc;
 
   auto inew = ItrNew::New(graph_,object);
-  region->AddStmt(inew);
   env()->effect()->UpdateWriteEffect(inew);
   return inew;
 }
 
-Expr* GraphBuilder::NewItrNext( Expr* object , ControlFlow* region , const BytecodeLocation& pc ) {
+Expr* GraphBuilder::NewItrNext( Expr* object , const BytecodeLocation& pc ) {
   (void)pc;
 
   auto inext = ItrNext::New(graph_,object);
-  region->AddStmt(inext);
   env()->effect()->UpdateWriteEffect(inext);
   return inext;
 }
 
-Expr* GraphBuilder::NewItrTest( Expr* object , ControlFlow* region , const BytecodeLocation& pc ) {
+Expr* GraphBuilder::NewItrTest( Expr* object , const BytecodeLocation& pc ) {
   (void)pc;
 
   auto itest = ItrTest::New(graph_,object);
-  region->AddStmt(itest);
   env()->effect()->UpdateWriteEffect(itest);
   return itest;
 }
 
-Expr* GraphBuilder::NewItrDeref( Expr* object , ControlFlow* region , const BytecodeLocation& pc ) {
+Expr* GraphBuilder::NewItrDeref( Expr* object , const BytecodeLocation& pc ) {
   (void)pc;
 
   auto ideref = ItrDeref::New(graph_,object);
-  region->AddStmt(ideref);
   env()->effect()->UpdateWriteEffect(ideref);
   return ideref;
 }
@@ -1278,7 +1287,7 @@ Expr* GraphBuilder::TryFoldTypedPGet ( Expr* object , Expr* key , const Bytecode
   auto ref = folder_chain_->Fold(graph_,ObjectFindFolderData{object,key,env()->effect()->write_effect()});
   if(!ref) {
     // create a ObjectFind node
-    auto of = ObjectFind::New(graph_,object,key,env()->cp());
+    auto of = ObjectFind::New(graph_,object,key);
     env()->effect()->AddReadEffect(of);
     // try to fold the newly created reference node
     ref = folder_chain_->Fold(graph_,ExprFolderData{of});
@@ -1309,7 +1318,6 @@ Expr* GraphBuilder::NewPGetFallback( Expr* object , Expr* key , const BytecodeLo
   auto cp = GenerateCheckpoint(bc);
   cp->AddOperand(ret);
   env()->effect()->UpdateWriteEffect(ret);
-  region()->AddStmt(ret);
   return ret;
 }
 
@@ -1328,7 +1336,7 @@ Expr* GraphBuilder::TryFoldTypedPSet ( Expr* object , Expr* key , Expr* value ,
   auto ref = folder_chain_->Fold(graph_,
       ObjectFindFolderData{object,key,env()->effect()->write_effect()});
   if(!ref) {
-    auto of = ObjectFind::New(graph_,object,key,env()->cp());
+    auto of = ObjectFind::New(graph_,object,key);
     env()->effect()->AddReadEffect(of);
     ref = folder_chain_->Fold(graph_,ExprFolderData{of});
   }
@@ -1338,7 +1346,6 @@ Expr* GraphBuilder::TryFoldTypedPSet ( Expr* object , Expr* key , Expr* value ,
   } else {
     auto ret = ObjectRefSet::New(graph_,ref,value);
     env()->effect()->UpdateWriteEffect(ret);
-    region()->AddStmt(ret);
     return ret;
   }
 
@@ -1360,7 +1367,6 @@ Expr* GraphBuilder::NewPSetFallback( Expr* object , Expr* key , Expr* value ,
   auto cp = GenerateCheckpoint(bc);
   cp->AddOperand(ret);
   env()->effect()->UpdateWriteEffect(ret);
-  region()->AddStmt(ret);
   return ret;
 }
 
@@ -1407,7 +1413,7 @@ Expr* GraphBuilder::TryFoldTypedISet( Expr* object , Expr* index , Expr* value ,
   auto ref = folder_chain_->Fold(graph_,
       ListIndexFolderData{object,index,env()->effect()->write_effect()});
   if(!ref) {
-    auto of = ListIndex::New(graph_,object,index,env()->cp());
+    auto of = ListIndex::New(graph_,object,index);
     env()->effect()->AddReadEffect(of);
     ref = folder_chain_->Fold(graph_,ExprFolderData{of});
   }
@@ -1417,7 +1423,6 @@ Expr* GraphBuilder::TryFoldTypedISet( Expr* object , Expr* index , Expr* value ,
   } else {
     auto ret = ListRefSet::New(graph_,ref,value);
     env()->effect()->UpdateWriteEffect(ret);
-    region()->AddStmt(ret);
     return ret;
   }
 }
@@ -1438,7 +1443,6 @@ Expr* GraphBuilder::NewISetFallback( Expr* object, Expr* index, Expr* value , co
   auto cp  = GenerateCheckpoint(bc);
   cp->AddOperand(ret);
   env()->effect()->UpdateWriteEffect(ret);
-  region()->AddStmt(ret);
   return ret;
 }
 
@@ -1457,7 +1461,7 @@ Expr* GraphBuilder::TryFoldTypedIGet( Expr* object , Expr* index , const Bytecod
   auto ref = folder_chain_->Fold(graph_,
       ListIndexFolderData{object,index,env()->effect()->write_effect()});
   if(!ref) {
-    auto of = ListIndex::New(graph_,object,index,env()->cp());
+    auto of = ListIndex::New(graph_,object,index);
     env()->effect()->AddReadEffect(of);
     ref = folder_chain_->Fold(graph_,ExprFolderData{of});
   }
@@ -1487,7 +1491,6 @@ Expr* GraphBuilder::NewIGetFallback( Expr* object, Expr* index , const BytecodeL
   auto cp  = GenerateCheckpoint(bc);
   cp->AddOperand(ret);
   env()->effect()->UpdateWriteEffect(ret);
-  region()->AddStmt(ret);
   return ret;
 }
 
@@ -1593,7 +1596,7 @@ void GraphBuilder::GeneratePhi( ValueStack* dest , const ValueStack& lhs , const
 // key function to merge the effect and value from 2 environments. called at every region merge
 void GraphBuilder::InsertPhi( Environment* lhs , Environment* rhs , ControlFlow* region ) {
   // 1. generate merge for both region's root effect group
-  Effect::MergeEffect(*lhs->effect(),*rhs->effect(),env()->effect(),graph_,region->As<Merge>());
+  Effect::MergeEffect(*lhs->effect(),*rhs->effect(),env()->effect(),graph_,region->As<EffectMergeRegion>());
   // 2. generate phi for all the stack value
   GeneratePhi(vstk(),*lhs->stack(),*rhs->stack(),func_info().base,
       func_info().prototype->max_local_var_size(),region);
@@ -1716,41 +1719,8 @@ GraphBuilder::StopReason GraphBuilder::BuildIfBlock( BytecodeIterator* itr , con
 }
 
 GraphBuilder::StopReason
-GraphBuilder::TryFoldIf( BytecodeIterator* itr ) {
-  std::uint8_t cond;
-  std::uint16_t offset;
-  itr->GetOperand(&cond,&offset);
-  if(auto bval = false; GetBooleanValue(StackGet(cond),&bval)) {
-    auto final_cursor = offset;
-    if(bval) {
-      // skip BC_JMPF
-      itr->Move();
-      // flag to indicate whether we have else branch , can be
-      // detected by going through the whole if_true branch
-      switch(BuildIfBlock(itr,itr->OffsetAt(offset))) {
-        case STOP_BAILOUT: return STOP_BAILOUT;
-        case STOP_JUMP   : itr->GetOperand(&final_cursor); break;
-        default:           break;
-      }
-    }
-
-    // if bval is false, we don't need to do anything here since if there's
-    // no else branch or if there's a else/elif branch, to us it is the same.
-    // The bytecode generator will not generate a jump for the last branch,so
-    // just treat it as a natural fallthrough
-    itr->BranchTo(final_cursor);
-    return STOP_SUCCESS;
-  }
-  return STOP_NA; // not available
-}
-
-GraphBuilder::StopReason
 GraphBuilder::BuildIf( BytecodeIterator* itr ) {
   lava_debug(NORMAL,lava_verify(itr->opcode() == BC_JMPF););
-
-  // try to fold the branch
-  if(auto stat = TryFoldIf(itr); stat != STOP_NA)
-    return stat;
 
   // do the normal branch
   std::uint8_t cond;    // condition's register
@@ -1912,7 +1882,7 @@ void GraphBuilder::PatchLoopInductionVariable() {
           phi->AddOperand(node);
           if(auto p = folder_chain_->Fold(graph_,ExprFolderData{phi}); p) phi->Replace(p);
         } else {
-          ValuePhi::RemovePhiFromRegion(phi);
+          PhiBase::RemovePhiFromRegion(phi);
         }
         break;
       case LoopInfo::GLOBAL:
@@ -1961,7 +1931,7 @@ Expr* GraphBuilder::BuildLoopEndCondition( BytecodeIterator* itr , ControlFlow* 
         std::uint8_t a1;
         std::uint16_t pc;
         itr->GetOperand(&a1,&pc);
-        return NewItrNext(StackGet(a1),body,itr->bytecode_location());
+        return NewItrNext(StackGet(a1),itr->bytecode_location());
       }
     default:
       return NewBoolean(true);
@@ -2002,8 +1972,7 @@ GraphBuilder::BuildLoopBody( BytecodeIterator* itr , ControlFlow* loop_header ) 
 
     // patch the loop effect phi with correct region node
     {
-      loop_effect_phi->set_region(body);
-      body->AddPhi(PhiNode{loop_effect_phi});
+      body->set_loop_effect_start(loop_effect_phi);
       func_info().current_loop().loop_effect_phi = loop_effect_phi;
     }
 
@@ -2073,8 +2042,8 @@ GraphBuilder::StopReason GraphBuilder::BuildLoop( BytecodeIterator* itr ) {
   } else if(itr->opcode() == BC_FESTART) {
     std::uint8_t a1; std::uint16_t a2;
     itr->GetOperand(&a1,&a2);
-    auto inew  = NewItrNew (StackGet(a1),loop_header,itr->bytecode_location());
-    auto itest = NewItrTest(inew        ,loop_header,itr->bytecode_location());
+    auto inew  = NewItrNew (StackGet(a1),itr->bytecode_location());
+    auto itest = NewItrTest(inew        ,itr->bytecode_location());
     StackSet(a1,inew);
     loop_header->set_condition(itest);
   } else {
@@ -2337,7 +2306,7 @@ GraphBuilder::StopReason GraphBuilder::BuildBytecode( BytecodeIterator* itr ) {
     case BC_IDREF:
       lava_debug(NORMAL,lava_verify(func_info().HasLoop()););
       {
-        auto iref       = NewItrDeref    (StackGet(a3),region(),itr->bytecode_location());
+        auto iref       = NewItrDeref    (StackGet(a3),itr->bytecode_location());
         Projection* key = Projection::New(graph_,iref,ItrDeref::PROJECTION_KEY);
         Projection* val = Projection::New(graph_,iref,ItrDeref::PROJECTION_VAL);
         StackSet(a1,key);
@@ -2406,18 +2375,15 @@ GraphBuilder::StopReason GraphBuilder::BuildBasicBlock( BytecodeIterator* itr , 
 bool GraphBuilder::Build( const Handle<Prototype>& entry , Graph* graph ) {
   graph_ = graph;
   zone_  = graph->zone();
+  // start the basic block building setup the main environment object
+  Environment root_env(temp_zone(),this);
 
   // 1. create the start and end region
-  Start* start = Start::New(graph_);
-  End*   end = NULL;
-  Fail* fail   = Fail::New(graph_);
-  Success* succ= Success::New(graph_);
-
-  // create the first region
+  Start* start   = Start::New(graph_,init_checkpoint_,init_barrier_);
+  End*  end      = NULL;
+  Fail* fail     = Fail::New(graph_);
+  Success* succ  = Success::New(graph_);
   Region* region = Region::New(graph_,start);
-
-  // 2. start the basic block building setup the main environment object
-  Environment root_env(temp_zone(),this);
 
   BACKUP_ENVIRONMENT(&root_env,this) {
     // enter into the top level function
@@ -2473,7 +2439,7 @@ void GraphBuilder::SetupOSRLoopCondition( BytecodeIterator* itr ) {
     std::uint8_t a1;
     std::uint16_t pc;
     itr->GetOperand(&a1,&pc);
-    StackSet(a1,NewItrNext(StackGet(a1),region(),itr->bytecode_location()));
+    StackSet(a1,NewItrNext(StackGet(a1),itr->bytecode_location()));
   } else {
     lava_debug(NORMAL,lava_verify(itr->opcode() == BC_FEVREND););
   }
@@ -2557,16 +2523,16 @@ GraphBuilder::StopReason
 GraphBuilder::BuildOSRStart( const Handle<Prototype>& entry ,  const std::uint32_t* pc , Graph* graph ) {
   graph_ = graph;
   zone_  = graph->zone();
-  // 1. create OSRStart node which is the entry of OSR compilation
-  OSRStart* start = OSRStart::New(graph);
-  OSREnd*   end   = NULL;
-  // next region node connect back to the OSRStart
-  Region* header = Region::New(graph,start);
-  // setup the fail node which accepts guard bailout
-  Fail* fail = Fail::New(graph);
-  Success* succ = Success::New(graph);
-  // set up the value stack/expression stack
+
+  // initialize the environment for graph building
   Environment root_env(temp_zone(),this);
+
+  // 1. create OSRStart node which is the entry of OSR compilation
+  OSRStart* start = OSRStart::New(graph,init_checkpoint_,init_barrier_);
+  OSREnd*   end   = NULL;
+  Region*  header = Region::New(graph,start);
+  Fail*      fail = Fail::New(graph);
+  Success*   succ = Success::New(graph);
 
   BACKUP_ENVIRONMENT(&root_env,this) {
     // set up the OSR scope

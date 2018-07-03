@@ -127,9 +127,11 @@ bool CheckGraphOSR( const char* source , std::size_t offset ) {
 
 TEST(GraphBuilder,Basic) {
   CASE(
-      for( var i = 0 ; 100 ; 1 ) {
-      }
+      var sum = 0;
+      for(var i = 0 ; 1 ; 1 ) { sum = sum + a[i+10]; }
+      return sum;
   );
+
 }
 
 } // namespace hir

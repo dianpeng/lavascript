@@ -15,7 +15,7 @@ void ControlFlowKit::Reset() {
 
 ControlFlowKit& ControlFlowKit::DoStart() {
   lava_debug(NORMAL,lava_verify(!start_););
-  start_ = Start::New(graph_);
+  start_ = Start::New(graph_,Checkpoint::New(graph_,NULL),InitBarrier::New(graph_));
   context_.push_back(Context(Region::New(graph_,start_)));
   return *this;
 }

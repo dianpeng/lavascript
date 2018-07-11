@@ -4,9 +4,9 @@
 #include <string>
 
 namespace lavascript {
-namespace zone { struct Zone; }
+namespace zone { class Zone; }
 namespace parser {
-namespace ast { struct Node; }
+namespace ast  { struct Node; }
 
 
 /**

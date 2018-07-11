@@ -441,7 +441,7 @@ class LAVASCRIPT_OBJECT_ALIGN SSO final {
 
   // memory pool for SSOs
   friend class gc::SSOPool;
-  friend class SSOLayout;
+  friend struct SSOLayout;
 
   LAVA_DISALLOW_COPY_AND_ASSIGN(SSO);
 };
@@ -555,7 +555,7 @@ class LAVASCRIPT_OBJECT_ALIGN String final : public HeapObject {
   static Handle<String> NewFromBoolean( GC* , bool );
  private:
 
-  friend class StringLayout;
+  friend struct StringLayout;
   friend class GC;
   LAVA_DISALLOW_COPY_AND_ASSIGN(String);
 };
@@ -2431,7 +2431,7 @@ inline bool Map::Delete( const std::string& key ) {
 template< typename T > bool Map::Visit( T* visitor ) {
   if(visitor->Begin(this)) {
     for( std::size_t i = 0 ; i < capacity() ; ++i ) {
-      Entry* e = data()[i];
+      Entry* e = data()+i;
       if(e->active()) {
         if(!visitor->VisitString( Handle<String>(e->key)) ||
            !visitor->VisitValue ( e->value ))

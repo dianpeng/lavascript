@@ -37,12 +37,23 @@ inline bool Crash ( const char* expression , const char* file , int line ,
 #define lava_assertF( EXPRESSION , FORMAT , ... ) \
   (void)((EXPRESSION) || ::lavascript::Crash(#EXPRESSION,__FILE__,__LINE__,FORMAT,__VA_ARGS__))
 
-#define lava_unreach(MESSAGE) ::lavascript::Crash("unreachable!!",__FILE__,__LINE__,MESSAGE)
+#define lava_unreach(MESSAGE)                                                 \
+  do {                                                                        \
+    ::lavascript::Crash("unreachable!!",__FILE__,__LINE__,MESSAGE);           \
+    __builtin_unreachable();                                                  \
+  } while(false)
 
-#define lava_unreachF( FORMAT , ... ) \
-  ::lavascript::Crash("unreachable!!",__FILE__,__LINE__,FORMAT,__VA_ARGS__)
+#define lava_unreachF( FORMAT , ... )                                         \
+  do {                                                                        \
+    ::lavascript::Crash("unreachable!!",__FILE__,__LINE__,FORMAT,__VA_ARGS__);\
+    __builtin_unreachable();                                                  \
+  } while(false)
 
-#define lava_die() ::lavascript::Crash("die!!",__FILE__,__LINE__,"")
+#define lava_die()                                     \
+  do {                                                 \
+    ::lavascript::Crash("die!!",__FILE__,__LINE__,""); \
+    __builtin_unreachable();                           \
+  } while(false)
 
 #define lava_verify( EXPRESSION ) lava_assert( EXPRESSION , "verification failed!!" )
 

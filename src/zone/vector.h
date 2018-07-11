@@ -427,6 +427,7 @@ inline std::int64_t VectorBackwardTraits<T>::InitCursor( VectorType* vec ) {
 
 template< typename T >
 inline bool VectorBackwardTraits<T>::HasNext( VectorType* vec , std::int64_t cursor ) {
+  (void)vec;
   return cursor >= 0;
 }
 

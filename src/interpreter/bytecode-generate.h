@@ -752,7 +752,7 @@ inline bool RegisterAllocator::IsUsed( const Register& reg ) {
 
 inline RegisterAllocator::Node*
 RegisterAllocator::RegisterToSlot( const Register& reg ) {
-  lava_debug(NORMAL,!reg.IsAcc(););
+  lava_debug(NORMAL,lava_verify(!reg.IsAcc()););
   Node* n = reinterpret_cast<Node*>(reg_buffer_) + reg.index();
   return n;
 }

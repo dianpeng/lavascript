@@ -132,8 +132,8 @@ class ZoneObject {
   static void* operator new( std::size_t size , Zone* zone ) {
     return zone->Malloc(size);
   }
-  static void* operator new( std::size_t ) { lava_die(); return NULL; }
-  static void* operator new[] ( std::size_t ) { lava_die(); return NULL; }
+  static void* operator new( std::size_t ) { lava_die(); }
+  static void* operator new[] ( std::size_t ) { lava_die(); }
   static void  operator delete( void* ) { lava_die(); }
   static void  operator delete[](void*) { lava_die(); }
 };

@@ -438,10 +438,12 @@ bool LoopIVTyper::CheckList( Expr** node ) {
 }
 
 Expr* LoopIVTyper::TypeIGet( IGet* node ) {
+  (void)node;
   return NULL;
 }
 
 Expr* LoopIVTyper::TypeISet( ISet* node ) {
+  (void)node;
   return NULL;
 }
 

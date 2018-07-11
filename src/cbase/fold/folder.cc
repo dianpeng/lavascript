@@ -18,7 +18,7 @@ FolderFactory::FolderFactoryEntryList& FolderFactory::GetFolderFactoryEntryList(
 FolderChain::FolderChain( zone::Zone* zone ) : zone_(zone) , chain_() {
   for( auto &e : FolderFactory::GetFolderFactoryEntryList() ) {
     lava_debug(NORMAL,lava_info("Folder algorithm %s registered",e.name.c_str()););
-    chain_.push_back(std::move(e.factory->Create(zone_)));
+    chain_.push_back(e.factory->Create(zone_));
   }
 }
 

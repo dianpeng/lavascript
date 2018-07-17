@@ -82,26 +82,26 @@ void ReadEffect::Replace( Expr* node ) {
   Expr::Replace(node);
 }
 
-void WriteEffect::Replace( Expr* node ) {
-  // to replace a write effect node, one can replace it with lower none side
-  // effect node.
-  lava_debug(NORMAL,lava_verify(!node->Is<EffectNode>()););
-
+void WriteEffect::RemoveFromEffectChain( WriteEffect* next_write ) {
   // 1. put all the read happened after |this| node to the node
   //    that's Next to it.
-  auto next_write = NextWrite();
-  {
-    lava_foreach( auto &k , read_effect_.GetForwardIterator() ) {
-      auto itr = next_write->read_effect_.PushBack(zone(),k);
-      k->set_effect_edge( itr , next_write );
-    }
-
-    // now remove  |this| from the dependency chain
-    RemoveLink();
+  next_write = next_write ? next_write : NextWrite();
+  lava_foreach( auto &k , read_effect_.GetForwardIterator() ) {
+    auto itr = next_write->read_effect_.PushBack(zone(),k);
+    k->set_effect_edge( itr , next_write );
   }
 
+  // now remove  |this| from the dependency chain
+  RemoveLink();
+}
+
+void WriteEffect::Replace( Expr* node ) {
   // 2. Do the normal replacement of the expression node
-  {
+  if(!node->Is<EffectNode>()) {
+    // not a effect node any more, remove it from the effec chain
+    RemoveFromEffectChain();
+
+    auto next_write = NextWrite();
     // 2.1 iterate against all the *ref_list* and patch each ref pointed to
     //     the new replacement. There's one exception, that is if the ref
     //     node is a EffectMergeBase node, then you have to write it to next
@@ -116,8 +116,49 @@ void WriteEffect::Replace( Expr* node ) {
       }
     }
 
-    // 2.2 clear all the existed operands
     ClearOperand();
+  } else {
+    lava_unreachF("should never reach here, the node has side effect but this function "
+                  "cannot take care of the side effect node");
+  }
+}
+
+void WriteEffect::ReplacePair( EffectNode* target , WriteEffect* write ) {
+  auto nlink = NextWrite();
+
+  // remove |this| node from the effect chain and convert all
+  // write operation happened *after* |this| into the input
+  // write node
+  RemoveFromEffectChain(write);
+
+  // patch all the reference pointed to this node
+  lava_foreach( auto &k , ref_list()->GetForwardIterator() ) {
+    if(k.node->Is<EffectMergeBase>()) {
+      write->AddRef(k.node,k.id);
+      k.id.set_value(write);
+    } else {
+      target->AddRef(k.node,k.id);
+      k.id.set_value(target);
+    }
+  }
+
+  // clear all the operands of this node
+  ClearOperand();
+
+  // insert the input node range [target,write] into the effect chain
+  if(target->Is<ReadEffect>()) {
+    // 1. link the read effect(target) into its previous write effect
+    auto re = target->As<ReadEffect>();
+    re->SetWriteEffect(nlink->As<WriteEffect>());
+    // 2. link the write effect into the chain
+    write->HappenAfter(nlink->As<WriteEffect>());
+  } else if(target->Is<WriteEffect>()) {
+    // the write must already be linked against target since it is a write
+    lava_debug(NORMAL,lava_verify(write->NextWrite() == target););
+    // link this range into the effect chain
+    DoubleLinkNode::InsertRange(target,write,nlink);
+  } else {
+    lava_unreachF("unknown type of the effect node:%s",target->type_name());
   }
 }
 

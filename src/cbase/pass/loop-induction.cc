@@ -438,7 +438,22 @@ bool LoopIVTyper::CheckList( Expr** node ) {
 }
 
 Expr* LoopIVTyper::TypeIGet( IGet* node ) {
-  (void)node;
+  // IGET ( Write ) -->
+  //   ObjectFind  ( Read  )
+  //   ObjectRefSet( Write )
+
+  auto obj = node->object();
+  auto idx = node->index ();
+  TypeKind idx_type;
+
+  // 1. check whether the object is a list or not
+  if(!CheckList(&obj))
+    return NULL;
+
+  // 2. check whethre the index is a valid number
+  if(idx_type = GetTypeInference(idx); !TPKind::IsNumber(idx_type))
+    return NULL;
+
   return NULL;
 }
 

@@ -340,18 +340,30 @@ class DoubleLinkNode {
   T* NextLink() const { return next_; }
   T* PrevLink() const { return prev_; }
 
-  // add a link *before* the input that node
+  // add a link *before* the input that node , also takes
+  // care of the insertion if that node has its *previous*
+  // field set correctly
   void AddLink( T* that ) {
-    next_ = that;
-    if(that) that->prev_ = static_cast<T*>(this);
+    InsertRange(that,that,static_cast<T*>(this));
   }
-
   // remove this node from the linked list
   void RemoveLink() {
     if(prev_) prev_->next_ = next_;
     if(next_) next_->prev_ = prev_;
   }
-
+ protected:
+  // Helper function to insert a range of nodes *before* a target node
+  static void InsertRange( T* start, T* end , T* target ) {
+    start->next_ = target;
+    if(target) {
+      target->prev_= start;
+      auto target_prev = target->prev_;
+      if(target_prev) {
+        target_prev->next_ = end;
+        end->prev_         = target_prev;
+      }
+    }
+  }
  private:
   T* next_;
   T* prev_;

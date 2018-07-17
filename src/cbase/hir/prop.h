@@ -202,7 +202,6 @@ LAVA_CBASE_HIR_DEFINE(HIR_INTERNAL,StaticRef,public ReadEffect) {
     ReadEffect(type,id,graph) {}
 };
 
-
 LAVA_CBASE_HIR_DEFINE(Tag=OBJECT_FIND;Name="object_find";Leaf=NoLeaf,
     ObjectFind,public StaticRef) {
  public:

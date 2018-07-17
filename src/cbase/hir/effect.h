@@ -84,6 +84,9 @@ LAVA_CBASE_HIR_DEFINE(HIR_INTERNAL,WriteEffect,public EffectNode ,public DoubleL
     }
   }
  public:
+  // remove |this| write from the effect chain. The read operation is handled properly by
+  // forwarding it to its *NextWrite*.
+  void RemoveFromEffectChain( WriteEffect* write = NULL );
 
   // return the next write effect node ,if a effect phi node is met then it returns NULL
   // since user should not use NextWrite to examine the next barrier node
@@ -127,9 +130,15 @@ LAVA_CBASE_HIR_DEFINE(HIR_INTERNAL,WriteEffect,public EffectNode ,public DoubleL
   }
 
  public:
-  virtual void Replace( Expr* );
+  virtual void Replace ( Expr* );
+
+  // replace this node with a range of effect node. The 1st EffectNode should be used
+  // to replace |this| node ; and the 2nd EffectNode is the write effect that all the
+  // read happened after |this| that should be moved to this write effect node.
+  void ReplacePair( EffectNode* , WriteEffect* );
 
  private:
+
   ReadEffectList read_effect_;    // all read effect that read |this| write effect
   class WriteEffectDependencyIterator;
   friend class WriteEffectDependencyIterator;

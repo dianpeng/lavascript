@@ -233,12 +233,13 @@ class BytecodeUsage {
   /* forloop tag */ \
   __(B,FSTART,fstart,  OUTPUT, PC     , UNUSED , UNUSED,true ) \
   __(H,FEND1,fend1  ,  INPUT , INPUT  , UNUSED , PC    ,true ) \
-  __(H,FEND2,fend2  ,  INPUT , INPUT  , INPUT  , PC    ,true ) \
+  __(H,FEND2,fend2  ,  INOUT , INPUT  , INPUT  , PC    ,true ) \
   __(X,FEVRSTART,fevrstart,UNUSED,UNUSED,UNUSED,UNUSED ,false) \
   /* fevrend also has feedback , thouth it is empty, we need it */    \
   /* simply because we can use the fevrend to stop a profile trace */ \
   /* and kicks in the actual compilation job */  \
-  __(G,FEVREND,fevrend,PC    , UNUSED , UNUSED , UNUSED,false) \
+  __(G,FEVREND ,fevrend ,PC    , UNUSED , UNUSED , UNUSED,false) \
+  __(H,FEVREND2,fevrend2,INOUT , INPUT  , UNUSED , PC    ,true ) \
   __(B,FESTART,festart,INPUT , PC     , UNUSED , UNUSED,true ) \
   __(B,FEEND  ,feend  ,INPUT , PC     , UNUSED , UNUSED,true ) \
   __(D,IDREF  ,idref  ,OUTPUT, OUTPUT , INPUT  , UNUSED,false) \
@@ -290,7 +291,11 @@ inline bool IsLoopStartBytecode( Bytecode bc ) {
 }
 
 inline bool IsLoopEndBytecode( Bytecode bc ) {
-  return bc == BC_FEND1 || bc == BC_FEND2 || bc == BC_FEVREND || bc == BC_FEEND;
+  return bc == BC_FEND1 || bc == BC_FEND2 || bc == BC_FEVREND || bc == BC_FEEND || bc == BC_FEVREND2;
+}
+
+inline bool IsForeverLoopEndBytecode( Bytecode bc ) {
+  return bc == BC_FEVREND || bc == BC_FEVREND2;
 }
 
 inline bool IsBlockJumpBytecode( Bytecode bc ) {

@@ -1777,9 +1777,13 @@ bool Generator::Visit( const ast::For& node ) {
                                                   header);
       }
     } else {
-      // don't have 2nd and also don't have 3rd( guaranteed by the parser ).
-      // this is a forever loop, use fevrend instruction
-      SEMIT(fevrend,node.sci(),header);
+      if(node._3rd) {
+        SEMIT(fevrend2,node.sci(),induct_reg.index(),third_reg.index(),
+                                                     0,
+                                                     header);
+      } else {
+        SEMIT(fevrend,node.sci(),header);
+      }
     }
 
     // Patch all break to jump here , basically jumps out of

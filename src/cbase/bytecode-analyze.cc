@@ -257,13 +257,13 @@ void BytecodeAnalyze::BuildForeverLoop( BytecodeIterator* itr ) {
     LoopScope scope(this,itr->pc(),itr->pc());
 
     while(itr->HasNext()) {
-      if(itr->opcode() == BC_FEVREND)
+      if(IsForeverLoopEndBytecode(itr->opcode()))
         break;
       else {
         BuildBytecode(itr);
       }
     }
-    lava_debug(NORMAL,lava_verify(itr->opcode() == BC_FEVREND););
+    lava_debug(NORMAL,lava_verify(IsForeverLoopEndBytecode(itr->opcode())););
 
     current_bb()->end   = itr->pc();
     current_loop()->end = itr->pc();

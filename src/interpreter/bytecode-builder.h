@@ -175,6 +175,11 @@ class BytecodeBuilder {
                                                                    std::uint8_t a3,
                                                                    std::uint16_t a4 );
 
+  inline bool fevrend2( std::uint8_t reg , const SourceCodeInfo& si , std::uint8_t a1,
+                                                                      std::uint8_t a2,
+                                                                      std::uint8_t a3,
+                                                                      std::uint16_t a4 );
+
  public:
   /* -----------------------------------------------------
    * Jump related isntruction                            |
@@ -441,6 +446,15 @@ inline bool BytecodeBuilder::fend2(std::uint8_t reg ,
                                    std::uint8_t a3,
                                    std::uint16_t a4 ) {
   return EmitH(reg,sci,BC_FEND2,a1,a2,a3,a4);
+}
+
+inline bool BytecodeBuilder::fevrend2(std::uint8_t reg ,
+                                      const SourceCodeInfo& sci ,
+                                      std::uint8_t a1,
+                                      std::uint8_t a2,
+                                      std::uint8_t a3,
+                                      std::uint16_t a4 ) {
+  return EmitH(reg,sci,BC_FEVREND2,a1,a2,a3,a4);
 }
 
 inline BytecodeBuilder::Label BytecodeBuilder::jmpt( std::uint8_t reg ,

@@ -95,11 +95,9 @@ bool CheckGraph( const char* source ) {
 
 TEST(GraphBuilder,Basic) {
   CASE(
-      var sum = 0;
-      for( var i = 0 ; 100 ; 1 ) {
-        sum = sum + a[i+10];
+      for( var i = 0 ; ; 1 ) {
+        if( i < 10 ) break;
       }
-      return sum;
   );
 }
 

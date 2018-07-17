@@ -1809,7 +1809,7 @@ GraphBuilder::BuildLoopBlock( BytecodeIterator* itr ) {
     }
   }
 
-  lava_unreachF("%s","must be closed by BC_FEEND/BC_FEND1/BC_FEND2/BC_FEVREND");
+  lava_unreachF("%s","must be closed by BC_FEEND/BC_FEND1/BC_FEND2/BC_FEVREND/BC_FEVREND2");
   return STOP_BAILOUT;
 }
 
@@ -1933,6 +1933,14 @@ Expr* GraphBuilder::BuildLoopEndCondition( BytecodeIterator* itr , ControlFlow* 
         itr->GetOperand(&a1,&pc);
         return NewItrNext(StackGet(a1),itr->bytecode_location());
       }
+    case BC_FEVREND2:
+      {
+        std::uint8_t a1,a2,a3; std::uint32_t a4;
+        itr->GetOperand(&a1,&a2,&a3,&a4);
+        auto addition = NewBinary(StackGet(a1),StackGet(a2), Binary::ADD, itr->bytecode_location());
+        StackSet(a1,addition);
+        return addition;
+      }
     default:
       return NewBoolean(true);
   }
@@ -2047,8 +2055,7 @@ GraphBuilder::StopReason GraphBuilder::BuildLoop( BytecodeIterator* itr ) {
     StackSet(a1,inew);
     loop_header->set_condition(itest);
   } else {
-    lava_unreachF("should not reach here, forever loop should be "
-                  "foleded before , bytecode %s",itr->opcode_name());
+    loop_header->set_condition(Boolean::New(graph_,true));
   }
 
   // skip the loop start bytecode
@@ -2441,7 +2448,7 @@ void GraphBuilder::SetupOSRLoopCondition( BytecodeIterator* itr ) {
     itr->GetOperand(&a1,&pc);
     StackSet(a1,NewItrNext(StackGet(a1),itr->bytecode_location()));
   } else {
-    lava_debug(NORMAL,lava_verify(itr->opcode() == BC_FEVREND););
+    lava_debug(NORMAL,lava_verify(IsForeverLoopEndBytecode(itr->opcode())););
   }
 }
 

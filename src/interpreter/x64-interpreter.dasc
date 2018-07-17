@@ -707,29 +707,50 @@ bool InterpreterForEnd1( Runtime* sandbox , const Value& lhs , const Value& rhs 
 }
 INTERPRETER_REGISTER_EXTERN_SYMBOL(InterpreterForEnd1)
 
-bool InterpreterForEnd2( Runtime* sandbox , const Value& lhs , const Value& rhs ,
-                                                               const Value& step ,
-                                                               std::uint32_t offset ) {
-  Value new_induction;
-
+bool InterpreterForEnd2( Runtime* sandbox , Value* lhs , const Value& rhs ,
+                                                         const Value& step ,
+                                                         std::uint32_t offset ) {
   // 1. do the addtion part
-  if(lhs.IsExtension() || step.IsExtension()) {
-    Handle<Extension> ext(lhs.IsExtension() ? lhs.GetExtension() : step.GetExtension());
-    if(!ext->Add(lhs,step,&new_induction,sandbox->error))
+  if(lhs->IsExtension() || step.IsExtension()) {
+    Handle<Extension> ext(lhs->IsExtension() ? lhs->GetExtension() : step.GetExtension());
+    if(!ext->Add(*lhs,step,lhs,sandbox->error))
       return false;
-  } else if(lhs.IsReal() && step.IsReal()) {
-    new_induction.SetReal( lhs.GetReal() + step.GetReal() );
+  } else if(lhs->IsReal() && step.IsReal()) {
+    lhs->SetReal( lhs->GetReal() + step.GetReal() );
   } else {
     ReportError(sandbox,"type %s and %s cannot be used for range for loop,"
                         "no \"+\" operation allowed",
-                        lhs.type_name(),step.type_name());
+                        lhs->type_name(),step.type_name());
     return false;
   }
 
   // 2. do the comparison part
-  return InterpreterForEnd1(sandbox,new_induction,rhs,offset);
+  return InterpreterForEnd1(sandbox,*lhs,rhs,offset);
 }
 INTERPRETER_REGISTER_EXTERN_SYMBOL(InterpreterForEnd2)
+
+
+bool InterpreterFevrEnd2( Runtime* sandbox , Value* lhs , const Value& step ,
+                                                          std::uint32_t offset ) {
+  // 1. do the addtion part
+  if(lhs->IsExtension() || step.IsExtension()) {
+    Handle<Extension> ext(lhs->IsExtension() ? lhs->GetExtension() : step.GetExtension());
+    if(!ext->Add(*lhs,step,lhs,sandbox->error))
+      return false;
+  } else if(lhs->IsReal() && step.IsReal()) {
+    lhs->SetReal( lhs->GetReal() + step.GetReal() );
+  } else {
+    ReportError(sandbox,"type %s and %s cannot be used for range for loop,"
+                        "no \"+\" operation allowed",
+                        lhs->type_name(),step.type_name());
+    return false;
+  }
+
+  // 2. branch to offset
+  BranchTo(sandbox,offset);
+  return true;
+}
+INTERPRETER_REGISTER_EXTERN_SYMBOL(InterpreterFevrEnd2)
 
 bool InterpreterFEStart( Runtime* sandbox , Value* expr , std::uint32_t offset ) {
   Handle<Iterator> itr;
@@ -3866,6 +3887,36 @@ void GenBytecode( BuildContext* bctx, Bytecode bc ) {
       |  instr_G
       |  branch_to ARG1F,ARG3F
       |  DispatchCheckJIT 1
+      break;
+
+    case BC_FEVREND2:
+      |=>bc:
+      | instr_E
+      |  cmp dword [STK+ARG1F*8+4], Value::FLAG_REAL
+      |  jnb >6
+
+      |  cmp dword [STK+ARG2F*8+4], Value::FLAG_REAL
+      |  jnb >6
+
+      |  movsd xmm0, qword [STK+ARG1F*8]
+      |  addsd xmm0, qword [STK+ARG2F*8]
+      |  movsd qword [STK+ARG1F*8], xmm0 // write back to loop iv
+
+      |  mov ARG1, dword [PC]
+      |  branch_to ARG1F, ARG3F
+
+      |6:
+      |  savepc
+      |  mov CARG1, RUNTIME
+      |  lea CARG2, [STK+ARG1F*8]
+      |  lea CARG3, [STK+ARG2F*8]
+      |  mov CARG4L, dword [PC]
+      |  fcall InterpreterFevrEnd2
+      // handle return value
+      |  test eax,eax
+      |  je ->InterpFail
+      |  mov PC, qword [RUNTIME+RuntimeLayout::kCurPCOffset]
+      |  jmp <7
       break;
 
     case BC_BRK:

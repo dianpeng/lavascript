@@ -4343,6 +4343,9 @@ void GenBytecodeProfile( BuildContext* bctx , Bytecode bc ) {
     case BC_FEVREND:
       |  jmp extern fevrend
       break;
+    case BC_FEVREND2:
+      |  jmp extern fevrend2
+      break;
     case BC_FSTART:
       |  jmp extern fstart
       break;

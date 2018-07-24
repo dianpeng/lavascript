@@ -150,9 +150,6 @@ class HeapObjectHeader : DoNotAllocateOnNormalHeap {
 
   // Return the heap object header in raw format basically a 64 bits number
   Type raw () const { return raw_; }
-
-  operator Type const () { return raw(); }
-
  public:
 
   static void SetHeader( void* here , const HeapObjectHeader& hdr ) {

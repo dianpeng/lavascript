@@ -118,8 +118,8 @@ void WriteEffect::Replace( Expr* node ) {
 
     ClearOperand();
   } else {
-    lava_unreachF("should never reach here, the node has side effect but this function "
-                  "cannot take care of the side effect node");
+    lava_unreach("should never reach here, the node has side effect but this function "
+                 "cannot take care of the side effect node");
   }
 }
 
@@ -156,7 +156,7 @@ void WriteEffect::ReplacePair( EffectNode* target , WriteEffect* write ) {
     // the write must already be linked against target since it is a write
     lava_debug(NORMAL,lava_verify(write->NextWrite() == target););
     // link this range into the effect chain
-    DoubleLinkNode::InsertRange(target,write,nlink);
+    DoubleLinkNode::InsertRange(target->As<WriteEffect>(),write,nlink);
   } else {
     lava_unreachF("unknown type of the effect node:%s",target->type_name());
   }
